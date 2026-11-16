@@ -208,6 +208,9 @@ struct PageData
 
 struct LiveData
 {
+    // Optional FPGA sample identity. Cached channels retain their original tick.
+    std::array<quint64, kChannelCount> sampleTicks{};
+    bool sampleTicksValid = false;
     std::array<double, kChannelCount> measuredC{};
     // Per-channel SP readbacks; NaN marks a channel absent from an FPGA scan.
     std::array<double, kChannelCount> setpointsC{};

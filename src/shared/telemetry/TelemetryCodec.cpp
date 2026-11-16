@@ -1650,6 +1650,7 @@ QByteArray TelemetryCodec::serializeAi8TemperatureControllerStatus(
     if (data.mainStatusValid) flags |= 0x08;
     if (data.detailedChannel) flags |= 0x10;
     if (data.setpointsValid) flags |= 0x20;
+    if (data.sampleTicksValid) flags |= 0x40;
     payload.append(static_cast<char>(flags));
     appendLe<quint16>(payload, 0);
     for (double value : data.measuredC)
@@ -1672,6 +1673,8 @@ QByteArray TelemetryCodec::serializeAi8TemperatureControllerStatus(
     if (data.setpointsValid)
         for (double value : data.setpointsC)
             appendDoubleLe(payload, value);
+    if(data.sampleTicksValid)
+        for(quint64 tick:data.sampleTicks)appendLe<quint64>(payload,tick);
     return payload;
 }
 
@@ -1698,7 +1701,8 @@ bool TelemetryCodec::parseAi8TemperatureControllerStatus(
     }
     const quint8 flags = static_cast<quint8>(payload.at(offset++));
     const qsizetype expectedSize = kExpectedPayloadSize + ((flags & 0x10) ? 21 : 0) +
-        ((flags & 0x20) ? Ai8TemperatureControllerProtocol::kChannelCount * sizeof(double) : 0);
+        ((flags & 0x20) ? Ai8TemperatureControllerProtocol::kChannelCount * sizeof(double) : 0) +
+        ((flags & 0x40) ? Ai8TemperatureControllerProtocol::kChannelCount * sizeof(quint64) : 0);
     if (payload.size() != expectedSize)
         return false;
     quint16 reserved = 0;
@@ -1746,6 +1750,9 @@ bool TelemetryCodec::parseAi8TemperatureControllerStatus(
         for (double& value : data.setpointsC)
             if (!readDoubleLe(payload, offset, value) || std::isinf(value))
                 return false;
+    data.sampleTicksValid=(flags&0x40)!=0;
+    if(data.sampleTicksValid)
+        for(quint64& tick:data.sampleTicks)if(!readLe(payload,offset,tick))return false;
     return offset==payload.size();
 }
 

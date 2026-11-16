@@ -161,6 +161,7 @@ AdaptedMeasurements FpgaSensorAdapter::accept(const Reading &input)
             live.mainStatusValid = s.snapshotValid;
         }
         if(input.schema==3 && s.channel>=1 && s.channel<=8) {
+            live.sampleTicksValid=true;
             if(s.snapshotValid && s.systemFault)ai8ScanSnapshots_={};
             for(int i=0;i<8;++i) {
                 if(input.timestamp<ai8ScanTicks_[i] || input.timestamp-ai8ScanTicks_[i]>500000000) {
@@ -175,6 +176,7 @@ AdaptedMeasurements FpgaSensorAdapter::accept(const Reading &input)
                 const auto& cached=ai8ScanSnapshots_[i];
                 allSnapshots&=cached.has_value();
                 if(!cached)continue;
+                live.sampleTicks[i]=ai8ScanTicks_[i];
                 if(cached->measurementValid)live.measuredC[i]=cached->measuredC;
                 live.setpointsC[i]=cached->setpointC;
                 const int shift=(i+1)%2?8:0;

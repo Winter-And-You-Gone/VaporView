@@ -166,8 +166,9 @@ class Simulator final : public FpgaUsbSimulator
 public:
     Simulator(QObject *parent, FpgaSimulatorStartup startup, FpgaSimulatorFirmware firmware)
         : FpgaUsbSimulator(parent), startup_(startup), historical_(firmware == FpgaSimulatorFirmware::HistoricalExtensions),
-          hcd2Scan_(firmware == FpgaSimulatorFirmware::Hcd2Ai8Scan || firmware == FpgaSimulatorFirmware::Rd105Integrated),
-          rd105_(historical_ || firmware == FpgaSimulatorFirmware::Rd105Integrated)
+          hcd2Scan_(firmware == FpgaSimulatorFirmware::Hcd2Ai8Scan || firmware == FpgaSimulatorFirmware::Rd105Integrated || firmware==FpgaSimulatorFirmware::SosPps),
+          rd105_(historical_ || firmware == FpgaSimulatorFirmware::Rd105Integrated || firmware==FpgaSimulatorFirmware::SosPps),
+          sosPps_(firmware==FpgaSimulatorFirmware::SosPps)
     { initialize(); clock_.start(); }
     bool open(const QString &) override
     {
@@ -386,6 +387,15 @@ private:
     void setRegister(quint32 address, quint32 value)
     {
         const auto base = address & ~255u;
+        if(sosPps_ && (base==0x5000 || base==0x5100)) {
+            const auto offset=address-base;
+            if(offset==0x60) {sosWords_[(base-0x5000)/0x100]=0;regs_[base+0xf4]=(regs_[base+0xf4]&1)|16;}
+            if(offset>=0x68 && offset<=0xdc) {
+                auto& mask=sosWords_[(base-0x5000)/0x100];mask|=1u<<((offset-0x68)/4);
+                regs_[base+0xf4]|=8;if(mask==0x3fffffffu)regs_[base+0xf4]|=32;
+            }
+            if(offset==0x58)regs_[base+0x60]=0;
+        }
         if(base==0x6800 || base==0x6900) {
             auto& uart = uart_[(base-0x6800)/0x100];
             const auto offset = address-base;
@@ -487,6 +497,11 @@ private:
     }
     quint32 readRegister(quint32 address)
     {
+        if(sosPps_) {
+            if(address==0x50f0 || address==0x51f0)return 0x534f5301;
+            if(address==0x2084 || address==0x2184)return 0x50505301;
+            if(address==0x50fc || address==0x51fc)return regs_.value(0x4014);
+        }
         const auto base=address&~255u;
         if(base==0x6800 || base==0x6900) {
             updateUarts(clock_.elapsed());
@@ -589,6 +604,15 @@ private:
         if (source == 0x20) regs_[0x4014] = regs_[0x4114] = regs_[0x4010];
         if (source >= 0x30 && source <= 0x31) {
             const auto base = 0x5000 + (source - 0x30) * 0x100;
+            if(sosPps_) {
+                const auto order=regs_.value(base+0x60);
+                if(order && ((regs_.value(base+0xf4)&0x38)!=0x38 || regs_.value(base+0xe0)!=regs_.value(0x4014)))regs_[base+0xc]|=16;
+                else {
+                    regs_[base+0x24]=order?(0x80000000u|order):0x00040102;
+                    regs_[base+0x64]=order;regs_[base+0xe8]=regs_[base+0xe0];regs_[base+0xec]=regs_[base+0xe4];
+                    regs_[base+0xf4]=(regs_[base+0xf4]&~7u)|(order?1:0);++regs_[base+0xf8];
+                }
+            }
             regs_[base + 0x4c] = regs_[base + 0x1c];
             regs_[base + 0x50] = regs_[0x4014] / qMax(1u, regs_[base + 0x1c]);
             regs_[base+0x5c]=regs_[base+0x58];
@@ -730,7 +754,7 @@ private:
                 const quint32 address = word(p,0); const auto count = qFromLittleEndian<quint16>(p.constData()+4);
                 if (!count || count > 1000 || p.size() != (message == 2 ? 8 : 8 + count * 4)) status = 2;
                 for (int i = 0; !status && i < count; ++i)
-                    if ((!readable(address + i * 4,historical_,hcd2Scan_,rd105_) && !(message==3 && address+i*4==0x44)) || address + quint64(i) * 4 > 0xffff) status = 5;
+                    if ((!readable(address + i * 4,historical_,hcd2Scan_,rd105_) && !newRegister(address+i*4) && !(message==3 && address+i*4==0x44)) || address + quint64(i) * 4 > 0xffff) status = 5;
                 if(!status && message==2)for(quint32 pop:{0x681cu,0x691cu})
                     if(address<=pop && address+quint32(count)*4>pop
                         && uart_[(pop-0x681c)/0x100].receive.isEmpty())status=11;
@@ -1017,6 +1041,13 @@ private:
     const bool historical_;
     const bool hcd2Scan_;
     const bool rd105_;
+    const bool sosPps_;
+    quint32 sosWords_[2]{};
+    bool newRegister(quint32 address) const {
+        const auto base=address&~255u,offset=address&255;
+        return sosPps_ && !(address%4) && (((base==0x5000 || base==0x5100) && offset>=0x60)
+            || ((base==0x2000 || base==0x2100) && offset>=0x4c && offset<=0x88));
+    }
     quint32 extensions_=0x29;
     qint64 lastHeartbeatMs_=-1,motorStartedMs_=0,timeEnabledMs_=-1;
     bool motorBusy_=false,motorDone_=false,motorFault_=false,utcAnchored_=false;

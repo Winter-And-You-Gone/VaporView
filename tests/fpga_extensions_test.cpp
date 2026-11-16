@@ -3,6 +3,7 @@
 #include "FpgaVlp1.h"
 #include "FpgaTelemetry.h"
 #include "FpgaExtensions.h"
+#include "FpgaDliaSos.h"
 #include "TelemetryCodec.h"
 #include "ground/devices/EpsilonConfigurationService.h"
 #include "ground/devices/FpgaInstrumentService.h"
@@ -14,6 +15,7 @@
 #include <QDebug>
 #include <QtEndian>
 #include <cmath>
+#include <complex>
 
 using namespace VaporView;
 using namespace VaporView::Ground::Devices;
@@ -30,6 +32,58 @@ QByteArray rtcm(int length) {
 int main(int argc,char** argv) {
     QCoreApplication app(argc,argv);int errors=0;
     const auto check=[&](bool ok,const char* text){if(!ok){qCritical()<<text;++errors;}};
+    {
+        const auto words=FpgaDliaSos::design(3,1000000,1250);
+        check(words.size()==30 && words[0]==0x406d9806 && words[1]==0x300d0000 && words[2]==0x000080db,
+            "SOS reference order-3 coefficient packing matches firmware handoff");
+        for(int order=2;order<=8;++order)for(quint32 hz:{100u,1250u,10000u,499999u})
+            check(FpgaDliaSos::design(order,1000000,hz).size()==30,"all supported orders produce stable complete banks");
+        for(int order=2;order<=8;++order) {
+            const auto bank=FpgaDliaSos::design(order,1000000,1250);
+            const auto z=std::polar(1.0,-2*std::acos(-1.0)*1250/1000000);
+            std::complex<double> gain=1;
+            for(int section=0;section<4;++section) {
+                double coefficient[5]{};
+                for(int i=0;i<5;++i) {
+                    quint64 raw=0;
+                    for(int b=0;b<6;++b) {const int index=(section*5+i)*6+b;raw|=quint64((bank[index/4]>>(8*(index%4)))&255)<<(8*b);}
+                    const qint64 value=(raw&(quint64(1)<<47))?qint64(raw)-(qint64(1)<<48):qint64(raw);
+                    coefficient[i]=double(value)/FpgaDliaSos::One;
+                }
+                gain*=(coefficient[0]+coefficient[1]*z+coefficient[2]*z*z)/(1.0+coefficient[3]*z+coefficient[4]*z*z);
+            }
+            check(std::abs(std::abs(gain)-std::sqrt(0.5))<1e-6,"quantized filter has the requested Butterworth -3dB cutoff for every order");
+        }
+        check(FpgaDliaSos::design(1,1000000,1000).isEmpty() && FpgaDliaSos::design(4,1000,500).isEmpty(),"invalid order and Nyquist rejected");
+        FpgaDeviceController modern(makeFpgaUsbSimulator(nullptr,FpgaSimulatorStartup::Idle,FpgaSimulatorFirmware::SosPps));
+        modern.connectDevice({},"simulator",FpgaDeviceController::ConnectMode::PreserveRunningModules);
+        check(waitFor([&]{return modern.ready()&&!modern.busy();}),"SOS/PPS API discovery connects");
+        const auto run=[&](QJsonObject request) {
+            check(waitFor([&]{return !modern.busy();}),"modern controller idle");
+            static int ticket=0;request["ticket"]=QString::number(++ticket);
+            QJsonObject result;bool done=false;
+            const auto observer=QObject::connect(&modern,&FpgaDeviceController::extensionCompleted,&app,[&](const QJsonObject& r){if(r.value("ticket")==request.value("ticket")){result=r;done=true;}});
+            modern.executeOperation(request);check(waitFor([&]{return done;}),"modern operation finishes");QObject::disconnect(observer);return result;
+        };
+        auto result=run({{"op","dlia_sos"},{"channel",0},{"order",3},{"hz",1250}});
+        check(result.value("channel").toInt(-1)==0 && result.value("words_q46").isArray(),"SOS recording identifies the channel and coefficient bank");
+        check(result.value("ok").toBool() && result.value("verified").toBool() && modern.hardwareValues().value(0x5024)==0x80000003u,"SOS upload commits and checks active profile");
+        modern.refresh();check(waitFor([&]{return !modern.busy();}) && modern.ready(),"custom profile survives version validation");
+        modern.applyConfiguration(FpgaControlConfig{},"dlia");
+        check(waitFor([&]{return !modern.busy();}) && modern.hardwareValues().value(0x5024)==0x80000003u,"ordinary DLIA settings preserve SOS");
+        result=run({{"op","wms_trigger"},{"channel",0},{"mode",1},{"idle",-123456}});
+        check(result.value("mode").toInt()==1 && result.value("idle_q31").toInt()==-123456,"PPS recording retains applied signed configuration");
+        check(result.value("ok").toBool() && modern.hardwareValues().value(0x204c)==1 && qint32(modern.hardwareValues().value(0x2050))==-123456,"PPS mode and signed idle roundtrip");
+        result=run({{"op","pps_snapshot"},{"channel",0}});
+        check(result.contains("accepted") && result.contains("completed") && result.contains("aborted_count"),"PPS recording retains coherence counters");
+        check(result.value("ok").toBool() && !result.value("window_valid").toBool(),"no-trigger snapshot cannot claim valid scan");
+        result=run({{"op","dlia_cutoff"},{"channel",0},{"hz",1000}});
+        check(result.value("ok").toBool() && modern.hardwareValues().value(0x5024)==0x00040102,"explicit builtin restoration");
+        modern.disconnectDevice();
+        Ai8TemperatureControllerProtocol::LiveData live,parsed;live.sampleTicksValid=true;live.sampleTicks[4]=1234567890123;
+        check(TelemetryCodec::parseAi8TemperatureControllerStatus(TelemetryCodec::serializeAi8TemperatureControllerStatus(live),parsed)
+            && parsed.sampleTicksValid && parsed.sampleTicks==live.sampleTicks,"AI8 per-channel sample identities survive remote telemetry");
+    }
     auto simulator=makeFpgaUsbSimulator(nullptr,FpgaSimulatorStartup::Idle,FpgaSimulatorFirmware::HistoricalExtensions);auto* transport=simulator.get();
     FpgaDeviceController controller(std::move(simulator));
     QVector<FpgaSensor::Reading> readings;

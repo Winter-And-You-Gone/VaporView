@@ -111,6 +111,7 @@ private:
     void checkConnectionResults();
     void reportConnection(quint16 source, const QString& result, const QString& reasonCode, const QString& detail, const char *file = VAPORVIEW_LOG_FILE, const char *function = VAPORVIEW_LOG_FUNCTION, int line = VAPORVIEW_LOG_LINE);
     void read(quint32 address, quint16 count = 1);
+    void probe(quint32 address, quint32 api);
     void write(quint32 address, quint32 value);
     void verify(quint32 address, quint32 value);
     void waitFor(quint32 address, quint32 mask, quint32 expected);

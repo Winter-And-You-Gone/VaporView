@@ -154,6 +154,22 @@ int main(int argc,char **argv) {
     VaporView::setAppStyleSheet(VaporView::startupAppThemeStyleSheet(false));
     motorQueuedCancellation();
     motorMotionGuard();
+    {
+        FpgaControlPage page;
+        page.setConnectionState(true,false);
+        auto *sos=page.findChild<QPushButton*>("fpga0SosApply");
+        auto *pps=page.findChild<QPushButton*>("fpga0TriggerApply");
+        require(sos && pps && !sos->isEnabled() && !pps->isEnabled(),"new firmware controls require API readback");
+        page.setHardwareValues({{0x50f0,0x534f5301},{0x2084,0x50505301},{0x5024,0x80000003},{0x5064,3},{0x50ec,1250}});
+        require(sos->isEnabled() && pps->isEnabled(),"SOS and PPS enabled only after API probe");
+        require(page.findChild<QLabel*>("fpga0SosStatus")->text().contains("1250"),"active SOS cutoff displayed separately from builtin");
+        QJsonObject requested;
+        const auto observer=QObject::connect(&page,&FpgaControlPage::operationRequested,&page,[&](const QJsonObject& request){requested=request;});
+        page.findChild<QDoubleSpinBox*>("fpga0SosOrder")->setValue(7);
+        page.findChild<QDoubleSpinBox*>("fpga0SosHz")->setValue(1250);sos->click();
+        require(requested.value("op")=="dlia_sos" && requested.value("order").toInt()==7 && requested.value("hz").toInt()==1250,"UI sends selected filter design");
+        QObject::disconnect(observer);page.setHardwareValues({});page.setConnectionState(false,false);
+    }
     FpgaControlPage page;
     auto *requiredHarmonics=page.findChild<QCheckBox*>("fpgaRecordHarmonics");
     require(requiredHarmonics && requiredHarmonics->isChecked() && !requiredHarmonics->isEnabled(),"H1/H2 recording is required");

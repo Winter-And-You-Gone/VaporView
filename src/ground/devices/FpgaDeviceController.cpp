@@ -4,6 +4,7 @@
 #include "FpgaTelemetry.h"
 #include "FpgaAdvancedParameters.h"
 #include "FpgaExtensions.h"
+#include "FpgaDliaSos.h"
 #include "FpgaUartExchange.h"
 #include "Tec103GpioProtocol.h"
 #include "ppk/ObservationStore.h"
@@ -372,7 +373,7 @@ bool FpgaDeviceController::versionsMatch(QString *detail) const
 {
     const QMap<quint32,quint32> expected{{0x4000,0x00200101},{0x4100,0x00210101},
         {0x4018,0x00011800},{0x4118,0x00011800},{0x5000,0x00300101},{0x5100,0x00310101},
-        {0x5024,0x00040101},{0x5124,0x00040101},{0x6600,0x00460200},
+        {0x6600,0x00460200},
         {0x6500,0x00450200},{0x6100,0x00410106},{0x614c,0x48434432},{0x1000,0x00020200},{0x6700,0x00470200}};
     const auto cap = session_->capabilities();
     if (!registers_.contains(0x8004) || !(registers_.value(0x8004)&1)) {
@@ -385,6 +386,13 @@ bool FpgaDeviceController::versionsMatch(QString *detail) const
     for (auto i=expected.cbegin(); i!=expected.cend(); ++i) if (!registers_.contains(i.key()) || registers_.value(i.key())!=i.value()) {
         if (detail) *detail=QStringLiteral("模块版本不匹配：%1 实际 %2，期望 %3；已禁用写操作。")
             .arg(hex(i.key()),hex(registers_.value(i.key())),hex(i.value())); return false;
+    }
+    for(quint32 base:{0x5000u,0x5100u}) {
+        const auto profile=registers_.value(base+0x24);
+        const bool custom=profile>=0x80000002u && profile<=0x80000008u;
+        if(profile!=0x00040101 && profile!=0x00040102 && !(custom && registers_.value(base+0xf0)==FpgaDliaSos::Api)) {
+            if(detail)*detail=QStringLiteral("DLIA 滤波器版本无法识别：%1。").arg(hex(profile));return false;
+        }
     }
     return true;
 }
@@ -531,6 +539,13 @@ void FpgaDeviceController::completed(quint32 seq, bool success, quint32 status, 
         return;
     }
     if (!current_ || seq!=pendingSequence_) return;
+    // An optional extension address is absent on old firmware. Only a genuine
+    // BAD_ADDRESS response is optional; timeouts/transport failures still fail.
+    if (!success && statusOnlyResponse && status==5 && current_->label=="optional_api") {
+        registers_.remove(current_->address);
+        current_.reset();pendingSequence_=0;
+        QTimer::singleShot(0,this,&FpgaDeviceController::advance);return;
+    }
     if (!success) {
         // MOTOR_CTRL replies contain only status, not the failing microstep.
         // NOT_READY rejects MOVE without accepting a new motion; partial or
@@ -790,6 +805,10 @@ void FpgaDeviceController::refresh()
 void FpgaDeviceController::stopAndDrain()
 {
     drainWaveforms_ = true;
+    // PPS must finish its DAC idle transaction and DLIA tail before stopping ADC.
+    for(quint32 base:{0x2000u,0x2100u})if(registers_.value(base+0x84)==FpgaDliaSos::PpsApi && registers_.value(base+0x4c)==1) {
+        write(base+4,0);verify(base+4,0);waitFor(base+0x54,2,0);
+    }
     for (quint32 b : {0x4000u,0x4100u}) write(b+4,0);
     for (quint32 b : {0x4000u,0x4100u}) { waitFor(b+8,0xd,0); waitFor(b+0x20,0xffffffff,0); }
     for (quint32 b : {0x5000u,0x5100u}) write(b+4,0);
@@ -861,7 +880,15 @@ void FpgaDeviceController::applyConfiguration(const FpgaControlConfig& config, c
     const bool acquisition=section=="all" || section=="acquisition";
     if (!wms && !dlia && !acquisition) { fail(QStringLiteral("未知参数分区。")); return; }
     const quint32 adcRate=acquisition?config.adcRateHz:registers_.value(0x4014);
-    if(dlia)for(const auto& d:config.dlia) {
+    for(int ch=0;ch<2;++ch) {
+        const quint32 base=0x5000+ch*0x100;
+        if((registers_.value(base+0x24)&0x80000000u) && acquisition && adcRate!=registers_.value(base+0xe8)) {
+            fail(QStringLiteral("自定义 SOS 与 ADC 采样率绑定；请先显式切回内置滤波，再修改采样率并重新设计 SOS。"));return;
+        }
+    }
+    if(dlia)for(int ch=0;ch<2;++ch) {
+        if(registers_.value(0x5024+ch*0x100)&0x80000000u)continue;
+        const auto& d=config.dlia[ch];
         if(!FpgaExtensions::cutoff(d.cutoffHz) || (d.cutoffHz!=1000 && (!(extensions()&FpgaExtensions::DliaCutoff) || adcRate!=1000000))) {
             fail(QStringLiteral("截止频率档位不合法，或非默认档位不满足固件能力及标称 1 MHz 采样率要求。"));return;
         }
@@ -936,9 +963,10 @@ void FpgaDeviceController::applyConfiguration(const FpgaControlConfig& config, c
         const quint32 vals[]={d.referenceMilliHz,d.phase1,d.phase2,d.outputRateHz,d.mode};
         for (quint32 i=0;i<5;++i) { write(b+0x10+i*4,vals[i]); verify(b+0x10+i*4,vals[i]); }
         write(b+0x40,d.fragmentPoints);verify(b+0x40,d.fragmentPoints);
-        if(extensions()&FpgaExtensions::DliaCutoff) {write(b+0x58,d.cutoffHz);verify(b+0x58,d.cutoffHz);}
+        const bool builtin=!(registers_.value(b+0x24)&0x80000000u);
+        if(builtin && (extensions()&FpgaExtensions::DliaCutoff)) {write(b+0x58,d.cutoffHz);verify(b+0x58,d.cutoffHz);}
         commit(quint16(0x30+ch),b); read(b+0x4c,2);
-        if(extensions()&FpgaExtensions::DliaCutoff)verify(b+0x5c,d.cutoffHz);
+        if(builtin && (extensions()&FpgaExtensions::DliaCutoff))verify(b+0x5c,d.cutoffHz);
     }
     readAll(); advance();
 }
@@ -1359,7 +1387,7 @@ void FpgaDeviceController::executeOperation(const QJsonObject& request)
         if(!pendingSequence_)fail(QStringLiteral("DM422 停止命令未发送。"));
         return;
     }
-    if(requestedOp=="instrument" || requestedOp=="epsilon_mailbox" || requestedOp=="ai8_scan" || requestedOp=="ai8_cache" || requestedOp=="dlia_cutoff" || requestedOp=="device_temperature") {
+    if(requestedOp=="instrument" || requestedOp=="epsilon_mailbox" || requestedOp=="ai8_scan" || requestedOp=="ai8_cache" || requestedOp=="dlia_cutoff" || requestedOp=="dlia_sos" || requestedOp=="wms_trigger" || requestedOp=="pps_snapshot" || requestedOp=="device_temperature") {
         deferExtensionOperation(request,tec103Generation_,QDateTime::currentMSecsSinceEpoch()+10000);return;
     }
     if(busy_ && !backgroundRefresh_) {report(QStringLiteral("FPGA 操作被拒绝：已有事务正在执行。"));return;}

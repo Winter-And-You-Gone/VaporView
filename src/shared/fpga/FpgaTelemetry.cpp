@@ -152,7 +152,7 @@ bool validateControl(const QJsonObject& control, QString *error)
     QStringList keys{"op"};
     if(control.contains("ticket")) {
         quint64 ticket=0;
-        if(!QStringList{"instrument","epsilon_mailbox","ai8_scan","ai8_cache","dlia_cutoff","device_temperature","uart_exchange"}.contains(op)
+        if(!QStringList{"instrument","epsilon_mailbox","ai8_scan","ai8_cache","dlia_cutoff","dlia_sos","wms_trigger","pps_snapshot","device_temperature","uart_exchange"}.contains(op)
             || !decimal(control.value("ticket"),ticket) || !ticket)return fail();
         keys << "ticket";
     }
@@ -264,6 +264,14 @@ bool validateControl(const QJsonObject& control, QString *error)
         keys << "channel";if(!integer(control.value("channel"),1,8))return fail();
     } else if(op=="ai8_scan") {
         keys << "enabled";if(!control.value("enabled").isBool())return fail();
+    } else if(op=="dlia_sos") {
+        keys << "channel" << "order" << "hz";
+        if(!integer(control.value("channel"),0,1) || !integer(control.value("order"),2,8) || !integer(control.value("hz"),1))return fail();
+    } else if(op=="wms_trigger") {
+        keys << "channel" << "mode" << "idle";
+        if(!integer(control.value("channel"),0,1) || !integer(control.value("mode"),0,1) || !integer(control.value("idle"),-2147483648.0,2147483647.0))return fail();
+    } else if(op=="pps_snapshot") {
+        keys << "channel";if(!integer(control.value("channel"),0,1))return fail();
     } else if(op=="dlia_cutoff") {
         keys << "channel" << "hz";if(!integer(control.value("channel"),0,1) || !integer(control.value("hz")) || !FpgaExtensions::cutoff(quint32(control.value("hz").toDouble())))return fail();
     } else if (op == "temperature" || op=="device_temperature") {

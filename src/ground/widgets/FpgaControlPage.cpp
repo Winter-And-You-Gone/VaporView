@@ -4,6 +4,7 @@
 #include "FpgaTelemetry.h"
 #include "FpgaAdvancedParameters.h"
 #include "FpgaExtensions.h"
+#include "FpgaDliaSos.h"
 #include "FpgaHarmonics.h"
 #include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/AppTheme.h"
@@ -303,7 +304,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
         df("解调输出率 / Hz","Demodulation output / Hz","Output",0x4c,1,1000000,&FpgaControlConfig::Dlia::outputRateHz);
         df("解调模式 (2/3；6/7 旁路低通)","Mode (2/3; 6/7 bypass LPF)","Mode",0x20,0,7,&FpgaControlConfig::Dlia::mode);
         df("上传分片点数","Fragment points","FragmentPoints",0x40,1,256,&FpgaControlConfig::Dlia::fragmentPoints);
-        auto* cutoffTitle=new QLabel(dliaGroup);label(cutoffTitle,QStringLiteral("低通截止频率 / Hz"),QStringLiteral("LPF cutoff / Hz"));dliaGrid->addWidget(cutoffTitle,dliaRow,0);
+        auto* cutoffTitle=new QLabel(dliaGroup);label(cutoffTitle,QStringLiteral("内置低通档位 / Hz"),QStringLiteral("Builtin LPF cutoff / Hz"));dliaGrid->addWidget(cutoffTitle,dliaRow,0);
         auto* cutoff=new VaporView::SingleLevelPopupComboBox(dliaGroup);cutoff_[channel]=cutoff;cutoff->setObjectName(QStringLiteral("fpga%1Cutoff").arg(channel));
         for(int hz:{100,250,500,1000,2000,5000,10000})cutoff->addItem(QString::number(hz),hz);
         cutoff->setCurrentIndex(cutoff->findData(1000));cutoff->setProperty("fpgaExtension",VaporView::FpgaExtensions::DliaCutoff);onlineControls_.append(cutoff);
@@ -471,6 +472,36 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
         for(const auto& field:fields)readback(grid,row++,1,2,field.address,QString::fromUtf8(field.zh),QString::fromUtf8(field.en));
     };
     auto *lanes=card(advanced,advancedLayout,QStringLiteral("分通道采集"),QStringLiteral("Acquisition per channel"),QStringLiteral("activity"));auto *laneGrid=new QGridLayout(lanes);
+    for(int channel=0;channel<2;++channel) {
+        auto *featureCard=card(advanced,advancedLayout,QStringLiteral("通道 %1 · SOS 滤波 / PPS 扫描").arg(channel+1),
+            QStringLiteral("Channel %1 · SOS filter / PPS scan").arg(channel+1),QStringLiteral("activity"));
+        auto *grid=new QGridLayout(featureCard);
+        auto *hint=new QLabel(featureCard);hint->setWordWrap(true);
+        label(hint,QStringLiteral("应用前自动停止采集，完成后请手动开始。SOS 按实际 ADC 输入率设计；普通参数提交保留自定义滤波。等待电平为有符号码，不代表电压。"),
+            QStringLiteral("Apply stops acquisition; start it manually afterward. SOS uses the actual ADC input rate and survives ordinary parameter commits. Idle level is a signed code, not volts."));
+        grid->addWidget(hint,0,0,1,3);
+        const auto name=[channel](const char* key){return QString("fpga%1%2").arg(channel).arg(key);};
+        auto *order=number(grid,1,"Butterworth 阶数 (2–8)",qPrintable(name("SosOrder")),2,8,4);
+        auto *hz=number(grid,2,"SOS 截止频率 / Hz",qPrintable(name("SosHz")),1,499999,1000);
+        auto *sos=operation(grid,3,0,"应用 SOS 并回读","Apply SOS & verify",qPrintable(name("SosApply")),[channel,order,hz]{
+            return QJsonObject{{"op","dlia_sos"},{"channel",channel},{"order",order->value()},{"hz",hz->value()}};
+        });
+        sos->setProperty("fpgaApiAddress",0x50f0+channel*0x100);sos->setProperty("fpgaApiValue",VaporView::FpgaDliaSos::Api);
+        auto *builtin=operation(grid,3,1,"恢复 DLIA 页所选内置滤波","Restore builtin selected on DLIA page",qPrintable(name("SosBuiltin")),[this,channel]{
+            return QJsonObject{{"op","dlia_cutoff"},{"channel",channel},{"hz",int(config_.dlia[channel].cutoffHz)}};
+        });builtin->setProperty("fpgaExtension",VaporView::FpgaExtensions::DliaCutoff);
+        auto *status=new QLabel(featureCard);status->setObjectName(name("SosStatus"));status->setWordWrap(true);grid->addWidget(status,4,0,1,3);
+        auto *modeTitle=new QLabel(featureCard);label(modeTitle,QStringLiteral("扫描触发"),QStringLiteral("Scan trigger"));grid->addWidget(modeTitle,5,0);
+        auto *mode=new VaporView::SingleLevelPopupComboBox(featureCard);mode->setObjectName(name("TriggerMode"));
+        mode->addItem(QStringLiteral("连续扫描"),0);mode->addItem(QStringLiteral("PPS 单次扫描"),1);grid->addWidget(mode,5,1);
+        auto *idle=number(grid,6,"等待电平 / signed Q1.31",qPrintable(name("IdleLevel")),-2147483648.0,2147483647.0,0);
+        auto *trigger=operation(grid,7,0,"应用触发设置","Apply trigger",qPrintable(name("TriggerApply")),[channel,mode,idle]{
+            return QJsonObject{{"op","wms_trigger"},{"channel",channel},{"mode",mode->currentData().toInt()},{"idle",idle->value()}};
+        });
+        auto *snapshot=operation(grid,7,1,"记录一致扫描快照","Record coherent scan snapshot",qPrintable(name("PpsSnapshot")),[channel]{return QJsonObject{{"op","pps_snapshot"},{"channel",channel}};});
+        for(auto *button:{trigger,snapshot}) {button->setProperty("fpgaApiAddress",0x2084+channel*0x100);button->setProperty("fpgaApiValue",VaporView::FpgaDliaSos::PpsApi);}
+        auto *pps=new QLabel(featureCard);pps->setObjectName(name("PpsStatus"));pps->setWordWrap(true);grid->addWidget(pps,8,0,1,3);
+    }
     for(int ch=0;ch<2;++ch)for(int enable=0;enable<2;++enable)operation(laneGrid,ch,enable,ch?(enable?"通道 1 开始":"通道 1 停止"):(enable?"通道 0 开始":"通道 0 停止"),enable?"Start channel":"Stop channel",qPrintable(QString("fpgaChannel%1%2").arg(ch).arg(enable)),[ch,enable]{return QJsonObject{{"op","channel_acquisition"},{"channel",ch},{"enabled",bool(enable)}};});
     auto *time=card(advanced,advancedLayout,QStringLiteral("时间同步"),QStringLiteral("Time synchronization"),QStringLiteral("timer"));auto *tg=new QGridLayout(time);
     auto *edge=number(tg,0,"同步沿 (0 上升 / 1 下降)","fpgaTimeEdge",0,1,0);auto *timeout=number(tg,1,"同步超时 / ms","fpgaTimeTimeout",1,3600000,2000);
@@ -671,9 +702,11 @@ void FpgaControlPage::updateActions(){
     discover_->setEnabled(!busy_&&!usbDiscovering_&&usbHostAvailable_);
     disconnect_->setEnabled(connected_&&!busy_);for(auto *w:onlineControls_) {
         const quint32 bit=w->property("fpgaExtension").toUInt();const bool safety=w->property("fpgaSafetyControl").toBool();
+        const auto apiAddress=w->property("fpgaApiAddress").toUInt();
+        const bool api=!apiAddress || hardwareValues_.value(apiAddress)==w->property("fpgaApiValue").toUInt();
         const bool tec103=!w->property("tec103BridgeControl").toBool()
             || (hardwareValues_.value(0x6800)==0x00480100 && hardwareValues_.value(0x6900)==0x00490100);
-        w->setEnabled((safety?connected_&&(ready_||hardwareValues_.value(0x6700)==0x00470200):ready_&&!busy_)&&(!bit || (extensions_&bit))&&tec103);
+        w->setEnabled((safety?connected_&&(ready_||hardwareValues_.value(0x6700)==0x00470200):ready_&&!busy_)&&(!bit || (extensions_&bit))&&tec103&&api);
     }refresh_->setEnabled(connected_&&!busy_);record_->setEnabled(!property("fpgaUiTestMode").toBool()&&(ready_||recording_));
     const bool motorBlocked=motorLocked();
     for(const char *name:{"fpgaMotorRun","fpgaMotorEnable","fpgaMotorConfigure","fpgaMotorZero"})
@@ -775,6 +808,25 @@ void FpgaControlPage::setConnectionState(bool ready,bool busy,const QString &det
 }
 void FpgaControlPage::setHardwareValues(const QMap<quint32,quint32> &v){
     hardwareValues_=v;
+    for(int ch=0;ch<2;++ch) {
+        const quint32 d=0x5000+ch*0x100,w=0x2000+ch*0x100;
+        if(auto *label=findChild<QLabel*>(QString("fpga%1SosStatus").arg(ch))) {
+            const bool supported=v.value(d+0xf0)==VaporView::FpgaDliaSos::Api,custom=v.value(d+0x24)&0x80000000u;
+            label->setText(!supported?text("当前固件未确认 SOS API","SOS API not confirmed"):
+                custom?text("已生效：%1 阶 SOS · Fc %2 Hz · 设计 Fs %3 Hz / 实际 %4 Hz · 代次 %5",
+                    "Active: order %1 SOS · Fc %2 Hz · Design Fs %3 Hz / actual %4 Hz · Generation %5")
+                    .arg(v.value(d+0x64)).arg(v.value(d+0xec)).arg(v.value(d+0xe8)).arg(v.value(d+0xfc)).arg(v.value(d+0xf8)):
+                text("已生效：内置滤波 %1 Hz · 实际 ADC %2 Hz","Active: builtin %1 Hz · Actual ADC %2 Hz").arg(v.value(d+0x5c)).arg(v.value(d+0xfc)));
+        }
+        if(auto *label=findChild<QLabel*>(QString("fpga%1PpsStatus").arg(ch))) {
+            const auto state=v.value(w+0x54);
+            label->setText(v.value(w+0x84)!=VaporView::FpgaDliaSos::PpsApi?text("当前固件未确认 PPS 扫描 API","PPS scan API not confirmed"):
+                text("实际模式 %1 · 等待码 %2 · 已就绪 %3 / 扫描忙 %4 / PPS 合格 %5\n接受 %6 · 漏接 %7 · 不合格 %8 · 完成 %9 · 中止 %10 · PPS 序号 %11\n完成计数不代表 USB 帧完整；快照写入当前会话记录。",
+                     "Mode %1 · Idle code %2 · Armed %3 / Busy %4 / PPS qualified %5\nAccepted %6 · Missed %7 · Rejected %8 · Completed %9 · Aborted %10 · PPS sequence %11\nCompletion is not USB frame integrity; snapshots are saved with the current session.")
+                .arg(v.value(w+0x4c)).arg(qint32(v.value(w+0x50))).arg(bool(state&1)).arg(bool(state&2)).arg(bool(state&64))
+                .arg(v.value(w+0x58)).arg(v.value(w+0x5c)).arg(v.value(w+0x88)).arg(v.value(w+0x7c)).arg(v.value(w+0x80)).arg(v.value(w+0x60)));
+        }
+    }
     if(!rerendering_)updateMotorReadback();
     updateMotorProgress();
     const quint32 calibration=v.value(0x1060);
@@ -803,6 +855,11 @@ void FpgaControlPage::setHardwareValues(const QMap<quint32,quint32> &v){
     for(auto it=v.cbegin();it!=v.cend();++it)if(auto *l=hardwareLabels_.value(it.key())) {
         const auto module=l->property("fpgaModule").toString();
         const quint32 base=it.key()&~0xffu,offset=it.key()&0xff;
+        if((base==0x5000 || base==0x5100) && offset==0x5c && (v.value(base+0x24)&0x80000000u)) {
+            l->setText(text("实际：自定义 %1 阶 SOS，%2 Hz；内置档位仅在高级控制显式恢复时应用。",
+                "Active: order %1 SOS, %2 Hz; restore the selected builtin explicitly in Advanced controls.")
+                .arg(v.value(base+0x64)).arg(v.value(base+0xec)));continue;
+        }
         if ((base==0x2000||base==0x2100) && (offset==0x14||offset==0x18||offset==0x20)) {
             l->setText(text("设备读回：","Readback: ")+QString::number(double(qint32(it.value()))*10.0/2147483648.0,'f',3)+" V");
         } else if((it.key()&0xff)==8 && !module.isEmpty()) {

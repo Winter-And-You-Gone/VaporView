@@ -1665,6 +1665,8 @@ void Ai8TemperatureControllerPanel::applyLiveData(
         sp_known_[i] = true;
     }
     const bool hadDetails=latest_live_data_.detailedChannel!=0;
+    const auto previousTicks=latest_live_data_.sampleTicks;
+    const bool previousTicksValid=latest_live_data_.sampleTicksValid;
     latest_live_data_ = liveData;
     if (liveData.valid)
     {
@@ -1672,6 +1674,8 @@ void Ai8TemperatureControllerPanel::applyLiveData(
             static_cast<double>(QDateTime::currentMSecsSinceEpoch()) / 1000.0;
         for (int index = 0; index < Ai8TemperatureControllerProtocol::kChannelCount; ++index)
         {
+            if(liveData.sampleTicksValid && previousTicksValid &&
+                liveData.sampleTicks[index]==previousTicks[index])continue;
             const double measured = liveData.measuredC[static_cast<size_t>(index)];
             if (!std::isfinite(measured) || channelInputError(liveData, index) || instrumentSystemFault(liveData))
             {

@@ -115,9 +115,11 @@ int main(int argc, char **argv)
         VaporView::Ai8TemperatureControllerProtocol::LiveData data;
         data.valid = true;
         data.setpointsValid = true;
+        data.sampleTicksValid = true;
         for (int i = 0; i < 8; ++i) {
             data.measuredC[i] = 20 + i;
             data.setpointsC[i] = 30 + i;
+            data.sampleTicks[i] = 100 + i;
         }
         panel.applyLiveData(data);
         QApplication::processEvents();
@@ -151,6 +153,13 @@ int main(int argc, char **argv)
         toggle->click();
         require(panel.findChild<QWidget*>("ai8ChannelPlot8")->property("sampleCount").toInt() == 1,
                 "view switches retain sample history");
+        panel.applyLiveData(data);
+        require(panel.findChild<QWidget*>("ai8ChannelPlot8")->property("sampleCount").toInt()==1,
+                "cached scan does not create a new temperature sample");
+        ++data.sampleTicks[4];panel.applyLiveData(data);
+        require(panel.findChild<QWidget*>("ai8ChannelPlot5")->property("sampleCount").toInt()==2 &&
+                panel.findChild<QWidget*>("ai8ChannelPlot8")->property("sampleCount").toInt()==1,
+                "only the newly sampled channel receives a history point");
         panel.close();
     }
 
@@ -166,10 +175,9 @@ int main(int argc, char **argv)
                 windowedPlot.property("yAxisMinC").toDouble() == 24.0 &&
                 windowedPlot.property("yAxisMaxC").toDouble() == 26.0,
             "Time plot recenters after old extrema leave the visible window");
-    require(std::abs(windowedPlot.property("xAxisTimeMaxSeconds").toDouble() - (now - 0.1)) < 0.05 &&
-                std::abs(windowedPlot.property("latestSampleX").toDouble() -
-                         windowedPlot.property("plotAreaRight").toDouble()) < 0.5,
-            "Time plot anchors the newest temperature point to the stable right edge");
+    require(windowedPlot.property("xAxisTimeMaxSeconds").toDouble() >= now &&
+                windowedPlot.property("latestSampleX").toDouble() < windowedPlot.property("plotAreaRight").toDouble(),
+            "Time plot shows actual sample age against the moving clock");
     const int paintCount = windowedPlot.property("paintCount").toInt();
     windowedPlot.show();
     QEventLoop paintWait;
@@ -181,8 +189,10 @@ int main(int argc, char **argv)
     const double anchoredLatestSampleX = windowedPlot.property("latestSampleX").toDouble();
     QThread::msleep(60);
     windowedPlot.grab();
-    require(std::abs(windowedPlot.property("latestSampleX").toDouble() - anchoredLatestSampleX) < 0.5,
-            "Time plot keeps the newest temperature point fixed while waiting for the next sample");
+    require(windowedPlot.property("latestSampleX").toDouble() < anchoredLatestSampleX - 0.5,
+            "Time plot scrolls existing samples between telemetry arrivals");
+    require(windowedPlot.property("sampleCount").toInt()==3,
+            "Clock repaint does not fabricate temperature samples");
     windowedPlot.setSampleTimes({now - 2.0, now - 1.0, now - 0.1});
     windowedPlot.grab();
     require(windowedPlot.property("yAxisMinC").toDouble() == 22.0,
@@ -195,8 +205,8 @@ int main(int argc, char **argv)
             "Time plot includes the clipped line at the left window edge without the old extreme");
     windowedPlot.setSampleTimes({now - 120.0, now - 110.0, now - 100.0});
     windowedPlot.grab();
-    require(std::abs(windowedPlot.property("xAxisTimeMaxSeconds").toDouble() - (now - 100.0)) < 0.05,
-            "Time plot keeps the right edge anchored to the newest retained sample");
+    require(windowedPlot.property("xAxisTimeMaxSeconds").toDouble()>=now,
+            "Stale telemetry never rewinds the visible clock");
     windowedPlot.setSamples({});
     windowedPlot.setSampleTimes({});
     windowedPlot.grab();

@@ -156,14 +156,14 @@ int main(int argc, char **argv)
     coordinator.updateTemperatureData(data);
     require(!outputs[0]->isChecked() && outputs[1]->isChecked(),
             "Readback updates each channel's switch independently");
-    const double latestSampleTime = plot->property("xAxisTimeMaxSeconds").toDouble();
+    const double latestSampleTime = plot->property("latestSampleTimeSeconds").toDouble();
     for (int refresh = 0; refresh < 500; ++refresh)
         coordinator.updateTemperatureData(data);
     plot->grab();
     require(plot->property("sampleCount").toInt() == 2 &&
                 overviewPlots[0]->property("sampleCount").toInt() == 2 &&
                 overviewPlots[1]->property("sampleCount").toInt() == 2 &&
-                plot->property("xAxisTimeMaxSeconds").toDouble() == latestSampleTime,
+                plot->property("latestSampleTimeSeconds").toDouble() == latestSampleTime,
             "Cached RD105 refreshes cannot consume history or advance the sample time");
 
     data.timestamp += std::chrono::seconds(1);

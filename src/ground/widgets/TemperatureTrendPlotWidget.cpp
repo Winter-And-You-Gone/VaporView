@@ -81,7 +81,8 @@ TemperatureTrendPlotWidget::TemperatureTrendPlotWidget(QWidget *parent)
     applyPlotSizing();
     updateSampleProperties();
     clock_timer_ = new QTimer(this);
-    clock_timer_->setInterval(100);
+    clock_timer_->setInterval(33);
+    clock_timer_->setTimerType(Qt::PreciseTimer);
     connect(clock_timer_, &QTimer::timeout, this, [this] { update(); });
 }
 
@@ -132,6 +133,8 @@ void TemperatureTrendPlotWidget::setSamples(const QVector<double>& samples)
 void TemperatureTrendPlotWidget::setSampleTimes(const QVector<double>& sampleTimes)
 {
     sample_times_ = sampleTimes;
+    setProperty("latestSampleTimeSeconds", sample_times_.isEmpty()
+        ? std::numeric_limits<double>::quiet_NaN() : sample_times_.last());
     updateSampleProperties();
     update();
 }
@@ -143,6 +146,8 @@ void TemperatureTrendPlotWidget::setTimeAxisEnabled(bool enabled)
         return;
     }
     time_axis_enabled_ = enabled;
+    if (enabled && isVisible()) clock_timer_->start();
+    else clock_timer_->stop();
     updateSampleProperties();
     update();
 }
@@ -498,22 +503,9 @@ std::pair<double, double> TemperatureTrendPlotWidget::visibleTimeRange(double no
     axisFont.setPointSize(std::max(8, axisFont.pointSize() - 2));
     const int intervals = property("compactTimeTicks").toBool() ? 4 : xAxisLabelCountForWidth(
         plotAreaRect().width(), QFontMetrics(axisFont), true) - 1;
-    // Anchor the visible window to the newest sample. Using the wall clock here
-    // makes the newest point drift left between samples and jump right on update.
-    double xMax = now;
-    if (time_axis_enabled_ && sample_times_.size() == samples_.size())
-    {
-        for (int index = samples_.size() - 1; index >= 0; --index)
-        {
-            if (std::isfinite(samples_.at(index)) &&
-                std::isfinite(sample_times_.at(index)))
-            {
-                xMax = sample_times_.at(index);
-                break;
-            }
-        }
-    }
-    return {xMax - intervals * kTimeAxisSecondsPerInterval, xMax};
+    // Move the viewport independently of telemetry arrival. Never move old
+    // samples or invent measurements to fill a delayed polling interval.
+    return {now - intervals * kTimeAxisSecondsPerInterval, now};
 }
 
 std::pair<double, double> TemperatureTrendPlotWidget::visibleTemperatureAxisRange(double now) const

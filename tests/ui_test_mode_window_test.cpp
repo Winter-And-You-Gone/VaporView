@@ -1710,8 +1710,10 @@ int main(int argc, char **argv)
         (defaultTimeLastTick - defaultTimeFirstTick) / std::max(1, defaultTimeTickCount - 1);
     const double wideTimeTickSpacing =
         (wideTimeLastTick - wideTimeFirstTick) / std::max(1, wideTimeTickCount - 1);
+    // Windows can constrain a top-level window to the desktop width. Verify
+    // density against rendered spacing, not an assumed doubling of 800 pixels.
     require(defaultTimeTickCount >= 10 &&
-                wideTimeTickCount >= defaultTimeTickCount * 2 - 2 &&
+                wideTimeTickCount > defaultTimeTickCount &&
                 std::abs(defaultTimeSpan - (defaultTimeTickCount - 1)) < 1e-6 &&
                 std::abs(wideTimeSpan - (wideTimeTickCount - 1)) < 1e-6 &&
                 defaultMinimumTickSpacing > 0.0 &&
@@ -1721,7 +1723,8 @@ int main(int argc, char **argv)
                 wideTimeTickSpacing >= wideMinimumTickSpacing - 1.0 &&
                 wideTimeTickSpacing <= wideMinimumTickSpacing + 8.0 &&
                 std::abs(defaultTimeTickSpacing - wideTimeTickSpacing) <= 8.0 &&
-                std::abs(wideTimeMax - localTimeSeconds) <= 1.0 &&
+                wideTimeMax >= localTimeSeconds &&
+                wideTimeMax <= static_cast<double>(QDateTime::currentMSecsSinceEpoch()) / 1000.0 &&
                 wideTimeRightLabel == expectedWideTimeRightLabel,
             "temperature overview time axis packs the densest stable tick spacing as the plot widens");
 
