@@ -115,9 +115,18 @@ int main(int argc, char **argv)
             data.setpointsC[i] = 30 + i;
         }
         panel.applyLiveData(data);
+        QApplication::processEvents();
+        auto *plotStack = panel.findChild<QStackedWidget*>("ai8PlotViewStack");
+        const QRect plotBounds = plotStack->geometry();
+        const QRect parameterBounds = parameters->geometry();
+        const QSize cardSize = plotStack->parentWidget()->size();
+        const QSize panelSize = panel.size();
         toggle->click();
         QApplication::processEvents();
-        require(multi->isVisible() && parameters->isHidden(), "multi view uses full content area");
+        require(multi->isVisible() && parameters->isVisible(), "multi view preserves parameter editors");
+        require(plotStack->geometry() == plotBounds && parameters->geometry() == parameterBounds &&
+                    plotStack->parentWidget()->size() == cardSize && panel.size() == panelSize,
+                "view switch preserves plot area, parameter geometry and card size");
         auto *grid = qobject_cast<QGridLayout*>(multi->layout());
         require(grid && grid->count() == 8, "eight channel cells exist");
         for (int i = 0; i < 8; ++i) {

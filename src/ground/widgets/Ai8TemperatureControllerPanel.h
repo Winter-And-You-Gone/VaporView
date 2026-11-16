@@ -117,6 +117,7 @@ private:
     QStackedWidget *page_stack_ = nullptr;
     QStackedWidget *detail_stack_ = nullptr;
     TemperatureTrendPlotWidget *temperature_plot_ = nullptr;
+    QStackedWidget *plot_view_stack_ = nullptr;
     QWidget *multi_plot_view_ = nullptr;
     QToolButton *plot_view_button_ = nullptr;
     std::array<TemperatureTrendPlotWidget*, 8> channel_plots_{};
