@@ -51,13 +51,13 @@ int main(int argc, char **argv)
     {
         using VaporView::Ground::Widgets::Ai8TemperatureControllerPanel;
         Ai8TemperatureControllerPanel relay;
-        relay.setFpgaSetpointMode(true, true);
-        relay.setPageCommandsEnabled(false);
+        relay.setFpgaSetpointMode(true);
+        relay.setPageCommandsEnabled(true);
         relay.setBackendConnected(true);
         auto *ch = relay.findChild<QSpinBox*>("ai8ChannelSpin");
         auto *sp = relay.findChild<QDoubleSpinBox*>("ai8SetpointSpin");
-        auto *apply = relay.findChild<QPushButton*>("ai8FpgaApplySetpoint");
-        auto *status = relay.findChild<QLabel*>("ai8FpgaSetpointStatus");
+        require(!relay.findChild<QPushButton*>("ai8FpgaApplySetpoint"), "duplicate SP button removed");
+        auto *write = relay.findChild<QPushButton*>("ai8WriteParametersButton");
         ch->setValue(5);
         VaporView::Ai8TemperatureControllerProtocol::LiveData live;
         live.valid = true; live.detailedChannel = 5; live.setpointC = 100;
@@ -72,30 +72,32 @@ int main(int argc, char **argv)
         require(sp->value() == 60, "channel switch does not inherit another channel draft");
         ch->setValue(5);
         require(sp->value() == 25, "channel draft restored");
-        quint64 token = 0; int sentChannel = 0; double sentValue = 0;
-        QObject::connect(&relay, &Ai8TemperatureControllerPanel::fpgaSetpointRequested,
-                         [&token, &sentChannel, &sentValue](int channel, double value, quint64 id) {
-            token = id; sentChannel = channel; sentValue = value;
-        });
-        apply->click();
-        require(token && sentChannel == 5 && sentValue == 25 && !ch->isEnabled(), "submit pins channel 5 and value");
-        relay.finishFpgaSetpoint(token, false, QStringLiteral("timeout"));
-        require(sp->value() == 25 && apply->isEnabled() && status->text().contains("timeout"), "failure keeps draft for explicit retry");
-        apply->click();
-        relay.finishFpgaSetpoint(token, true, QString());
+        int writes = 0;
+        QObject::connect(&relay, &Ai8TemperatureControllerPanel::writePageRequested, [&] { ++writes; });
+        write->click();
+        const auto requested = relay.currentPageData();
+        require(writes == 1 && requested.selection.channel == 5 && requested.channel.setpointC == 25,
+                "page write captures channel 5 SP draft");
+        relay.setOperationStatus(QStringLiteral("timeout"), false);
+        relay.applyLiveData(live);
+        require(sp->value() == 25, "failed page write preserves draft");
+        auto confirmed = requested;
+        relay.applyPageData(confirmed);
         live.detailedChannel = 5; live.setpointC = 100;
         relay.applyLiveData(live);
-        require(sp->value() == 25, "old telemetry cannot undo confirmed submission");
+        require(sp->value() == 25, "old telemetry does not undo page readback");
         live.setpointC = 25; relay.applyLiveData(live);
-        require(!apply->isEnabled(), "matching telemetry retires confirmed draft");
-        sp->setValue(26); apply->click();
+        live.setpointC = 27; relay.applyLiveData(live);
+        require(sp->value() == 27, "matching telemetry retires page draft");
+        sp->setValue(26);
         relay.setBackendConnected(false);
-        relay.finishFpgaSetpoint(token, true, QString());
-        require(status->text().contains(QStringLiteral("断开")), "late completion after disconnect ignored");
+        require(!write->isEnabled(), "page write disabled while disconnected");
         relay.setBackendConnected(true);
-        require(sp->value() == 26 && apply->isEnabled(), "reconnect preserves unsent draft without resubmitting");
+        require(sp->value() == 26 && write->isEnabled(), "reconnect retains draft without writing");
+        relay.setPageCommandsEnabled(false);
+        require(!sp->isEnabled(), "SP requires page write capability");
         require(!relay.findChild<QDoubleSpinBox*>("ai8ProportionalBandSpin")->isEnabled(), "unsupported parameter disabled");
-        relay.setFpgaSetpointMode(false, false);
+        relay.setFpgaSetpointMode(false);
         require(relay.findChild<QDoubleSpinBox*>("ai8ProportionalBandSpin")->isEnabled(), "direct serial editing restored");
     }
 

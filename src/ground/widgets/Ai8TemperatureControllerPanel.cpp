@@ -364,10 +364,6 @@ void Ai8TemperatureControllerPanel::setupUi()
     sp_status_->setObjectName("ai8FpgaSetpointStatus");
     sp_status_->setWordWrap(true);
     spLayout->addWidget(sp_status_, 1);
-    sp_apply_ = new QPushButton(spRow);
-    sp_apply_->setObjectName("ai8FpgaApplySetpoint");
-    spLayout->addWidget(sp_apply_);
-    connect(sp_apply_, &QAbstractButton::clicked, this, &Ai8TemperatureControllerPanel::submitFpgaSetpoint);
     statusLayout->addWidget(spRow);
 
     auto *readButton = new QPushButton(statusRow);
@@ -569,7 +565,6 @@ QWidget *Ai8TemperatureControllerPanel::createChannelPage()
                     sp_confirmed_[i] = false;
                     sp_draft_[i] = setpointSpin->value();
                     sp_status_->setText(english_ ? QStringLiteral("Draft not submitted") : QStringLiteral("草稿尚未提交"));
-                    sp_apply_->setEnabled(backend_connected_ && fpga_setpoint_available_ && !fpga_setpoint_pending_);
                 }
                 updateTemperaturePlot();
             });
@@ -1248,8 +1243,6 @@ void Ai8TemperatureControllerPanel::setEnglish(bool english)
 void Ai8TemperatureControllerPanel::setBackendConnected(bool connected, const QString& detail)
 {
     if (!connected && backend_connected_) {
-        ++fpga_setpoint_token_;
-        fpga_setpoint_pending_ = false;
         sp_known_.fill(false);
         sp_confirmed_.fill(false);
         if (fpga_relay_) sp_status_->setText(english_ ? QStringLiteral("Disconnected; pending result unknown") : QStringLiteral("连接已断开；未完成的设温结果未知"));
@@ -1302,33 +1295,27 @@ void Ai8TemperatureControllerPanel::refreshPageCommandControls()
     }
 }
 
-void Ai8TemperatureControllerPanel::setFpgaSetpointMode(bool relay, bool available)
+void Ai8TemperatureControllerPanel::setFpgaSetpointMode(bool relay)
 {
     if (fpga_relay_ != relay) {
-        ++fpga_setpoint_token_;
-        fpga_setpoint_pending_ = false;
         sp_dirty_.fill(false);
         sp_known_.fill(false);
         sp_confirmed_.fill(false);
         sp_status_->clear();
     }
     fpga_relay_ = relay;
-    fpga_setpoint_available_ = available;
     refreshFpgaSetpoint();
 }
 
 void Ai8TemperatureControllerPanel::refreshFpgaSetpoint()
 {
-    if (!sp_apply_) return;
+    if (!sp_readback_) return;
     findChild<QWidget*>("ai8FpgaSetpointRow")->setVisible(fpga_relay_);
     auto *channel = findChild<QSpinBox*>("ai8ChannelSpin");
     auto *sp = findChild<QDoubleSpinBox*>("ai8SetpointSpin");
     const int i = channel->value() - 1;
     sp_readback_->setText((english_ ? QStringLiteral("Channel %1 device SP: %2") : QStringLiteral("通道 %1 设备 SP：%2"))
         .arg(i + 1).arg(sp_known_[i] ? QString::number(sp_actual_[i], 'f', 1) + QStringLiteral(" °C") : QStringLiteral("---")));
-    channel->setEnabled(!fpga_setpoint_pending_);
-    sp_apply_->setText(english_ ? QStringLiteral("Apply channel %1 SP").arg(i + 1) : QStringLiteral("应用通道 %1 给定值").arg(i + 1));
-    sp_apply_->setEnabled(fpga_relay_ && backend_connected_ && fpga_setpoint_available_ && !fpga_setpoint_pending_ && sp_dirty_[i]);
     if (fpga_relay_) {
         const QSignalBlocker block(sp);
         sp->setMaximum(2147.4);
@@ -1351,41 +1338,7 @@ void Ai8TemperatureControllerPanel::refreshFpgaSetpoint()
         editor->setEnabled(!fpga_relay_ || page_commands_enabled_);
         editor->setToolTip(fpga_relay_ && !page_commands_enabled_ ? unavailable : QString());
     }
-    sp->setEnabled(!fpga_relay_ || (backend_connected_ && fpga_setpoint_available_ && !fpga_setpoint_pending_));
-}
-
-void Ai8TemperatureControllerPanel::submitFpgaSetpoint()
-{
-    if (!fpga_relay_ || !backend_connected_ || !fpga_setpoint_available_ || fpga_setpoint_pending_) return;
-    const int channel = findChild<QSpinBox*>("ai8ChannelSpin")->value();
-    if (!sp_dirty_[channel - 1]) return;
-    fpga_pending_channel_ = channel;
-    fpga_pending_value_ = sp_draft_[channel - 1];
-    fpga_setpoint_pending_ = true;
-    const auto token = ++fpga_setpoint_token_;
-    sp_status_->setText(english_ ? QStringLiteral("Waiting for device confirmation and read-back…") : QStringLiteral("正在等待设备确认与回读…"));
-    refreshFpgaSetpoint();
-    QTimer::singleShot(35000, this, [this, token] {
-        finishFpgaSetpoint(token, false, english_ ? QStringLiteral("Timeout; result unknown. No automatic retry.") : QStringLiteral("设温超时，结果未知；未自动重试。"));
-    });
-    emit fpgaSetpointRequested(channel, fpga_pending_value_, token);
-}
-
-void Ai8TemperatureControllerPanel::finishFpgaSetpoint(quint64 token, bool verified, const QString& detail)
-{
-    if (token != fpga_setpoint_token_ || !fpga_setpoint_pending_) return;
-    fpga_setpoint_pending_ = false;
-    const int i = fpga_pending_channel_ - 1;
-    if (verified) {
-        sp_confirmed_[i] = true;
-        sp_actual_[i] = fpga_pending_value_;
-        sp_known_[i] = true;
-        sp_status_->setText((english_ ? QStringLiteral("Channel %1 SP %2 °C confirmed by device read-back") : QStringLiteral("通道 %1 给定值 %2 ℃ 已经设备回读确认"))
-            .arg(i + 1).arg(fpga_pending_value_, 0, 'f', 1));
-    } else {
-        sp_status_->setText((english_ ? QStringLiteral("Setpoint not confirmed: ") : QStringLiteral("设温未确认：")) + detail);
-    }
-    refreshFpgaSetpoint();
+    sp->setEnabled(!fpga_relay_ || (backend_connected_ && page_commands_enabled_));
 }
 
 void Ai8TemperatureControllerPanel::setProtocolStatusLabel(QLabel *label)
@@ -1573,6 +1526,16 @@ void Ai8TemperatureControllerPanel::applyPageData(
     switch (pageData.page)
     {
     case Ai8TemperatureControllerProtocol::Page::Channel:
+        if (fpga_relay_ && pageData.selection.channel >= 1 && pageData.selection.channel <= 8) {
+            const int i = pageData.selection.channel - 1;
+            sp_draft_[i] = pageData.channel.setpointC;
+            sp_actual_[i] = pageData.channel.setpointC;
+            sp_known_[i] = true;
+            sp_dirty_[i] = true;
+            sp_confirmed_[i] = true;
+            sp_status_->clear();
+            refreshFpgaSetpoint();
+        }
         setDouble("ai8SetpointSpin", pageData.channel.setpointC);
         setDouble("ai8ProportionalBandSpin", pageData.channel.proportionalBand);
         setDouble("ai8IntegralTimeSpin", pageData.channel.integralTimeS);

@@ -6047,17 +6047,6 @@ void MainWindow::setupDataPanels()
     state_->ai8_temperature_controller_panel_ = new Ai8TemperatureControllerPanel(
         state_->ai8_temperature_controller_group_);
     state_->ai8_temperature_controller_panel_->setProtocolStatusLabel(ai8ProtocolStatusLabel);
-    connect(state_->ai8_temperature_controller_panel_, &Ai8TemperatureControllerPanel::fpgaSetpointRequested,
-            this, [this](int channel, double celsius, quint64 token) {
-        QPointer<Ai8TemperatureControllerPanel> panel(state_->ai8_temperature_controller_panel_);
-        submitFpgaInstrument({{"op", "device_temperature"}, {"source", 0x46},
-                              {"channel", channel}, {"celsius", celsius}},
-            [panel, token](const QJsonObject& result) {
-                if (panel) panel->finishFpgaSetpoint(token,
-                    result.value("ok").toBool() && result.value("verified").toBool(),
-                    result.value("detail").toString());
-            });
-    });
     connect(state_->ai8_temperature_controller_panel_,
             &Ai8TemperatureControllerPanel::readPageRequested,
             this,
