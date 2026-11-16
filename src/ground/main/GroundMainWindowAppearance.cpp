@@ -1163,12 +1163,17 @@ void MainWindow::updateResponsiveHomeLayout()
     const int compactEpsilonContentWidth = state_->epsilon_panel_
         ? state_->epsilon_panel_->preferredWrappedWidth() + epsilonGroupMargins.left() + epsilonGroupMargins.right()
         : (state_->epsilon_group_ ? state_->epsilon_group_->minimumSizeHint().width() : 0);
+    const int epsilonMinimumWidth = state_->epsilon_group_
+        ? std::max(state_->epsilon_group_->minimumWidth(), state_->epsilon_group_->minimumSizeHint().width()) : 0;
+    // The motion controls wrap, so the two cards can share the same minimum width.
+    if (state_->home_motion_card_ && state_->home_motion_card_->minimumWidth() != epsilonMinimumWidth)
+        state_->home_motion_card_->setMinimumWidth(epsilonMinimumWidth);
     const int motionMinimumWidth = state_->home_motion_card_
         ? std::max(state_->home_motion_card_->minimumWidth(),
                    state_->home_motion_card_->minimumSizeHint().width()) : 0;
     const int compactEpsilonMinimumWidth = std::max({
         compactEpsilonContentWidth,
-        state_->epsilon_group_ ? state_->epsilon_group_->minimumSizeHint().width() : 0,
+        epsilonMinimumWidth,
         motionMinimumWidth});
     const int compactEpsilonTargetWidth = std::max(compactEpsilonMinimumWidth,
                                                     compactEpsilonContentWidth + scalePixels(16));

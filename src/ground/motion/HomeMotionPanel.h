@@ -6,6 +6,8 @@ class QLabel;
 class QPushButton;
 class QComboBox;
 class QDoubleSpinBox;
+class QGridLayout;
+class QResizeEvent;
 
 namespace VaporView::Ground::Motion
 {
@@ -20,11 +22,16 @@ public:
                              QLabel *connectionLabel, QWidget *parent = nullptr);
     void setTheme(bool dark, int fontScalePercent = 100);
     void setLanguage(bool english);
+    QSize minimumSizeHint() const override;
 
 signals:
     void openConfigurationRequested();
 
+protected:
+    void resizeEvent(QResizeEvent *event) override;
+
 private:
+    void updateControlsLayout();
     void refresh();
     void refreshParameters();
     void refreshPorts();
@@ -40,7 +47,9 @@ private:
     QPushButton *go_;
     QPushButton *stop_;
     QPushButton *home_;
-    QPushButton *configure_;
+    QPushButton *configure_ = nullptr;
+    QGridLayout *fields_ = nullptr;
+    bool controls_wrapped_ = false;
     bool english_ = false;
 };
 }

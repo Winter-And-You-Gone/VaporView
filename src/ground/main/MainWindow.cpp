@@ -888,7 +888,11 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
             state_->home_motion_card_->property("homeMotionContentHeight").toInt() !=
                 std::max(state_->home_motion_card_->minimumSizeHint().height(),
                          state_->home_motion_card_->sizeHint().height());
-        if (capped || rowTooNarrow || overviewTooNarrow || columnMinimaChanged || epsilonHeightChanged || motionHeightChanged)
+        const bool motionMinimumChanged = state_->home_motion_card_ &&
+            state_->home_motion_card_->minimumWidth() !=
+                std::max(state_->epsilon_group_->minimumWidth(), state_->epsilon_group_->minimumSizeHint().width());
+        if (capped || rowTooNarrow || overviewTooNarrow || columnMinimaChanged || epsilonHeightChanged ||
+            motionHeightChanged || motionMinimumChanged)
             queueResponsiveHomeLayoutRefresh();
     }
     if (state_->main_cards_scroll_area_ &&

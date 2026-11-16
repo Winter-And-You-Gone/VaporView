@@ -966,6 +966,9 @@ vaporview_add_test(NAME home_maximum_value_widths_test
 vaporview_add_test(NAME home_three_column_layout_test
     COMMAND main_window_layout_test --home-three-column-only
 )
+vaporview_add_test(NAME home_motion_width_layout_test
+    COMMAND main_window_layout_test --home-motion-width-only
+)
 vaporview_add_test(NAME input_arrow_style_test
     COMMAND main_window_layout_test --input-arrows-only
 )
@@ -1506,6 +1509,7 @@ set(VAPORVIEW_SLOW_UI_TESTS
     home_appearance_layout_test
     home_maximum_value_widths_test
     home_three_column_layout_test
+    home_motion_width_layout_test
     input_arrow_style_test
     combination_navigation_page_test
     navigation_status_panel_test
@@ -1561,6 +1565,7 @@ set_property(TEST home_overview_language_layout_test APPEND PROPERTY LABELS main
 set_property(TEST home_appearance_layout_test APPEND PROPERTY LABELS main-window layout)
 set_property(TEST home_maximum_value_widths_test APPEND PROPERTY LABELS main-window layout)
 set_property(TEST home_three_column_layout_test APPEND PROPERTY LABELS main-window layout)
+set_property(TEST home_motion_width_layout_test APPEND PROPERTY LABELS main-window layout)
 set_property(TEST input_arrow_style_test APPEND PROPERTY LABELS main-window layout)
 set_property(TEST combination_navigation_page_test APPEND PROPERTY LABELS main-window layout)
 set_property(TEST navigation_status_panel_test APPEND PROPERTY LABELS navigation-status ui layout)
