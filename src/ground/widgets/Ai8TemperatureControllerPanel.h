@@ -32,6 +32,8 @@ public:
     void setEnglish(bool english);
     void setBackendConnected(bool connected, const QString& detail = QString());
     void setPageCommandsEnabled(bool enabled, const QString& disabledToolTip = QString());
+    void setFpgaSetpointMode(bool relay, bool available);
+    void finishFpgaSetpoint(quint64 token, bool verified, const QString& detail);
     void setProtocolStatusLabel(QLabel *label);
     void setOperationStatus(const QString& text, bool success);
     QString currentOutputStatusText() const;
@@ -42,6 +44,7 @@ public:
 signals:
     void readPageRequested();
     void writePageRequested();
+    void fpgaSetpointRequested(int channel, double celsius, quint64 token);
     void outputStatusChanged();
 
 protected:
@@ -103,6 +106,8 @@ private:
     void updateAlarmStatusDisplay();
     void updateTemperaturePlot();
     void refreshPageCommandControls();
+    void refreshFpgaSetpoint();
+    void submitFpgaSetpoint();
     void adjustTemperaturePlotHeight();
     void setDetailSectionsExpanded(bool expanded);
     void syncDetailStackHeight();
@@ -130,6 +135,20 @@ private:
     quint16 run_state_raw_ = 0;
     quint16 run_state_write_value_ = 0;
     bool run_state_write_requested_ = false;
+    bool fpga_relay_ = false;
+    bool fpga_setpoint_available_ = false;
+    bool fpga_setpoint_pending_ = false;
+    quint64 fpga_setpoint_token_ = 0;
+    int fpga_pending_channel_ = 0;
+    double fpga_pending_value_ = 0;
+    std::array<bool, 8> sp_dirty_{};
+    std::array<bool, 8> sp_known_{};
+    std::array<bool, 8> sp_confirmed_{};
+    std::array<double, 8> sp_draft_{};
+    std::array<double, 8> sp_actual_{};
+    QAbstractButton *sp_apply_ = nullptr;
+    QLabel *sp_status_ = nullptr;
+    QLabel *sp_readback_ = nullptr;
     bool english_ = false;
     bool backend_connected_ = false;
     bool page_commands_enabled_ = true;

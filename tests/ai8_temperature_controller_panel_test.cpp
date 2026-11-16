@@ -48,6 +48,57 @@ int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
 
+    {
+        using VaporView::Ground::Widgets::Ai8TemperatureControllerPanel;
+        Ai8TemperatureControllerPanel relay;
+        relay.setFpgaSetpointMode(true, true);
+        relay.setPageCommandsEnabled(false);
+        relay.setBackendConnected(true);
+        auto *ch = relay.findChild<QSpinBox*>("ai8ChannelSpin");
+        auto *sp = relay.findChild<QDoubleSpinBox*>("ai8SetpointSpin");
+        auto *apply = relay.findChild<QPushButton*>("ai8FpgaApplySetpoint");
+        auto *status = relay.findChild<QLabel*>("ai8FpgaSetpointStatus");
+        ch->setValue(5);
+        VaporView::Ai8TemperatureControllerProtocol::LiveData live;
+        live.valid = true; live.detailedChannel = 5; live.setpointC = 100;
+        relay.applyLiveData(live);
+        require(sp->value() == 100, "relay displays channel 5 device SP");
+        sp->setValue(25);
+        relay.applyLiveData(live);
+        require(sp->value() == 25, "polling preserves unsent draft");
+        ch->setValue(6);
+        live.detailedChannel = 6; live.setpointC = 60;
+        relay.applyLiveData(live);
+        require(sp->value() == 60, "channel switch does not inherit another channel draft");
+        ch->setValue(5);
+        require(sp->value() == 25, "channel draft restored");
+        quint64 token = 0; int sentChannel = 0; double sentValue = 0;
+        QObject::connect(&relay, &Ai8TemperatureControllerPanel::fpgaSetpointRequested,
+                         [&token, &sentChannel, &sentValue](int channel, double value, quint64 id) {
+            token = id; sentChannel = channel; sentValue = value;
+        });
+        apply->click();
+        require(token && sentChannel == 5 && sentValue == 25 && !ch->isEnabled(), "submit pins channel 5 and value");
+        relay.finishFpgaSetpoint(token, false, QStringLiteral("timeout"));
+        require(sp->value() == 25 && apply->isEnabled() && status->text().contains("timeout"), "failure keeps draft for explicit retry");
+        apply->click();
+        relay.finishFpgaSetpoint(token, true, QString());
+        live.detailedChannel = 5; live.setpointC = 100;
+        relay.applyLiveData(live);
+        require(sp->value() == 25, "old telemetry cannot undo confirmed submission");
+        live.setpointC = 25; relay.applyLiveData(live);
+        require(!apply->isEnabled(), "matching telemetry retires confirmed draft");
+        sp->setValue(26); apply->click();
+        relay.setBackendConnected(false);
+        relay.finishFpgaSetpoint(token, true, QString());
+        require(status->text().contains(QStringLiteral("断开")), "late completion after disconnect ignored");
+        relay.setBackendConnected(true);
+        require(sp->value() == 26 && apply->isEnabled(), "reconnect preserves unsent draft without resubmitting");
+        require(!relay.findChild<QDoubleSpinBox*>("ai8ProportionalBandSpin")->isEnabled(), "unsupported parameter disabled");
+        relay.setFpgaSetpointMode(false, false);
+        require(relay.findChild<QDoubleSpinBox*>("ai8ProportionalBandSpin")->isEnabled(), "direct serial editing restored");
+    }
+
     TemperatureTrendPlotWidget windowedPlot;
     windowedPlot.setCompactMode(true);
     windowedPlot.resize(600, 190);

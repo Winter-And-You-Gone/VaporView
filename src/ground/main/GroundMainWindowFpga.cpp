@@ -70,8 +70,8 @@ void MainWindow::syncFpgaDeviceConfigUi()
     using namespace VaporView::Ground::Devices;
     auto call=relay?makeFpgaInstrumentCall(this,[this](const QJsonObject& request,FpgaInstrumentReply reply){submitFpgaInstrument(request,std::move(reply));}):FpgaInstrumentCall{};
     const QString ai8Unsupported = state_->is_english_
-        ? QStringLiteral("VLP1 does not expose AI8 parameter pages. Use the FPGA page for polling and confirmed temperature setpoint control.")
-        : QStringLiteral("当前 VLP1 不支持 AI8 完整参数页；轮询配置与设温回读请使用 FPGA 页面。");
+        ? QStringLiteral("Full AI8 parameter pages are unavailable. Use Apply channel SP below for confirmed setpoint control.")
+        : QStringLiteral("当前固件不支持 AI8 完整参数页；请使用下方按钮单独应用所选通道给定值。");
     const QString epsilonUnsupported = state_->is_english_
         ? QStringLiteral("VLP1 does not expose EPSILON parameter commands or RTCM forwarding.")
         : QStringLiteral("当前 VLP1 不支持 EPSILON 参数命令或 RTCM 转发。");
@@ -91,6 +91,9 @@ void MainWindow::syncFpgaDeviceConfigUi()
     for(const auto& name:{QStringLiteral("temperatureDeviceAddressSpin"),QStringLiteral("temperatureRs485BaudCombo"),QStringLiteral("temperatureFactoryResetButton"),
         QStringLiteral("temperatureControllerModeCombo"),QStringLiteral("temperatureOvertempOutputModeCombo")})
         if(auto* control=findChild<QWidget*>(name)) {control->setEnabled(!relay);control->setToolTip(relay?rd105CommunicationDetail:QString());}
+    if (state_->ai8_temperature_controller_panel_)
+        state_->ai8_temperature_controller_panel_->setFpgaSetpointMode(relay,
+            (extensions & VaporView::FpgaExtensions::Ai8Scan) && (values.value(0x6604) & 1));
     if (relay && state_->ai8_temperature_controller_panel_) {
         state_->ai8_temperature_controller_panel_->setBackendConnected(
             homeFpgaDeviceState(VaporView::SkyDeviceId::Ai8TemperatureController) == VaporView::DeviceState::Connected,

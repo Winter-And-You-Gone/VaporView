@@ -426,6 +426,22 @@ void Ai8TemperatureControllerPanel::setupUi()
     mainContentLayout->addWidget(temperature_plot_, 1, Qt::AlignTop);
     rootLayout->addWidget(mainContentCard);
     rootLayout->addWidget(detail_stack_);
+    auto *spRow = new QWidget(this);
+    spRow->setObjectName("ai8FpgaSetpointRow");
+    auto *spLayout = new QHBoxLayout(spRow);
+    spLayout->setContentsMargins(0, 0, 0, 0);
+    sp_readback_ = new QLabel(spRow);
+    sp_readback_->setObjectName("ai8FpgaSetpointReadback");
+    spLayout->addWidget(sp_readback_);
+    sp_status_ = new QLabel(spRow);
+    sp_status_->setObjectName("ai8FpgaSetpointStatus");
+    sp_status_->setWordWrap(true);
+    spLayout->addWidget(sp_status_, 1);
+    sp_apply_ = new QPushButton(spRow);
+    sp_apply_->setObjectName("ai8FpgaApplySetpoint");
+    spLayout->addWidget(sp_apply_);
+    connect(sp_apply_, &QAbstractButton::clicked, this, &Ai8TemperatureControllerPanel::submitFpgaSetpoint);
+    rootLayout->addWidget(spRow);
 
     setEnglish(false);
     selectPage(0);
@@ -496,6 +512,7 @@ QWidget *Ai8TemperatureControllerPanel::createChannelPage()
     auto *channelSpin = createSpinBox(page, QStringLiteral("ai8ChannelSpin"), 1, 8, 1);
     connect(channelSpin, qOverload<int>(&QSpinBox::valueChanged), this,
             [this]() {
+                refreshFpgaSetpoint();
                 updateMeasuredValue();
                 updateAlarmStatusDisplay();
                 if(auto *sv=findChild<QLineEdit*>(QStringLiteral("ai8DisplayedSetpointEdit"));sv && latest_live_data_.detailedChannel)
@@ -512,7 +529,17 @@ QWidget *Ai8TemperatureControllerPanel::createChannelPage()
                                               1,
                                               QStringLiteral(" °C"));
     connect(setpointSpin, qOverload<double>(&QDoubleSpinBox::valueChanged), this,
-            [this]() { updateTemperaturePlot(); });
+            [this, setpointSpin]() {
+                if (fpga_relay_) {
+                    const int i = findChild<QSpinBox*>("ai8ChannelSpin")->value() - 1;
+                    sp_dirty_[i] = true;
+                    sp_confirmed_[i] = false;
+                    sp_draft_[i] = setpointSpin->value();
+                    sp_status_->setText(english_ ? QStringLiteral("Draft not submitted") : QStringLiteral("草稿尚未提交"));
+                    sp_apply_->setEnabled(backend_connected_ && fpga_setpoint_available_ && !fpga_setpoint_pending_);
+                }
+                updateTemperaturePlot();
+            });
     auto *pvEdit = new QLineEdit(QStringLiteral("---"), page);
     pvEdit->setObjectName(QStringLiteral("ai8MeasuredTemperatureEdit"));
     pvEdit->setReadOnly(true);
@@ -1185,6 +1212,13 @@ void Ai8TemperatureControllerPanel::setEnglish(bool english)
 
 void Ai8TemperatureControllerPanel::setBackendConnected(bool connected, const QString& detail)
 {
+    if (!connected && backend_connected_) {
+        ++fpga_setpoint_token_;
+        fpga_setpoint_pending_ = false;
+        sp_known_.fill(false);
+        sp_confirmed_.fill(false);
+        if (fpga_relay_) sp_status_->setText(english_ ? QStringLiteral("Disconnected; pending result unknown") : QStringLiteral("连接已断开；未完成的设温结果未知"));
+    }
     backend_connected_ = connected;
     backend_detail_ = detail;
     if (!connected)
@@ -1206,6 +1240,7 @@ void Ai8TemperatureControllerPanel::setPageCommandsEnabled(bool enabled, const Q
 
 void Ai8TemperatureControllerPanel::refreshPageCommandControls()
 {
+    refreshFpgaSetpoint();
     const bool commandsEnabled = backend_connected_ && page_commands_enabled_;
     const QString backendToolTip = !page_commands_enabled_ && !page_commands_disabled_tooltip_.isEmpty()
         ? page_commands_disabled_tooltip_
@@ -1230,6 +1265,92 @@ void Ai8TemperatureControllerPanel::refreshPageCommandControls()
         write_button_->setEnabled(commandsEnabled);
         write_button_->setToolTip(backendToolTip);
     }
+}
+
+void Ai8TemperatureControllerPanel::setFpgaSetpointMode(bool relay, bool available)
+{
+    if (fpga_relay_ != relay) {
+        ++fpga_setpoint_token_;
+        fpga_setpoint_pending_ = false;
+        sp_dirty_.fill(false);
+        sp_known_.fill(false);
+        sp_confirmed_.fill(false);
+        sp_status_->clear();
+    }
+    fpga_relay_ = relay;
+    fpga_setpoint_available_ = available;
+    refreshFpgaSetpoint();
+}
+
+void Ai8TemperatureControllerPanel::refreshFpgaSetpoint()
+{
+    if (!sp_apply_) return;
+    findChild<QWidget*>("ai8FpgaSetpointRow")->setVisible(fpga_relay_);
+    auto *channel = findChild<QSpinBox*>("ai8ChannelSpin");
+    auto *sp = findChild<QDoubleSpinBox*>("ai8SetpointSpin");
+    const int i = channel->value() - 1;
+    sp_readback_->setText((english_ ? QStringLiteral("Channel %1 device SP: %2") : QStringLiteral("通道 %1 设备 SP：%2"))
+        .arg(i + 1).arg(sp_known_[i] ? QString::number(sp_actual_[i], 'f', 1) + QStringLiteral(" °C") : QStringLiteral("---")));
+    channel->setEnabled(!fpga_setpoint_pending_);
+    sp_apply_->setText(english_ ? QStringLiteral("Apply channel %1 SP").arg(i + 1) : QStringLiteral("应用通道 %1 给定值").arg(i + 1));
+    sp_apply_->setEnabled(fpga_relay_ && backend_connected_ && fpga_setpoint_available_ && !fpga_setpoint_pending_ && sp_dirty_[i]);
+    if (fpga_relay_) {
+        const QSignalBlocker block(sp);
+        sp->setMaximum(2147.4);
+        if (!sp->hasFocus() && !sp->findChild<QLineEdit*>()->hasFocus()) {
+            if (sp_dirty_[i]) sp->setValue(sp_draft_[i]);
+            else if (sp_known_[i]) sp->setValue(sp_actual_[i]);
+            else sp->clear();
+        }
+        sp->setToolTip(sp_known_[i]
+            ? (english_ ? QStringLiteral("Device SP: %1 °C") : QStringLiteral("设备回读 SP：%1 ℃")).arg(sp_actual_[i], 0, 'f', 1)
+            : (english_ ? QStringLiteral("Device SP not received") : QStringLiteral("尚未收到此通道的 SP")));
+    } else sp->setMaximum(3200.0);
+    const QString unavailable = english_ ? QStringLiteral("Full parameter access is unavailable through this FPGA firmware.") : QStringLiteral("当前 FPGA 固件不支持完整参数读写；此参数不可编辑。");
+    for (auto *editor : findChildren<QAbstractSpinBox*>()) {
+        if (editor == channel || editor == sp) continue;
+        editor->setEnabled(!fpga_relay_ || page_commands_enabled_);
+        editor->setToolTip(fpga_relay_ && !page_commands_enabled_ ? unavailable : QString());
+    }
+    for (auto *editor : findChildren<QComboBox*>()) {
+        editor->setEnabled(!fpga_relay_ || page_commands_enabled_);
+        editor->setToolTip(fpga_relay_ && !page_commands_enabled_ ? unavailable : QString());
+    }
+    sp->setEnabled(!fpga_relay_ || (backend_connected_ && fpga_setpoint_available_ && !fpga_setpoint_pending_));
+}
+
+void Ai8TemperatureControllerPanel::submitFpgaSetpoint()
+{
+    if (!fpga_relay_ || !backend_connected_ || !fpga_setpoint_available_ || fpga_setpoint_pending_) return;
+    const int channel = findChild<QSpinBox*>("ai8ChannelSpin")->value();
+    if (!sp_dirty_[channel - 1]) return;
+    fpga_pending_channel_ = channel;
+    fpga_pending_value_ = sp_draft_[channel - 1];
+    fpga_setpoint_pending_ = true;
+    const auto token = ++fpga_setpoint_token_;
+    sp_status_->setText(english_ ? QStringLiteral("Waiting for device confirmation and read-back…") : QStringLiteral("正在等待设备确认与回读…"));
+    refreshFpgaSetpoint();
+    QTimer::singleShot(35000, this, [this, token] {
+        finishFpgaSetpoint(token, false, english_ ? QStringLiteral("Timeout; result unknown. No automatic retry.") : QStringLiteral("设温超时，结果未知；未自动重试。"));
+    });
+    emit fpgaSetpointRequested(channel, fpga_pending_value_, token);
+}
+
+void Ai8TemperatureControllerPanel::finishFpgaSetpoint(quint64 token, bool verified, const QString& detail)
+{
+    if (token != fpga_setpoint_token_ || !fpga_setpoint_pending_) return;
+    fpga_setpoint_pending_ = false;
+    const int i = fpga_pending_channel_ - 1;
+    if (verified) {
+        sp_confirmed_[i] = true;
+        sp_actual_[i] = fpga_pending_value_;
+        sp_known_[i] = true;
+        sp_status_->setText((english_ ? QStringLiteral("Channel %1 SP %2 °C confirmed by device read-back") : QStringLiteral("通道 %1 给定值 %2 ℃ 已经设备回读确认"))
+            .arg(i + 1).arg(fpga_pending_value_, 0, 'f', 1));
+    } else {
+        sp_status_->setText((english_ ? QStringLiteral("Setpoint not confirmed: ") : QStringLiteral("设温未确认：")) + detail);
+    }
+    refreshFpgaSetpoint();
 }
 
 void Ai8TemperatureControllerPanel::setProtocolStatusLabel(QLabel *label)
@@ -1527,6 +1648,15 @@ void Ai8TemperatureControllerPanel::applyPageData(
 void Ai8TemperatureControllerPanel::applyLiveData(
     const Ai8TemperatureControllerProtocol::LiveData& liveData)
 {
+    if (fpga_relay_ && liveData.valid && liveData.detailedChannel >= 1 && liveData.detailedChannel <= 8) {
+        const int i = liveData.detailedChannel - 1;
+        if (sp_confirmed_[i] && std::abs(liveData.setpointC - sp_draft_[i]) < 0.05) {
+            sp_dirty_[i] = false;
+            sp_confirmed_[i] = false;
+        }
+        sp_actual_[i] = liveData.setpointC;
+        sp_known_[i] = true;
+    }
     const bool hadDetails=latest_live_data_.detailedChannel!=0;
     latest_live_data_ = liveData;
     if (liveData.valid)
@@ -1552,6 +1682,7 @@ void Ai8TemperatureControllerPanel::applyLiveData(
             }
         }
     }
+    refreshFpgaSetpoint();
     updateMeasuredValue();
     if(hadDetails && !liveData.detailedChannel) {
         if(auto *sv=findChild<QLineEdit*>(QStringLiteral("ai8DisplayedSetpointEdit")))sv->clear();
@@ -1561,7 +1692,7 @@ void Ai8TemperatureControllerPanel::applyLiveData(
         if (auto *alarm = findChild<QLineEdit *>(QStringLiteral("ai8ChannelAlarmStatusEdit")))
             alarm->setText(QStringLiteral("---"));
     if(auto *ch=findChild<QSpinBox*>(QStringLiteral("ai8ChannelSpin"));ch && liveData.detailedChannel==ch->value()) {
-        if(auto *sp=findChild<QDoubleSpinBox*>(QStringLiteral("ai8SetpointSpin"));sp && !sp->hasFocus() && !sp->findChild<QLineEdit*>()->hasFocus()) {const QSignalBlocker block(sp);sp->setValue(liveData.setpointC);}
+        if(auto *sp=findChild<QDoubleSpinBox*>(QStringLiteral("ai8SetpointSpin"));sp && !fpga_relay_ && !sp->hasFocus() && !sp->findChild<QLineEdit*>()->hasFocus()) {const QSignalBlocker block(sp);sp->setValue(liveData.setpointC);}
         if(auto *sv=findChild<QLineEdit*>(QStringLiteral("ai8DisplayedSetpointEdit")))sv->setText(QString::number(liveData.displayedSetpointC,'f',1)+QStringLiteral(" °C"));
         if(auto *op=findChild<QDoubleSpinBox*>(QStringLiteral("ai8ManualOutputSpin"));op && !op->hasFocus() && !op->findChild<QLineEdit*>()->hasFocus()) {const QSignalBlocker block(op);op->setValue(Ai8TemperatureControllerProtocol::decodeManualOutput(liveData.outputRaw));}
     }
