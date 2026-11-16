@@ -220,13 +220,19 @@ int main(int argc, char **argv)
             const QRect a = homeBounds(left), b = homeBounds(right);
             return a.top() <= b.bottom() && b.top() <= a.bottom() && !a.intersects(b);
         };
-        check(sameHomeRow(homePosition, homeTarget) && sameHomeRow(homeTarget, homeGo),
-              "current angle, target angle and positioning share a row");
+        check(sameHomeRow(homePosition, homeTarget), "current and target angles share a row");
         auto *homeConfigure = find<QPushButton>(*homeMotion, "homeMotionConfigure");
         for (auto *button : {homeHome, homeStop, homeConfigure}) {
             check(homeCard->rect().contains(homeBounds(button)), "motion action fits within the home card");
-            check(sameHomeRow(homeGo, button), "all remaining home motion controls share one row");
+            check(sameHomeRow(homeGo, button), "motion actions share one row");
         }
+        check(sameHomeRow(homeTarget, homeGo) || homeBounds(homeGo).top() > homeBounds(homeTarget).bottom(),
+              "motion actions either follow the fields or wrap below them");
+        const QSize homeWindowSize = window.size();
+        window.resize(3000, 850);
+        until("wide motion controls return to one row", [&] { return sameHomeRow(homeTarget, homeGo); });
+        window.resize(homeWindowSize);
+        QApplication::processEvents();
         auto *homeTitle = find<QLabel>(*homeHeader, "sectionTitleLabel");
         check(homeBounds(homeTitle).right() < homeBounds(homePort).left() &&
               homeBounds(homePort).right() < homeBounds(homeAction).left() &&

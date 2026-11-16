@@ -10,8 +10,10 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QResizeEvent>
 #include <QSignalBlocker>
 #include <QVBoxLayout>
+#include <array>
 
 namespace VaporView::Ground::Motion
 {
@@ -24,8 +26,11 @@ HomeMotionPanel::HomeMotionPanel(MotionControlPage *motionPage, QComboBox *chann
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(12, 8, 12, 10);
     layout->setSpacing(6);
+    // The grid can wrap, so its current one-row width must not constrain the card.
+    layout->setSizeConstraint(QLayout::SetNoConstraint);
 
-    auto *fields = new QGridLayout;
+    fields_ = new QGridLayout;
+    auto *fields = fields_;
     fields->setHorizontalSpacing(6);
     fields->setVerticalSpacing(6);
     position_label_ = new QLabel(this);
@@ -97,6 +102,59 @@ void HomeMotionPanel::setLanguage(bool english)
     go_->setText(english ? QStringLiteral("Move") : QStringLiteral("定位"));
     configure_->setText(english ? QStringLiteral("Settings") : QStringLiteral("设备配置"));
     refreshPorts();
+    updateControlsLayout();
+}
+
+QSize HomeMotionPanel::minimumSizeHint() const
+{
+    QSize hint = QWidget::minimumSizeHint();
+    if (!fields_ || !configure_)
+        return hint;
+
+    const std::array<QWidget *, 8> controls{
+        position_label_, position_, target_label_, target_, go_, home_, stop_, configure_};
+    // The narrow layout aligns four fields above four actions.
+    int width = std::max(0, fields_->horizontalSpacing()) * 3;
+    for (int i = 0; i < 4; ++i)
+        width += std::max(QWidgetItem(controls[i]).minimumSize().width(),
+                          QWidgetItem(controls[i + 4]).minimumSize().width());
+    const QMargins margins = layout()->contentsMargins();
+    hint.setWidth(width + margins.left() + margins.right());
+    return hint;
+}
+
+void HomeMotionPanel::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+    updateControlsLayout();
+}
+
+void HomeMotionPanel::updateControlsLayout()
+{
+    if (!fields_ || !configure_)
+        return;
+
+    const std::array<QWidget *, 8> controls{
+        position_label_, position_, target_label_, target_, go_, home_, stop_, configure_};
+    const QMargins margins = layout()->contentsMargins();
+    int singleRowWidth = margins.left() + margins.right() + std::max(0, fields_->horizontalSpacing()) * 7;
+    for (QWidget *control : controls)
+        singleRowWidth += QWidgetItem(control).minimumSize().width();
+
+    const bool wrap = width() < singleRowWidth;
+    if (wrap == controls_wrapped_)
+        return;
+
+    controls_wrapped_ = wrap;
+    for (QWidget *control : controls)
+        fields_->removeWidget(control);
+    fields_->setColumnStretch(4, wrap ? 1 : 0);
+    fields_->setColumnStretch(8, wrap ? 0 : 1);
+    for (int i = 0; i < static_cast<int>(controls.size()); ++i)
+        fields_->addWidget(controls[i], wrap && i >= 4 ? 1 : 0, wrap ? i % 4 : i);
+    fields_->invalidate();
+    layout()->invalidate();
+    updateGeometry();
 }
 
 void HomeMotionPanel::refresh()
@@ -158,5 +216,6 @@ void HomeMotionPanel::setTheme(bool dark, int fontScalePercent)
     position_->ensurePolished();
     position_->setFixedWidth(std::max(position_->fontMetrics().horizontalAdvance(QStringLiteral("-1000000.000°")),
         position_->fontMetrics().horizontalAdvance(english_ ? QStringLiteral("Reading paused") : QStringLiteral("读取已暂停"))) + 4);
+    updateControlsLayout();
 }
 }

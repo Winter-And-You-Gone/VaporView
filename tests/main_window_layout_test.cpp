@@ -79,6 +79,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <limits>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -4483,6 +4484,8 @@ void requireHomeSensorColumnLayout(MainWindow& window)
             "home EPSILON and motion cards are visible");
     auto *motionPanel = motion->findChild<QWidget *>(QStringLiteral("homeMotionPanel"));
     require(motionPanel != nullptr, "home motion controls exist");
+    require(motion->rect().contains(QRect(motionPanel->mapTo(motion, QPoint()), motionPanel->size())),
+            "home motion controls remain inside their card");
     for (const char *name : {"homeMotionPosition", "homeMotionTarget", "homeMotionGo",
                              "homeMotionHome", "homeMotionStopAll", "homeMotionConfigure"})
     {
@@ -5405,6 +5408,89 @@ int main(int argc, char **argv)
         }
         require(false, "main window exposes requested font-scale action");
     };
+
+    if (app.arguments().contains(QStringLiteral("--home-motion-width-only")))
+    {
+        MainWindow window;
+        window.resize(1280, 800);
+        window.show();
+        require(waitForWindowExposed(&window), "motion width window becomes exposed");
+        processEventsFor(500);
+        auto *motion = window.findChild<QWidget *>(QStringLiteral("homeMotionCard"));
+        auto *motionPanel = window.findChild<QWidget *>(QStringLiteral("homeMotionPanel"));
+        auto *panel = static_cast<VaporView::Ground::Widgets::EpsilonPanel *>(
+            window.findChild<QWidget *>(QStringLiteral("epsilonPanel")));
+        auto *epsilon = panel ? panel->parentWidget() : nullptr;
+        auto *sensors = window.findChild<QSplitter *>(QStringLiteral("homeSensorCardSplitter"));
+        auto *position = window.findChild<QWidget *>(QStringLiteral("homeMotionPosition"));
+        auto *go = window.findChild<QWidget *>(QStringLiteral("homeMotionGo"));
+        require(motion && motionPanel && epsilon && sensors && position && go,
+                "motion width test finds cards and controls");
+        const auto sameRow = [motionPanel](QWidget *left, QWidget *right) {
+            const QRect a(left->mapTo(motionPanel, QPoint()), left->size());
+            const QRect b(right->mapTo(motionPanel, QPoint()), right->size());
+            return a.top() <= b.bottom() && b.top() <= a.bottom();
+        };
+        bool englishActive = false;
+        for (int scale : {100, 130})
+        {
+            triggerFontScaleAction(window, scale);
+            for (bool english : {false, true})
+            {
+                if (englishActive != english)
+                {
+                    require(QMetaObject::invokeMethod(&window, "onSwitchLanguage", Qt::DirectConnection),
+                            "motion width test switches language");
+                    englishActive = english;
+                }
+                window.resize(1280, 800);
+                processEventsFor(500);
+                require(processEventsUntil(1500, [motion, epsilon] {
+                            return motion->minimumWidth() ==
+                                std::max(epsilon->minimumWidth(), epsilon->minimumSizeHint().width());
+                        }),
+                        "motion card minimum follows the EPSILON card minimum");
+                requireHomeSensorColumnLayout(window);
+                if (scale == 100 && !english)
+                {
+                    require(sensors->orientation() == Qt::Horizontal,
+                            "default-width environment and EPSILON cards fit side by side");
+                    require(!sameRow(position, go),
+                            "motion controls wrap when the default-width card is narrow");
+                }
+
+                window.resize(3000, 800);
+                processEventsFor(500);
+                requireHomeSensorColumnLayout(window);
+                require(sameRow(position, go), "motion controls return to one row when wide");
+            }
+        }
+        if (englishActive)
+            require(QMetaObject::invokeMethod(&window, "onSwitchLanguage", Qt::DirectConnection),
+                    "motion width test restores language");
+        triggerFontScaleAction(window, 100);
+        window.resize(3000, 800);
+        processEventsFor(300);
+        const int originalEpsilonMinimum = epsilon->minimumSizeHint().width();
+        VaporView::EpsilonData sample;
+        sample.valid = true;
+        sample.gnss_fix_text = std::string(80, 'W');
+        panel->updateData(sample);
+        require(processEventsUntil(1500, [epsilon, originalEpsilonMinimum] {
+                    return epsilon->minimumSizeHint().width() > originalEpsilonMinimum;
+                }),
+                "a longer live value increases the EPSILON card minimum");
+        require(processEventsUntil(1500, [motion, epsilon] {
+                    return motion->minimumWidth() ==
+                        std::max(epsilon->minimumWidth(), epsilon->minimumSizeHint().width());
+                }),
+                "motion card minimum follows a wider live EPSILON value without a window resize");
+        window.close();
+        require(processEventsUntil(1000, [&window] { return !window.isVisible(); }),
+                "motion width test closes its window");
+        std::cout << "home_motion_width_layout_test passed\n";
+        return 0;
+    }
 
     if (app.arguments().contains(QStringLiteral("--home-overview-language-only")))
     {
