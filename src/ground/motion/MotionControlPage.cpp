@@ -55,7 +55,7 @@ QDoubleSpinBox *angle(QWidget *parent, const QString& name, bool step)
 struct MotionControlPage::State
 {
     EmFwc3Session *session = nullptr;
-    QWidget *header = nullptr, *connectionControls = nullptr;
+    QWidget *header = nullptr, *connectionControls = nullptr, *wrappedConnectionRow = nullptr;
     QGridLayout *headerLayout = nullptr;
     QGridLayout *deviceLayout = nullptr;
     QLabel *title = nullptr;
@@ -88,7 +88,10 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
     s.session = new EmFwc3Session(this, sdkDirectory);
     auto *outer = new QVBoxLayout(this); outer->setContentsMargins(1, 1, 1, 1); outer->setSpacing(0);
     s.header = new QWidget(this); s.header->setObjectName(QStringLiteral("sectionTitleBar"));
-    s.headerLayout = new QGridLayout(s.header); s.headerLayout->setContentsMargins(10, 4, 10, 4);
+    // This header is scaled by setTheme rather than the main window's metric pass.
+    s.header->setProperty("deviceTelemetryDynamicMetrics", true);
+    s.header->setFixedHeight(40);
+    s.headerLayout = new QGridLayout(s.header); s.headerLayout->setContentsMargins(10, 2, 10, 2);
     s.headerLayout->setHorizontalSpacing(12); s.headerLayout->setVerticalSpacing(4);
     s.title = new VisualTextLabel(s.header); s.title->setObjectName(QStringLiteral("sectionTitleLabel"));
     configureSelectableCardTitle(s.title); wording(s.title, "运动控制 · EM-FWC3", "Motion control · EM-FWC3");
@@ -107,6 +110,11 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
     s.headerLayout->addWidget(s.connectionControls, 0, 1);
     s.header->installEventFilter(this);
     s.headerLayout->setColumnStretch(1, 1); outer->addWidget(s.header);
+    s.wrappedConnectionRow = new QWidget(this);
+    auto *wrappedConnectionLayout = new QHBoxLayout(s.wrappedConnectionRow);
+    wrappedConnectionLayout->setContentsMargins(10, 4, 10, 4);
+    outer->addWidget(s.wrappedConnectionRow);
+    s.wrappedConnectionRow->hide();
 
     auto *content = new QWidget(this); content->setObjectName(QStringLiteral("emFwc3CardBody"));
     content->setAttribute(Qt::WA_StyledBackground, true);
@@ -389,6 +397,7 @@ void MotionControlPage::setLanguage(bool english)
 }
 void MotionControlPage::setTheme(bool dark, int fontScalePercent)
 {
+    state_->header->setFixedHeight(qRound(40 * fontScalePercent / 100.0));
     state_->port->setFixedWidth(qRound(110 * fontScalePercent / 100.0));
     for (auto *label : findChildren<QLabel *>())
         if (label->property("motionFormLabel").toBool()) label->setFixedWidth(qRound(100 * fontScalePercent / 100.0));
@@ -397,20 +406,19 @@ void MotionControlPage::setTheme(bool dark, int fontScalePercent)
         state_->steps[i]->setFixedWidth(qRound(150 * fontScalePercent / 100.0));
     }
     state_->speed->setFixedWidth(qRound(150 * fontScalePercent / 100.0));
-    // Leave ample room for wrapped titles without scaling Qt's maximum-size sentinel.
     const QString style = applyAppThemeTokens(QStringLiteral(
         "QFrame[emFwc3Card=true] { background-color: @vv-surface-raised; color: @vv-text; border: 1px solid @vv-border; border-radius: 12px; }"
-        "QFrame[emFwc3Card=true] > QWidget#sectionTitleBar { background-color: @vv-surface-raised; border: none; border-bottom: 1px solid @vv-border; border-top-left-radius: 11px; border-top-right-radius: 11px; min-height: %2px; max-height: 4096px; }"
+        "QFrame[emFwc3Card=true] > QWidget#sectionTitleBar { background-color: @vv-surface-raised; border: none; border-bottom: 1px solid @vv-border; border-top-left-radius: 11px; border-top-right-radius: 11px; min-height: %4px; max-height: %4px; }"
         "QWidget#emFwc3CardBody { background-color: @vv-surface-raised; border: none; border-bottom-left-radius: 11px; border-bottom-right-radius: 11px; }"
         "QLabel, QLabel#sectionTitleLabel { background-color: transparent; color: @vv-text; border: none; }"
         "QStackedWidget, QStackedWidget > QWidget { background-color: transparent; border: none; }"
-        "QPushButton { min-width: 0px; padding: 3px 10px; min-height: %4px; max-height: %4px; }"
-        "QComboBox, QSpinBox, QDoubleSpinBox { min-height: %4px; max-height: %4px; }"
-        "QWidget#sectionTitleBar QLabel#sectionTitleLabel { font-size: %3px; font-weight: 700; padding: 0px; margin: 0px; }"
+        "QPushButton { min-width: 0px; padding: 3px 10px; min-height: %3px; max-height: %3px; }"
+        "QComboBox, QSpinBox, QDoubleSpinBox { min-height: %3px; max-height: %3px; }"
+        "QWidget#sectionTitleBar QLabel#sectionTitleLabel { font-size: %2px; font-weight: 700; padding: 0px; margin: 0px; }"
         "QLabel[emFwc3Error=true] { color: @vv-danger; }"
         "QLabel#emFwc3Position1, QLabel#emFwc3Position2, QLabel#emFwc3Position3 { font-size: %1px; font-weight: 600; }"
         "QPushButton#emFwc3StopAll:enabled, QPushButton#emFwc3Stop1:enabled, QPushButton#emFwc3Stop2:enabled, QPushButton#emFwc3Stop3:enabled { background-color: @vv-danger; color: @vv-text-inverse; }"
-    ).arg(qRound(24 * fontScalePercent / 100.0)).arg(qRound(40 * fontScalePercent / 100.0)).arg(qRound(16 * fontScalePercent / 100.0)).arg(qRound(24 * fontScalePercent / 100.0)), dark);
+    ).arg(qRound(24 * fontScalePercent / 100.0)).arg(qRound(16 * fontScalePercent / 100.0)).arg(qRound(24 * fontScalePercent / 100.0)).arg(qRound(40 * fontScalePercent / 100.0) - 1), dark);
     setStyleSheet(style);
     setPalette(appThemePalette(dark));
     for (auto *position : state_->positions) {
@@ -431,11 +439,16 @@ void MotionControlPage::reflow()
 {
     auto& s = *state_;
     const bool wrap = width() - 34 < s.title->sizeHint().width() + s.connectionControls->layout()->sizeHint().width();
-    int row, column, rowSpan, columnSpan;
-    s.headerLayout->getItemPosition(s.headerLayout->indexOf(s.connectionControls), &row, &column, &rowSpan, &columnSpan);
-    if (row != (wrap ? 1 : 0)) {
+    if (wrap && s.connectionControls->parentWidget() == s.header) {
         s.headerLayout->removeWidget(s.connectionControls);
-        s.headerLayout->addWidget(s.connectionControls, wrap ? 1 : 0, wrap ? 0 : 1, 1, wrap ? 2 : 1);
+        s.wrappedConnectionRow->layout()->addWidget(s.connectionControls);
+        s.connectionControls->show();
+        s.wrappedConnectionRow->show();
+    } else if (!wrap && s.connectionControls->parentWidget() != s.header) {
+        s.wrappedConnectionRow->layout()->removeWidget(s.connectionControls);
+        s.headerLayout->addWidget(s.connectionControls, 0, 1);
+        s.connectionControls->show();
+        s.wrappedConnectionRow->hide();
     }
 }
 }

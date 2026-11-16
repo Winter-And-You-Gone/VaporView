@@ -456,6 +456,9 @@ int main(int argc, char **argv)
             for (int width : {1200, 1000, 800, 600}) {
                 host.resize(width, 1100); QApplication::processEvents();
                 check(host.width() >= width, "window honors the requested width or its content minimum");
+                auto *header = page->findChild<QWidget *>(QStringLiteral("sectionTitleBar"), Qt::FindDirectChildrenOnly);
+                check(header && header->height() == qRound(40 * scale / 100.0),
+                      "motion card title bar matches the standard scaled height");
                 auto *port = find<QComboBox>(*page, "emFwc3Port");
                 check(port->width() >= 80 && port->width() <= qRound(150 * scale / 100.0),
                       "serial selector remains compact at each font scale");
