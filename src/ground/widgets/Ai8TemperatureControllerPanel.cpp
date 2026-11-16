@@ -8,6 +8,9 @@
 #include <QButtonGroup>
 #include <QComboBox>
 #include <QDateTime>
+#include <QCoreApplication>
+#include <QDir>
+#include <QIcon>
 #include <QDoubleSpinBox>
 #include <QFrame>
 #include <QGridLayout>
@@ -394,6 +397,16 @@ void Ai8TemperatureControllerPanel::setupUi()
     connect(writeButton, &QPushButton::clicked, this,
             &Ai8TemperatureControllerPanel::writePageRequested);
 
+    plot_view_button_ = new QToolButton(statusRow);
+    plot_view_button_->setObjectName("ai8PlotViewToggle");
+    plot_view_button_->setCheckable(true);
+    plot_view_button_->setIcon(QIcon(QDir(QCoreApplication::applicationDirPath()).filePath(
+        QStringLiteral("resources/lucide/layers-3.svg"))));
+    plot_view_button_->setIconSize(QSize(20, 20));
+    plot_view_button_->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    statusLayout->addWidget(plot_view_button_);
+    connect(plot_view_button_, &QToolButton::toggled, this, [this] { updatePlotView(); });
+
     topControlsLayout->addWidget(statusRow);
     rootLayout->addWidget(topControlsRow);
 
@@ -431,6 +444,33 @@ void Ai8TemperatureControllerPanel::setupUi()
                  page_stack_->sizeHint().height() - kAi8TemperaturePlotBottomTrim));
     temperature_plot_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     mainContentLayout->addWidget(temperature_plot_, 1, Qt::AlignTop);
+    multi_plot_view_ = new QWidget(mainContentCard);
+    multi_plot_view_->setObjectName("ai8MultiChannelPlots");
+    auto *plots = new QGridLayout(multi_plot_view_);
+    plots->setContentsMargins(0, 0, 0, 0);
+    plots->setSpacing(8);
+    for (int i = 0; i < 8; ++i) {
+        auto *cell = new QWidget(multi_plot_view_);
+        auto *cellLayout = new QVBoxLayout(cell);
+        cellLayout->setContentsMargins(0, 0, 0, 0);
+        cellLayout->setSpacing(2);
+        channel_plot_labels_[i] = new QLabel(cell);
+        cellLayout->addWidget(channel_plot_labels_[i]);
+        auto *plot = new TemperatureTrendPlotWidget(cell);
+        plot->setObjectName(QStringLiteral("ai8ChannelPlot%1").arg(i + 1));
+        plot->setCompactMode(true);
+        plot->setTimeAxisEnabled(true);
+        plot->setChannelIndex(i);
+        plot->setMinimumWidth(0);
+        plot->setFixedHeight(190);
+        plot->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        channel_plots_[i] = plot;
+        cellLayout->addWidget(plot);
+        plots->addWidget(cell, i / 4, i % 4);
+        plots->setColumnStretch(i % 4, 1);
+    }
+    multi_plot_view_->hide();
+    mainContentLayout->addWidget(multi_plot_view_, 1);
     rootLayout->addWidget(mainContentCard);
     rootLayout->addWidget(detail_stack_);
 
@@ -1189,6 +1229,7 @@ void Ai8TemperatureControllerPanel::setEnglish(bool english)
         }
     }
     updateRunStateAccessibility();
+    updatePlotView();
 
     updateStatusText();
     updateAlarmStatusDisplay();
@@ -1740,6 +1781,27 @@ void Ai8TemperatureControllerPanel::updateAlarmStatusDisplay()
     edit->setText(decimalHexText(status, 2));
 }
 
+void Ai8TemperatureControllerPanel::updatePlotView()
+{
+    if (!multi_plot_view_) return;
+    const bool multiple = plot_view_button_->isChecked();
+    const QString hint = multiple
+        ? (english_ ? QStringLiteral("Show selected channel") : QStringLiteral("切换为当前通道单视图"))
+        : (english_ ? QStringLiteral("Show all 8 channels (2 × 4)") : QStringLiteral("切换为八通道多视图（两行四列）"));
+    plot_view_button_->setToolTip(hint);
+    plot_view_button_->setAccessibleName(hint);
+    temperature_plot_->setVisible(!multiple);
+    page_stack_->setVisible(!multiple);
+    detail_stack_->setVisible(!multiple);
+    multi_plot_view_->setVisible(multiple);
+    for (int i = 0; i < 8; ++i) {
+        channel_plot_labels_[i]->setText((english_ ? QStringLiteral("Channel %1") : QStringLiteral("通道 %1")).arg(i + 1));
+        channel_plots_[i]->setEnglish(english_);
+    }
+    updateTemperaturePlot();
+    updateGeometry();
+}
+
 void Ai8TemperatureControllerPanel::updateTemperaturePlot()
 {
     if (!temperature_plot_)
@@ -1754,6 +1816,15 @@ void Ai8TemperatureControllerPanel::updateTemperaturePlot()
     }
     const int channelIndex = std::clamp(
         channelSpin->value(), 1, Ai8TemperatureControllerProtocol::kChannelCount) - 1;
+    for (int i = 0; i < 8; ++i) {
+        if (!channel_plots_[i]) continue;
+        const double target = latest_live_data_.setpointsValid ? latest_live_data_.setpointsC[i]
+            : latest_live_data_.detailedChannel == i + 1 ? latest_live_data_.setpointC
+            : sp_known_[i] ? sp_actual_[i] : std::numeric_limits<double>::quiet_NaN();
+        channel_plots_[i]->setTargetTemperature(target);
+        channel_plots_[i]->setSamples(measured_temperature_history_[i]);
+        channel_plots_[i]->setSampleTimes(measured_temperature_time_history_[i]);
+    }
     temperature_plot_->setChannelIndex(channelIndex);
     temperature_plot_->setTargetTemperature(
         setpointSpin ? setpointSpin->value() : std::numeric_limits<double>::quiet_NaN());

@@ -105,6 +105,7 @@ private:
     void updateMeasuredValue();
     void updateAlarmStatusDisplay();
     void updateTemperaturePlot();
+    void updatePlotView();
     void refreshPageCommandControls();
     void refreshFpgaSetpoint();
     void submitFpgaSetpoint();
@@ -116,6 +117,10 @@ private:
     QStackedWidget *page_stack_ = nullptr;
     QStackedWidget *detail_stack_ = nullptr;
     TemperatureTrendPlotWidget *temperature_plot_ = nullptr;
+    QWidget *multi_plot_view_ = nullptr;
+    QToolButton *plot_view_button_ = nullptr;
+    std::array<TemperatureTrendPlotWidget*, 8> channel_plots_{};
+    std::array<QLabel*, 8> channel_plot_labels_{};
     QLabel *protocol_status_label_ = nullptr;
     QAbstractButton *read_button_ = nullptr;
     QAbstractButton *write_button_ = nullptr;

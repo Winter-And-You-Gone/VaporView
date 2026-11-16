@@ -99,6 +99,44 @@ int main(int argc, char **argv)
         require(relay.findChild<QDoubleSpinBox*>("ai8ProportionalBandSpin")->isEnabled(), "direct serial editing restored");
     }
 
+    {
+        VaporView::Ground::Widgets::Ai8TemperatureControllerPanel panel;
+        panel.resize(1400, 700);
+        panel.show();
+        auto *toggle = panel.findChild<QToolButton*>("ai8PlotViewToggle");
+        auto *multi = panel.findChild<QWidget*>("ai8MultiChannelPlots");
+        auto *parameters = panel.findChild<QStackedWidget*>("ai8ParameterStack");
+        require(toggle && !toggle->icon().isNull() && multi->isHidden(), "Lucide toggle defaults to single view");
+        VaporView::Ai8TemperatureControllerProtocol::LiveData data;
+        data.valid = true;
+        data.setpointsValid = true;
+        for (int i = 0; i < 8; ++i) {
+            data.measuredC[i] = 20 + i;
+            data.setpointsC[i] = 30 + i;
+        }
+        panel.applyLiveData(data);
+        toggle->click();
+        QApplication::processEvents();
+        require(multi->isVisible() && parameters->isHidden(), "multi view uses full content area");
+        auto *grid = qobject_cast<QGridLayout*>(multi->layout());
+        require(grid && grid->count() == 8, "eight channel cells exist");
+        for (int i = 0; i < 8; ++i) {
+            int row, col, rows, cols;
+            grid->getItemPosition(i, &row, &col, &rows, &cols);
+            require(row == i / 4 && col == i % 4, "channel order is two rows of four");
+            auto *plot = panel.findChild<QWidget*>(QStringLiteral("ai8ChannelPlot%1").arg(i + 1));
+            require(plot && plot->property("sampleCount").toInt() == 1, "each channel retains its own samples");
+            require(!plot->grab().isNull(), "each channel plot renders");
+        }
+        toggle->click();
+        QApplication::processEvents();
+        require(multi->isHidden() && parameters->isVisible(), "single view restores parameter editors");
+        toggle->click();
+        require(panel.findChild<QWidget*>("ai8ChannelPlot8")->property("sampleCount").toInt() == 1,
+                "view switches retain sample history");
+        panel.close();
+    }
+
     TemperatureTrendPlotWidget windowedPlot;
     windowedPlot.setCompactMode(true);
     windowedPlot.resize(600, 190);
