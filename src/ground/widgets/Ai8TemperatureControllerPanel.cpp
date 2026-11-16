@@ -52,8 +52,6 @@ constexpr int kAi8NavigationSpacing = 4;
 constexpr int kAi8CommonControlGap = 6;
 constexpr int kAi8TemperaturePlotMinimumHeight = 180;
 constexpr int kCommonEditorMinimumWidth = (kEditorMinimumWidth * 4) / 3;
-constexpr int kCommonParameterStackWidth =
-    kCommonEditorMinimumWidth * kPageColumnCount + kAi8CommonControlGap;
 constexpr int kAi8OverviewColumnCount = 4;
 constexpr int kAi8OverviewCellGap = 2;
 constexpr int kAi8OverviewHorizontalPadding = 8;
@@ -87,13 +85,6 @@ public:
         compact_common_width_ = enabled;
         setProperty("ai8CompactCommonField", enabled);
         setProperty("ai8CompactParameterField", enabled);
-        updateCompactCommonWidth();
-    }
-
-protected:
-    void resizeEvent(QResizeEvent *event) override
-    {
-        QFrame::resizeEvent(event);
         updateCompactCommonWidth();
     }
 
@@ -406,8 +397,7 @@ void Ai8TemperatureControllerPanel::setupUi()
 
     page_stack_ = new QStackedWidget(mainContentCard);
     page_stack_->setObjectName(QStringLiteral("ai8ParameterStack"));
-    page_stack_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
-    page_stack_->setFixedWidth(kCommonParameterStackWidth);
+    page_stack_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
     page_stack_->addWidget(createChannelPage());
     page_stack_->addWidget(createInputPage());
     page_stack_->addWidget(createOutputPage());
