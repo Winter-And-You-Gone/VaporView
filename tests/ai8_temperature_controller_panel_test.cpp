@@ -142,6 +142,8 @@ int main(int argc, char **argv)
             require(plot && plot->property("sampleCount").toInt() == 1, "each channel retains its own samples");
         require(plot->property("channelBadge").toInt() == i + 1, "channel label is inside the plot");
             require(!plot->grab().isNull(), "each channel plot renders");
+            require(plot->property("xAxisTickCount").toInt() == 5,
+                    "eight-channel plots have five time ticks");
         }
         toggle->click();
         QApplication::processEvents();

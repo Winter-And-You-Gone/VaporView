@@ -233,7 +233,8 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
     setProperty("yAxisTickCount", kYAxisTicks + 1);
     setProperty("latestSampleX", std::numeric_limits<double>::quiet_NaN());
     const qreal timeAxisMinimumTickSpacing = timeAxisLabelWidth(axisFm) + kTimeXAxisLabelGap;
-    const int xAxisLabelCount = xAxisLabelCountForWidth(plotRect.width(), axisFm, time_axis_enabled_);
+    const bool compactTimeTicks = time_axis_enabled_ && property("compactTimeTicks").toBool();
+    const int xAxisLabelCount = compactTimeTicks ? 5 : xAxisLabelCountForWidth(plotRect.width(), axisFm, time_axis_enabled_);
     const int xAxisIntervals = std::max(1, xAxisLabelCount - 1);
     setProperty("xAxisTickCount", xAxisLabelCount);
     setProperty("xAxisTimeMinimumTickSpacing",
@@ -306,7 +307,7 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
             const qreal x = plotRect.left() + plotRect.width() * i / static_cast<qreal>(xAxisIntervals);
             const double xValue = xMin + (xMax - xMin) * i / static_cast<double>(xAxisIntervals);
             const QString label = time_axis_enabled_
-                ? timeAxisTickLabel(xValue)
+                ? (compactTimeTicks && i > 0 ? timeAxisTickLabel(xValue).mid(3) : timeAxisTickLabel(xValue))
                 : QString::number(sampleCount <= 1
                                       ? 0
                                       : qRound((sampleCount - 1) * i / static_cast<double>(xAxisIntervals)));
@@ -495,7 +496,7 @@ std::pair<double, double> TemperatureTrendPlotWidget::visibleTimeRange(double no
 {
     QFont axisFont = font();
     axisFont.setPointSize(std::max(8, axisFont.pointSize() - 2));
-    const int intervals = xAxisLabelCountForWidth(
+    const int intervals = property("compactTimeTicks").toBool() ? 4 : xAxisLabelCountForWidth(
         plotAreaRect().width(), QFontMetrics(axisFont), true) - 1;
     // Anchor the visible window to the newest sample. Using the wall clock here
     // makes the newest point drift left between samples and jump right on update.

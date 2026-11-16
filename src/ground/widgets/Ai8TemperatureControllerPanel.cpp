@@ -393,6 +393,11 @@ void Ai8TemperatureControllerPanel::setupUi()
     plot_view_button_ = new QToolButton(statusRow);
     plot_view_button_->setObjectName("ai8PlotViewToggle");
     plot_view_button_->setCheckable(true);
+    plot_view_button_->setAutoRaise(true);
+    plot_view_button_->setStyleSheet(QStringLiteral(
+        "QToolButton#ai8PlotViewToggle, QToolButton#ai8PlotViewToggle:checked, "
+        "QToolButton#ai8PlotViewToggle:hover, QToolButton#ai8PlotViewToggle:pressed {"
+        "background: transparent; border: none; padding: 0px;}"));
     plot_view_button_->setIconSize(QSize(20, 20));
     plot_view_button_->setToolButtonStyle(Qt::ToolButtonIconOnly);
     statusLayout->addWidget(plot_view_button_);
@@ -456,6 +461,7 @@ void Ai8TemperatureControllerPanel::setupUi()
         plot->setTimeAxisEnabled(true);
         plot->setChannelIndex(i);
         plot->setProperty("channelBadge", i + 1);
+        plot->setProperty("compactTimeTicks", true);
         plot->setMinimumSize(0, 0);
         plot->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
         channel_plots_[i] = plot;
