@@ -5492,6 +5492,48 @@ int main(int argc, char **argv)
         return 0;
     }
 
+    if (app.arguments().contains(QStringLiteral("--ai8-editors-only")))
+    {
+        MainWindow window;
+        window.resize(1280, 850); window.show();
+        require(waitForWindowExposed(&window), "AI-8 test window becomes exposed");
+        auto *pages = window.findChild<QStackedWidget *>(QStringLiteral("mainPageStack"));
+        auto *temperature = window.findChild<QWidget *>(QStringLiteral("temperaturePage"));
+        auto *panel = window.findChild<VaporView::Ground::Widgets::Ai8TemperatureControllerPanel *>();
+        require(pages && temperature && panel, "AI-8 temperature page exists");
+        pages->setCurrentWidget(temperature);
+        auto *stack = panel->findChild<QStackedWidget *>(QStringLiteral("ai8ParameterStack"));
+        auto *plot = panel->findChild<QWidget *>(QStringLiteral("ai8TemperatureTrendPlot"));
+        require(stack && plot, "AI-8 common parameter stack and plot exist");
+        for (int scale : {100, 130, 100}) {
+            triggerFontScaleAction(window, scale);
+            for (bool english : {false, true}) {
+                if (english) QMetaObject::invokeMethod(&window, "onSwitchLanguage", Qt::DirectConnection);
+                for (int width : {1280, 1000, 1600}) {
+                    window.resize(width, 850); processEventsFor(150);
+                    for (int page = 0; page < 4; ++page) {
+                        auto *button = panel->findChild<QPushButton *>(QStringLiteral("ai8PageSelectorButton%1").arg(page + 1));
+                        require(button, "AI-8 page selector exists"); button->click(); processEventsFor(50);
+                        auto *current = stack->currentWidget();
+                        for (auto *field : current->findChildren<QFrame *>(QStringLiteral("ai8ParameterField"))) {
+                            const QRect fieldRect(field->mapTo(stack, QPoint()), field->size());
+                            require(stack->rect().contains(fieldRect), "AI-8 field remains inside the common stack");
+                            for (auto *editor : field->findChildren<QWidget *>(QString(), Qt::FindDirectChildrenOnly)) {
+                                if (qobject_cast<QLabel *>(editor)) continue;
+                                const QRect editorRect(editor->mapTo(stack, QPoint()), editor->size());
+                                const QRect plotRect(plot->mapTo(stack, QPoint()), plot->size());
+                                require(stack->rect().contains(editorRect) && !editorRect.intersects(plotRect),
+                                        "AI-8 editor is fully visible and does not overlap the plot");
+                            }
+                        }
+                    }
+                }
+                if (english) QMetaObject::invokeMethod(&window, "onSwitchLanguage", Qt::DirectConnection);
+            }
+        }
+        window.close();
+        return 0;
+    }
     if (app.arguments().contains(QStringLiteral("--home-overview-language-only")))
     {
         requireHomeOverviewLanguageWidthRoundTrip();

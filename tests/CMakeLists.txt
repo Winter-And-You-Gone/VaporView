@@ -960,6 +960,9 @@ vaporview_add_test(NAME home_overview_language_layout_test
 vaporview_add_test(NAME home_appearance_layout_test
     COMMAND main_window_layout_test --home-appearance-only
 )
+vaporview_add_test(NAME ai8_editor_width_layout_test
+    COMMAND main_window_layout_test --ai8-editors-only
+)
 vaporview_add_test(NAME home_maximum_value_widths_test
     COMMAND main_window_layout_test --home-maximum-values-only
 )
