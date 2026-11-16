@@ -49,6 +49,7 @@
 - 每个通道独立保存 SP 草稿；旧轮询数据不会覆盖草稿。设备 SP 单独显示，成功后等待匹配遥测再结束草稿状态。提交期间锁定通道和 SP，失败保留草稿供明确重试，断连后忽略旧事务回调。
 - 当前固件不支持的完整参数禁用编辑并提供原因；恢复直连后恢复编辑。没有把单项设温当作整页写入，也未新增实物启停操作。
 - VS/MSVC Developer 环境执行 `cmake --build build/Release --config Release --parallel 6` 成功，沿用 osgEarth OFF。6项定向测试通过：`ai8_temperature_controller_panel_test`、`ai8_device_session_test`、`fpga_extensions_test`、`fpga_main_window_test`、`main_window_layout_test`、`session_viewer_theme_test`。
+- 同步合并远端首页运动卡片宽度和 AI-8 输入框布局修复后，最终 Release 再构建成功；上述6项及 `ai8_editor_width_layout_test`、`home_motion_width_layout_test`、`emfwc3_ui_test` 共9项全部通过。
 - 新增回归覆盖通道5草稿、通道切换、失败、确认后旧遥测、匹配回读、断连迟到响应和直连恢复；测试使用隔离配置与模拟事务，没有修改实物设温。
 - 用户另行指定 Astra / medium 会话在下位机项目补齐完整参数读写及离线 BIT 构建。新固件尚未在本任务中烧录，不能将本次上位机测试当作新固件或实际温控闭环验收。
 
