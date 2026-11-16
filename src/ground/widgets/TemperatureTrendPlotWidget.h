@@ -9,6 +9,9 @@
 #include <utility>
 
 class QPaintEvent;
+class QShowEvent;
+class QHideEvent;
+class QTimer;
 
 class TemperatureTrendPlotWidget : public QWidget
 {
@@ -27,6 +30,8 @@ public:
 
 protected:
     void paintEvent(QPaintEvent *event) override;
+    void showEvent(QShowEvent *event) override;
+    void hideEvent(QHideEvent *event) override;
 
 private:
     static QString axisTickLabel(double value);
@@ -47,4 +52,5 @@ private:
     bool time_axis_enabled_ = false;
     bool x_axis_visible_ = true;
     bool is_english_ = false;
+    QTimer *clock_timer_ = nullptr;
 };

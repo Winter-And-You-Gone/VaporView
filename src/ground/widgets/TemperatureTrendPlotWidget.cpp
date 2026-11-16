@@ -8,6 +8,9 @@
 #include <QPaintEvent>
 #include <QPolygonF>
 #include <QSizePolicy>
+#include <QTimer>
+#include <QShowEvent>
+#include <QHideEvent>
 
 #include <algorithm>
 #include <cmath>
@@ -77,6 +80,22 @@ TemperatureTrendPlotWidget::TemperatureTrendPlotWidget(QWidget *parent)
     setFont(numericFontFrom(font()));
     applyPlotSizing();
     updateSampleProperties();
+    clock_timer_ = new QTimer(this);
+    clock_timer_->setInterval(100);
+    connect(clock_timer_, &QTimer::timeout, this, [this] { update(); });
+}
+
+void TemperatureTrendPlotWidget::showEvent(QShowEvent *event)
+{
+    QWidget::showEvent(event);
+    if (time_axis_enabled_)
+        clock_timer_->start();
+}
+
+void TemperatureTrendPlotWidget::hideEvent(QHideEvent *event)
+{
+    clock_timer_->stop();
+    QWidget::hideEvent(event);
 }
 
 void TemperatureTrendPlotWidget::setCompactMode(bool compact)
@@ -183,6 +202,7 @@ int TemperatureTrendPlotWidget::yAxisIntervals() const
 void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
 {
     QWidget::paintEvent(event);
+    setProperty("paintCount", property("paintCount").toInt() + 1);
 
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing, true);

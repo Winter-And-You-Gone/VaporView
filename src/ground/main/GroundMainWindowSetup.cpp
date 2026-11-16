@@ -6035,6 +6035,10 @@ void MainWindow::setupDataPanels()
     state_->ai8_temperature_title_status_lbl_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     state_->ai8_temperature_title_status_lbl_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     ai8TitleLayout->addWidget(state_->ai8_temperature_title_status_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    auto *ai8DeviceSetpointLabel = new QLabel(ai8TitleBar);
+    ai8DeviceSetpointLabel->setObjectName(QStringLiteral("ai8DeviceSetpointStatusLabel"));
+    ai8DeviceSetpointLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    ai8TitleLayout->addWidget(ai8DeviceSetpointLabel, 0, Qt::AlignVCenter | Qt::AlignLeft);
     ai8TitleLayout->addStretch(1);
     auto *ai8ProtocolStatusLabel = new QLabel(ai8TitleBar);
     ai8ProtocolStatusLabel->setObjectName(QStringLiteral("ai8ProtocolStatus"));
@@ -6047,6 +6051,7 @@ void MainWindow::setupDataPanels()
     state_->ai8_temperature_controller_panel_ = new Ai8TemperatureControllerPanel(
         state_->ai8_temperature_controller_group_);
     state_->ai8_temperature_controller_panel_->setProtocolStatusLabel(ai8ProtocolStatusLabel);
+    state_->ai8_temperature_controller_panel_->setDeviceSetpointLabel(ai8DeviceSetpointLabel);
     connect(state_->ai8_temperature_controller_panel_,
             &Ai8TemperatureControllerPanel::readPageRequested,
             this,

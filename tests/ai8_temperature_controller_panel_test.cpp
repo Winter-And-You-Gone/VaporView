@@ -22,6 +22,9 @@
 #include <QSpinBox>
 #include <QStackedWidget>
 #include <QThread>
+#include <QTimer>
+#include <QEventLoop>
+#include <QElapsedTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -137,6 +140,7 @@ int main(int argc, char **argv)
             require(row == i / 4 && col == i % 4, "channel order is two rows of four");
             auto *plot = panel.findChild<QWidget*>(QStringLiteral("ai8ChannelPlot%1").arg(i + 1));
             require(plot && plot->property("sampleCount").toInt() == 1, "each channel retains its own samples");
+        require(plot->property("channelBadge").toInt() == i + 1, "channel label is inside the plot");
             require(!plot->grab().isNull(), "each channel plot renders");
         }
         toggle->click();
@@ -164,6 +168,14 @@ int main(int argc, char **argv)
                 std::abs(windowedPlot.property("latestSampleX").toDouble() -
                          windowedPlot.property("plotAreaRight").toDouble()) < 0.5,
             "Time plot anchors the newest temperature point to the stable right edge");
+    const int paintCount = windowedPlot.property("paintCount").toInt();
+    windowedPlot.show();
+    QEventLoop paintWait;
+    QTimer::singleShot(250, &paintWait, &QEventLoop::quit);
+    paintWait.exec();
+    require(windowedPlot.property("paintCount").toInt() > paintCount,
+            "visible clock-based plot repaints between telemetry samples");
+    windowedPlot.hide();
     const double anchoredLatestSampleX = windowedPlot.property("latestSampleX").toDouble();
     QThread::msleep(60);
     windowedPlot.grab();

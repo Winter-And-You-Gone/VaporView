@@ -34,6 +34,7 @@ public:
     void setPageCommandsEnabled(bool enabled, const QString& disabledToolTip = QString());
     void setFpgaSetpointMode(bool relay);
     void setProtocolStatusLabel(QLabel *label);
+    void setDeviceSetpointLabel(QLabel *label);
     void setOperationStatus(const QString& text, bool success);
     QString currentOutputStatusText() const;
     Ai8TemperatureControllerProtocol::PageData currentPageData() const;
@@ -118,7 +119,6 @@ private:
     QWidget *multi_plot_view_ = nullptr;
     QToolButton *plot_view_button_ = nullptr;
     std::array<TemperatureTrendPlotWidget*, 8> channel_plots_{};
-    std::array<QLabel*, 8> channel_plot_labels_{};
     QLabel *protocol_status_label_ = nullptr;
     QAbstractButton *read_button_ = nullptr;
     QAbstractButton *write_button_ = nullptr;
@@ -145,7 +145,7 @@ private:
     std::array<double, 8> sp_draft_{};
     std::array<double, 8> sp_actual_{};
     QLabel *sp_status_ = nullptr;
-    QLabel *sp_readback_ = nullptr;
+    QLabel *device_setpoint_label_ = nullptr;
     bool english_ = false;
     bool backend_connected_ = false;
     bool page_commands_enabled_ = true;

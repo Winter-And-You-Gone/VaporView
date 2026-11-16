@@ -357,9 +357,6 @@ void Ai8TemperatureControllerPanel::setupUi()
     spRow->setObjectName("ai8FpgaSetpointRow");
     auto *spLayout = new QHBoxLayout(spRow);
     spLayout->setContentsMargins(0, 0, 0, 0);
-    sp_readback_ = new QLabel(spRow);
-    sp_readback_->setObjectName("ai8FpgaSetpointReadback");
-    spLayout->addWidget(sp_readback_);
     sp_status_ = new QLabel(spRow);
     sp_status_->setObjectName("ai8FpgaSetpointStatus");
     sp_status_->setWordWrap(true);
@@ -453,13 +450,12 @@ void Ai8TemperatureControllerPanel::setupUi()
         auto *cellLayout = new QVBoxLayout(cell);
         cellLayout->setContentsMargins(0, 0, 0, 0);
         cellLayout->setSpacing(2);
-        channel_plot_labels_[i] = new QLabel(cell);
-        cellLayout->addWidget(channel_plot_labels_[i]);
         auto *plot = new TemperatureTrendPlotWidget(cell);
         plot->setObjectName(QStringLiteral("ai8ChannelPlot%1").arg(i + 1));
         plot->setCompactMode(true);
         plot->setTimeAxisEnabled(true);
         plot->setChannelIndex(i);
+        plot->setProperty("channelBadge", i + 1);
         plot->setMinimumSize(0, 0);
         plot->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
         channel_plots_[i] = plot;
@@ -1309,13 +1305,14 @@ void Ai8TemperatureControllerPanel::setFpgaSetpointMode(bool relay)
 
 void Ai8TemperatureControllerPanel::refreshFpgaSetpoint()
 {
-    if (!sp_readback_) return;
+    if (!findChild<QDoubleSpinBox*>("ai8SetpointSpin")) return;
     findChild<QWidget*>("ai8FpgaSetpointRow")->setVisible(fpga_relay_);
     auto *channel = findChild<QSpinBox*>("ai8ChannelSpin");
     auto *sp = findChild<QDoubleSpinBox*>("ai8SetpointSpin");
     const int i = channel->value() - 1;
-    sp_readback_->setText((english_ ? QStringLiteral("Channel %1 device SP: %2") : QStringLiteral("通道 %1 设备 SP：%2"))
-        .arg(i + 1).arg(sp_known_[i] ? QString::number(sp_actual_[i], 'f', 1) + QStringLiteral(" °C") : QStringLiteral("---")));
+    if (device_setpoint_label_)
+        device_setpoint_label_->setText((english_ ? QStringLiteral("CH%1 device SP: %2") : QStringLiteral("通道 %1 设备 SP：%2"))
+            .arg(i + 1).arg(sp_known_[i] ? QString::number(sp_actual_[i], 'f', 1) + QStringLiteral(" °C") : QStringLiteral("---")));
     if (fpga_relay_) {
         const QSignalBlocker block(sp);
         sp->setMaximum(2147.4);
@@ -1354,6 +1351,12 @@ void Ai8TemperatureControllerPanel::setProtocolStatusLabel(QLabel *label)
     protocol_status_label_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     updateStatusText();
     setEnglish(english_);
+}
+
+void Ai8TemperatureControllerPanel::setDeviceSetpointLabel(QLabel *label)
+{
+    device_setpoint_label_ = label;
+    refreshFpgaSetpoint();
 }
 
 void Ai8TemperatureControllerPanel::setOperationStatus(const QString& text, bool success)
@@ -1761,7 +1764,6 @@ void Ai8TemperatureControllerPanel::updatePlotView()
     plot_view_button_->setIcon(QIcon(QDir(QCoreApplication::applicationDirPath()).filePath(
         QStringLiteral("resources/lucide/%1.svg").arg(iconName))));
     for (int i = 0; i < 8; ++i) {
-        channel_plot_labels_[i]->setText((english_ ? QStringLiteral("Channel %1") : QStringLiteral("通道 %1")).arg(i + 1));
         channel_plots_[i]->setEnglish(english_);
     }
     updateTemperaturePlot();
