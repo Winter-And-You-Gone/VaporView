@@ -428,6 +428,15 @@ void Ai8TemperatureControllerPanel::setupUi()
     page_stack_->addWidget(createInputPage());
     page_stack_->addWidget(createOutputPage());
     page_stack_->addWidget(createGlobalPage());
+    const auto selectionChanged = [this] {
+        fpga_page_read_requested_ = false;
+        refreshPageCommandControls();
+    };
+    connect(page_stack_, &QStackedWidget::currentChanged, this, selectionChanged);
+    for (const char *name : {"ai8ChannelSpin", "ai8InputGroupSpin", "ai8OutputGroupSpin"}) {
+        connect(findChild<QSpinBox *>(QString::fromLatin1(name)),
+                qOverload<int>(&QSpinBox::valueChanged), this, selectionChanged);
+    }
     mainContentLayout->addWidget(page_stack_, 0, Qt::AlignTop);
 
     plot_view_stack_ = new QStackedWidget(mainContentCard);
@@ -1244,7 +1253,7 @@ void Ai8TemperatureControllerPanel::setEnglish(bool english)
 
 void Ai8TemperatureControllerPanel::setBackendConnected(bool connected, const QString& detail)
 {
-    if (!connected) fpga_initial_read_requested_ = false;
+    if (!connected) fpga_page_read_requested_ = false;
     if (!connected && backend_connected_) {
         sp_known_.fill(false);
         sp_confirmed_.fill(false);
@@ -1273,14 +1282,14 @@ void Ai8TemperatureControllerPanel::refreshPageCommandControls()
 {
     refreshFpgaSetpoint();
     const bool commandsEnabled = backend_connected_ && page_commands_enabled_;
-    if (fpga_relay_ && commandsEnabled && !fpga_initial_read_requested_ && !fpga_initial_read_pending_) {
-        fpga_initial_read_pending_ = true;
+    if (fpga_relay_ && commandsEnabled && !fpga_page_read_requested_ && !fpga_page_read_pending_) {
+        fpga_page_read_pending_ = true;
         // Defer until connection/capability updates have finished. Busy transitions
         // must not turn every completed operation into another automatic read.
         QTimer::singleShot(0, this, [this] {
-            fpga_initial_read_pending_ = false;
-            if (!fpga_relay_ || !backend_connected_ || !page_commands_enabled_ || fpga_initial_read_requested_) return;
-            fpga_initial_read_requested_ = true;
+            fpga_page_read_pending_ = false;
+            if (!fpga_relay_ || !backend_connected_ || !page_commands_enabled_ || fpga_page_read_requested_) return;
+            fpga_page_read_requested_ = true;
             emit readPageRequested();
         });
     }
@@ -1312,7 +1321,7 @@ void Ai8TemperatureControllerPanel::refreshPageCommandControls()
 void Ai8TemperatureControllerPanel::setFpgaSetpointMode(bool relay)
 {
     if (fpga_relay_ != relay) {
-        fpga_initial_read_requested_ = false;
+        fpga_page_read_requested_ = false;
         sp_dirty_.fill(false);
         sp_known_.fill(false);
         sp_confirmed_.fill(false);
@@ -1510,6 +1519,15 @@ Ai8TemperatureControllerProtocol::PageData Ai8TemperatureControllerPanel::curren
 void Ai8TemperatureControllerPanel::applyPageData(
     const Ai8TemperatureControllerProtocol::PageData& pageData)
 {
+    if (fpga_relay_) {
+        const auto current = currentPageData();
+        // An earlier transaction may finish after the user changes selection.
+        // Keep that result from restoring the old selectors or parameter values.
+        if (pageData.page != current.page ||
+            pageData.selection.channel != current.selection.channel ||
+            pageData.selection.inputGroup != current.selection.inputGroup ||
+            pageData.selection.outputGroup != current.selection.outputGroup) return;
+    }
     auto setSpin = [this](const char *name, int value) {
         if (auto *widget = findChild<QSpinBox *>(QString::fromLatin1(name)))
         {

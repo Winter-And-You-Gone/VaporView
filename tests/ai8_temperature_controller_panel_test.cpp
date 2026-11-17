@@ -53,6 +53,67 @@ int main(int argc, char **argv)
 
     {
         using VaporView::Ground::Widgets::Ai8TemperatureControllerPanel;
+        using VaporView::Ai8TemperatureControllerProtocol::PageData;
+        Ai8TemperatureControllerPanel panel;
+        QVector<PageData> reads;
+        QObject::connect(&panel, &Ai8TemperatureControllerPanel::readPageRequested, [&] {
+            reads.append(panel.currentPageData());
+            panel.setPageCommandsEnabled(false);
+        });
+        panel.setFpgaSetpointMode(true);
+        panel.setBackendConnected(true);
+        QApplication::processEvents();
+        require(reads.size() == 1, "initial FPGA read starts");
+        auto *channel = panel.findChild<QSpinBox *>("ai8ChannelSpin");
+        auto *input = panel.findChild<QSpinBox *>("ai8InputGroupSpin");
+        auto *output = panel.findChild<QSpinBox *>("ai8OutputGroupSpin");
+        auto *pages = panel.findChild<QStackedWidget *>("ai8ParameterStack");
+        channel->setValue(2);
+        channel->setValue(3);
+        QApplication::processEvents();
+        require(reads.size() == 1, "selection changes wait for the active transaction");
+        panel.applyPageData(reads.front());
+        require(channel->value() == 3, "late channel response cannot restore the old selection");
+        panel.setPageCommandsEnabled(true);
+        QApplication::processEvents();
+        require(reads.size() == 2 && reads.back().selection.channel == 3,
+                "queued read uses only the latest selected channel");
+        pages->setCurrentIndex(1);
+        input->setValue(2);
+        panel.applyPageData(reads.back());
+        require(pages->currentIndex() == 1 && input->value() == 2,
+                "late page response cannot overwrite the new page selection");
+        panel.setPageCommandsEnabled(true);
+        QApplication::processEvents();
+        require(reads.size() == 3 && int(reads.back().page) == 1 && reads.back().selection.inputGroup == 2,
+                "input page and group changes trigger one current read");
+        panel.applyPageData(reads.back());
+        panel.setPageCommandsEnabled(true);
+        QApplication::processEvents();
+        require(reads.size() == 3, "applying readback does not start a read loop");
+        input->setValue(3);
+        QApplication::processEvents();
+        require(reads.size() == 4 && reads.back().selection.inputGroup == 3,
+                "changing input group on the same page reads its parameters");
+        pages->setCurrentIndex(2);
+        output->setValue(2);
+        panel.setPageCommandsEnabled(true);
+        QApplication::processEvents();
+        require(reads.size() == 5 && int(reads.back().page) == 2 && reads.back().selection.outputGroup == 2,
+                "output page reads the selected output group");
+        output->setValue(3);
+        panel.setPageCommandsEnabled(true);
+        QApplication::processEvents();
+        require(reads.size() == 6 && reads.back().selection.outputGroup == 3,
+                "changing output group triggers a fresh read");
+        pages->setCurrentIndex(3);
+        panel.setPageCommandsEnabled(true);
+        QApplication::processEvents();
+        require(reads.size() == 7 && int(reads.back().page) == 3, "global page is read on entry");
+    }
+
+    {
+        using VaporView::Ground::Widgets::Ai8TemperatureControllerPanel;
         Ai8TemperatureControllerPanel panel;
         int reads = 0;
         QObject::connect(&panel, &Ai8TemperatureControllerPanel::readPageRequested, [&] { ++reads; });
