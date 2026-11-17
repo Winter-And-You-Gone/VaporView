@@ -978,13 +978,13 @@ void SingleLevelPopupMenu::paintEvent(QPaintEvent *event)
     const QColor shadowTint = QColor(0, 0, 0);
     const bool extendedBottomShadow = bottomShadowMargin() > shadowMargin();
     const QImage softShadow = boxBlurredAlpha(size(),
-                                              panel.adjusted(-1.0, 7.0, 1.0, 0.0),
+                                              panel.adjusted(-1.0, 7.0, 1.0, extendedBottomShadow ? 0.0 : 10.0),
                                               corner_radius_ + 2.0,
                                               extendedBottomShadow ? 7 : 9,
                                               extendedBottomShadow ? 14 : 9,
                                               3);
     const QImage contactShadow = boxBlurredAlpha(size(),
-                                                 panel.adjusted(0.0, 1.0, 0.0, 0.0),
+                                                 panel.adjusted(0.0, 1.0, 0.0, extendedBottomShadow ? 0.0 : 2.0),
                                                  corner_radius_,
                                                  extendedBottomShadow ? 3 : 4,
                                                  extendedBottomShadow ? 7 : 4,
