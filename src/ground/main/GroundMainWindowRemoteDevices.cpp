@@ -1989,7 +1989,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             valueLabel->setProperty("telemetryAvailable", item.hasData);
             valueLabel->setProperty("telemetryError", item.error);
             valueLabel->setFont(numericFontFrom(valueLabel->font()));
-            valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            valueLabel->setAlignment((useSideTitle ? Qt::AlignLeft : Qt::AlignRight) | Qt::AlignVCenter);
             valueLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
             valueLabel->setTextFormat(Qt::PlainText);
             valueLabel->ensurePolished();
@@ -2010,10 +2010,11 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             valueLabel->setProperty("summaryWidthPadding", scalePixels(2));
             if (useSideTitle) {
                 pillLayout->setSpacing(0);
-                pillLayout->addSpacing(nameLabel->fontMetrics().horizontalAdvance(QStringLiteral("汉字")));
-                pillLayout->addStretch(1);
+                pillLayout->addSpacing(nameLabel->fontMetrics().horizontalAdvance(QStringLiteral("汉")));
             }
             pillLayout->addWidget(valueLabel, 0, Qt::AlignVCenter);
+            if (useSideTitle)
+                pillLayout->addStretch(1);
             pill->setProperty("summaryNaturalWidth", pillLayout->sizeHint().width() + scalePixels(2));
             if (!useSideTitle)
             {

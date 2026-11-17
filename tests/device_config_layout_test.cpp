@@ -9,6 +9,7 @@
 #include "BaudRateComboSupport.h"
 #include "SkyConfig.h"
 #include "TelemetryCodec.h"
+#include "test_settings_sandbox.h"
 #include "test_ui_helpers.h"
 
 #include <QApplication>
@@ -38,6 +39,7 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSettings>
+#include <QSpacerItem>
 #include <QStackedWidget>
 #include <QStringList>
 #include <QTcpServer>
@@ -365,9 +367,12 @@ void requirePillsUseWidestColumnWidth(QFrame *subCard, const char *message)
             auto *name = row[i]->findChild<QLabel *>("homeTelemetrySummaryNameLabel");
             auto *value = row[i]->findChild<QLabel *>("homeTelemetrySummaryValueLabel");
             require(name && value && (name->alignment() & Qt::AlignLeft) &&
-                (value->alignment() & Qt::AlignRight), "capsule name/value alignment");
-            require(value->x() - name->geometry().right() >= name->fontMetrics().horizontalAdvance(QStringLiteral("汉字")),
-                "capsule reserves two characters between name and value");
+                (value->alignment() & Qt::AlignLeft), "capsule name/value alignment");
+            auto *layout = row[i]->layout();
+            auto *spacer = layout && layout->count() > 1 ? layout->itemAt(1)->spacerItem() : nullptr;
+            require(spacer && spacer->sizeHint().width() == name->fontMetrics().horizontalAdvance(QStringLiteral("汉")) &&
+                std::abs(value->x() - name->geometry().right() - 1 - spacer->sizeHint().width()) <= 1,
+                "capsule reserves one character between name and value");
         }
 }
 
@@ -522,6 +527,24 @@ int main(int argc, char **argv)
     require(linkStatusCard != nullptr, "link-status card can be identified");
     require(serialCard != nullptr, "serial configuration card can be identified");
     require(motionCard != nullptr, "motion control card can be identified");
+    if (app.arguments().contains(QStringLiteral("--summary-spacing-only")))
+    {
+        for (const int width : {1280, 2400, 800}) {
+            window.resize(width, 760);
+            VaporViewTest::processEventsFor(180);
+            activateLayouts(&window);
+            auto *summary = linkStatusCard->findChild<QWidget *>(QStringLiteral("homeTelemetrySummaryContainer"));
+            require(summary, "device summary container exists");
+            const auto sections = summary->findChildren<QFrame *>(QStringLiteral("homeTelemetrySectionCard"));
+            require(sections.size() == 3, "device summary has three sections");
+            for (auto *section : sections) {
+                requirePillsUseWidestColumnWidth(section, "summary columns retain their aligned widths");
+                requirePillLabelsFit(section, "summary labels fit after resizing");
+            }
+        }
+        VaporView::setSettingsWritesSuspended(false);
+        return 0;
+    }
     require(linkStatusCard->parentWidget() == serialCard->parentWidget(),
             "link-status and serial configuration cards are siblings");
     QFrame *linkStatusSourcePill = findTelemetrySummarySourcePill(linkStatusCard);
