@@ -130,6 +130,7 @@ void MainWindow::loadModernStyleSheet()
             "QFrame#homeTelemetrySummaryPill QLabel { background-color: transparent; border: none; color: @vv-text; font-size: 13px; font-weight: 600; padding: 0px; margin: 0px; }"
             "QFrame#homeTelemetrySummaryPill QLabel#homeTelemetrySummaryValueLabel { font-family: \"Cascadia Mono\", \"Consolas\", \"Courier New\", monospace; }"
             "QFrame#homeTelemetrySummaryPill QLabel[telemetryAvailable=\"false\"] { color: @vv-text-muted; }"
+            "QFrame#homeTelemetrySummaryPill QLabel#homeTelemetrySummaryValueLabel[telemetryError=\"true\"] { color: @vv-danger; }"
             "QWidget#sectionTitleBar QFrame#telemetrySummarySourcePill { background-color: @vv-field-bg; border: 1px solid @vv-border; border-radius: 8px; padding: 0px; margin: 0px; }"
             "QWidget#sectionTitleBar QFrame#telemetrySummarySourcePill QLabel { background-color: transparent; border: none; color: @vv-text; font-size: 13px; font-weight: 600; padding: 0px; margin: 0px; }"
             "QWidget#sectionTitleBar QFrame#telemetrySummarySourcePill QLabel#telemetrySummarySourcePillValueLabel { font-family: \"Cascadia Mono\", \"Consolas\", \"Courier New\", monospace; }"

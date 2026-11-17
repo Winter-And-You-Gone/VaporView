@@ -37,6 +37,7 @@
 #include <QCheckBox>
 #include <QGridLayout>
 #include <QElapsedTimer>
+#include <QDateTime>
 #include <QEventLoop>
 #include <QEvent>
 #include <QJsonDocument>
@@ -1801,14 +1802,24 @@ static void simulatedMonitorActions()
     while(stackPage && stack->indexOf(stackPage)<0)stackPage=stackPage->parentWidget();
     require(stackPage,"device configuration is in the page stack");
     stack->setCurrentWidget(stackPage);
-    const auto displayedValue=[&](const QString& name) {
+    const auto displayedLabel=[&](const QString& name) -> QLabel * {
         for(auto *pill:configPage->findChildren<QFrame*>("homeTelemetrySummaryPill")) {
             auto *label=pill->findChild<QLabel*>("homeTelemetrySummaryNameLabel");
             auto *value=pill->findChild<QLabel*>("homeTelemetrySummaryValueLabel");
-            if(label&&value&&label->text()==name)return value->text();
+            if(label&&value&&label->text()==name)return value;
         }
-        return QString();
+        return nullptr;
     };
+    const auto displayedValue=[&](const QString& name) {
+        auto *label=displayedLabel(name);
+        return label ? label->text() : QString();
+    };
+    const auto setDemoElapsed=[&](qint64 elapsedMs) {
+        MainWindowRtcmTestAccess::state(window).ui_test_started_ms_=QDateTime::currentMSecsSinceEpoch()-elapsedMs;
+        MainWindowRtcmTestAccess::refreshSummary(window);
+    };
+    const qint64 originalStart=MainWindowRtcmTestAccess::state(window).ui_test_started_ms_;
+    setDemoElapsed(200);
     const auto previewShown=[&] {
         const QString frequency = sensorPath->currentData()==QStringLiteral("fpga_relay")
             ? QStringLiteral("基础遥测") : QStringLiteral("基础");
@@ -1817,14 +1828,39 @@ static void simulatedMonitorActions()
             && displayedValue(QStringLiteral("地→天"))==QStringLiteral("123.4 Mbps")
             && displayedValue(QStringLiteral("磁盘"))==QStringLiteral("128.0 GB")
             && displayedValue(QStringLiteral("记录"))==QStringLiteral("记录中")
-            && displayedValue(QStringLiteral("CRC"))==QStringLiteral("999999")
+            && displayedValue(QStringLiteral("CRC"))==QStringLiteral("0")
             && displayedValue(QStringLiteral("EPSILON"))==QStringLiteral("有");
     };
     require(waitUntil(previewShown),"visible FPGA configuration pills show demo values before connection");
+    setDemoElapsed(1200);
+    require(displayedValue(QStringLiteral("基础遥测"))==QStringLiteral("89.8 Hz")
+        && displayedValue(QStringLiteral("天→地"))!=QStringLiteral("234.5 Mbps"),
+        "demo frequency and link rate change over time");
+    setDemoElapsed(6200);
+    auto *errorRate=displayedLabel(QStringLiteral("基础遥测"));
+    auto *errorDevice=displayedLabel(QStringLiteral("EPSILON"));
+    require(errorRate && errorRate->text()==QStringLiteral("0.0 Hz")
+        && errorRate->property("telemetryError").toBool()
+        && displayedValue(QStringLiteral("CRC"))==QStringLiteral("127")
+        && displayedValue(QStringLiteral("记录"))==QStringLiteral("异常")
+        && errorDevice && errorDevice->text()==QStringLiteral("异常")
+        && errorDevice->property("telemetryError").toBool(),
+        "demo shows error values and error styling");
+    setDemoElapsed(12200);
+    auto *missingRate=displayedLabel(QStringLiteral("基础遥测"));
+    auto *missingDevice=displayedLabel(QStringLiteral("EPSILON"));
+    require(missingRate && missingRate->text()==QStringLiteral("-- Hz")
+        && !missingRate->property("telemetryAvailable").toBool()
+        && !missingRate->property("telemetryError").toBool()
+        && displayedValue(QStringLiteral("CRC"))==QStringLiteral("--")
+        && missingDevice && missingDevice->text()==QStringLiteral("无"),
+        "demo shows unavailable values separately from errors");
+    setDemoElapsed(200);
     sensorPath->setCurrentIndex(sensorPath->findData("direct_devices"));
     require(waitUntil(previewShown),"visible direct configuration pills retain demo values");
     sensorPath->setCurrentIndex(sensorPath->findData("fpga_relay"));
     require(waitUntil(previewShown),"visible FPGA configuration pills restore demo values after path switch");
+    MainWindowRtcmTestAccess::state(window).ui_test_started_ms_=originalStart;
     {
         const auto summary = MainWindowRtcmTestAccess::summary(window);
         require(!summary.rateItems[0].hasData && !summary.linkItems[0].hasData,
@@ -1998,8 +2034,7 @@ static void simulatedMonitorActions()
     require(waitUntil([&]{return page->uiTestController()!=nullptr&&!page->uiTestConnected();}),"leaving UI test cancels pending RAW and the next simulation starts at cold boot");
     mode->trigger();
     require(!mode->isChecked(),"monitor simulation restores normal application mode");
-    require(waitUntil([&]{return displayedValue(QStringLiteral("磁盘"))!=QStringLiteral("128.0 GB")
-        && displayedValue(QStringLiteral("CRC"))!=QStringLiteral("999999");}),
+    require(waitUntil([&]{return displayedValue(QStringLiteral("磁盘"))!=QStringLiteral("128.0 GB");}),
         "leaving UI test removes demo values from visible configuration pills");
     {
         const auto summary = MainWindowRtcmTestAccess::summary(window);

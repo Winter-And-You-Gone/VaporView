@@ -50,6 +50,7 @@ struct RemoteTelemetrySummarySections
         QString tooltip;
         bool hasData = false;
         bool compactAvailabilityValue = false;
+        bool error = false;
     };
 
     QList<Item> rateItems;
