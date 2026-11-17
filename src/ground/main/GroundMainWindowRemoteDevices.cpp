@@ -1249,17 +1249,16 @@ double MainWindow::remoteWaveformPacketRate(quint16 channelId) const
 
 MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySections() const
 {
-    const bool localFpga=isFpgaRelayPath()&&(isUiTestMode()||!isRemoteSkyMode());
-    const bool uiTestMode = isUiTestMode() && !localFpga && state_->ui_test_model_;
+    const bool uiTestMode = isUiTestMode() && state_->ui_test_model_;
+    const bool localFpga = isFpgaRelayPath() && (uiTestMode || !isRemoteSkyMode());
     VaporView::Ground::Devices::UiTestSnapshot uiTestSnapshot;
     if (uiTestMode)
     {
         const qint64 elapsed = QDateTime::currentMSecsSinceEpoch() - state_->ui_test_started_ms_;
         uiTestSnapshot = state_->ui_test_model_->snapshot(elapsed);
     }
-    const bool connected = !localFpga && (uiTestMode
-        ? !uiTestSnapshot.dataStalled
-        : (state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen()));
+    const bool connected = uiTestMode ? !uiTestSnapshot.dataStalled && (!localFpga || state_->fpga_sim_ready_)
+        : (!localFpga && state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen());
 
     auto hasDeviceData = [this, connected, localFpga](VaporView::SkyDeviceId device, qint64 timeoutMs) {
         if(localFpga) {
@@ -1420,7 +1419,7 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         rateRows << makeItem(label, formatFrequencyText(rate), connected && rate > 0.0, frequencyWidthText);
     };
     auto appendDevice = [&](VaporView::SkyDeviceId device, qint64 timeoutMs, const QString& label) {
-        const bool hasData = uiTestMode ? hasUiTestDeviceData(device) : hasDeviceData(device, timeoutMs);
+        const bool hasData = uiTestMode && !localFpga ? hasUiTestDeviceData(device) : hasDeviceData(device, timeoutMs);
         const bool remoteFpga = isRemoteSkyMode() && isFpgaRelayPath() && !isUiTestMode();
         const QString availability = !hasData && remoteFpga
             ? remoteDeviceInvalidText(device, timeoutMs) : hasText(hasData);
@@ -1490,13 +1489,20 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
 
     if (isFpgaRelayPath()) {
         rateRows.clear();
-        const bool fpgaStatusFresh = connected &&
-            std::chrono::steady_clock::now() - state_->fpga_session_.statusTime < std::chrono::seconds(4);
+        const bool fpgaStatusFresh = connected && (uiTestMode ||
+            std::chrono::steady_clock::now() - state_->fpga_session_.statusTime < std::chrono::seconds(4));
         const auto packet = [&](VaporView::MsgType type) {
-            return connected ? state_->remote_sky_controller_->packetRate(type, true) : -1.0;
+            if (!connected) return -1.0;
+            if (uiTestMode) return type == VaporView::MsgType::FpgaCycleFeature
+                && homeFpgaDeviceState(VaporView::SkyDeviceId::WaveTcp) != VaporView::DeviceState::Connected
+                ? 0.0 : uiTestSnapshot.telemetryStatusRateHz;
+            return state_->remote_sky_controller_->packetRate(type, true);
         };
         const auto preview = [&](quint16 channel) {
-            return connected ? state_->remote_sky_controller_->waveformPacketRate(channel, true) : -1.0;
+            if (!connected) return -1.0;
+            if (uiTestMode) return homeFpgaDeviceState(VaporView::SkyDeviceId::WaveTcp) == VaporView::DeviceState::Connected
+                ? uiTestSnapshot.telemetryStatusRateHz : 0.0;
+            return state_->remote_sky_controller_->waveformPacketRate(channel, true);
         };
         const auto cycles = state_->fpga_session_.remoteStatus.value("acquisition_cycles").toObject();
         const double cycleWindow = cycles.value("window_ms").toDouble();
@@ -1506,7 +1512,7 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
             ? cycleCount * 1000.0 / cycleWindow : -1.0;
         const double rates[] = {packet(VaporView::MsgType::TelemetryBasic),
             packet(VaporView::MsgType::TelemetryStatus), preview(1), preview(4),
-            packet(VaporView::MsgType::FpgaCycleFeature), cycleRate};
+            packet(VaporView::MsgType::FpgaCycleFeature), uiTestMode ? preview(1) : cycleRate};
         const QStringList labels = state_->is_english_
             ? QStringList{QStringLiteral("Basic telemetry"), QStringLiteral("Telemetry status"), QStringLiteral("H1/H2 preview"), QStringLiteral("Normalized H2 preview"), QStringLiteral("Waveform features"), QStringLiteral("Acquisition cycles")}
             : QStringList{QStringLiteral("基础遥测"), QStringLiteral("遥测状态"), QStringLiteral("原始波形预览（H1/H2）"), QStringLiteral("归一化二次谐波预览"), QStringLiteral("波形特征值"), QStringLiteral("采集周期频率")};
@@ -1761,6 +1767,34 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         state_->device_config_.data_telemetry_summary_card->setVisible(true);
     }
     auto deviceConfigRateItems = sections.rateItems;
+    auto deviceConfigLinkItems = sections.linkItems;
+    auto deviceConfigStatusItems = sections.linkStatusItems;
+    auto deviceConfigDeviceItems = sections.deviceItems;
+    if (isUiTestMode()) {
+        // Preview representative values in this card even before connecting a
+        // simulated device, so its capsule widths can be inspected directly.
+        for (int i = 0; i < deviceConfigRateItems.size(); ++i) {
+            auto& item = deviceConfigRateItems[i];
+            item.value = formatFrequencyText(88.8 + i * 2.2);
+            item.hasData = true;
+        }
+        const double linkRates[] = {234500000.0, 123400000.0, 357900000.0};
+        for (int i = 0; i < deviceConfigLinkItems.size() && i < 3; ++i) {
+            deviceConfigLinkItems[i].value = formatBitRate(linkRates[i]);
+            deviceConfigLinkItems[i].hasData = true;
+        }
+        const QStringList statusValues = {QStringLiteral("128.0 GB"),
+            state_->is_english_ ? QStringLiteral("Recording") : QStringLiteral("记录中"),
+            QStringLiteral("999999")};
+        for (int i = 0; i < deviceConfigStatusItems.size() && i < statusValues.size(); ++i) {
+            deviceConfigStatusItems[i].value = statusValues[i];
+            deviceConfigStatusItems[i].hasData = true;
+        }
+        for (auto& item : deviceConfigDeviceItems) {
+            item.value = state_->is_english_ ? QStringLiteral("data") : QStringLiteral("有数据");
+            item.hasData = true;
+        }
+    }
     if (isRemoteSkyMode() && isFpgaRelayPath() && !isUiTestMode()) {
         for (auto& item : deviceConfigRateItems) {
             item.valueWidthText = QStringLiteral("999.9 Hz");
@@ -1770,8 +1804,8 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             }
         }
     }
-    QList<RemoteTelemetrySummarySections::Item> deviceConfigDataItems = sections.linkStatusItems;
-    for (const RemoteTelemetrySummarySections::Item& item : sections.deviceItems)
+    QList<RemoteTelemetrySummarySections::Item> deviceConfigDataItems = deviceConfigStatusItems;
+    for (const RemoteTelemetrySummarySections::Item& item : deviceConfigDeviceItems)
     {
         auto compactItem = item;
         deviceConfigDataItems << compactItem;
@@ -1830,7 +1864,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                                        false,
                                        state_->is_english_) &&
             updateSummarySectionValues(state_->device_config_.data_telemetry_link_summary_layout,
-                                       sections.linkItems,
+                                       deviceConfigLinkItems,
                                        false,
                                        state_->is_english_) &&
             updateSummarySectionValues(state_->device_config_.data_telemetry_device_summary_layout,
@@ -2228,7 +2262,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         renderSummarySection(state_->device_config_.data_telemetry_summary_card,
                              state_->device_config_.data_telemetry_link_summary_layout,
                              state_->is_english_ ? QStringLiteral("Link rate") : QStringLiteral("链路速率"),
-                             sections.linkItems,
+                             deviceConfigLinkItems,
                              1,
                              1,
                              true);
