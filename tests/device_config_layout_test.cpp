@@ -531,6 +531,35 @@ int main(int argc, char **argv)
     require(linkStatusCard != nullptr, "link-status card can be identified");
     require(serialCard != nullptr, "serial configuration card can be identified");
     require(motionCard != nullptr, "motion control card can be identified");
+    if (app.arguments().contains(QStringLiteral("--motion-width-only")))
+    {
+        const int minimumWidth = motionCard->minimumWidth();
+        int previousWidth = 0;
+        for (const int width : {2000, 2400}) {
+            window.resize(width, 760);
+            VaporViewTest::processEventsFor(180);
+            activateLayouts(&window);
+            VaporViewTest::processEventsFor(100);
+            const QRect serialBounds = rectInPage(serialCard, scrollArea->widget());
+            const QRect motionBounds = rectInPage(motionCard, scrollArea->widget());
+            const auto margins = scrollArea->widget()->layout()->contentsMargins();
+            require(motionBounds.left() > serialBounds.right(), "wide layout places motion beside devices");
+            require(std::abs(motionBounds.right() - (scrollArea->widget()->width() - margins.right() - 1)) <= 2,
+                    "motion card fills the remaining width");
+            require(motionCard->minimumWidth() == minimumWidth, "motion card minimum width is unchanged");
+            require(previousWidth == 0 || motionCard->width() > previousWidth, "motion card grows with the page");
+            previousWidth = motionCard->width();
+        }
+        window.resize(1200, 760);
+        VaporViewTest::processEventsFor(180);
+        activateLayouts(&window);
+        VaporViewTest::processEventsFor(100);
+        require(rectInPage(motionCard, scrollArea->widget()).top() > rectInPage(serialCard, scrollArea->widget()).bottom(),
+                "narrow layout stacks motion below devices");
+        require(motionCard->minimumWidth() == minimumWidth, "narrow layout preserves motion minimum width");
+        VaporView::setSettingsWritesSuspended(false);
+        return 0;
+    }
     if (app.arguments().contains(QStringLiteral("--summary-spacing-only")))
     {
         for (const int width : {1280, 2400, 800}) {
