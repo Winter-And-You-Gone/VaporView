@@ -764,13 +764,9 @@ QComboBox#ai8TitlePortCombo:hover {
     border: none;
 }
 
-QComboBox#temperatureTitlePortCombo:focus,
 QComboBox#temperatureTitlePortCombo:on,
-QComboBox#homeMotionPort:focus,
 QComboBox#homeMotionPort:on,
-QComboBox#homeMotionChannelCombo:focus,
 QComboBox#homeMotionChannelCombo:on,
-QComboBox#ai8TitlePortCombo:focus,
 QComboBox#ai8TitlePortCombo:on {
     background-color: @vv-title-hover;
     border: none;
