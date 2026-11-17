@@ -1244,6 +1244,7 @@ void Ai8TemperatureControllerPanel::setEnglish(bool english)
 
 void Ai8TemperatureControllerPanel::setBackendConnected(bool connected, const QString& detail)
 {
+    if (!connected) fpga_initial_read_requested_ = false;
     if (!connected && backend_connected_) {
         sp_known_.fill(false);
         sp_confirmed_.fill(false);
@@ -1272,6 +1273,17 @@ void Ai8TemperatureControllerPanel::refreshPageCommandControls()
 {
     refreshFpgaSetpoint();
     const bool commandsEnabled = backend_connected_ && page_commands_enabled_;
+    if (fpga_relay_ && commandsEnabled && !fpga_initial_read_requested_ && !fpga_initial_read_pending_) {
+        fpga_initial_read_pending_ = true;
+        // Defer until connection/capability updates have finished. Busy transitions
+        // must not turn every completed operation into another automatic read.
+        QTimer::singleShot(0, this, [this] {
+            fpga_initial_read_pending_ = false;
+            if (!fpga_relay_ || !backend_connected_ || !page_commands_enabled_ || fpga_initial_read_requested_) return;
+            fpga_initial_read_requested_ = true;
+            emit readPageRequested();
+        });
+    }
     const QString backendToolTip = !page_commands_enabled_ && !page_commands_disabled_tooltip_.isEmpty()
         ? page_commands_disabled_tooltip_
         : (backend_connected_
@@ -1300,6 +1312,7 @@ void Ai8TemperatureControllerPanel::refreshPageCommandControls()
 void Ai8TemperatureControllerPanel::setFpgaSetpointMode(bool relay)
 {
     if (fpga_relay_ != relay) {
+        fpga_initial_read_requested_ = false;
         sp_dirty_.fill(false);
         sp_known_.fill(false);
         sp_confirmed_.fill(false);

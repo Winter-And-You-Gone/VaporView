@@ -139,6 +139,8 @@ private:
     quint16 run_state_write_value_ = 0;
     bool run_state_write_requested_ = false;
     bool fpga_relay_ = false;
+    bool fpga_initial_read_pending_ = false;
+    bool fpga_initial_read_requested_ = false;
     std::array<bool, 8> sp_dirty_{};
     std::array<bool, 8> sp_known_{};
     std::array<bool, 8> sp_confirmed_{};

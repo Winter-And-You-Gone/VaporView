@@ -53,6 +53,40 @@ int main(int argc, char **argv)
 
     {
         using VaporView::Ground::Widgets::Ai8TemperatureControllerPanel;
+        Ai8TemperatureControllerPanel panel;
+        int reads = 0;
+        QObject::connect(&panel, &Ai8TemperatureControllerPanel::readPageRequested, [&] { ++reads; });
+        panel.setPageCommandsEnabled(false);
+        panel.setFpgaSetpointMode(true);
+        panel.setBackendConnected(true);
+        QApplication::processEvents();
+        require(reads == 0, "FPGA auto read waits for parameter capability");
+        panel.setPageCommandsEnabled(true);
+        panel.setBackendConnected(true);
+        QApplication::processEvents();
+        require(reads == 1, "FPGA connection reads current page once");
+        panel.setPageCommandsEnabled(false);
+        panel.setPageCommandsEnabled(true);
+        panel.setBackendConnected(true);
+        QApplication::processEvents();
+        require(reads == 1, "polling and operation completion do not repeat auto read");
+        panel.setBackendConnected(false);
+        panel.setBackendConnected(true);
+        QApplication::processEvents();
+        require(reads == 2, "FPGA reconnection refreshes the page");
+        panel.setBackendConnected(false);
+        panel.setBackendConnected(true);
+        panel.setBackendConnected(false);
+        QApplication::processEvents();
+        require(reads == 2, "disconnect cancels deferred auto read");
+        panel.setFpgaSetpointMode(false);
+        panel.setBackendConnected(true);
+        QApplication::processEvents();
+        require(reads == 2, "local connection retains its existing read lifecycle");
+    }
+
+    {
+        using VaporView::Ground::Widgets::Ai8TemperatureControllerPanel;
         Ai8TemperatureControllerPanel relay;
         relay.setFpgaSetpointMode(true);
         relay.setPageCommandsEnabled(true);
