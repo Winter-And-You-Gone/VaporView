@@ -182,14 +182,14 @@ static QLabel *deviceWaveRate(MainWindow &window)
         if(label->property("deviceTcpWaveHint")==QStringLiteral("deviceTcpWaveTransportHint"))return label;
     return nullptr;
 }
-static bool onlyPressureDataAvailable(MainWindow& window)
+static bool onlyPressureDataAvailable(MainWindow& window, bool demoRates = false)
 {
     int found=0;
     for(auto *pill:window.findChildren<QFrame*>("homeTelemetrySummaryPill")) {
         auto *name=pill->findChild<QLabel*>("homeTelemetrySummaryNameLabel");
         auto *value=pill->findChild<QLabel*>("homeTelemetrySummaryValueLabel");
         if(!name||!value)continue;
-        if(QStringList{QStringLiteral("基础"),QStringLiteral("特征值"),QStringLiteral("状态"),QStringLiteral("原始波形"),QStringLiteral("谐波波形"),QStringLiteral("波形采集"),QStringLiteral("天→地"),QStringLiteral("地→天"),QStringLiteral("合")}.contains(name->text())&&value->property("telemetryAvailable").toBool())return false;
+        if(!demoRates && QStringList{QStringLiteral("基础"),QStringLiteral("特征值"),QStringLiteral("状态"),QStringLiteral("原始波形"),QStringLiteral("谐波波形"),QStringLiteral("波形采集"),QStringLiteral("天→地"),QStringLiteral("地→天"),QStringLiteral("合")}.contains(name->text())&&value->property("telemetryAvailable").toBool())return false;
         if(!QStringList{"EPSILON","PTB","PTB210","HC2A","Lidar","SDFM300","RD105","AI-8288","BMP390","SHT45",QStringLiteral("波形")}.contains(name->text()))continue;
         if(value->property("telemetryAvailable").toBool()!=(name->text()=="PTB"||name->text()=="PTB210"))return false;
         ++found;
@@ -1788,6 +1788,11 @@ static void simulatedMonitorActions()
     mode->trigger();
     require(waitUntil([&]{return page->uiTestController()!=nullptr;}),"UI test installs an isolated protocol controller");
     require(!page->uiTestConnected()&&!raw->isEnabled(),"UI test mode does not fabricate an FPGA connection");
+    {
+        const auto summary = MainWindowRtcmTestAccess::summary(window);
+        require(!summary.rateItems[0].hasData && !summary.linkItems[0].hasData,
+                "disconnected FPGA demo does not show active summary rates");
+    }
     QMetaObject::invokeMethod(&window,"onConnectClicked",Qt::DirectConnection);
     QMetaObject::invokeMethod(&window,"onDisconnectClicked",Qt::DirectConnection);
     require(waitUntil([&]{return !page->uiTestConnected()&&!page->uiTestBusy()
@@ -1803,6 +1808,11 @@ static void simulatedMonitorActions()
     QMetaObject::invokeMethod(&window,"onConnectClicked",Qt::DirectConnection);
     require(waitUntil([&]{return harmonic->isEnabled()&&harmonic->text().contains(QStringLiteral("停止"));},20000),
         "title connection starts every supported device on a cold simulated board");
+    require(waitUntil([&]{
+        const auto summary = MainWindowRtcmTestAccess::summary(window);
+        return summary.rateItems[0].hasData && summary.rateItems[0].value != QStringLiteral("0.0 Hz")
+            && summary.linkItems[0].hasData;
+    }), "connected FPGA demo supplies representative summary rates");
     verifyRelayIndicators(window,{"Epsilon","Pressure","Humidity","Lidar","Temperature","Ai8","Wave","Bmp390","Sht45"});
     require(raw->text().contains(QStringLiteral("开始")),"connecting all devices does not start RAW upload");
     require(waitUntil([&]{
@@ -1902,7 +1912,7 @@ static void simulatedMonitorActions()
     require(waitUntil([&]{return pressure->isEnabled()&&pressure->property("state")=="connected";}),"layout simulation connects the requested device");
     require(onlyPressureConnected(window),"layout simulation leaves all other sensors and waveform acquisition disconnected");
     verifyRelayIndicators(window,{"Pressure"});
-    require(waitUntil([&]{return onlyPressureDataAvailable(window);}),"UI summary reports only actual PTB data and no fabricated telemetry");
+    require(waitUntil([&]{return onlyPressureDataAvailable(window, true);}),"UI summary reports only actual PTB device data");
     require(raw->text().contains(QStringLiteral("开始"))&&harmonic->text().contains(QStringLiteral("开始")),"individual simulation connection leaves waveform acquisition stopped");
     require(QMetaObject::invokeMethod(&window,"onConnectClicked",Qt::DirectConnection),"batch simulation connection is available");
     require(waitUntil([&]{return harmonic->isEnabled()&&harmonic->text().contains(QStringLiteral("停止"));},20000),
@@ -1923,6 +1933,7 @@ static void simulatedMonitorActions()
     processFor(150);require(rate->currentText()=="2.","refresh preserves partially typed decimal frequency");
     rate->setCurrentText("2.5");
     processFor(150);require(rate->currentText()=="2.5","simulation refresh preserves staged frequency");
+    require(waitUntil([&]{return humidity->isEnabled();}),"individual disconnect releases the sensor action");
     humidity->click();
     require(waitUntil([&]{return !rate->isEnabled()&&humidity->isEnabled();}),
         "UI test connect applies staged frequency");
@@ -1950,6 +1961,11 @@ static void simulatedMonitorActions()
     require(waitUntil([&]{return page->uiTestController()!=nullptr&&!page->uiTestConnected();}),"leaving UI test cancels pending RAW and the next simulation starts at cold boot");
     mode->trigger();
     require(!mode->isChecked(),"monitor simulation restores normal application mode");
+    {
+        const auto summary = MainWindowRtcmTestAccess::summary(window);
+        require(!summary.rateItems[0].hasData && !summary.linkItems[0].hasData,
+                "leaving FPGA demo clears simulated summary rates");
+    }
 }
 
 static void harmonicHomeGraphs()
