@@ -529,6 +529,10 @@ QFrame#homeTelemetrySummaryPill QLabel[telemetryAvailable="false"] {
     color: @vv-text-muted;
 }
 
+QFrame#homeTelemetrySummaryPill QLabel#homeTelemetrySummaryValueLabel[telemetryError="true"] {
+    color: @vv-danger;
+}
+
 QLabel#homeTelemetrySummaryNameLabel[deviceConfigLink="true"] {
     color: @vv-text-strong;
     font-size: 14px;
