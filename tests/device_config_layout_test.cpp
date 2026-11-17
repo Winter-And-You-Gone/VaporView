@@ -361,18 +361,22 @@ void requirePillsUseWidestColumnWidth(QFrame *subCard, const char *message)
         for (int i = 0; i < row.size(); ++i)
             widths[i] = std::max(widths[i], row[i]->property("summaryNaturalWidth").toInt());
     }
+    QVector<int> rightEdges(widths.size(), -1);
     for (const auto& row : rows)
         for (int i = 0; i < row.size(); ++i) {
             require(std::abs(row[i]->width() - widths[i]) <= 2, message);
             auto *name = row[i]->findChild<QLabel *>("homeTelemetrySummaryNameLabel");
             auto *value = row[i]->findChild<QLabel *>("homeTelemetrySummaryValueLabel");
             require(name && value && (name->alignment() & Qt::AlignLeft) &&
-                (value->alignment() & Qt::AlignLeft), "capsule name/value alignment");
+                (value->alignment() & Qt::AlignRight), "capsule name/value alignment");
             auto *layout = row[i]->layout();
             auto *spacer = layout && layout->count() > 1 ? layout->itemAt(1)->spacerItem() : nullptr;
             require(spacer && spacer->sizeHint().width() == name->fontMetrics().horizontalAdvance(QStringLiteral("汉")) &&
-                std::abs(value->x() - name->geometry().right() - 1 - spacer->sizeHint().width()) <= 1,
-                "capsule reserves one character between name and value");
+                value->x() - name->geometry().right() - 1 >= spacer->sizeHint().width(),
+                "capsule reserves at least one character between name and value");
+            const int right = value->mapTo(subCard, QPoint(value->width(), 0)).x();
+            if (rightEdges[i] < 0) rightEdges[i] = right;
+            require(std::abs(rightEdges[i] - right) <= 2, "capsule values align to the right within each column");
         }
 }
 
