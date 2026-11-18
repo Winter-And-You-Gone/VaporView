@@ -1673,6 +1673,13 @@ void TemperatureControllerPanel::setupUi()
     title_status_strip_->setFixedHeight(28);
     title_status_strip_->setVisible(false);
     auto *statusLayout = new QHBoxLayout(title_status_strip_);
+    device_selector_ = new SegmentedSwitchButton(title_status_strip_);
+    device_selector_->setObjectName(QStringLiteral("tec103TitleDeviceSwitch"));
+    device_selector_->hide();
+    statusLayout->addWidget(device_selector_);
+    connect(device_selector_, &SegmentedSwitchButton::selectionRequested, this, [this] {
+        selectChannel(selected_config_page_index_);
+    });
     statusLayout->setContentsMargins(0, 0, 0, 0);
     statusLayout->setSpacing(10);
     internal_temperature_lbl_ = new QLabel(this);
@@ -1860,7 +1867,11 @@ void TemperatureControllerPanel::setupUi()
     channelTopRowLayout->addWidget(channelSelectorRow);
     configCardLayout->addWidget(channelTopRow, 0);
 
+    channel_unavailable_ = new QLabel(configCard);
+    channel_unavailable_->setObjectName(QStringLiteral("tec103ChannelUnavailable"));
+    configCardLayout->addWidget(channel_unavailable_);
     auto *contentRow = new QWidget(configCard);
+    channel_content_ = contentRow;
     contentRow->setObjectName(QStringLiteral("temperatureControllerContentRow"));
     contentRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     contentRow->setFixedHeight(kTemperatureControllerConfigPlotHeight);
@@ -2833,8 +2844,8 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
         fitSubTabButtonWidth(button);
         connect(button, &QPushButton::clicked, this, [this, subPageIndex]() {
             const int channelIndex = std::clamp(selected_channel_index_, 0, 1);
-            selectChannel(channelIndex);
-            selectChannelSubPage(channelIndex, subPageIndex);
+            selectChannel(dual_tec103_ ? 0 : channelIndex);
+            selectChannelSubPage(selected_channel_index_, subPageIndex);
         });
         return button;
     };
@@ -2864,8 +2875,13 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
 
 void TemperatureControllerPanel::selectChannel(int index)
 {
-    const int pageIndex = std::clamp(index, 0, 2);
-    selected_config_page_index_ = pageIndex;
+    selected_config_page_index_ = std::clamp(index, 0, 2);
+    const bool unavailable = dual_tec103_ && selected_config_page_index_ == 1;
+    channel_content_->setVisible(!unavailable);
+    channel_unavailable_->setVisible(unavailable);
+    // Both FPGA device slots currently carry their instrument's TC1.
+    const int pageIndex = dual_tec103_ && selected_config_page_index_ < 2
+        ? int(device_selector_->switchChecked()) : selected_config_page_index_;
     if (pageIndex < 2)
     {
         selected_channel_index_ = pageIndex;
@@ -2911,13 +2927,14 @@ void TemperatureControllerPanel::selectChannel(int index)
         placeControllerModeFieldInTopControls(channelIndex, subPageIndex);
         refreshTopControlsLayout();
     }
-    auto updateButton = [pageIndex](QPushButton *button, int buttonIndex) {
+    channel_top_controls_stack_->setVisible(!unavailable);
+    auto updateButton = [this](QPushButton *button, int buttonIndex) {
         if (!button)
         {
             return;
         }
         const QSignalBlocker blocker(button);
-        button->setChecked(pageIndex == buttonIndex);
+        button->setChecked(selected_config_page_index_ == buttonIndex);
         button->style()->unpolish(button);
         button->style()->polish(button);
         button->update();
@@ -3265,6 +3282,8 @@ void TemperatureControllerPanel::setDualTec103(bool dual)
 {
     if (dual_tec103_ == dual) return;
     dual_tec103_ = dual;
+    device_selector_->setVisible(dual);
+    selectChannel(0);
     updateChannelTexts();
 }
 
@@ -3467,8 +3486,12 @@ void TemperatureControllerPanel::updateChannelTexts()
             : QStringLiteral("RD105 CONTMODE。使用模式2和3时，通道2传感器接口应接入电阻温度传感器。"));
         fitControllerModeComboWidth();
     }
-    if (channel_button_1_) channel_button_1_->setText(thermalEndpointLabel(dual_tec103_, 1, is_english_));
-    if (channel_button_2_) channel_button_2_->setText(thermalEndpointLabel(dual_tec103_, 2, is_english_));
+    device_selector_->setSegmentTexts(thermalEndpointLabel(true, 1, is_english_), thermalEndpointLabel(true, 2, is_english_));
+    device_selector_->setStateDescription(is_english_ ? QStringLiteral("Device") : QStringLiteral("设备"), QStringLiteral(" · "));
+    channel_unavailable_->setText(is_english_ ? QStringLiteral("TC2 is unavailable on this FPGA connection.")
+                                              : QStringLiteral("当前 FPGA 连接尚未接入通道2（TC2）。"));
+    if (channel_button_1_) channel_button_1_->setText(thermalEndpointLabel(false, 1, is_english_));
+    if (channel_button_2_) channel_button_2_->setText(thermalEndpointLabel(false, 2, is_english_));
     if (common_settings_button_) common_settings_button_->setText(is_english_ ? QStringLiteral("Common") : QStringLiteral("通用设置"));
     if (common_.address_label_text) common_.address_label_text->setText(is_english_ ? QStringLiteral("RS485 address") : QStringLiteral("设置温控器485站号"));
     if (common_.rs485_baud_label_text) common_.rs485_baud_label_text->setText(is_english_ ? QStringLiteral("RS485 baud") : QStringLiteral("设置485串口波特率"));

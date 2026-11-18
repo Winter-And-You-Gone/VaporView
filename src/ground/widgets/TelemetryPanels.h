@@ -23,6 +23,7 @@ class QEvent;
 class QObject;
 class QRadioButton;
 class EnvironmentTrendSparklineWidget;
+namespace VaporView::Ground::Widgets { class SegmentedSwitchButton; }
 class TemperatureTrendPlotWidget;
 
 class GnssPanel : public QWidget
@@ -393,6 +394,9 @@ private:
 
     QFrame *channel_top_bar_ = nullptr;
     bool dual_tec103_ = false;
+    VaporView::Ground::Widgets::SegmentedSwitchButton *device_selector_ = nullptr;
+    QWidget *channel_content_ = nullptr;
+    QLabel *channel_unavailable_ = nullptr;
     QPushButton *channel_button_1_ = nullptr;
     QPushButton *channel_button_2_ = nullptr;
     QPushButton *common_settings_button_ = nullptr;

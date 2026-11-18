@@ -1918,10 +1918,21 @@ static void simulatedMonitorActions()
     },6000),"FPGA simulator fills both RD105 overview trends and both measured output percentages");
     const auto outputs=window.findChildren<QAbstractButton*>("temperatureOverviewOutputSwitch");
     require(outputs.size()==2,"simulated RD105 overview exposes both output controls");
-    auto *inSitu = window.findChild<QAbstractButton*>("temperatureChannelSelectorButton1");
-    auto *remote = window.findChild<QAbstractButton*>("temperatureChannelSelectorButton2");
-    require(inSitu && remote && inSitu->text() == QStringLiteral("原位") && remote->text() == QStringLiteral("遥测"),
-            "FPGA temperature selectors identify the two physical TEC103 instruments");
+    auto *tc1 = window.findChild<QAbstractButton*>("temperatureChannelSelectorButton1");
+    auto *tc2 = window.findChild<QAbstractButton*>("temperatureChannelSelectorButton2");
+    auto *title = window.findChild<QWidget*>("temperatureTitleStatusStrip");
+    auto *device = title ? title->findChild<QAbstractButton*>("tec103TitleDeviceSwitch") : nullptr;
+    auto *unavailable = window.findChild<QLabel*>("tec103ChannelUnavailable");
+    auto *pages = window.findChild<QStackedWidget*>("temperatureChannelStack");
+    require(tc1 && tc2 && tc1->text() == QStringLiteral("通道1") && tc2->text() == QStringLiteral("通道2") &&
+            device && !device->isHidden() && unavailable && pages, "Separate TEC103 device and channel selectors exist");
+    device->click();
+    require(tc1->isChecked() && pages->currentIndex() == 1, "Remote TC1 uses the remote instrument page");
+    tc2->click();
+    device->click();
+    require(tc2->isChecked() && !unavailable->isHidden(), "TC2 stays selected across instruments and reports unavailable");
+    tc1->click();
+    require(unavailable->isHidden() && pages->currentIndex() == 0, "In situ TC1 restores its own controls");
     auto capsules=window.findChildren<QLabel*>("homeDeviceStatusCapsule");
     capsules.removeAll(MainWindowRtcmTestAccess::state(window).home_motion_status_lbl_);
     QList<QObject*> watched;
