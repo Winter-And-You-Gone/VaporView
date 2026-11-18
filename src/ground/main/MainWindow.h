@@ -396,6 +396,7 @@ private:
         std::function<bool()> canRun = {});
     void processFpgaActions();
     void cancelFpgaActions();
+    bool homeFpgaNeedsConnect(VaporView::SkyDeviceId device);
     void connectNextHomeFpgaDevice();
     void handleHomeFpgaFailure(bool transportReady);
     QMap<quint32, quint32> homeFpgaRegisters() const;

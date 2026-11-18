@@ -1264,7 +1264,19 @@ void FpgaDeviceController::connectSensor(const QJsonObject& request)
     const auto source=quint16(request.value("source").toInt());
     if(source==0x4a) {configureTec103(true);return;}
     if (!request.contains("baud") && !request.contains("poll_ms") && !request.contains("parameters") && configuration_.sensorParameters.value(source).isEmpty()) {
-        setSensorEnabled(quint16(request.value("source").toInt()),true);return;
+        if (source == 0x43 && (registers_.value(0x6304) & 1)) {
+            // An already running BMP390 only publishes its factory coefficients at startup.
+            // Preserve the active address and configuration while requesting a fresh calibration frame.
+            if (!ready_ || !begin(QStringLiteral("重新获取 BMP390 校准系数"))) return;
+            trackConnection(source);
+            Step stop; stop.kind=Kind::Sensor; stop.address=1; stop.source=source; stop.expected=0;
+            steps_.push_back(stop); verify(0x6304,0); waitFor(0x6308,9,0);
+            Step start=stop; start.expected=1;
+            steps_.push_back(start); verify(0x6304,1);
+            Step confirm; confirm.kind=Kind::ConfirmConnection; confirm.source=source;
+            steps_.push_back(confirm); readAll(); advance(); return;
+        }
+        setSensorEnabled(source,true);return;
     }
     auto settings=request;settings["op"]="sensor_config";settings.remove("enabled");
     if(!settings.contains("parameters") && !configuration_.sensorParameters.value(source).isEmpty())settings["parameters"]=configuration_.sensorParameters.value(source);

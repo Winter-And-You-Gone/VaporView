@@ -583,6 +583,16 @@ VaporView::DeviceState MainWindow::homeFpgaDeviceState(VaporView::SkyDeviceId de
     return registers.contains(0x4004) ? DeviceState::Disconnected : DeviceState::Disabled;
 }
 
+bool MainWindow::homeFpgaNeedsConnect(VaporView::SkyDeviceId device)
+{
+    const auto source = homeFpgaSensorSource(device);
+    if (homeFpgaDeviceState(device) != VaporView::DeviceState::Connected || !fpgaSensorDrafts().value(source).isEmpty())
+        return true;
+    if (device != VaporView::SkyDeviceId::Ptb && device != VaporView::SkyDeviceId::Bmp390) return false;
+    return isRemoteSkyMode() && !isUiTestMode() ? !remoteDeviceDataValid(device, 4000)
+                                               : !state_->fpga_sources_.contains(source);
+}
+
 void MainWindow::connectNextHomeFpgaDevice()
 {
     if (!isFpgaRelayPath() || state_->fpga_home_connect_queue_.isEmpty()
@@ -594,8 +604,7 @@ void MainWindow::connectNextHomeFpgaDevice()
         if (!homeFpgaDeviceSelected(device)) continue;
         if(device==VaporView::SkyDeviceId::TemperatureController && !homeFpgaRegisters().isEmpty()
             && !tec103BridgesAvailable(homeFpgaRegisters()))continue;
-        if (homeFpgaDeviceState(device) == VaporView::DeviceState::Connected
-            && fpgaSensorDrafts().value(homeFpgaSensorSource(device)).isEmpty()) continue;
+        if (!homeFpgaNeedsConnect(device)) continue;
         setHomeFpgaDeviceEnabled(device,true);
         return;
     }
@@ -670,8 +679,7 @@ void MainWindow::executeHomeFpgaDeviceAction(VaporView::SkyDeviceId device, bool
                     window->state_->fpga_home_action_device_ = SkyDeviceId::All;
                     if (window->isFpgaRelayPath() && (!window->isRemoteSkyMode() || window->isUiTestMode())
                         && window->homeFpgaDeviceActionState(device) != VaporView::DeviceState::Disabled
-                        && (window->homeFpgaDeviceActionState(device) != VaporView::DeviceState::Connected
-                            || !window->fpgaSensorDrafts().value(window->homeFpgaSensorSource(device)).isEmpty()))
+                        && window->homeFpgaNeedsConnect(device))
                         window->setHomeFpgaDeviceEnabled(device,true);
                     else {
                         window->connectNextHomeFpgaDevice();

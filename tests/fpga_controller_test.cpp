@@ -729,6 +729,16 @@ void selectiveConnection(){
     }
     for(auto it=untouched.cbegin();it!=untouched.cend();++it)
         require(f.transport->regs.value(it.key())==it.value(),"connecting one sensor preserves other running and stopped modules");
+    f.transport->clear();
+    f.transport->regs[0x6310]=0x76;
+    f.controller.connectSensor({{"op","sensor"},{"source",0x43},{"enabled",true}});f.finish();
+    QVector<quint32> bmpActions;
+    for (const auto& c:f.transport->commands) {
+        if (c.message==0xb) { require(c.source==0x43,"calibration restart targets BMP390 only"); bmpActions.append(c.value); }
+        require(c.message!=3,"BMP390 calibration restart preserves sensor parameters and shared controls");
+    }
+    require(bmpActions==QVector<quint32>{0,1} && f.transport->regs.value(0x6310)==0x76,
+        "reattaching to a running BMP390 requests calibration once at its existing address");
     Fixture wrong;wrong.transport->regs[0x5024]=0;
     wrong.controller.connectDevice({},"auto",FpgaDeviceController::ConnectMode::PreserveRunningModules);wrong.finish();
     require(!wrong.controller.ready()&&wrong.transport->writes().isEmpty(),"selective handshake cannot bypass version checks");
