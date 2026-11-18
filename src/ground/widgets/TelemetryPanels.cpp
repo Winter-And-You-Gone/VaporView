@@ -1328,7 +1328,7 @@ void PtbPanel::setupUi()
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
     auto *layout = new QVBoxLayout(this);
     layout->setSpacing(2);
-    layout->setContentsMargins(6, 1, 6, 4);
+    layout->setContentsMargins(4, 1, 4, 4);
 
     rate_label_ = new VaporView::VisualTextLabel(this);
     rate_label_->setObjectName("rateLabel");
@@ -1376,7 +1376,7 @@ void PtbPanel::updateRate(double hz)
 void PtbPanel::setEnglish(bool english)
 {
     is_english_ = english;
-    setLocalizedFixedTextLabel(pressure_lbl_, english, QStringLiteral("Environmental pressure:"), QStringLiteral("环境气压:"));
+    setLocalizedFixedTextLabel(pressure_lbl_, english, QStringLiteral("Pressure:"), QStringLiteral("气压:"));
     if (pressure_trend_plot_)
     {
         pressure_trend_plot_->setEnglish(english);
@@ -1426,7 +1426,7 @@ void Hc2aPanel::setupUi()
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
     auto *layout = new QVBoxLayout(this);
     layout->setSpacing(2);
-    layout->setContentsMargins(6, 1, 6, 4);
+    layout->setContentsMargins(4, 1, 4, 4);
 
     rate_label_ = new VaporView::VisualTextLabel(this);
     rate_label_->setObjectName("rateLabel");
@@ -1506,8 +1506,8 @@ void Hc2aPanel::updateRate(double hz)
 void Hc2aPanel::setEnglish(bool english)
 {
     is_english_ = english;
-    setLocalizedFixedTextLabel(temp_lbl_, english, QStringLiteral("Environmental temperature:"), QStringLiteral("环境温度:"));
-    setLocalizedFixedTextLabel(humidity_lbl_, english, QStringLiteral("Environmental humidity:"), QStringLiteral("环境湿度:"));
+    setLocalizedFixedTextLabel(temp_lbl_, english, QStringLiteral("Temp.:"), QStringLiteral("温度:"));
+    setLocalizedFixedTextLabel(humidity_lbl_, english, QStringLiteral("Humidity:"), QStringLiteral("湿度:"));
     if (temperature_trend_plot_)
     {
         temperature_trend_plot_->setEnglish(english);
@@ -1554,10 +1554,8 @@ LidarPanel::LidarPanel(QWidget *parent)
     : QWidget(parent)
     , rate_label_(nullptr)
     , distance_label_(nullptr)
-    , range_label_(nullptr)
     , status_label_(nullptr)
     , distance_lbl_(nullptr)
-    , range_lbl_(nullptr)
     , is_english_(false)
 {
     setupUi();
@@ -1568,7 +1566,7 @@ void LidarPanel::setupUi()
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
     auto *layout = new QVBoxLayout(this);
     layout->setSpacing(2);
-    layout->setContentsMargins(6, 1, 6, 4);
+    layout->setContentsMargins(4, 1, 4, 4);
 
     rate_label_ = new VaporView::VisualTextLabel(QStringLiteral("0.0 Hz"), this);
     rate_label_->setObjectName("rateLabel");
@@ -1587,16 +1585,6 @@ void LidarPanel::setupUi()
     distance_label_->setMinimumHeight(20);
     setFixedNumericLabelWidth(distance_label_, {QStringLiteral("-9999.99 m"), QStringLiteral("--- m")}, 2);
     distanceLayout->addWidget(distance_label_);
-    distanceLayout->addSpacing(10);
-    range_lbl_ = new QLabel(this);
-    range_lbl_->setObjectName("fieldLabel");
-    range_lbl_->setMinimumHeight(20);
-    distanceLayout->addWidget(range_lbl_);
-    range_label_ = new QLabel("300 m", this);
-    range_label_->setObjectName("highlightedValue");
-    range_label_->setMinimumHeight(20);
-    setFixedNumericLabelWidth(range_label_, {QStringLiteral("300 m")}, 2);
-    distanceLayout->addWidget(range_label_);
     distanceLayout->addStretch();
     distanceLayout->addWidget(rate_label_);
     layout->addLayout(distanceLayout);
@@ -1619,10 +1607,6 @@ void LidarPanel::setEnglish(bool english)
 {
     is_english_ = english;
     setLocalizedFixedTextLabel(distance_lbl_, english, QStringLiteral("Distance:"), QStringLiteral("距离:"));
-    setLocalizedFixedTextLabel(range_lbl_, english, QStringLiteral("Range:"), QStringLiteral("量程:"));
-    range_label_->setToolTip(english
-        ? QStringLiteral("SDFM300: 0.05–300 m at 90% reflectance; 0.05–100 m at 10% reflectance.")
-        : QStringLiteral("SDFM300：90% 反射率量程 0.05–300 m；10% 反射率量程 0.05–100 m。"));
 }
 
 void LidarPanel::updateData(const VaporView::LidarData& lidar_data)

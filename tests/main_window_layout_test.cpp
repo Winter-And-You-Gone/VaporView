@@ -4308,31 +4308,15 @@ void requireHomeEnvironmentCardLayout(MainWindow& window, bool requireSideBySide
     auto *lidarPanel = environmentGroup->findChild<LidarPanel *>();
     require(lidarPanel != nullptr, "environment card contains the lidar panel");
     QLabel *distanceValueLabel = labelContains(lidarPanel, QStringLiteral("highlightedValue"), QStringLiteral("m"));
-    QLabel *strengthValueLabel = nullptr;
-    const QList<QLabel*> lidarValueLabels =
-        lidarPanel->findChildren<QLabel *>(QStringLiteral("highlightedValue"));
-    for (QLabel *label : lidarValueLabels)
-    {
-        if (label && label != distanceValueLabel)
-        {
-            strengthValueLabel = label;
-            break;
-        }
-    }
-    const QList<QLabel*> lidarRateLabels = lidarPanel->findChildren<QLabel *>(QStringLiteral("rateLabel"));
-    require(distanceValueLabel != nullptr && strengthValueLabel != nullptr && !lidarRateLabels.isEmpty(),
-            "lidar panel exposes distance, strength, and rate labels");
+    const auto lidarValueLabels = lidarPanel->findChildren<QLabel *>(QStringLiteral("highlightedValue"));
+    const auto lidarRateLabels = lidarPanel->findChildren<QLabel *>(QStringLiteral("rateLabel"));
+    require(distanceValueLabel && lidarValueLabels.size() == 1 && lidarRateLabels.size() == 1,
+            "lidar shows one distance reading and one rate");
     const QLabel *lidarRateLabel = lidarRateLabels.first();
     require(std::abs(labelCenterY(lidarPanel, distanceValueLabel) -
-                     labelCenterY(lidarPanel, strengthValueLabel)) <= 2 &&
-                std::abs(labelCenterY(lidarPanel, distanceValueLabel) -
-                         labelCenterY(lidarPanel, lidarRateLabel)) <= 2,
-            "default home environment card keeps distance, strength, and rate on one row");
-    const std::array<const QLabel *, 3> lidarRowLabels = {
-        distanceValueLabel,
-        strengthValueLabel,
-        lidarRateLabel
-    };
+                     labelCenterY(lidarPanel, lidarRateLabel)) <= 2,
+            "distance and rate stay on the same row");
+    const std::array<const QLabel *, 2> lidarRowLabels{distanceValueLabel, lidarRateLabel};
     for (const QLabel *label : lidarRowLabels)
     {
         const QRect rect = labelRectInside(lidarPanel, label);

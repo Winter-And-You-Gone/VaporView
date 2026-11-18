@@ -117,20 +117,6 @@ void requireCompactFieldValueGap(QWidget& panel,
     require(gap >= 0 && gap <= 16, message);
 }
 
-void requireReadableLabelGap(QWidget& panel,
-                             const QLabel *leftLabel,
-                             const QLabel *rightLabel,
-                             int minimumGap,
-                             int maximumGap,
-                             const char *message)
-{
-    require(leftLabel != nullptr && rightLabel != nullptr, message);
-    // Short readings leave room inside the numeric field for the longest signed value.
-    const int gap = visibleTextLeftInPanel(rightLabel, panel) -
-                    leftLabel->mapTo(&panel, QPoint(leftLabel->width(), 0)).x();
-    require(gap >= minimumGap && gap <= maximumGap, message);
-}
-
 void requireValueCenteredBetween(QWidget& panel,
                                  const QLabel *leftLabel,
                                  const QLabel *valueLabel,
@@ -218,19 +204,16 @@ int main(int argc, char **argv)
             "Lidar data is presented through the coordinator");
     auto *lidarDistanceValue =
         firstLabelContaining(lidar, QStringLiteral("highlightedValue"), QStringLiteral("120.75"));
-    auto *lidarRangeValue =
-        firstLabelContaining(lidar, QStringLiteral("highlightedValue"), QStringLiteral("300 m"));
     auto *lidarRateValue =
         firstLabelContaining(lidar, QStringLiteral("rateLabel"), QStringLiteral("20.0"));
-    require(lidarDistanceValue && lidarRangeValue && lidarRateValue,
-            "Lidar row exposes distance, model range, and rate labels");
+    require(lidarDistanceValue && lidarRateValue &&
+                lidar.findChildren<QLabel *>(QStringLiteral("highlightedValue")).size() == 1,
+            "Lidar row exposes only distance and rate");
     require(std::abs(labelCenterYInPanel(lidarDistanceValue, lidar) -
-                     labelCenterYInPanel(lidarRangeValue, lidar)) <= 2 &&
-                std::abs(labelCenterYInPanel(lidarDistanceValue, lidar) -
-                         labelCenterYInPanel(lidarRateValue, lidar)) <= 2,
-            "Lidar distance, model range, and rate are presented on the same row");
+                     labelCenterYInPanel(lidarRateValue, lidar)) <= 2,
+            "Lidar distance and rate are presented on the same row");
     auto *pressureField =
-        firstLabelExact(ptb, QStringLiteral("fieldLabel"), QStringLiteral("环境气压:"));
+        firstLabelExact(ptb, QStringLiteral("fieldLabel"), QStringLiteral("气压:"));
     auto *pressureValue =
         firstLabelContaining(ptb, QStringLiteral("highlightedValue"), QStringLiteral("1001.25"));
     auto *pressureRateValue =
@@ -242,22 +225,10 @@ int main(int argc, char **argv)
                                 "pressure value is centered between its field label and rate");
     auto *distanceField =
         firstLabelExact(lidar, QStringLiteral("fieldLabel"), QStringLiteral("距离:"));
-    auto *rangeField =
-        firstLabelExact(lidar, QStringLiteral("fieldLabel"), QStringLiteral("量程:"));
     requireCompactFieldValueGap(lidar,
                                 distanceField,
                                 lidarDistanceValue,
                                 "distance field and value keep a compact readable gap");
-    requireReadableLabelGap(lidar,
-                            lidarDistanceValue,
-                            rangeField,
-                            8,
-                            24,
-                            "range field keeps a slightly wider gap after distance");
-    requireCompactFieldValueGap(lidar,
-                                rangeField,
-                                lidarRangeValue,
-                                "range field and value keep a compact readable gap");
     auto *temperatureTrend = hc2a.findChild<QWidget *>(QStringLiteral("environmentTemperatureTrendPlot"));
     auto *humidityTrend = hc2a.findChild<QWidget *>(QStringLiteral("environmentHumidityTrendPlot"));
     auto *pressureTrend = ptb.findChild<QWidget *>(QStringLiteral("environmentPressureTrendPlot"));

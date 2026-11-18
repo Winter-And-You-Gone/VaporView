@@ -545,7 +545,7 @@ void MainWindow::setEnglish(bool english)
     }
     if (state_->env_inline_title_lbl_)
     {
-        state_->env_inline_title_lbl_->setText(english ? "Environment / Range" : "环境与测距");
+        state_->env_inline_title_lbl_->setText(english ? "Env. & Ranging" : "环境与测距");
     }
     if (state_->temperature_overview_inline_title_lbl_)
     {

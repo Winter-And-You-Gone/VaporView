@@ -389,19 +389,25 @@ QWidget#uiTestReplayWindow QSlider::groove:horizontal { background: @vv-border; 
 QWidget#uiTestReplayWindow QSlider::sub-page:horizontal { background: @vv-primary; border-radius: 2px; }
 QWidget#uiTestReplayWindow QSlider::handle:horizontal { background: @vv-primary; width: 14px; margin: -5px 0; border-radius: 7px; }
 )"), state_->dark_theme_enabled_);
+    const QString compactEnvironmentStyle = QStringLiteral(R"(
+QGroupBox#sensorGroupBox PtbPanel QLabel#rateLabel,
+QGroupBox#sensorGroupBox Hc2aPanel QLabel#rateLabel,
+QGroupBox#sensorGroupBox LidarPanel QLabel#rateLabel { font-size: 11px; }
+QGroupBox#sensorGroupBox PtbPanel QLabel#highlightedValue { font-size: 12px; }
+)");
     return state_->dark_theme_enabled_
         ? baseStyle +
               darkStyle +
               applyAppThemeTokens(darkOverviewStyleSheet(), true) +
               mainCardsScrollBarStyle +
               mainCardsTopLevelCardStyle +
-              rtkConfigCardStyle + replayStyle +
+              rtkConfigCardStyle + replayStyle + compactEnvironmentStyle +
               applyAppThemeTokens(customTitleBarStyleSheet(true), true) +
               applyAppThemeTokens(temperatureControllerConfigStyleSheet(), true)
         : baseStyle +
               mainCardsScrollBarStyle +
               mainCardsTopLevelCardStyle +
-              rtkConfigCardStyle + replayStyle +
+              rtkConfigCardStyle + replayStyle + compactEnvironmentStyle +
               applyAppThemeTokens(customTitleBarStyleSheet(false), false) +
               applyAppThemeTokens(temperatureControllerConfigStyleSheet(), false);
 }

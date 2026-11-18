@@ -5486,8 +5486,8 @@ void MainWindow::setupDataPanels()
     envTitleBar->setObjectName("environmentSectionTitleBar");
     envTitleBar->setFixedHeight(kMainPageTitleBarHeight);
     auto *envTitleLayout = new QHBoxLayout(envTitleBar);
-    envTitleLayout->setContentsMargins(8, 2, 8, 2);
-    envTitleLayout->setSpacing(8);
+    envTitleLayout->setContentsMargins(4, 2, 4, 2);
+    envTitleLayout->setSpacing(4);
 
     QWidget *envTitleCluster = nullptr;
     state_->env_inline_title_lbl_ = createSectionTitleCluster(envTitleBar,
@@ -5501,7 +5501,7 @@ void MainWindow::setupDataPanels()
         auto *label = new QLabel(envTitleBar);
         label->setObjectName(QStringLiteral("envStatusIcon"));
         label->setAlignment(Qt::AlignCenter);
-        label->setFixedSize(kMainPageButtonHeight, kMainPageButtonHeight);
+        label->setFixedSize(kEnvStatusIconSize, kEnvStatusIconSize);
         label->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         return label;
     };
