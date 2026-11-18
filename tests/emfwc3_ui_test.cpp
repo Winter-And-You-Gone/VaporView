@@ -247,9 +247,23 @@ int main(int argc, char **argv)
         auto *transport = find<QComboBox>(window, "deviceSensorTransportPathCombo");
         transport->setCurrentIndex(transport->findData(QStringLiteral("fpga_relay")));
         QApplication::processEvents();
+        auto *body = overview->parentWidget();
+        auto *summary = find<QWidget>(*body, "homeTelemetrySummaryContainer");
+        const auto columns = overview->findChildren<QWidget *>(QStringLiteral("homeDeviceColumn"), Qt::FindDirectChildrenOnly);
+        check(columns.size() == 2, "overview has two device columns");
+        until("relay motor occupies the last row on the left and fits above both rate sections", [&] {
+            return overviewMotionStatus->parentWidget() == columns.first() &&
+                   overviewMotionAction->parentWidget() == columns.first() &&
+                   overviewMotionStatus->mapTo(overview, QPoint()).y() >= columns.last()->geometry().bottom() &&
+                   overviewMotionStatus->mapTo(body, overviewMotionStatus->rect().bottomLeft()).y() < summary->y() &&
+                   summary->geometry().bottom() < body->height() &&
+                   summary->mapTo(body->parentWidget(), summary->rect().bottomLeft()).y() < body->parentWidget()->contentsRect().bottom();
+        });
         check(page->session()->state().connected && find<QPushButton>(*panel, "emFwc3Disconnect")->isEnabled(), "USB session stays available in FPGA mode");
         transport->setCurrentIndex(transport->findData(QStringLiteral("direct_devices")));
         QApplication::processEvents(); check(page->session()->state().connected, "returning to Direct preserves USB connection");
+        check(overviewMotionStatus->parentWidget() == columns.last() && overviewMotionAction->parentWidget() == columns.last(),
+              "direct mode packs ten devices into two complete columns");
         pages->setCurrentWidget(configuration); QApplication::processEvents();
         check(configuration->isAncestorOf(panel) && pages->indexOf(page) == -1 && pages->count() == 6,
               "motion controls belong to device configuration without a separate navigation page");

@@ -932,6 +932,7 @@ void MainWindow::updateConfigCardHeightForSourceMode()
     int minimumHeight = scaledConfiguredHeight(state_->config_group_, kConfigCardMinHeight);
     if (state_->data_telemetry_summary_card_)
     {
+        updateHomeDeviceOverviewMinimumWidth();
         const int summaryWidth = state_->data_telemetry_summary_card_->width();
         reflowHomeDeviceSummary(state_->data_telemetry_summary_layout_, summaryWidth,
                                 scalePixels(28), scalePixels(2), scalePixels(2), kHomeWaveformFeatureRateIndex);
@@ -948,19 +949,10 @@ void MainWindow::updateConfigCardHeightForSourceMode()
                                  scalePixels(kMainPageInputHeight));
         state_->data_telemetry_summary_card_->setMinimumHeight(summaryHeight);
         state_->data_telemetry_summary_card_->setMaximumHeight(summaryHeight);
-        const int rows = kHomeDeviceGridRows + (isFpgaRelayPath() ? 1 : 0);
-        const int homeDeviceRowHeight = scalePixels(kHomeDeviceRowHeight * rows + kHomeDeviceGridRowGap * (rows - 1));
-        const int homeBodySpacing = scalePixels(2);
-        const int homeBodyTopPadding = scalePixels(kHomeOverviewBodyPadding);
-        const int homeBodyBottomPadding = scalePixels(kConfigHomeBodyBottomPadding);
-        minimumHeight = std::max(minimumHeight,
-                                 scalePixels(kMainPageTitleBarHeight) +
-                                     homeBodyTopPadding +
-                                     homeDeviceRowHeight +
-                                     homeBodySpacing +
-                                     summaryHeight +
-                                     homeBodyBottomPadding +
-                                     scalePixels(kConfigCardBottomPadding + 8));
+        // Include the styled capsule heights, the wrapped rate rows and all card margins.
+        QLayout *cardLayout = state_->config_group_->layout();
+        cardLayout->invalidate();
+        minimumHeight = std::max(minimumHeight, cardLayout->totalSizeHint().height());
     }
 
     const auto naturalCardHeight = [](QWidget *card) {
@@ -1019,7 +1011,6 @@ void MainWindow::updateConfigCardHeightForSourceMode()
         {
             state_->home_overview_splitter_->setFixedHeight(targetHeight);
         }
-        updateHomeDeviceOverviewMinimumWidth();
         return;
     }
     if (state_->config_group_->height() < minimumHeight)

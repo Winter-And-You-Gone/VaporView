@@ -104,5 +104,6 @@
 | 2026-11-19 | 本轮 Release | 4.18 | GUI 专项从地面主窗口的查看器菜单和独立查看器分别点击导出，选择类别和目录，确认提示，再重开两份 CSV 与源数据逐字节比对，均通过。[GUI 验收用例](../tests/main_window_layout_test.cpp) |
 | 2026-11-19 | 本轮 Release | 4.19 | 慢订阅端验证发现连接重建时访问已释放的 TLS 对象。按网关线程实际栈修正后，监听专项连续 5 次通过。覆盖受信证书及令牌、命令重复及超时、慢客户端断开时另一客户端继续接收、断线重连。已启动完整 CTest。 |
 | 2026-11-19 | 本轮 Release | 4.18、4.19 | Windows x64、MSVC、Qt 6.10.1，以 `cmake --build build/Release --config Release --parallel 6` 完成全量构建。完整 CTest 共 202 项，199 通过、2 失败、1 跳过。单独复测后 `sky_fpga_storage_failure_context_test` 通过；`fpga_sensor_draft_ui_test` 在改动前基线 `a07f01e` 独立构建后也在同一条界面切换断言失败；`update_relauncher_elevated_parent_test` 要求管理员权限，本轮跳过。SDK、两条 GUI 导出入口、网关监听、设置、既有出站服务及跨进程录制专项均通过。 |
+| 2026-11-19 | `f1755e4` 合并 `50a6742` | 4.18、4.19 | 合并远端首页布局后，最终 Windows Release 全量构建成功。重新执行 SDK、查看器双入口导出、网关监听、设置、原出站服务、跨进程录制、远程连接及两个 UI 回归，共 9/9 通过。 |
 
 现场待填写 A.18 与 A.19 的项目包括目标操作系统与硬件版本、实采 Session 标识、外部测试机及网络、测试时段、对应导出文件和命令记录。SDK 1.0.0 的 Windows x64 交付包已在本机生成，原始记录、证书及本机生成物由现场单独保管。
