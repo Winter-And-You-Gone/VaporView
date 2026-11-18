@@ -1914,8 +1914,8 @@ static void simulatedMonitorActions()
         for(auto *plot:window.findChildren<QWidget*>("temperatureTrendPlot"))
             if(plot->property("temperatureOverviewPlot").toBool()&&plot->property("sampleCount").toInt()>=2)++populatedPlots;
         return percent&&percent->property("channel1OutputPercentText").toString()=="0.00%"
-            &&percent->property("channel2OutputPercentText").toString()=="0.00%"&&populatedPlots==2;
-    },6000),"FPGA simulator fills both RD105 overview trends and both measured output percentages");
+            &&percent->property("channel2OutputPercentText").toString()=="---"&&populatedPlots==1;
+    },6000),"FPGA overview displays TC1 telemetry and leaves TC2 empty");
     const auto outputs=window.findChildren<QAbstractButton*>("temperatureOverviewOutputSwitch");
     require(outputs.size()==2,"simulated RD105 overview exposes both output controls");
     auto *tc1 = window.findChild<QAbstractButton*>("temperatureChannelSelectorButton1");
@@ -1956,7 +1956,11 @@ static void simulatedMonitorActions()
     for(auto *button:window.findChildren<QToolButton*>("homeDeviceActionButton"))
         if(!button->property("deviceConfigAction").toBool()&&!button->property("motionDeviceAction").toBool())watched.append(button);
     for(auto *object:watched)object->installEventFilter(&outputState);
-    for(auto *output:outputs) {
+    auto *homeDevice = window.findChild<QAbstractButton*>("tec103OverviewDeviceSwitch");
+    require(homeDevice && !homeDevice->isHidden() && !outputs[1]->isEnabled(), "Home device selector and unavailable TC2");
+    auto *output = outputs[0];
+    for (int instrument = 1; instrument <= 2; ++instrument) {
+        if (instrument == 2) homeDevice->click();
         require(output->isEnabled(),"simulated RD105 output control is available");
         QTimer confirm;
         QObject::connect(&confirm,&QTimer::timeout,&window,[]{
@@ -1964,24 +1968,23 @@ static void simulatedMonitorActions()
                 if(auto *yes=box->button(QMessageBox::Yes))yes->click();
         });
         confirm.start(10);output->click();confirm.stop();
-        require(waitUntil([&]{return output->isChecked()&&confirmedOutputs.value(output->property("temperatureChannel").toInt(),false);},6000),
+        require(waitUntil([&]{return output->isChecked()&&confirmedOutputs.value(instrument,false);},6000),
             "simulated output enable reaches confirmed telemetry and command completion");
     }
     auto *percent=window.findChild<QLabel*>("temperatureOverviewOutputPercentPill");
     const auto outputPercent=[&](int channel) {
         return percent->property(channel==1?"channel1OutputPercentText":"channel2OutputPercentText").toString().remove('%').toDouble();
     };
-    require(waitUntil([&]{return outputPercent(1)>0&&outputPercent(2)<0;}),
-        "home overview displays positive and negative RD105 output percentages from decoded simulator data");
-    outputs[0]->click();
-    const bool firstStopped=waitUntil([&]{return !outputs[0]->isChecked()&&outputPercent(1)==0&&outputPercent(2)<0&&!confirmedOutputs.value(1,true);},6000);
-    if(!firstStopped)std::cerr<<"TEC103 stop first: channel="<<outputs[0]->property("temperatureChannel").toInt()
-        <<" checked="<<outputs[0]->isChecked()<<" percents="<<outputPercent(1)<<','<<outputPercent(2)
-        <<" confirmed="<<confirmedOutputs.value(1,true)<<','<<confirmedOutputs.value(2,true)<<'\n';
-    require(firstStopped,
-        "stopping channel one displays zero output while channel two keeps running");
-    outputs[1]->click();
-    require(waitUntil([&]{return !outputs[1]->isChecked()&&outputPercent(2)==0&&!confirmedOutputs.value(2,true);},6000),"both simulated outputs can be stopped independently");
+    require(waitUntil([&]{return outputPercent(1)<0;}), "Remote TC1 displays its own PWM");
+    homeDevice->click();
+    require(outputPercent(1)>0, "In situ TC1 displays its own PWM");
+    output->click();
+    require(waitUntil([&]{return !output->isChecked() && !confirmedOutputs.value(1,true);},6000), "In situ TC1 stops");
+    homeDevice->click();
+    require(output->isChecked() && outputPercent(1)<0 && !outputs[1]->isEnabled(), "Remote TC1 remains enabled independently");
+    output->click();
+    require(waitUntil([&]{return !output->isChecked() && !confirmedOutputs.value(2,true);},6000), "Remote TC1 stops");
+    homeDevice->click();
     for(auto *object:watched)object->removeEventFilter(&outputState);
     require(!outputState.actionsLocked,"RD105 output commands never disable unrelated home connection buttons");
     require(!outputState.capsuleChanged,"RD105 output enable and disable never flash connected device capsules to unavailable");
