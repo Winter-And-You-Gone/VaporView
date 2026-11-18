@@ -1076,8 +1076,6 @@ void MainWindow::updateResponsiveHomeLayout()
             if (useThreeColumns != environmentInOverview)
             {
                 // Move the existing card so its plots, controls and data stay intact.
-                state_->env_group_->setMinimumHeight(0);
-                state_->env_group_->setMaximumHeight(QWIDGETSIZE_MAX);
                 if (useThreeColumns)
                     state_->home_overview_splitter_->addWidget(state_->env_group_);
                 else
@@ -1319,8 +1317,6 @@ void MainWindow::updateResponsiveHomeLayout()
 
     clearFixedHeight(state_->epsilon_group_);
     clearFixedHeight(state_->home_sensor_column_);
-    if (!environmentInOverview)
-        clearFixedHeight(state_->env_group_);
     clearFixedHeight(state_->sensor_row_widget_);
     if (!preserveDataCardHeight)
     {
@@ -1340,10 +1336,8 @@ void MainWindow::updateResponsiveHomeLayout()
     const int sensorColumnHeight = navigationMotionSideBySide ? std::max(epsilonHeight, motionHeight) : epsilonHeight + std::max(0, motionHeight) +
         (state_->home_sensor_column_ && state_->home_sensor_column_->layout()
              ? state_->home_sensor_column_->layout()->spacing() : 0);
-    const int envMinimumHeight = state_->env_group_
-        ? std::max(contentHeightFor(state_->env_group_),
-                   state_->env_group_->property(kMainCardMinimumHeightProperty).toInt()) : 0;
-    const int envHeight = environmentInOverview ? 0 : envMinimumHeight;
+    const int envHeight = !environmentInOverview && state_->env_group_
+        ? state_->env_group_->minimumHeight() : 0;
     int targetHeight = std::max(sensorColumnHeight, envHeight);
     if (stackSensorCards && sensorColumnHeight > 0 && envHeight > 0)
     {
@@ -1371,21 +1365,12 @@ void MainWindow::updateResponsiveHomeLayout()
             {
                 state_->home_sensor_column_->setMinimumHeight(sensorColumnHeight);
             }
-            if (state_->env_group_ && !environmentInOverview)
-            {
-                state_->env_group_->setMinimumHeight(envHeight);
-            }
         }
         else
         {
             if (state_->home_sensor_column_)
             {
                 state_->home_sensor_column_->setFixedHeight(dataCardHeight);
-            }
-            if (state_->env_group_ && !environmentInOverview)
-            {
-                state_->env_group_->setMinimumHeight(envMinimumHeight);
-                state_->env_group_->setMaximumHeight(dataCardHeight);
             }
         }
         state_->sensor_row_widget_->setMinimumHeight(dataMinimumHeight);

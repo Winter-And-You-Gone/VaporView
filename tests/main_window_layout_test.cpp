@@ -4749,6 +4749,8 @@ void requireHomeThreeColumnLayout()
                 requireHomeDeviceMinimumWidthMatchesControls(&window);
                 requireTelemetrySummaryPillsOrdered(summary, "both telemetry sections fit the two equipment columns");
                 requireHomeLinkRowsPacked(summary);
+                require(environment->height() == overview->widget(0)->height(),
+                        "environment and device overview have equal heights in every responsive layout");
                 if (extra >= 0)
                 {
                     require(overview->widget(2) == environment && sensors->count() == 1,
@@ -4766,9 +4768,8 @@ void requireHomeThreeColumnLayout()
                                 (double(minima.at(i)) / (minima.at(1) + minima.at(2)))) <= 2,
                             "temperature and environment columns share the remaining width proportionally");
                     }
-                    require(environment->x() > overview->widget(1)->geometry().right() &&
-                            environment->height() == overview->widget(0)->height(),
-                            "three overview columns share the same row and height");
+                    require(environment->x() > overview->widget(1)->geometry().right(),
+                            "environment stays to the right of the temperature column");
                 }
                 else
                 {

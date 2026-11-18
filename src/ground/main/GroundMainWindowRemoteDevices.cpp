@@ -962,14 +962,11 @@ void MainWindow::updateConfigCardHeightForSourceMode()
     const int laserOverviewHeight = naturalLaserHeight;
     const int ai8OverviewHeight = overviewColumnMinimumHeight - overviewGap - laserOverviewHeight;
     minimumHeight = overviewColumnMinimumHeight;
-    const bool environmentInOverview = state_->home_overview_splitter_ &&
-        state_->home_overview_splitter_->indexOf(state_->env_group_) >= 0;
     state_->config_group_->setProperty(kMainCardMinimumHeightProperty, minimumHeight);
     state_->config_group_->setMinimumHeight(minimumHeight);
     if (state_->env_group_)
     {
-        state_->env_group_->setProperty(kMainCardMinimumHeightProperty, overviewColumnMinimumHeight);
-        state_->env_group_->setMinimumHeight(overviewColumnMinimumHeight);
+        state_->env_group_->setFixedHeight(minimumHeight);
     }
     if (state_->home_overview_splitter_)
     {
@@ -1008,8 +1005,6 @@ void MainWindow::updateConfigCardHeightForSourceMode()
         {
             state_->home_overview_splitter_->setFixedHeight(targetHeight);
         }
-        if (environmentInOverview)
-            state_->env_group_->setMaximumHeight(targetHeight);
         updateHomeDeviceOverviewMinimumWidth();
         return;
     }
