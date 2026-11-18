@@ -1152,11 +1152,12 @@ public:
             plot->setChannelIndex(index);
             plot->setCompactMode(true);
             plot->setTimeAxisEnabled(true);
-            plot->setFixedHeight(144);
+            plot->setFixedHeight(kOverviewPlotMinHeight);
             plots_[index] = plot;
             plots->addWidget(plot, 1);
         }
         layout->addLayout(plots, 1);
+        plots_[0]->installEventFilter(this);
 
         title_status_strip_ = new QWidget(this);
         title_status_strip_->setObjectName(QStringLiteral("temperatureOverviewTitleStatusStrip"));
@@ -1280,6 +1281,21 @@ public:
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override
     {
+        if (watched == plots_[0] && event->type() == QEvent::Resize)
+        {
+            const auto *resize = static_cast<QResizeEvent *>(event);
+            if (resize->size().width() != resize->oldSize().width())
+            {
+                QTimer::singleShot(0, this, [this]() {
+                    // Use the actual plot width after the layout applies spacing and font scaling.
+                    const int height = std::clamp(qRound(plots_[0]->width() * 0.75),
+                                                  kOverviewPlotMinHeight, kOverviewPlotMaxHeight);
+                    if (plots_[0]->minimumHeight() != height)
+                        for (auto *plot : plots_)
+                            plot->setFixedHeight(height);
+                });
+            }
+        }
         if (event->type() == QEvent::Show || event->type() == QEvent::FontChange ||
             event->type() == QEvent::StyleChange)
             QTimer::singleShot(0, this, [this]() { updateOverviewValueWidths(); });
@@ -1288,6 +1304,8 @@ protected:
 
 private:
     static constexpr int kOverviewControlWidth = 124;
+    static constexpr int kOverviewPlotMinHeight = 144;
+    static constexpr int kOverviewPlotMaxHeight = 192;
 
     void updateOverviewValueWidths()
     {

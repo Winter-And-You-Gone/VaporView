@@ -849,6 +849,12 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
     {
         QTimer::singleShot(0, this, [this]() { updateConfigCardHeightForSourceMode(); });
     }
+    if (eventType == QEvent::LayoutRequest && watched == state_->temperature_overview_group_)
+    {
+        auto *card = state_->temperature_overview_group_;
+        if (std::max(card->sizeHint().height(), card->minimumSizeHint().height()) != card->minimumHeight())
+            queueResponsiveHomeLayoutRefresh();
+    }
     if (eventType == QEvent::LayoutRequest &&
         (watched == state_->epsilon_group_ || watched == state_->home_motion_card_ || watched == state_->env_group_ ||
          watched == state_->config_group_ || watched == state_->home_temperature_overview_column_ ||
