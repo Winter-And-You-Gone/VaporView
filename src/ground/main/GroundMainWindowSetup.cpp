@@ -129,6 +129,37 @@ protected:
     }
 };
 
+class HomeDeviceStatusCapsule final : public QLabel
+{
+public:
+    using QLabel::QLabel;
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        if (property("state").toString() != QStringLiteral("warning"))
+        {
+            QLabel::paintEvent(event);
+            return;
+        }
+
+        QFrame::paintEvent(event);
+        // Use the normal capsule's padding for the icon so warnings keep the grid width.
+        constexpr int iconSize = 10;
+        constexpr int edge = 3;
+        constexpr int gap = 2;
+        const QColor color = VaporView::appThemeColor(AppThemeColor::Warning,
+                                                       qApp->property(kAppDarkThemeProperty).toBool());
+        QPainter painter(this);
+        painter.setPen(color);
+        const int iconLeft = width() - edge - iconSize;
+        painter.drawText(QRect(edge, 0, iconLeft - edge - gap, height()),
+                         Qt::AlignCenter | Qt::TextSingleLine, text());
+        createLucideIcon(QStringLiteral("triangle-alert"), color).paint(
+            &painter, QRect(iconLeft, (height() - iconSize) / 2, iconSize, iconSize));
+    }
+};
+
 class InternalEnvironmentValueLabel final : public QLabel
 {
 public:
@@ -5193,7 +5224,6 @@ void MainWindow::setupConfigPanel()
     };
     createTelemetrySection(state_->data_telemetry_summary_layout_);
     createTelemetrySection(state_->data_telemetry_link_summary_layout_);
-    createTelemetrySection(state_->data_telemetry_device_summary_layout_);
     state_->data_telemetry_summary_card_->setVisible(true);
 
     auto *homeBodyWidget = new QWidget(state_->config_group_);
@@ -5233,7 +5263,7 @@ void MainWindow::setupConfigPanel()
     }
 
     auto createHomeDeviceCapsule = [](QWidget *parent) {
-        auto *label = new QLabel(parent);
+        auto *label = new HomeDeviceStatusCapsule(parent);
         label->setObjectName(QStringLiteral("homeDeviceStatusCapsule"));
         label->setAlignment(Qt::AlignCenter);
         label->setTextFormat(Qt::PlainText);

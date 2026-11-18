@@ -924,8 +924,7 @@ void MainWindow::updateConfigCardHeightForSourceMode()
         return;
     }
 
-    for (auto *layout : {state_->data_telemetry_link_summary_layout_, state_->data_telemetry_device_summary_layout_})
-        reflowHomeDeviceSummary(layout, scalePixels(28), scalePixels(2), scalePixels(2));
+    reflowHomeDeviceSummary(state_->data_telemetry_link_summary_layout_, scalePixels(28), scalePixels(2), scalePixels(2));
     int minimumHeight = scaledConfiguredHeight(state_->config_group_, kConfigCardMinHeight);
     if (state_->data_telemetry_summary_card_)
     {
@@ -1047,6 +1046,7 @@ void MainWindow::clearRemoteSkyDataUi()
     clearPendingRemoteWaveTcpConnection();
     state_->remote_status_ = VaporView::TelemetryStatus();
     state_->remote_recording_state_ = 0;
+    state_->home_device_data_state_.clear();
 
     state_->current_epsilon_ = VaporView::EpsilonData();
     state_->current_gnss_ = VaporView::GnssData();
@@ -1279,33 +1279,7 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         if (!isRemoteSkyMode())
         {
             if (!homeDeviceConnected(device)) return false;
-            const auto fresh = [timeoutMs](const auto &sample) {
-                const auto age = std::chrono::steady_clock::now() - sample.timestamp;
-                return sample.valid && sample.timestamp != std::chrono::steady_clock::time_point{} &&
-                    age >= std::chrono::steady_clock::duration::zero() &&
-                    age < std::chrono::milliseconds(timeoutMs);
-            };
-            switch (device)
-            {
-            case VaporView::SkyDeviceId::Epsilon: return fresh(state_->current_epsilon_);
-            case VaporView::SkyDeviceId::Ptb: return fresh(state_->current_ptb_);
-            case VaporView::SkyDeviceId::Hc2a: return fresh(state_->current_hc2a_);
-            case VaporView::SkyDeviceId::Lidar: return fresh(state_->current_lidar_);
-            case VaporView::SkyDeviceId::TemperatureController: return fresh(state_->current_temperature_controller_);
-            case VaporView::SkyDeviceId::Ai8TemperatureController: {
-                const auto collectors = snapshotCollectors();
-                return collectors.ai8_temperature_controller && collectors.ai8_temperature_controller->getLatestData().valid;
-            }
-            case VaporView::SkyDeviceId::Bmp390:
-            case VaporView::SkyDeviceId::Sht45: {
-                const quint16 source = device == VaporView::SkyDeviceId::Bmp390 ? 0x43 : 0x44;
-                const auto age = std::chrono::steady_clock::now() - state_->internal_environment_times_.value(source);
-                return state_->internal_environment_.value(source).validity.measurement &&
-                    age >= std::chrono::steady_clock::duration::zero() && age < std::chrono::milliseconds(timeoutMs);
-            }
-            case VaporView::SkyDeviceId::WaveTcp: return state_->tcp_wave_panel_->hasRecentData(timeoutMs);
-            default: return false;
-            }
+            return localDeviceDataFresh(device, timeoutMs);
         }
         return connected && remoteDeviceDataValid(device, timeoutMs);
     };
@@ -1667,41 +1641,11 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
     const QStringList linkLabels = state_->is_english_
         ? QStringList{QStringLiteral("Sky->Ground"), QStringLiteral("Ground->Sky"), QStringLiteral("Total")}
         : QStringList{QStringLiteral("天→地"), QStringLiteral("地→天"), QStringLiteral("合计")};
-    const QStringList deviceLabels = state_->is_english_
-        ? QStringList{QStringLiteral("EPSILON"), QStringLiteral("PTB210"), QStringLiteral("HC2A"),
-            QStringLiteral("SDFM300"), QStringLiteral("Waveform"), QStringLiteral("RD105"),
-            QStringLiteral("AI-8288"), QStringLiteral("BMP390"), QStringLiteral("SHT45")}
-        : QStringList{QStringLiteral("EPSILON"), QStringLiteral("PTB210"), QStringLiteral("HC2A"),
-            QStringLiteral("SDFM300"), QStringLiteral("波形"), QStringLiteral("RD105"),
-            QStringLiteral("AI-8288"), QStringLiteral("BMP390"), QStringLiteral("SHT45")};
     if (!isFpgaRelayPath())
         for (int i = 0; i < homeSections.rateItems.size(); ++i)
             homeSections.rateItems[i].label = rateLabels.at(i);
     for (int i = 0; i < homeSections.linkItems.size(); ++i)
         homeSections.linkItems[i].label = linkLabels.at(i);
-    for (int i = 0; i < homeSections.deviceItems.size(); ++i)
-    {
-        auto &item = homeSections.deviceItems[i];
-        item.label = deviceLabels.at(i);
-        const bool remoteFpga = isRemoteSkyMode() && isFpgaRelayPath() && !isUiTestMode();
-        if (item.hasData || !remoteFpga)
-            item.value = state_->is_english_
-                ? (item.hasData ? QStringLiteral("Data available") : QStringLiteral("No data"))
-                : (item.hasData ? QStringLiteral("有数据") : QStringLiteral("无数据"));
-        if (!remoteFpga)
-            item.valueWidthText = state_->is_english_ ? QStringLiteral("Data available") : QStringLiteral("有数据");
-    }
-    RemoteTelemetrySummarySections::Item motorItem;
-    motorItem.label = QStringLiteral("EM-FWC3");
-    const auto motorState = state_->motion_page_ ? state_->motion_page_->session()->state()
-        : VaporView::Ground::Motion::EmFwc3State{};
-    motorItem.hasData = motorState.connected && motorState.valid[0];
-    motorItem.value = state_->is_english_
-        ? (motorItem.hasData ? QStringLiteral("Data available") : QStringLiteral("No data"))
-        : (motorItem.hasData ? QStringLiteral("有数据") : QStringLiteral("无数据"));
-    motorItem.valueWidthText = state_->is_english_ ? QStringLiteral("Data available") : QStringLiteral("有数据");
-    motorItem.tooltip = state_->is_english_ ? QStringLiteral("Local motor angle feedback") : QStringLiteral("本机电机角度反馈");
-    homeSections.deviceItems << motorItem;
     const auto updateSourcePill = [this](QFrame *pill) {
         if (!pill)
         {
@@ -1849,16 +1793,11 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             updateSummarySectionValues(state_->data_telemetry_link_summary_layout_,
                                        homeSections.linkItems,
                                        false,
-                                       state_->is_english_) &&
-            updateSummarySectionValues(state_->data_telemetry_device_summary_layout_,
-                                       homeSections.deviceItems,
-                                       false,
                                        state_->is_english_));
         if (!homeSummaryNeedsRender)
         {
             for (QVBoxLayout *sectionLayout : {state_->data_telemetry_summary_layout_,
-                                               state_->data_telemetry_link_summary_layout_,
-                                               state_->data_telemetry_device_summary_layout_})
+                                               state_->data_telemetry_link_summary_layout_})
             {
                 auto *section = qobject_cast<QWidget *>(sectionLayout->parent());
                 for (int i = 0; i < sectionLayout->count(); ++i)
@@ -2217,8 +2156,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             section->adjustSize();
             section->updateGeometry();
         }
-        if (sectionLayout == state_->data_telemetry_device_summary_layout_ ||
-            sectionLayout == state_->data_telemetry_link_summary_layout_)
+        if (sectionLayout == state_->data_telemetry_link_summary_layout_)
         {
             reflowHomeDeviceSummary(sectionLayout, scalePixels(28), scalePixels(2), scalePixels(2));
         }
@@ -2255,14 +2193,6 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                              homeSections.linkItems,
                              3,
                              3);
-        renderSummarySection(state_->data_telemetry_summary_card_,
-                             state_->data_telemetry_device_summary_layout_,
-                             state_->is_english_ ? QStringLiteral("Data") : QStringLiteral("数据"),
-                             homeSections.deviceItems,
-                             2,
-                             3,
-                             false,
-                             false);
         if (QLayout *summaryLayout = state_->data_telemetry_summary_card_->layout())
         {
             summaryLayout->invalidate();

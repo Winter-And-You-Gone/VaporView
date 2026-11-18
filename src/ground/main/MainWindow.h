@@ -412,6 +412,8 @@ private:
     bool homeDeviceActionSpinnerActive(VaporView::SkyDeviceId device, qint64 nowMs) const;
     int homeDeviceActionSpinnerDegrees(VaporView::SkyDeviceId device, qint64 nowMs) const;
     void updateHomeDeviceStatusCapsules();
+    QString homeDeviceMeasurementWarning(VaporView::SkyDeviceId device, qint64 nowMs);
+    bool localDeviceDataFresh(VaporView::SkyDeviceId device, qint64 timeoutMs) const;
     void updateHomeDeviceActionSpinnerIcons();
     void triggerHomeMotionDeviceAction();
     void startHomeMotionDeviceActionSpinner(bool disconnecting);

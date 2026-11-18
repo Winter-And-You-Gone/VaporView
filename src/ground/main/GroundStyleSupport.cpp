@@ -1054,6 +1054,12 @@ QLabel#homeDeviceStatusCapsule[state="connected"] {
     border: 1px solid @vv-hd-ok;
     color: @vv-hd-ok;
 }
+
+QLabel#homeDeviceStatusCapsule[state="warning"] {
+    background-color: @vv-warning-bg;
+    border: 1px solid @vv-warning;
+    color: @vv-warning;
+}
 QToolButton#homeDeviceActionButton {
     background-color: @vv-surface-alt;
     border: 1px solid @vv-border;

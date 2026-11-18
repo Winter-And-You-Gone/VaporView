@@ -1353,6 +1353,7 @@ void MainWindow::receiveFpgaMeasurements(const VaporView::FpgaSensor::AdaptedMea
     const bool valid = r.validity.structure && r.validity.crc && r.validity.deviceOnline && r.validity.measurement;
     if (valid) state_->fpga_sources_.insert(r.source); else state_->fpga_sources_.remove(r.source);
     const auto now = std::chrono::steady_clock::now();
+    state_->fpga_sensor_times_[r.source] = now;
     updateInternalEnvironment(r);
     if (r.kind == VaporView::FpgaSensor::SensorKind::Ptb210 && r.source == 0x40)
     {
@@ -1522,6 +1523,8 @@ void MainWindow::invalidateFpgaMeasurements()
     cancelFpgaActions();
     state_->fpga_home_raw_start_pending_ = false;
     state_->fpga_sensor_rates_.clear();state_->fpga_wave_times_.clear();
+    state_->fpga_sensor_times_.clear();
+    state_->home_device_data_state_.clear();
     { const std::lock_guard<std::mutex> lock(state_->fpga_snapshot_mutex_); state_->fpga_recording_snapshot_ = VaporView::Ground::Session::GroundSensorSnapshot{}; }
     state_->fpga_epsilon_status_fresh_=false;
     state_->fpga_position_valid_=false;

@@ -3510,7 +3510,7 @@ void requireCompactTelemetryPillTextGap(QFrame *pill, const char *message)
 void requireTelemetrySummaryPillsOrdered(QWidget *summaryContainer, const char *message)
 {
     const QList<QFrame*> sections = sortedTelemetrySections(summaryContainer);
-    require(sections.size() >= 3, message);
+    require(sections.size() == 2, message);
     for (QFrame *section : sections)
     {
         const QList<QFrame*> pills =
@@ -3594,7 +3594,7 @@ void requireTelemetrySummaryPillsOrdered(QWidget *summaryContainer, const char *
 void requireHomeLinkRowsPacked(QWidget *summaryContainer)
 {
     const auto sections = sortedTelemetrySections(summaryContainer);
-    require(sections.size() == 3, "Home summary includes the link-rate section");
+    require(sections.size() == 2, "Home summary contains only frequency and link rates");
     auto *section = sections.at(1);
     auto pills = section->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
     std::sort(pills.begin(), pills.end(), [](QFrame *a, QFrame *b) {
@@ -3612,52 +3612,6 @@ void requireHomeLinkRowsPacked(QWidget *summaryContainer)
                 "Link rates wrap only when the next item cannot fit on the preceding row");
     }
     requireTelemetrySummaryPillsOrdered(summaryContainer, "Link rates remain inside their section without overlap");
-}
-
-void requireHomeDataRowsPacked(QWidget *summaryContainer)
-{
-    processEventsFor(100);
-    const auto sections = sortedTelemetrySections(summaryContainer);
-    require(sections.size() == 3, "Home summary has three sections");
-    auto *section = sections.last();
-    auto pills = section->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
-    std::sort(pills.begin(), pills.end(), [section](QFrame *a, QFrame *b) {
-        const QPoint left = a->mapTo(section, QPoint());
-        const QPoint right = b->mapTo(section, QPoint());
-        return left.y() == right.y() ? left.x() < right.x() : left.y() < right.y();
-    });
-    require(pills.size() == 10, "Automatic wrapping preserves all ten devices");
-    require(findTelemetryPillByName(section, QStringLiteral("EM-FWC3")), "home data summary includes motor feedback");
-    QWidget *overviewCard = section;
-    while (overviewCard && !qobject_cast<QGroupBox *>(overviewCard))
-        overviewCard = overviewCard->parentWidget();
-    require(overviewCard, "data section belongs to an overview card");
-    for (auto *pill : pills)
-        require(pill->mapTo(overviewCard, QPoint(0, pill->height())).y() <= overviewCard->height() - 4,
-                "overview bottom edge leaves clearance below every data capsule");
-    for (int i = 1; i < pills.size(); ++i)
-    {
-        auto *previous = pills.at(i - 1);
-        auto *next = pills.at(i);
-        if (previous->parentWidget() == next->parentWidget())
-        {
-            continue;
-        }
-        const auto *rowLayout = previous->parentWidget()->layout();
-        const int usedRight = previous->mapTo(section, QPoint()).x() + previous->width();
-        const int contentRight = section->contentsRect().right() + 1 - section->layout()->contentsMargins().right();
-        if (usedRight + rowLayout->spacing() + next->sizeHint().width() <= contentRight)
-        {
-            std::cerr << "Premature data wrap: section=" << section->width()
-                      << " previous=" << previous->findChild<QLabel *>("homeTelemetrySummaryNameLabel")->text().toStdString()
-                      << " usedRight=" << usedRight << " nextWidth=" << next->sizeHint().width()
-                      << " contentRight=" << contentRight << '\n';
-        }
-        require(usedRight + rowLayout->spacing() + next->sizeHint().width() > contentRight,
-            "Home data row wraps only when the next device cannot fit");
-    }
-    requireTelemetrySummaryPillsOrdered(summaryContainer, "Automatically wrapped devices stay ordered without overlap");
-    requireTelemetryLabelsFit(summaryContainer, "Automatic wrapping keeps device names and values visible");
 }
 
 bool isRemoteSourceModeText(const QString& text)
@@ -4026,7 +3980,6 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     requireTelemetryLabelsFit(
         languageTelemetrySummaryContainer,
         "language overview telemetry labels fit at startup");
-    requireHomeDataRowsPacked(languageTelemetrySummaryContainer);
     requireHomeLinkRowsPacked(languageTelemetrySummaryContainer);
     const QVector<TelemetryPillWidthSnapshotItem> initialTelemetryPillWidths =
         telemetryPillWidthSnapshot(languageTelemetrySummaryContainer);
@@ -4040,7 +3993,7 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     requireHomeDeviceColumnsAligned(&languageOverviewWindow);
     requireHomeDeviceMinimumWidthMatchesControls(&languageOverviewWindow);
     const auto linkSections = sortedTelemetrySections(languageTelemetrySummaryContainer);
-    require(linkSections.size() == 3, "language overview exposes the link-rate section");
+    require(linkSections.size() == 2, "language overview exposes the link-rate section");
     QStringList linkNames;
     for (auto *pill : linkSections.at(1)->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill")))
         linkNames << pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"))->text();
@@ -4120,7 +4073,6 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     requireTelemetryLabelsFit(
         languageTelemetrySummaryContainer,
         "language overview telemetry labels fit in English");
-    requireHomeDataRowsPacked(languageTelemetrySummaryContainer);
     requireHomeLinkRowsPacked(languageTelemetrySummaryContainer);
     requireEpsilonSectionTitleWidths(languageEpsilonPanel, true);
     require(QMetaObject::invokeMethod(&languageOverviewWindow,
@@ -4160,7 +4112,6 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     requireTelemetryLabelsFit(
         languageTelemetrySummaryContainer,
         "language overview telemetry labels fit after returning to Chinese");
-    requireHomeDataRowsPacked(languageTelemetrySummaryContainer);
     requireHomeLinkRowsPacked(languageTelemetrySummaryContainer);
     requireTelemetryPillWidthSnapshotNotWider(
         initialTelemetryPillWidths,
@@ -4807,7 +4758,7 @@ void requireHomeThreeColumnLayout()
                 requireHomeSensorColumnLayout(window);
                 requireHomeTemperatureColumnMinimumHeight(window);
                 requireTelemetryLabelsFit(overview->widget(0), "full overview descriptions fit every pill");
-                requireHomeDataRowsPacked(overview->widget(0)->findChild<QWidget *>(
+                requireHomeLinkRowsPacked(overview->widget(0)->findChild<QWidget *>(
                     QStringLiteral("homeTelemetrySummaryContainer")));
                 if (extra >= 0)
                 {
@@ -4877,7 +4828,7 @@ void requireHomeThreeColumnLayout()
             require(laserPlots.at(0)->height() == firstPlotHeight &&
                         laserPlots.at(1)->height() == secondPlotHeight && laserCard->height() == laserCardHeight,
                     "dragging the left handle preserves both laser plot heights and the card height");
-            requireHomeDataRowsPacked(overview->widget(0)->findChild<QWidget *>(
+            requireHomeLinkRowsPacked(overview->widget(0)->findChild<QWidget *>(
                 QStringLiteral("homeTelemetrySummaryContainer")));
             requireHomeTemperatureColumnMinimumHeight(window);
             require(manualDeviceWidth >= compactDeviceWidth + 40 &&
@@ -4885,7 +4836,7 @@ void requireHomeThreeColumnLayout()
                     "the device overview remains manually resizable through its splitter handle");
             window.resize(window.width() + 160, 700);
             processEventsFor(200);
-            requireHomeDataRowsPacked(overview->widget(0)->findChild<QWidget *>(
+            requireHomeLinkRowsPacked(overview->widget(0)->findChild<QWidget *>(
                 QStringLiteral("homeTelemetrySummaryContainer")));
             require(std::abs(overview->sizes().at(0) - manualDeviceWidth) <= 1,
                     "window growth preserves the manually selected device overview width");
@@ -8343,8 +8294,8 @@ int main(int argc, char **argv)
             "home device overview telemetry sections exist before dark theme switch");
     const QList<QFrame*> homeTelemetrySections =
         sortedTelemetrySections(homeTelemetrySummaryContainer);
-    require(homeTelemetrySections.size() >= 3,
-            "home device overview telemetry summary has rate, link, and data sections");
+    require(homeTelemetrySections.size() == 2,
+            "home device overview uses the capsules for data availability and retains both rate sections");
     const QList<QFrame *> compactLinkRatePills =
         homeTelemetrySections.at(1)->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
     QStringList linkRateNames;
@@ -8434,42 +8385,6 @@ int main(int argc, char **argv)
             "home link-rate telemetry field/value gap remains compact");
     }
     requireHomeLinkRowsPacked(homeTelemetrySummaryContainer);
-    QFrame *homeDataSection = homeTelemetrySections.at(2);
-    QLabel *homeDataTitle =
-        homeDataSection->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryTitleLabel"));
-    require(homeDataTitle != nullptr &&
-                (homeDataTitle->text() == QStringLiteral("数据") ||
-                 homeDataTitle->text() == QStringLiteral("Data")),
-            "home data availability row starts with a data title");
-    bool homeDataHasEpsilon = false;
-    const QList<QFrame*> dataPills =
-        homeDataSection->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
-    require(dataPills.size() == 10,
-            "home data availability row covers all ten devices");
-    const QStringList compactDeviceNames = {"EPSILON", "PTB210", "HC2A", "SDFM300", "RD105", "AI-8288", "BMP390", "SHT45", "EM-FWC3", QStringLiteral("波形"), "Waveform"};
-    for (QFrame *pill : dataPills)
-    {
-        QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
-        QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
-        require(nameLabel != nullptr && valueLabel != nullptr,
-                "home data availability pill has a descriptive name and value");
-        require(compactDeviceNames.contains(nameLabel->text()), "Home availability uses model names or a short textual device name");
-        if (nameLabel->text().contains(QStringLiteral("EPSILON")))
-        {
-            homeDataHasEpsilon = true;
-        }
-        const QString valueText = valueLabel->text();
-        require(valueText == QStringLiteral("有数据") ||
-                    valueText == QStringLiteral("无数据") ||
-                    valueText == QStringLiteral("Data available") ||
-                    valueText == QStringLiteral("No data"),
-                "home data availability values use complete descriptions");
-        requireCompactTelemetryPillTextGap(
-            pill,
-            "home data availability field/value gap remains compact");
-    }
-    require(homeDataHasEpsilon,
-            "home data availability row includes the EPSILON field");
     const int lightHomeTelemetrySummaryHeight = homeTelemetrySummaryContainer->height();
     int minHomeTelemetryPillHeight = std::numeric_limits<int>::max();
     for (QFrame *pill : homeTelemetryPills)

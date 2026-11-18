@@ -430,7 +430,14 @@ struct MainWindowState
     QFrame *data_telemetry_summary_source_pill_;
     QVBoxLayout *data_telemetry_summary_layout_;
     QVBoxLayout *data_telemetry_link_summary_layout_;
-    QVBoxLayout *data_telemetry_device_summary_layout_;
+    struct HomeDeviceDataState {
+        qint64 connectedSinceMs = 0;
+        bool receivedData = false;
+    };
+    QHash<VaporView::SkyDeviceId, HomeDeviceDataState> home_device_data_state_;
+    qint64 home_motion_connected_since_ms_ = 0;
+    QMap<quint16, std::chrono::steady_clock::time_point> fpga_sensor_times_;
+    qint64 local_ai8_sample_ms_ = 0;
     QLabel *log_inline_title_lbl_;
     QLabel *epsilon_inline_title_lbl_;
     QLabel *gnss_inline_title_lbl_;

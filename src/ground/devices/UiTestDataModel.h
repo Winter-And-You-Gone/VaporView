@@ -71,6 +71,7 @@ public:
 
     void applyTemperatureCommand(CommandId command,
                                  const TemperatureControllerCommand& payload);
+    bool dataStalled(qint64 elapsedMs) const;
     UiTestSnapshot snapshot(qint64 elapsedMs) const;
 
 private:
