@@ -1191,16 +1191,12 @@ void MainWindow::updateResponsiveHomeLayout()
         : (state_->epsilon_group_ ? state_->epsilon_group_->minimumSizeHint().width() : 0);
     const int epsilonMinimumWidth = state_->epsilon_group_
         ? std::max(state_->epsilon_group_->minimumWidth(), state_->epsilon_group_->minimumSizeHint().width()) : 0;
-    // The motion controls wrap, so the two cards can share the same minimum width.
-    if (state_->home_motion_card_ && state_->home_motion_card_->minimumWidth() != epsilonMinimumWidth)
-        state_->home_motion_card_->setMinimumWidth(epsilonMinimumWidth);
     const int motionMinimumWidth = state_->home_motion_card_
         ? std::max(state_->home_motion_card_->minimumWidth(),
                    state_->home_motion_card_->minimumSizeHint().width()) : 0;
-    const int compactEpsilonMinimumWidth = std::max({
-        compactEpsilonContentWidth,
-        epsilonMinimumWidth,
-        motionMinimumWidth});
+    const int navigationMinimumWidth = std::max(compactEpsilonContentWidth, epsilonMinimumWidth);
+    const int compactEpsilonMinimumWidth = std::max(navigationMinimumWidth, motionMinimumWidth);
+    state_->home_navigation_motion_content_width_ = navigationMinimumWidth + motionMinimumWidth;
     const int compactEpsilonTargetWidth = std::max(compactEpsilonMinimumWidth,
                                                     compactEpsilonContentWidth + scalePixels(16));
     const int environmentMinimumWidth = state_->env_group_
@@ -1230,7 +1226,7 @@ void MainWindow::updateResponsiveHomeLayout()
         ? qobject_cast<QBoxLayout *>(state_->home_sensor_column_->layout()) : nullptr;
     const int navigationMotionGap = navigationMotionLayout ? std::max(0, navigationMotionLayout->spacing()) : 0;
     const bool navigationMotionSideBySide = environmentInOverview &&
-        sensorAvailableWidth >= compactEpsilonMinimumWidth + navigationMotionGap + motionMinimumWidth;
+        sensorAvailableWidth >= state_->home_navigation_motion_content_width_ + navigationMotionGap;
     if (navigationMotionLayout) {
         navigationMotionLayout->setDirection(navigationMotionSideBySide ? QBoxLayout::LeftToRight : QBoxLayout::TopToBottom);
         navigationMotionLayout->setStretch(0, navigationMotionSideBySide ? 1 : 0);

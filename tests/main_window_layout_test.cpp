@@ -4425,9 +4425,13 @@ void requireHomeSensorColumnLayout(MainWindow& window)
             require(label->contentsRect().width() >= label->fontMetrics().horizontalAdvance(label->text()),
                     "home motion labels remain readable");
         for (int j = i + 1; j < controls.size(); ++j)
-            if (controls.at(j)->isVisible())
-                require(!control->geometry().intersects(controls.at(j)->geometry()),
-                        "home motion controls do not overlap");
+            if (controls.at(j)->isVisible() && control->geometry().intersects(controls.at(j)->geometry()))
+            {
+                for (QWidget *w : {control, controls.at(j), motionPanel})
+                    std::cerr << w->metaObject()->className() << ' ' << w->objectName().toStdString() << ' '
+                              << w->x() << ',' << w->y() << ' ' << w->width() << 'x' << w->height() << '\n';
+                require(false, "home motion controls do not overlap");
+            }
     }
     const QRect epsilonRect(epsilon->mapTo(column, QPoint()), epsilon->size());
     const QRect motionRect(motion->mapTo(column, QPoint()), motion->size());
@@ -5363,9 +5367,12 @@ int main(int argc, char **argv)
             window.findChild<QWidget *>(QStringLiteral("epsilonPanel")));
         auto *epsilon = panel ? panel->parentWidget() : nullptr;
         auto *sensors = window.findChild<QSplitter *>(QStringLiteral("homeSensorCardSplitter"));
+        auto *overview = window.findChild<QSplitter *>(QStringLiteral("homeOverviewSplitter"));
+        auto *content = window.findChild<QSplitter *>(QStringLiteral("mainContentSplitter"));
+        auto *scroll = window.findChild<QScrollArea *>(QStringLiteral("mainCardsScrollArea"));
         auto *position = window.findChild<QWidget *>(QStringLiteral("homeMotionPosition"));
         auto *go = window.findChild<QWidget *>(QStringLiteral("homeMotionGo"));
-        require(motion && motionPanel && epsilon && sensors && position && go,
+        require(motion && motionPanel && epsilon && sensors && overview && content && scroll && position && go,
                 "motion width test finds cards and controls");
         const auto sameRow = [motionPanel](QWidget *left, QWidget *right) {
             const QRect a(left->mapTo(motionPanel, QPoint()), left->size());
@@ -5386,11 +5393,6 @@ int main(int argc, char **argv)
                 }
                 window.resize(1280, 800);
                 processEventsFor(500);
-                require(processEventsUntil(1500, [motion, epsilon] {
-                            return motion->minimumWidth() ==
-                                std::max(epsilon->minimumWidth(), epsilon->minimumSizeHint().width());
-                        }),
-                        "motion card minimum follows the EPSILON card minimum");
                 requireHomeSensorColumnLayout(window);
                 if (scale == 100 && !english)
                 {
@@ -5401,9 +5403,51 @@ int main(int argc, char **argv)
                 }
 
                 window.resize(3000, 800);
+                content->setSizes({content->width(), content->widget(1)->minimumWidth()});
                 processEventsFor(500);
                 requireHomeSensorColumnLayout(window);
                 require(sameRow(position, go), "motion controls return to one row when wide");
+
+                const QMargins epsilonMargins = epsilon->layout()->contentsMargins();
+                const int navigationMinimumWidth = std::max(epsilon->minimumSizeHint().width(),
+                    panel->preferredWrappedWidth() + epsilonMargins.left() + epsilonMargins.right());
+                const int motionMinimumWidth = std::max(motion->minimumWidth(), motion->minimumSizeHint().width());
+                const int cardGap = motion->parentWidget()->layout()->spacing();
+                const int twoCardWidth = navigationMinimumWidth + cardGap + motionMinimumWidth;
+                require(motionMinimumWidth < navigationMinimumWidth,
+                        "motion uses its own smaller minimum width");
+                const QMargins scrollMargins = scroll->widget()->layout()->contentsMargins();
+                const int contentInset = content->sizes().at(0) - scroll->viewport()->width() +
+                    scrollMargins.left() + scrollMargins.right();
+                const auto resizeHomeRow = [content, contentInset](int width) {
+                    const int left = width + contentInset;
+                    content->setSizes({left, content->width() - content->handleWidth() - left});
+                };
+                const int overviewWidth = overview->minimumSizeHint().width();
+                const int narrowRow = std::max(twoCardWidth, overviewWidth) + 8;
+                require(narrowRow < 2 * navigationMinimumWidth + cardGap,
+                        "the test viewport is narrower than the former two-navigation-card requirement");
+                resizeHomeRow(narrowRow);
+                require(processEventsUntil(1500, [motion, epsilon] {
+                            return motion->x() > epsilon->geometry().right();
+                        }),
+                        "navigation and motion share a row at their combined minimum widths");
+                processEventsFor(150);
+                requireHomeSensorColumnLayout(window);
+
+                resizeHomeRow(twoCardWidth - 24);
+                const bool stacked = processEventsUntil(1500, [motion, epsilon] {
+                    return motion->y() > epsilon->geometry().bottom();
+                });
+                if (!stacked)
+                    std::cerr << "Motion layout at scale " << scale << ", English=" << english
+                              << ": window=" << window.width()
+                              << ", content=" << scroll->viewport()->width() - scrollMargins.left() - scrollMargins.right()
+                              << ", navigation=" << navigationMinimumWidth << ", motion=" << motionMinimumWidth
+                              << ", overview=" << overviewWidth << ", threshold=" << twoCardWidth << '\n';
+                require(stacked, "navigation and motion stack when their own minima no longer fit");
+                processEventsFor(150);
+                requireHomeSensorColumnLayout(window);
             }
         }
         if (englishActive)
@@ -5411,8 +5455,10 @@ int main(int argc, char **argv)
                     "motion width test restores language");
         triggerFontScaleAction(window, 100);
         window.resize(3000, 800);
+        content->setSizes({content->width(), content->widget(1)->minimumWidth()});
         processEventsFor(300);
         const int originalEpsilonMinimum = epsilon->minimumSizeHint().width();
+        const int originalMotionMinimum = motion->minimumSizeHint().width();
         VaporView::EpsilonData sample;
         sample.valid = true;
         sample.gnss_fix_text = std::string(80, 'W');
@@ -5421,11 +5467,8 @@ int main(int argc, char **argv)
                     return epsilon->minimumSizeHint().width() > originalEpsilonMinimum;
                 }),
                 "a longer live value increases the EPSILON card minimum");
-        require(processEventsUntil(1500, [motion, epsilon] {
-                    return motion->minimumWidth() ==
-                        std::max(epsilon->minimumWidth(), epsilon->minimumSizeHint().width());
-                }),
-                "motion card minimum follows a wider live EPSILON value without a window resize");
+        require(motion->minimumSizeHint().width() == originalMotionMinimum,
+                "a wider live EPSILON value leaves the motion minimum unchanged");
         window.close();
         require(processEventsUntil(1000, [&window] { return !window.isVisible(); }),
                 "motion width test closes its window");
@@ -6800,7 +6843,8 @@ int main(int argc, char **argv)
                 "home EPSILON and environment cards keep the shared vertical gap");
     }
     require(std::abs((homeTcpWaveCardRect.top() -
-                      std::max(bottomEdge(motionCardRect), bottomEdge(environmentCardRect))) -
+                      std::max({bottomEdge(epsilonCardRect), bottomEdge(motionCardRect),
+                                bottomEdge(environmentCardRect)})) -
                      kExpectedTopLevelCardGap) <= 1,
             "home TCP wave card keeps the shared vertical gap");
     const int expectedCardOuterTopGap =

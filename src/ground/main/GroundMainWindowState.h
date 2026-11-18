@@ -555,6 +555,7 @@ struct MainWindowState
     std::unique_ptr<VaporView::Ground::Devices::UiTestDataModel> ui_test_model_;
     bool compact_home_layout_;
     int epsilon_content_height_;
+    int home_navigation_motion_content_width_ = 0;
     bool responsive_home_layout_refresh_pending_;
     bool log_side_panel_width_initialized_;
     bool log_side_panel_collapsed_;
