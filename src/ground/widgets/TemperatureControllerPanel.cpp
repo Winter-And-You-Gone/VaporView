@@ -1162,6 +1162,7 @@ public:
             plot->setProperty("temperatureChannel", index + 1);
             plot->setChannelIndex(index);
             plot->setCompactMode(true);
+            plot->setOverviewTimeAxis(true);
             plot->setTimeAxisEnabled(true);
             plot->setFixedHeight(144);
             plots_[index] = plot;

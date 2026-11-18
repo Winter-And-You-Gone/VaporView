@@ -1,6 +1,7 @@
 #include "test_settings_sandbox.h"
 #include "ground/widgets/TelemetryPanels.h"
 #include "ground/widgets/TemperatureControllerWidgets.h"
+#include "ground/widgets/TemperatureTrendPlotWidget.h"
 #include "ground/widgets/DevicePanelCoordinator.h"
 #include "shared/theme/AppTheme.h"
 
@@ -8,6 +9,7 @@
 #include <QColor>
 #include <QLabel>
 #include <QPushButton>
+#include <QStringList>
 #include <QWidget>
 
 #include <cmath>
@@ -62,7 +64,7 @@ int main(int argc, char **argv)
     QWidget *plot = findConfigTemperaturePlot(panel);
     require(plot != nullptr, "RD105 temperature page exposes the configuration trend plot");
     require(plot->property("xAxisTimeMode").toBool(),
-            "RD105 configuration trend plot uses the same time axis as the home overview");
+            "RD105 configuration trend plot uses timestamped samples");
 
     VaporView::TemperatureControllerData data;
     data.valid = true;
@@ -187,6 +189,49 @@ int main(int argc, char **argv)
     require(plot->property("sampleCount").toInt() == 5 &&
                 overviewPlot->property("sampleCount").toInt() == 5,
             "Untimestamped RD105 samples retain the local-clock fallback");
+
+    // Use a recorded 1 Hz stream to verify that older samples remain visible.
+    overview->clearTemperatureHistory();
+    data.timestamp = std::chrono::steady_clock::now();
+    constexpr double recordedStart = 1672531200.0;
+    constexpr int recordedIntervals = 20;
+    for (int i = 0; i <= recordedIntervals; ++i)
+    {
+        data.timestamp += std::chrono::seconds(1);
+        data.channels[0].measured_temperature_c = 24.0 + i / 10.0;
+        data.channels[1].measured_temperature_c = 26.0 + i / 10.0;
+        overview->updateData(data, recordedStart + i);
+    }
+    overview->resize(470, 148);
+    QApplication::processEvents();
+    TemperatureTrendPlotWidget fullClockPlot;
+    fullClockPlot.setCompactMode(true);
+    fullClockPlot.setTimeAxisEnabled(true);
+    for (auto *homePlot : overviewPlots)
+    {
+        homePlot->grab();
+        fullClockPlot.setFont(homePlot->font());
+        fullClockPlot.resize(homePlot->size());
+        fullClockPlot.grab();
+        const auto ticks = homePlot->property("xAxisTimeTickLabels").toStringList();
+        const double timeMin = homePlot->property("xAxisTimeMinSeconds").toDouble();
+        const double timeMax = homePlot->property("xAxisTimeMaxSeconds").toDouble();
+        require(ticks.size() > fullClockPlot.property("xAxisTickCount").toInt() &&
+                    ticks.first().count(QLatin1Char(':')) == 2 &&
+                    ticks.last().count(QLatin1Char(':')) == 1,
+                "At the same compact width, the overview fits more ticks by abbreviating times after the first");
+        require(timeMax == recordedStart + recordedIntervals && timeMin >= recordedStart &&
+                    timeMax - timeMin == ticks.size() - 1 &&
+                    std::abs(homePlot->property("latestSampleX").toDouble() -
+                             homePlot->property("xAxisTimeLastTickX").toDouble()) < 0.001,
+                "Both overview plots show one-second ticks ending on the latest recorded temperature sample");
+    }
+    const int compactTickCount = overviewPlot->property("xAxisTickCount").toInt();
+    overview->resize(760, 148);
+    QApplication::processEvents();
+    overviewPlot->grab();
+    require(overviewPlot->property("xAxisTickCount").toInt() > compactTickCount,
+            "Widening the overview displays a longer span of actual temperature history");
 
     std::cout << "temperature controller panel tests passed\n";
     return 0;

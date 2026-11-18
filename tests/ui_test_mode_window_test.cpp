@@ -1759,8 +1759,8 @@ int main(int argc, char **argv)
     const double defaultOverviewTimeSpan = temperatureOverviewPlot->property("xAxisTimeSpanSeconds").toDouble();
     const double defaultOverviewTimeFirstTick = temperatureOverviewPlot->property("xAxisTimeFirstTickX").toDouble();
     const double defaultOverviewTimeLastTick = temperatureOverviewPlot->property("xAxisTimeLastTickX").toDouble();
-    const double defaultOverviewTimeFirstLabelCenter =
-        temperatureOverviewPlot->property("xAxisTimeFirstLabelCenterX").toDouble();
+    const double defaultOverviewTimeFirstLabelAnchor =
+        temperatureOverviewPlot->property("xAxisTimeFirstLabelAnchorX").toDouble();
     const double defaultOverviewTimeLastLabelCenter =
         temperatureOverviewPlot->property("xAxisTimeLastLabelCenterX").toDouble();
     const double defaultOverviewTimePlotBottom =
@@ -1773,10 +1773,10 @@ int main(int argc, char **argv)
         temperatureOverviewPlot->property("xAxisTickLength").toDouble();
     require(defaultOverviewTimeTickCount >= 2 &&
                 std::abs(defaultOverviewTimeSpan - (defaultOverviewTimeTickCount - 1)) < 1e-6 &&
-                std::abs(defaultOverviewTimeFirstTick - defaultOverviewTimeFirstLabelCenter) <= 2.0 &&
+                std::abs(defaultOverviewTimeFirstTick - defaultOverviewTimeFirstLabelAnchor) <= 2.0 &&
                 std::abs(defaultOverviewTimeLastTick - defaultOverviewTimeLastLabelCenter) <= 2.0 &&
                 defaultOverviewTimeLastTick < temperatureOverviewPlot->width() - 4.0,
-            "default home temperature overview centers endpoint times on their ticks");
+            "default home temperature overview aligns endpoint times with their ticks");
     require(defaultOverviewTimeLabelGap >= 6.0 &&
                 std::abs(defaultOverviewTimeLabelTop - defaultOverviewTimePlotBottom -
                          defaultOverviewTimeLabelGap) < 1e-6 &&
