@@ -1152,11 +1152,7 @@ void MainWindow::updateResponsiveHomeLayout()
             state_->ai8_temperature_overview_group_->minimumHeight() <
                 std::max(state_->ai8_temperature_overview_group_->sizeHint().height(),
                          state_->ai8_temperature_overview_group_->minimumSizeHint().height());
-        const bool laserHeightChanged = state_->temperature_overview_group_ &&
-            state_->temperature_overview_group_->minimumHeight() !=
-                std::max(state_->temperature_overview_group_->sizeHint().height(),
-                         state_->temperature_overview_group_->minimumSizeHint().height());
-        if (environmentInOverview || environmentRowChanged || temperatureContentGrew || laserHeightChanged)
+        if (environmentInOverview || environmentRowChanged || temperatureContentGrew)
             updateConfigCardHeightForSourceMode();
     }
 

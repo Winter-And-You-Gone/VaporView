@@ -4559,15 +4559,6 @@ void requireHomeTemperatureColumnMinimumHeight(MainWindow &window)
                 "each card's minimum height fits its full content");
     require(laser->height() == std::max(laser->minimumSizeHint().height(), laser->sizeHint().height()),
             "the laser overview retains its natural height without blank padding");
-    int plotCount = 0;
-    for (auto *plot : laser->findChildren<QWidget *>(QStringLiteral("temperatureTrendPlot")))
-    {
-        const int expectedHeight = std::clamp(qRound(plot->width() * 0.75), 144, 192);
-        require(std::abs(plot->height() - expectedHeight) <= 1,
-                "laser trend plot height follows its width within the compact homepage limits");
-        ++plotCount;
-    }
-    require(plotCount == 2, "the laser overview retains both temperature plots");
     require(ai8->geometry().bottom() == column->contentsRect().bottom(),
             "the device temperature card fills the remaining column height");
     int smallestPlotHeight = std::numeric_limits<int>::max();
@@ -4856,10 +4847,20 @@ void requireHomeThreeColumnLayout()
             window.resize(chrome + breakpoint + 400, 700);
             processEventsFor(200);
             auto *handle = overview->handle(1);
+            auto *temperatureColumn = overview->widget(1);
+            auto *laserPanel = temperatureColumn->findChild<QWidget *>(QStringLiteral("temperatureOverviewPanel"));
+            require(laserPanel != nullptr, "splitter resize test exposes the laser temperature panel");
+            auto *laserCard = laserPanel->parentWidget();
+            const auto laserPlots = laserPanel->findChildren<QWidget *>(QStringLiteral("temperatureTrendPlot"));
+            require(laserPlots.size() == 2, "splitter resize test covers both laser temperature plots");
+            const int laserCardHeight = laserCard->height();
+            const int firstPlotHeight = laserPlots.at(0)->height();
+            const int secondPlotHeight = laserPlots.at(1)->height();
+            const int temperatureWidth = temperatureColumn->width();
             const int compactDeviceWidth = overview->sizes().at(0);
             const QPoint start = handle->rect().center();
             const QPoint globalStart = handle->mapToGlobal(start);
-            const QPoint offset(80, 0);
+            const QPoint offset(std::max(80, temperatureWidth - temperatureColumn->minimumWidth()), 0);
             QMouseEvent press(QEvent::MouseButtonPress, start, globalStart,
                               Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
             QCoreApplication::sendEvent(handle, &press);
@@ -4871,6 +4872,11 @@ void requireHomeThreeColumnLayout()
             QCoreApplication::sendEvent(handle, &release);
             processEventsFor(200);
             const int manualDeviceWidth = overview->sizes().at(0);
+            require(temperatureColumn->width() < temperatureWidth,
+                    "dragging the left handle narrows the temperature column");
+            require(laserPlots.at(0)->height() == firstPlotHeight &&
+                        laserPlots.at(1)->height() == secondPlotHeight && laserCard->height() == laserCardHeight,
+                    "dragging the left handle preserves both laser plot heights and the card height");
             requireHomeDataRowsPacked(overview->widget(0)->findChild<QWidget *>(
                 QStringLiteral("homeTelemetrySummaryContainer")));
             requireHomeTemperatureColumnMinimumHeight(window);
@@ -7454,13 +7460,10 @@ int main(int argc, char **argv)
                 ai8TemperatureOverviewBody->findChildren<QWidget *>(
                     QStringLiteral("temperatureTrendPlot")).isEmpty(),
             "AI-8288 overview shows eight direct temperature values without a trend plot");
-    require(processEventsUntil(1000, [&] {
-                activateLayouts(&window);
-                return temperatureOverviewCard->height() < temperatureOverviewColumn->height() &&
-                    ai8TemperatureOverviewCard->y() > temperatureOverviewCard->geometry().bottom() &&
-                    temperatureOverviewCard->minimumHeight() == temperatureOverviewCard->maximumHeight() &&
-                    ai8TemperatureOverviewCard->geometry().bottom() == temperatureOverviewColumn->contentsRect().bottom();
-            }),
+    require(temperatureOverviewCard->height() < temperatureOverviewColumn->height() &&
+                ai8TemperatureOverviewCard->y() > temperatureOverviewCard->geometry().bottom() &&
+                temperatureOverviewCard->minimumHeight() == temperatureOverviewCard->maximumHeight() &&
+                ai8TemperatureOverviewCard->geometry().bottom() == temperatureOverviewColumn->contentsRect().bottom(),
             "the laser card stays compact while device temperatures fill the remaining overview column");
     requireHomeTemperatureColumnMinimumHeight(window);
     requireHomeDeviceMinimumWidthMatchesControls(&window);
@@ -8249,8 +8252,7 @@ int main(int argc, char **argv)
     require(temperatureOutputCapsule->geometry().top() ==
                 temperatureOutputPercentPill->geometry().bottom() + 1 + summarySpacing,
             "temperature overview places output enable directly below output percent without a stretch gap");
-    require(temperatureOverviewBody->height() >= 164 &&
-                temperatureOverviewBody->rect().contains(temperatureOverviewPlot->geometry()),
+    require(temperatureOverviewBody->height() == 164 && temperatureOverviewPlot->height() == 144,
             "temperature overview accommodates the enlarged controls and side-by-side plots");
     QList<QWidget *> overviewPlots;
     for (auto *plot : window.findChildren<QWidget *>(QStringLiteral("temperatureTrendPlot")))
@@ -8260,7 +8262,7 @@ int main(int argc, char **argv)
                 overviewPlots[0]->geometry().right() < overviewPlots[1]->geometry().left() &&
                 std::abs(overviewPlots[0]->width() - overviewPlots[1]->width()) <= 1,
             "temperature overview places channel 1 left of channel 2 at equal width");
-    require(overviewPlots[1]->height() == overviewPlots[0]->height() &&
+    require(overviewPlots[1]->height() == 144 &&
                 overviewPlots[0]->property("xAxisLabelsVisible").toBool() &&
                 overviewPlots[1]->property("xAxisLabelsVisible").toBool(),
             "both side-by-side plots reserve room for their time labels");

@@ -974,12 +974,6 @@ void MainWindow::updateConfigCardHeightForSourceMode()
     state_->config_group_->setMinimumHeight(minimumHeight);
     if (state_->env_group_)
     {
-        if (!environmentInOverview &&
-            state_->env_group_->property(kMainCardMinimumHeightProperty).toInt() != overviewColumnMinimumHeight)
-        {
-            // When the temperature plots resize, refit the lower row to keep both cards aligned.
-            queueResponsiveHomeLayoutRefresh();
-        }
         state_->env_group_->setProperty(kMainCardMinimumHeightProperty, overviewColumnMinimumHeight);
         state_->env_group_->setMinimumHeight(overviewColumnMinimumHeight);
     }
