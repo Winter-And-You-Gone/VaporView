@@ -3973,6 +3973,24 @@ void requireHomeOverviewLanguageWidthRoundTrip()
         languageTelemetrySummaryContainer,
         "language overview telemetry labels fit at startup");
     requireHomeLinkRowsPacked(languageTelemetrySummaryContainer);
+    auto *transportCombo = languageOverviewWindow.findChild<QComboBox *>(
+        QStringLiteral("deviceSensorTransportPathCombo"));
+    require(transportCombo != nullptr, "language overview exposes the sensor transport selector");
+    const int initialTransport = transportCombo->currentIndex();
+    for (int index = 0; index < transportCombo->count(); ++index)
+    {
+        transportCombo->setCurrentIndex(index);
+        processEventsFor(100);
+        auto *rates = firstTelemetrySection(languageTelemetrySummaryContainer);
+        auto *features = findTelemetryPillByName(rates, QStringLiteral("波形特征值"));
+        auto *status = findTelemetryPillByName(rates, QStringLiteral("遥测状态"));
+        require(features && status && features->parentWidget() == status->parentWidget(),
+                "home waveform feature and telemetry status rates share a row in both transport modes");
+        requireTelemetrySummaryPillsOrdered(languageTelemetrySummaryContainer,
+                                            "home rates fit inside the overview in both transport modes");
+    }
+    transportCombo->setCurrentIndex(initialTransport);
+    processEventsFor(100);
     const QVector<TelemetryPillWidthSnapshotItem> initialTelemetryPillWidths =
         telemetryPillWidthSnapshot(languageTelemetrySummaryContainer);
     requireEpsilonSectionTitleWidths(languageEpsilonPanel, false);

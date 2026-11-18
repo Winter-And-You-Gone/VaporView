@@ -235,7 +235,11 @@ bool updateSummarySectionValues(QVBoxLayout *sectionLayout,
     return true;
 }
 
-void reflowHomeDeviceSummary(QVBoxLayout *sectionLayout, int sectionWidth, int rowHeight, int spacing, int borderAllowance)
+// Both home rate lists place waveform features and telemetry status after basic telemetry.
+constexpr int kHomeWaveformFeatureRateIndex = 1;
+
+void reflowHomeDeviceSummary(QVBoxLayout *sectionLayout, int sectionWidth, int rowHeight, int spacing,
+                             int borderAllowance, int pairedRateIndex = -1)
 {
     auto *section = sectionLayout ? qobject_cast<QWidget *>(sectionLayout->parent()) : nullptr;
     // Newly rebuilt rows may not be visible yet, but still need their first reflow.
@@ -275,10 +279,21 @@ void reflowHomeDeviceSummary(QVBoxLayout *sectionLayout, int sectionWidth, int r
     const int available = sectionWidth - frameWidth - margins.left() - margins.right();
     QList<QList<QFrame *>> rows{{}};
     int used = title ? title->width() : 0;
-    for (QFrame *pill : pills)
+    const auto pillWidth = [](const QFrame *pill) {
+        return qBound(pill->minimumWidth(), pill->sizeHint().width(), pill->maximumWidth());
+    };
+    for (int i = 0; i < pills.size(); ++i)
     {
-        const int width = qBound(pill->minimumWidth(), pill->sizeHint().width(), pill->maximumWidth());
-        if (used > 0 && used + spacing + width > available)
+        QFrame *pill = pills.at(i);
+        const int width = pillWidth(pill);
+        int requiredWidth = width;
+        if (i == pairedRateIndex && i + 1 < pills.size())
+        {
+            const int pairWidth = width + spacing + pillWidth(pills.at(i + 1));
+            if (pairWidth <= available)
+                requiredWidth = pairWidth;
+        }
+        if (used > 0 && used + spacing + requiredWidth > available)
         {
             rows.append(QList<QFrame *>{});
             used = 0;
@@ -918,11 +933,10 @@ void MainWindow::updateConfigCardHeightForSourceMode()
     if (state_->data_telemetry_summary_card_)
     {
         const int summaryWidth = state_->data_telemetry_summary_card_->width();
-        for (QVBoxLayout *sectionLayout : {state_->data_telemetry_summary_layout_,
-                                           state_->data_telemetry_link_summary_layout_})
-        {
-            reflowHomeDeviceSummary(sectionLayout, summaryWidth, scalePixels(28), scalePixels(2), scalePixels(2));
-        }
+        reflowHomeDeviceSummary(state_->data_telemetry_summary_layout_, summaryWidth,
+                                scalePixels(28), scalePixels(2), scalePixels(2), kHomeWaveformFeatureRateIndex);
+        reflowHomeDeviceSummary(state_->data_telemetry_link_summary_layout_, summaryWidth,
+                                scalePixels(28), scalePixels(2), scalePixels(2));
         if (QLayout *summaryLayout = state_->data_telemetry_summary_card_->layout())
         {
             summaryLayout->invalidate();
@@ -1620,7 +1634,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
     const RemoteTelemetrySummarySections sections = remoteTelemetrySummarySections();
     RemoteTelemetrySummarySections homeSections = sections;
     if (isFpgaRelayPath() && homeSections.rateItems.size() == 6)
-        homeSections.rateItems.swapItemsAt(3, 4);
+        homeSections.rateItems.move(4, kHomeWaveformFeatureRateIndex);
     const QStringList rateLabels = state_->is_english_
         ? QStringList{QStringLiteral("Basic telemetry"), QStringLiteral("Waveform features"),
             QStringLiteral("Telemetry status"), QStringLiteral("Raw waveform"),
