@@ -485,10 +485,12 @@ void MainWindow::executeFpgaInstrument(const QJsonObject& request,std::function<
         [this,ticket,observer,finished](const QJsonObject& result) {
             if(*finished || result.value("ticket").toString()!=ticket)return;*finished=true;QObject::disconnect(*observer);
             if(auto done=std::move(state_->fpga_instrument_reply_))done(result);
+            connectNextHomeFpgaDevice();
         });
     QTimer::singleShot(30000,this,[this,observer,finished] {
         if(*finished)return;*finished=true;QObject::disconnect(*observer);
         if(auto done=std::move(state_->fpga_instrument_reply_))done({{"ok",false},{"detail",QStringLiteral("FPGA 设备事务超时；执行结果未知。")}});
+        connectNextHomeFpgaDevice();
     });
     QMetaObject::invokeMethod(controller,[controller,submitted]{controller->executeOperation(submitted);},Qt::QueuedConnection);
 }

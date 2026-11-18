@@ -1472,7 +1472,17 @@ static void localSimulatorRouting()
             },Qt::QueuedConnection);
         auto* readRd=window.findChild<QToolButton*>("temperatureFpgaReadParameters");
         check(readRd&&readRd->isEnabled(),"RD105 capability enables the existing configuration read");
-        readRd->click();const bool rdReadFinished=waitUntil([&]{return rdReads>5&&readRd->isEnabled();},45000);
+        auto *bmpAction=homeAction(window,"BMP390");
+        bmpAction->click();
+        check(waitUntil([&]{return bmpAction->property("state")=="disconnected";}),"stop BMP390 before interleaved parameter read");
+        connectionSuccesses.remove(0x43);
+        readRd->click();
+        auto& state=MainWindowRtcmTestAccess::state(window);
+        check(waitUntil([&]{return bool(state.fpga_instrument_reply_);}),"parameter read owns the FPGA reply");
+        state.fpga_home_connect_queue_.append(VaporView::SkyDeviceId::Bmp390);
+        check(waitUntil([&]{return connectionSuccesses.contains(0x43);},15000),
+            "instrument completion resumes pending BMP390 connection and confirms a valid sample");
+        const bool rdReadFinished=waitUntil([&]{return rdReads>5&&readRd->isEnabled();},45000);
         if(!rdReadFinished) {
             const auto& current=MainWindowRtcmTestAccess::state(window);
             std::cerr<<"RD105 parameter read: starts="<<rdReads<<" queue="<<current.fpga_action_queue_.size()
