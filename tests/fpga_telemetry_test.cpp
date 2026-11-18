@@ -50,7 +50,10 @@ int main(int argc, char **argv)
     require(validateControl({{"op","sensor"},{"source",0x41},{"enabled",true}}),"HC2A source is supported");
     require(validateControl({{"op","sensor"},{"source",0x4a},{"enabled",true},{"poll_ms",200},
         {"parameters",QJsonObject{{"address",2},{"channel",2}}}}),"RD105 uses its independent source and fixed shared-bus address");
-    require(!validateControl({{"op","sensor"},{"source",0x48},{"enabled",true}}),"LC0 cannot be enabled through a historical RD105 request");
+    for (int source : {0x48,0x49}) {
+        require(validateControl({{"op","sensor"},{"source",source},{"enabled",true}}),"individual TEC103 connection supported");
+        require(!validateControl({{"op","sensor"},{"source",source},{"enabled",true},{"poll_ms",200}}),"raw UART rejects historical RD105 configuration");
+    }
     QJsonObject legacyRd105{{"sensorParameters",QJsonObject{{"72",QJsonObject{{"address",7},{"channel",2}}}}}};
     const auto migratedRd105=FpgaControlConfig::fromJson(legacyRd105);
     require(!migratedRd105.sensorParameters.contains(0x48)

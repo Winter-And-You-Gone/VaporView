@@ -1222,6 +1222,8 @@ void FpgaControlPage::setUiTestState(bool enabled, bool dataStalled, bool partia
     setSensorTransportPath(path);
     const bool wasEnabled=property("fpgaUiTestMode").toBool();
     if(enabled&&!wasEnabled) {
+        setProperty("tec103Ports", QJsonObject{});
+        setTemperatureConnectionState(false, {});
         clearMeasurements();
         simulation_=Simulation{};simulation_.saved=configuration();
         simulation_.savedUsb=usbDiscovery_;simulation_.savedUsbRemote=usbRemote_;simulation_.savedUsbAvailable=usbHostAvailable_;
@@ -1246,6 +1248,7 @@ void FpgaControlPage::setUiTestState(bool enabled, bool dataStalled, bool partia
             setConnectionState(ready,busy,text("界面测试 · VLP1 协议模拟器 · ","UI test · VLP1 protocol simulator · ")+detail);publish();
         });
         connect(controller,&VaporView::Ground::Devices::FpgaDeviceController::hardwareValuesChanged,receiver,[this,publish](const auto& values) {setHardwareValues(values);publish();});
+        connect(controller,&VaporView::Ground::Devices::FpgaDeviceController::temperaturePortsChanged,receiver,[this,publish](const QJsonObject& ports) {setProperty("tec103Ports",ports);publish();});
         connect(controller,&VaporView::Ground::Devices::FpgaDeviceController::temperatureConnectionChanged,receiver,[this,publish](bool connected,const QString& detail,bool identifying) {
             setTemperatureConnectionState(connected,detail,identifying);publish();
         });

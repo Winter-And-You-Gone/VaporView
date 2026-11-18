@@ -122,7 +122,7 @@ int main(int argc,char** argv) {
     check(!result.value("ok").toBool() && writes()==beforeLegacy,
         "legacy temperature requests send zero register writes");
     controller.setSensorEnabled(0x4a,true);
-    check(waitFor([&]{return controller.temperatureConnected() && temperature.valid;}),"both physical TEC103 instruments identify and deliver typed data");
+    check(waitFor([&]{return controller.temperatureConnected() && temperature.valid && std::isfinite(temperature.channels[0].measured_temperature_c) && std::isfinite(temperature.channels[1].measured_temperature_c);}),"both physical TEC103 instruments identify and deliver typed data");
     check(temperatureUpdates>0 && std::isfinite(temperature.channels[0].measured_temperature_c)
         && std::isfinite(temperature.channels[1].measured_temperature_c),"both GPIO channels survive typed temperature delivery");
     check(std::abs(temperature.channels[0].target_temperature_c-27.3)<1e-8
@@ -326,7 +326,7 @@ int main(int argc,char** argv) {
             QObject::disconnect(observer);return reply;
         };
         production.connectSensor({{"op","sensor"},{"source",0x4a},{"enabled",true}});
-        check(waitFor([&]{return production.temperatureConnected() && productionData.valid;}),
+        check(waitFor([&]{return production.temperatureConnected() && productionData.valid && std::isfinite(productionData.channels[0].measured_temperature_c) && std::isfinite(productionData.channels[1].measured_temperature_c);}),
             "production GPIO connection identifies both independent TEC103 instruments");
         check(production.hardwareValues().value(0x6804)==1 && production.hardwareValues().value(0x6904)==1
             && production.hardwareValues().value(0x6810)==38400 && production.hardwareValues().value(0x6910)==38400
@@ -375,10 +375,10 @@ int main(int argc,char** argv) {
         check(partialDetail.contains(QStringLiteral("LC0：已连接")) && partialDetail.contains(QStringLiteral("LC1：未连接"))
             && partialData.device_address==-1 && partialData.controller_mode==-1 && partialData.overtemp_output_mode==-1,
             "partial connection reports each port and never invents shared metadata");
-        bool partialSucceeded=false;for(const auto& record:partialLogs)
+        check(waitFor([&] {bool partialSucceeded=false;for(const auto& record:partialLogs)
             partialSucceeded|=record.fields.value("reason_code")=="TEC103_PARTIAL_CONNECTION"
                 && record.fields.value("result")=="succeeded";
-        check(partialSucceeded,"the available instrument completes the connection with an explicit partial result");
+        return partialSucceeded;}),"the available instrument completes the connection with an explicit partial result");
         partialTransport->injectFault("tec103_lc1_reconnected");
         check(waitFor([&]{return partial.temperatureConnected() && partialData.valid
             &&std::isfinite(partialData.channels[1].measured_temperature_c)

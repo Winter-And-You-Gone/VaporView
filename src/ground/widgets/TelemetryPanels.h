@@ -226,6 +226,7 @@ class TemperatureControllerPanel : public QWidget
 
 public:
     explicit TemperatureControllerPanel(QWidget *parent = nullptr);
+    bool remoteTec103Selected() const;
     void setDualTec103(bool dual);
     QWidget *titleStatusWidget() const;
     void clearTemperatureHistory();
@@ -239,6 +240,7 @@ public:
     void clearCommandPending(VaporView::CommandId command, quint8 channel);
 
 signals:
+    void tec103SelectionChanged();
     void targetTemperatureRequested(quint8 channel, double celsius);
     void outputEnabledRequested(quint8 channel, bool enabled);
     void outputModeRequested(quint8 channel, quint16 mode);

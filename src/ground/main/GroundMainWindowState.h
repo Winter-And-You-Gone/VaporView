@@ -408,6 +408,9 @@ struct MainWindowState
     QLabel *home_hc2a_status_lbl_;
     QLabel *home_lidar_status_lbl_;
     QLabel *home_temperature_status_lbl_;
+    QLabel *home_tec_remote_lbl_ = nullptr;
+    QToolButton *home_tec_remote_btn_ = nullptr;
+    QJsonObject local_tec103_ports_;
     QLabel *home_wave_status_lbl_;
     QLabel *home_ai8_temperature_status_lbl_;
     QLabel *home_bmp390_status_lbl_;

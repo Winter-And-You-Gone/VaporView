@@ -288,7 +288,8 @@ void MainWindow::syncFpgaDeviceConfigUi()
 
 bool MainWindow::homeFpgaDeviceSelected(VaporView::SkyDeviceId device) const
 {
-    return !state_->fpga_home_disabled_sources_[isRemoteSkyMode() ? 1 : 0].contains(homeFpgaSensorSource(device));
+    const auto source = homeFpgaSensorSource(device);
+    return !state_->fpga_home_disabled_sources_[isRemoteSkyMode() ? 1 : 0].contains(source == 0x48 || source == 0x49 ? 0x4a : source);
 }
 
 void MainWindow::setHomeFpgaDeviceSelected(VaporView::SkyDeviceId device, bool selected)
@@ -314,7 +315,7 @@ QMap<quint16, QJsonObject>& MainWindow::fpgaSensorDrafts()
 
 QJsonObject MainWindow::fpgaSensorConnectRequest(quint16 source)
 {
-    if(source==0x4a)return {{"op","sensor"},{"source",source},{"enabled",true}};
+    if(source>=0x48 && source<=0x4a)return {{"op","sensor"},{"source",source},{"enabled",true}};
     auto request=fpgaSensorDrafts().value(source);
     // Keep the typed text intact during refresh; convert only for the transaction.
     for(auto it=request.begin();it!=request.end();++it) {
@@ -353,6 +354,8 @@ quint16 MainWindow::homeFpgaSensorSource(VaporView::SkyDeviceId device) const
     case SkyDeviceId::Hc2a: return 0x41;
     case SkyDeviceId::Lidar: return 0x45;
     case SkyDeviceId::Ai8TemperatureController: return 0x46;
+    case SkyDeviceId::Tec103InSitu: return 0x48;
+    case SkyDeviceId::Tec103Remote: return 0x49;
     case SkyDeviceId::TemperatureController: return 0x4a;
     default: return 0;
     }
@@ -553,6 +556,13 @@ void MainWindow::finishHomeFpgaRawStart()
     requestHomeFpgaWaveAction(true, true);
 }
 
+QJsonObject MainWindow::homeTec103Port(VaporView::SkyDeviceId device) const
+{
+    const auto ports = isUiTestMode() && state_->fpga_page_ ? state_->fpga_page_->property("tec103Ports").toJsonObject()
+        : isRemoteSkyMode() ? state_->fpga_session_.remoteStatus.value("tec103_ports").toObject() : state_->local_tec103_ports_;
+    return ports.value(device == VaporView::SkyDeviceId::Tec103InSitu ? "1" : "2").toObject();
+}
+
 VaporView::DeviceState MainWindow::homeFpgaDeviceState(VaporView::SkyDeviceId device) const
 {
     using VaporView::DeviceState;
@@ -571,6 +581,13 @@ VaporView::DeviceState MainWindow::homeFpgaDeviceState(VaporView::SkyDeviceId de
             && !state_->fpga_session_.remoteStatus.value("busy").toBool())) return DeviceState::Disconnected;
     }
     const auto registers = homeFpgaRegisters();
+    if (source == 0x48 || source == 0x49) {
+        const quint32 base = source == 0x48 ? 0x6800 : 0x6900;
+        if(registers.value(base) != (source == 0x48 ? 0x00480100u : 0x00490100u)) return DeviceState::Disabled;
+        const auto port = homeTec103Port(device);
+        if (port.value("identifying").toBool()) return DeviceState::Connecting;
+        return port.value("connected").toBool() ? DeviceState::Connected : DeviceState::Disconnected;
+    }
     if(device==VaporView::SkyDeviceId::TemperatureController) {
         if(!tec103BridgesAvailable(registers))return DeviceState::Disabled;
         const bool connected=isUiTestMode()?state_->fpga_page_->property("tec103Connected").toBool():isRemoteSkyMode()
@@ -609,8 +626,9 @@ void MainWindow::connectNextHomeFpgaDevice()
     while (!state_->fpga_home_connect_queue_.isEmpty()) {
         const auto device = state_->fpga_home_connect_queue_.takeFirst();
         if (!homeFpgaDeviceSelected(device)) continue;
-        if(device==VaporView::SkyDeviceId::TemperatureController && !homeFpgaRegisters().isEmpty()
-            && !tec103BridgesAvailable(homeFpgaRegisters()))continue;
+        const auto source = homeFpgaSensorSource(device);
+        if ((source == 0x48 || source == 0x49) && !homeFpgaRegisters().isEmpty()
+            && homeFpgaDeviceState(device) == VaporView::DeviceState::Disabled) continue;
         if (!homeFpgaNeedsConnect(device)) continue;
         setHomeFpgaDeviceEnabled(device,true);
         return;
@@ -619,7 +637,9 @@ void MainWindow::connectNextHomeFpgaDevice()
 
 void MainWindow::handleHomeFpgaFailure(bool transportReady)
 {
-    const bool continueBatch = transportReady && !state_->fpga_home_connect_queue_.isEmpty();
+    const auto device = state_->fpga_home_action_device_;
+    const bool singleTec = device == VaporView::SkyDeviceId::Tec103InSitu || device == VaporView::SkyDeviceId::Tec103Remote;
+    const bool continueBatch = transportReady && (singleTec || !state_->fpga_home_connect_queue_.isEmpty());
     if (!continueBatch) {
         cancelFpgaActions();
         state_->fpga_home_connect_queue_.clear();
@@ -644,7 +664,7 @@ void MainWindow::setHomeFpgaDeviceEnabled(VaporView::SkyDeviceId device, bool en
         updateHomeDeviceStatusCapsules();
     }, [this, device] {
         using VaporView::SkyDeviceId;
-        if (device == SkyDeviceId::TemperatureController && state_->rd105_device_session_)
+        if ((device == SkyDeviceId::TemperatureController || device == SkyDeviceId::Tec103InSitu || device == SkyDeviceId::Tec103Remote) && state_->rd105_device_session_)
             return !state_->rd105_device_session_->operationPending();
         if (device == SkyDeviceId::Ai8TemperatureController && state_->ai8_device_session_)
             return !state_->ai8_device_session_->operationPending();
@@ -1103,6 +1123,9 @@ void MainWindow::setupFpgaControlPage()
         updateConnectionStatus(anyLocalDeviceConnected());
     }, Qt::QueuedConnection);
     connect(controller,&Controller::measurementUpdated,this,&MainWindow::receiveFpgaMeasurements,Qt::QueuedConnection);
+    connect(controller,&Controller::temperaturePortsChanged,this,[this](const QJsonObject& ports) {
+        state_->local_tec103_ports_=ports;updateHomeDeviceStatusCapsules();
+    },Qt::QueuedConnection);
     connect(controller,&Controller::temperatureConnectionChanged,this,[this](bool connected,const QString& detail,bool identifying) {
         state_->fpga_tec103_identifying_=identifying;
         state_->fpga_tec103_connected_=connected;
@@ -1199,7 +1222,8 @@ void MainWindow::setupFpgaControlPage()
         const auto request=state_->fpga_session_.remoteControl;
         state_->fpga_home_connect_device_ = VaporView::SkyDeviceId::All;
         state_->fpga_session_.finishRemote();
-        if (response.error_code != VaporView::CommandErrorCode::Ok) cancelFpgaActions();
+        const int source = request.value("source").toInt();
+        if (response.error_code != VaporView::CommandErrorCode::Ok && !(request.value("op") == "sensor" && (source == 0x48 || source == 0x49))) cancelFpgaActions();
         if (response.error_code != VaporView::CommandErrorCode::Ok && request.value("op") == "connect")
             state_->fpga_home_connect_queue_.clear();
         if (response.error_code != VaporView::CommandErrorCode::Ok) state_->fpga_home_raw_start_pending_ = false;

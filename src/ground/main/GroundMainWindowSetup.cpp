@@ -5286,7 +5286,8 @@ void MainWindow::setupConfigPanel()
         button->setFixedSize(kHomeDeviceButtonSize, kHomeDeviceButtonSize);
         button->setFocusPolicy(Qt::TabFocus);
         connect(button, &QToolButton::clicked, this, [this, device]() {
-            triggerHomeDeviceAction(device);
+            triggerHomeDeviceAction(device == VaporView::SkyDeviceId::TemperatureController && isFpgaRelayPath()
+                ? VaporView::SkyDeviceId::Tec103InSitu : device);
         });
         return button;
     };
@@ -5328,6 +5329,8 @@ void MainWindow::setupConfigPanel()
         columnLayout->addWidget(state_->home_motion_status_lbl_, homeDeviceIndex / kHomeDeviceGridColumns, 0);
         columnLayout->addWidget(button, homeDeviceIndex / kHomeDeviceGridColumns, 1, Qt::AlignVCenter);
     }
+    ++homeDeviceIndex;
+    addHomeDevice(state_->home_tec_remote_lbl_, state_->home_tec_remote_btn_, VaporView::SkyDeviceId::Tec103Remote);
     state_->home_device_action_spinner_timer_ = new QTimer(this);
     state_->home_device_action_spinner_timer_->setTimerType(Qt::PreciseTimer);
     state_->home_device_action_spinner_timer_->setInterval(kHomeDeviceActionSpinnerIntervalMs);
@@ -5843,6 +5846,7 @@ void MainWindow::setupDataPanels()
         QStringLiteral("temperatureTitleActionButton"),
         VaporView::SkyDeviceId::TemperatureController);
     connect(state_->temperature_title_action_btn_, &QToolButton::clicked, this, [this]() {
+        if (isFpgaRelayPath()) { triggerHomeDeviceAction(selectedTemperatureDevice()); return; }
         const VaporView::DeviceState state =
             homeDeviceActionState(VaporView::SkyDeviceId::TemperatureController);
         if (state == VaporView::DeviceState::Connecting ||
@@ -5857,6 +5861,7 @@ void MainWindow::setupDataPanels()
                 : VaporView::CommandId::ConnectDevice);
     });
     state_->temperature_controller_panel_ = new TemperatureControllerPanel(this);
+    connect(state_->temperature_controller_panel_, &TemperatureControllerPanel::tec103SelectionChanged, this, &MainWindow::updateTemperatureTitleButtonsState);
     temperatureTitleLayout->addWidget(state_->temperature_title_action_btn_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     auto* readFpgaTemperature=createTemperatureTitleActionButton(temperatureTitleBar,QStringLiteral("temperatureFpgaReadParameters"),VaporView::SkyDeviceId::TemperatureController);
     readFpgaTemperature->setIcon(createLucideIcon(QStringLiteral("refresh-cw"),toolbarColor(AppThemeColor::ToolbarBlue)));

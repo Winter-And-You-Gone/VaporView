@@ -387,6 +387,7 @@ private:
     bool homeDevicePortSelected(VaporView::SkyDeviceId device) const;
     VaporView::DeviceState homeDeviceActionState(VaporView::SkyDeviceId device) const;
     quint16 homeFpgaSensorSource(VaporView::SkyDeviceId device) const;
+    QJsonObject homeTec103Port(VaporView::SkyDeviceId device) const;
     VaporView::DeviceState homeFpgaDeviceState(VaporView::SkyDeviceId device) const;
     double homeFpgaSensorRate(VaporView::SkyDeviceId device) const;
     VaporView::DeviceState homeFpgaDeviceActionState(VaporView::SkyDeviceId device) const;
@@ -568,6 +569,7 @@ private:
     void refreshAi8TemperatureTitlePortOptions(const QStringList& ports, const QString& preferredText = QString());
     void updateAi8TemperatureTitlePortAppearance();
     void updateAi8TemperatureTitleStatus();
+    VaporView::SkyDeviceId selectedTemperatureDevice() const;
     void updateTemperatureTitleButtonsState();
     void handleTemperatureTitleButton(VaporView::CommandId command);
     void connectLocalTemperatureController();

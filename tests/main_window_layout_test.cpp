@@ -1326,12 +1326,14 @@ void requireHomeDeviceColumnsAligned(QWidget *scope)
     for (int columnIndex = 0; columnIndex < columns.size(); ++columnIndex)
     {
         QWidget *column = columns.at(columnIndex);
-        const QList<QLabel *> capsules =
+        QList<QLabel *> capsules =
             column->findChildren<QLabel *>(QStringLiteral("homeDeviceStatusCapsule"),
                                            Qt::FindDirectChildrenOnly);
-        const QList<QToolButton *> actionButtons =
+        QList<QToolButton *> actionButtons =
             column->findChildren<QToolButton *>(QStringLiteral("homeDeviceActionButton"),
                                                 Qt::FindDirectChildrenOnly);
+        capsules.removeIf([](QLabel* w){ return w->isHidden(); });
+        actionButtons.removeIf([](QToolButton* w){ return w->isHidden(); });
         require(capsules.size() == 5 && actionButtons.size() == capsules.size(),
                 "each device column has five capsules and their connection actions");
         for (int i = 1; i < capsules.size(); ++i)
@@ -1413,11 +1415,11 @@ void requireHomeDeviceGeometryStableAcrossCardResize(QWidget *scope,
     QList<QWidget *> controls;
     for (QLabel *capsule : deviceGrid->findChildren<QLabel *>(QStringLiteral("homeDeviceStatusCapsule")))
     {
-        controls.append(capsule);
+        if (!capsule->isHidden()) controls.append(capsule);
     }
     for (QToolButton *button : deviceGrid->findChildren<QToolButton *>(QStringLiteral("homeDeviceActionButton")))
     {
-        controls.append(button);
+        if (!button->isHidden()) controls.append(button);
     }
     require(controls.size() == 20,
             "home device resize check covers ten capsules and ten action icons");
@@ -7713,7 +7715,7 @@ int main(int argc, char **argv)
 
     const QList<QLabel*> homeDeviceCapsules =
         window.findChildren<QLabel *>(QStringLiteral("homeDeviceStatusCapsule"));
-    require(homeDeviceCapsules.size() == 10,
+    require(std::count_if(homeDeviceCapsules.begin(),homeDeviceCapsules.end(),[](QLabel* w){return !w->isHidden();}) == 10,
             "home device overview includes all ten status capsules");
     QStringList homeDeviceNames;
     for (auto *capsule : homeDeviceCapsules)homeDeviceNames.append(capsule->text());

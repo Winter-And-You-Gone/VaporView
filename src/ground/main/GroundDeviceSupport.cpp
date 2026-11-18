@@ -499,6 +499,8 @@ QString homeDeviceDisplayName(VaporView::SkyDeviceId device, bool english)
 {
     switch (device)
     {
+    case VaporView::SkyDeviceId::Tec103InSitu: return english ? QStringLiteral("In situ TEC103") : QStringLiteral("原位 TEC103");
+    case VaporView::SkyDeviceId::Tec103Remote: return english ? QStringLiteral("Remote TEC103") : QStringLiteral("遥测 TEC103");
     case VaporView::SkyDeviceId::Bmp390:
         return english ? QStringLiteral("BMP390 Pressure") : QStringLiteral("BMP390 气压");
     case VaporView::SkyDeviceId::Sht45:

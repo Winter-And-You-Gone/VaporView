@@ -879,7 +879,7 @@ static void remoteHomeActions()
     send(MsgType::DeviceOperationResponse,TelemetryCodec::serializeDeviceOperationResponse(connected));
     require(waitUntil([&]{return epsilon->isEnabled()&&epsilon->property("state")=="connected";}),
         "register readback enables home controls without any valid measurement packets");
-    require(!homeAction(window,"RD105")->isEnabled(),"unsupported RD105 remains unavailable");
+    require(!homeAction(window,QStringLiteral("原位 TEC103"))->isEnabled(),"unsupported RD105 remains unavailable");
     auto *pressureRate=window.findChild<PtbPanel*>()->findChild<QLabel*>("rateLabel");
     auto *humidityRate=window.findChild<Hc2aPanel*>()->findChild<QLabel*>("rateLabel");
     auto *distanceRate=window.findChild<LidarPanel*>()->findChild<QLabel*>("rateLabel");
@@ -1160,7 +1160,7 @@ static void simulatorRefreshBudget()
         auto *grid = window.findChild<QWidget *>("homeOverviewDeviceGrid");
         auto actions = grid->findChildren<QToolButton *>("homeDeviceActionButton");
         actions.removeAll(MainWindowRtcmTestAccess::state(window).home_motion_action_btn_);
-        require(actions.size() == 9, "refresh budget covers all nine devices");
+        require(actions.size() == 10, "refresh budget includes both TEC103 devices");
         const bool connected=waitUntil([&] {
             return std::all_of(actions.cbegin(), actions.cend(), [](auto *button) {
                 return button->property("state") == "connected";
@@ -1434,7 +1434,7 @@ static void localSimulatorRouting()
     connectionSuccesses.clear();
     window.findChild<QCheckBox*>("deviceRemoteTemperatureEnabledCheck")->setChecked(true);
     QMetaObject::invokeMethod(&window,"onConnectClicked");
-    check(waitUntil([&]{return connectionSuccesses==QSet<quint16>{0x4a}&&homeAction(window,"RD105")->isEnabled();}),
+    check(waitUntil([&]{return connectionSuccesses==QSet<quint16>{0x48,0x49}&&homeAction(window,QStringLiteral("原位 TEC103"))->isEnabled();}),
         "RD105-only selection connects the independent source");
     check(lastRegisters.value(0x6a04)==0&&lastRegisters.value(0x6804)==1&&lastRegisters.value(0x6904)==1,
         "TEC103 selective connection uses both physical UARTs and leaves legacy RS485 disabled");
@@ -1447,7 +1447,7 @@ static void localSimulatorRouting()
     window.findChild<QCheckBox*>("deviceInternalEnabledSHT45")->setChecked(true);
     connectionSuccesses.clear();
     QMetaObject::invokeMethod(&window,"onConnectClicked");
-    check(waitUntil([&]{return connectionSuccesses==QSet<quint16>{0x44,0x4a};},15000),
+    check(waitUntil([&]{return connectionSuccesses==QSet<quint16>{0x44,0x48,0x49};},15000),
         "a rejected AI8 draft leaves SHT45 and the two-port temperature controller in the title connection queue");
     if (savedDraft.isEmpty()) drafts.remove(0x46); else drafts[0x46] = savedDraft;
     disconnect->click();
@@ -1457,7 +1457,7 @@ static void localSimulatorRouting()
     check(waitUntil([&]{auto *wave=homeAction(window,QStringLiteral("波形源"));
         return wave->isEnabled()&&wave->property("state")=="connected";},20000),
         "title connection opens FPGA then starts every supported sensor and shared acquisition");
-    check(waitUntil([&]{return connectionSuccesses==QSet<quint16>{0,0x40,0x41,0x42,0x43,0x44,0x45,0x46,0x4a};}),
+    check(waitUntil([&]{return connectionSuccesses==QSet<quint16>{0,0x40,0x41,0x42,0x43,0x44,0x45,0x46,0x48,0x49};}),
         "all eight current sensors and shared acquisition report confirmed connections");
     verifyRelayIndicators(window,{"Epsilon","Pressure","Humidity","Lidar","Temperature","Ai8","Wave","Bmp390","Sht45"});
     check(connectionSuccesses.contains(0x41),"HC2A has its own confirmed connection log");
@@ -1604,7 +1604,7 @@ static void localSimulatorRouting()
             &&!configAction->toolTip().contains(QStringLiteral("连接中")),
             "home refresh consuming spinner expiry also restores device configuration actions");
     }
-    check(homeAction(window,"RD105")->isEnabled(),"current local relay advertises the independent RD105 capability");
+    check(homeAction(window,QStringLiteral("原位 TEC103"))->isEnabled(),"current local relay advertises the independent RD105 capability");
     auto *navigation=window.findChild<VaporView::Ground::Navigation::CombinationNavigationPage*>("combinationNavigationPage");
     auto *navigationPanel=static_cast<VaporView::Ground::Navigation::NavigationStatusPanel*>(window.findChild<QWidget*>("navigationStatusPanel"));
     check(navigation&&navigationPanel,"local navigation status widgets exist");
@@ -1954,7 +1954,7 @@ static void simulatedMonitorActions()
             return false;
         }
     } outputState;
-    require(capsules.size()==9&&waitUntil([&]{
+    require(capsules.size()==10&&waitUntil([&]{
         for(auto *capsule:capsules)if(capsule->property("state")!="connected")return false;
         for(auto *button:window.findChildren<QToolButton*>("homeDeviceActionButton"))
             if(!button->property("deviceConfigAction").toBool()&&!button->property("motionDeviceAction").toBool()&&!button->isEnabled())return false;
@@ -2014,12 +2014,13 @@ static void simulatedMonitorActions()
             queuedDuringOutput=true;
             require(queuedHumidity->isEnabled()&&homeAction(window,"EPSILON")->isEnabled(),"RD105 transaction leaves other device controls clickable");
             queuedHumidity->click();queuedHumidity->click();
-            homeAction(window,"RD105")->click();
+            homeAction(window,QStringLiteral("原位 TEC103"))->click();
         });
     outputs[0]->click();
     require(waitUntil([&]{return queuedDuringOutput&&!confirmedOutputs.value(1,true)&&queuedHumidity->isEnabled()
-        &&queuedHumidity->property("state")=="disconnected"&&homeAction(window,"RD105")->isEnabled()
-        &&homeAction(window,"RD105")->property("state")=="disconnected";},10000),"queued sensor and RD105 disconnect finish after the full output command readback");
+        &&queuedHumidity->property("state")=="disconnected"&&homeAction(window,QStringLiteral("原位 TEC103"))->isEnabled()
+        &&homeAction(window,QStringLiteral("原位 TEC103"))->property("state")=="disconnected"
+        &&homeAction(window,QStringLiteral("遥测 TEC103"))->property("state")=="connected";},10000),"queued sensor and RD105 disconnect finish after the full output command readback");
     QObject::disconnect(queueObserver);
     mode->trigger();mode->trigger();
     require(waitUntil([&]{return page->uiTestController()!=nullptr&&!page->uiTestConnected();}),"reset protocol board for selective connection regression");

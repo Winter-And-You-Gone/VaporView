@@ -1715,6 +1715,7 @@ void TemperatureControllerPanel::setupUi()
     statusLayout->addWidget(device_selector_, 0, Qt::AlignVCenter);
     connect(device_selector_, &SegmentedSwitchButton::selectionRequested, this, [this] {
         selectChannel(selected_config_page_index_);
+        emit tec103SelectionChanged();
     });
     statusLayout->setContentsMargins(0, 0, 0, 0);
     statusLayout->setSpacing(10);
@@ -2903,6 +2904,11 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
         emit overtempOutputModeRequested(static_cast<quint16>(common_.overtemp_output_combo->currentData().toUInt()));
     });
     return page;
+}
+
+bool TemperatureControllerPanel::remoteTec103Selected() const
+{
+    return device_selector_->switchChecked();
 }
 
 void TemperatureControllerPanel::selectChannel(int index)

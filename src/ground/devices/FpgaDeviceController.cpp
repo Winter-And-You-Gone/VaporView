@@ -53,7 +53,7 @@ FpgaDeviceController::FpgaDeviceController(std::unique_ptr<FpgaUsbTransport> tra
     qRegisterMetaType<LogRecord>();
     qRegisterMetaType<TemperatureControllerData>();
     presentationTimer_.setParent(this); statusTimer_.setParent(this);watchdogTimer_.setParent(this);
-    tec103Timer_.setParent(this);tec103Timer_.setInterval(1000);tec103WorkerThread_.setParent(this);
+    tec103Timer_.setParent(this);tec103Timer_.setInterval(1000);
     connect(&tec103Timer_,&QTimer::timeout,this,&FpgaDeviceController::pollTec103);
     presentationTimer_.setInterval(50);
     statusTimer_.setInterval(2000);
@@ -62,7 +62,7 @@ FpgaDeviceController::FpgaDeviceController(std::unique_ptr<FpgaUsbTransport> tra
     });
     connect(&presentationTimer_, &QTimer::timeout, this, &FpgaDeviceController::flushPresentation);
     connect(&statusTimer_, &QTimer::timeout, this, [this] {
-        if (ready_ && !busy_ && !tec103PollPending_ && begin(QStringLiteral("读取实际状态"), true)) {
+        if (ready_ && !busy_ && !tec103PollPending_[0] && !tec103PollPending_[1] && begin(QStringLiteral("读取实际状态"), true)) {
             readAll(); steps_.push_back({Kind::CheckVersions}); advance();
         }
     });
@@ -71,8 +71,10 @@ FpgaDeviceController::FpgaDeviceController(std::unique_ptr<FpgaUsbTransport> tra
 
 FpgaDeviceController::~FpgaDeviceController()
 {
+    blockSignals(true);
     pendingConnections_.clear(); disconnectDevice();
-    tec103WorkerThread_.requestInterruption();tec103WorkerThread_.quit();tec103WorkerThread_.wait();
+    for (auto& thread : tec103WorkerThreads_) thread.requestInterruption();
+    for (auto& thread : tec103WorkerThreads_) { thread.quit(); thread.wait(); }
 }
 
 QJsonObject FpgaDeviceController::discoverDevices(const QString& backend) const
@@ -429,7 +431,7 @@ void FpgaDeviceController::advance()
             extensionRequest_={};emit extensionCompleted(extensionResult_);
         }
         if(!polling)emit snapshot(nowUs(),{{"event","operation_completed"},{"operation",operation_},{"configuration",configuration_.toJson()},{"result",extensionResult_}});
-        if(wasBackground && ready_ && tec103Enabled_ && !tec103PollPending_)
+        if(wasBackground && ready_ && tec103Enabled_ && !tec103PollPending_[0] && !tec103PollPending_[1])
             QTimer::singleShot(0,this,&FpgaDeviceController::pollTec103);
         return;
     }
@@ -672,7 +674,7 @@ void FpgaDeviceController::reportConnection(quint16 source, const QString& resul
 {
     const QMap<quint16,QString> names{{0,QStringLiteral("ADC / DLIA")},{0x40,QStringLiteral("PTB210")},
         {0x41,QStringLiteral("HC2A")},{0x42,QStringLiteral("EPSILON")},{0x43,QStringLiteral("BMP390")},{0x44,QStringLiteral("SHT45")},
-        {0x45,QStringLiteral("SDFM300")},{0x46,QStringLiteral("AI-8288D92J0")},{0x4a,QStringLiteral("TEC103 GPIO 双温控")}};
+        {0x48,QStringLiteral("原位 TEC103")},{0x49,QStringLiteral("遥测 TEC103")},{0x45,QStringLiteral("SDFM300")},{0x46,QStringLiteral("AI-8288D92J0")},{0x4a,QStringLiteral("TEC103 GPIO 双温控")}};
     LogRecord record; record.source=QStringLiteral("Ground"); record.category=QStringLiteral("device.fpga");
     record.level=(result==QStringLiteral("failed") || result==QStringLiteral("warning"))?LogLevel::Warning:LogLevel::Info;
     record.message=names.value(source)+QStringLiteral(" 经 FPGA ")+
@@ -736,7 +738,7 @@ void FpgaDeviceController::checkConnectionResults()
     const auto pending=pendingConnections_;
     const auto now=QDateTime::currentMSecsSinceEpoch();
     for(auto i=pending.cbegin();i!=pending.cend();++i) {
-        if(i.key()==0x4a)continue; // GPIO identity/measurement worker owns this result.
+        if(i.key()>=0x48 && i.key()<=0x4a)continue; // GPIO identity/measurement worker owns this result.
         if(!i.value())continue;
         const auto measurements=latestReadings_.value(i.key());
         const auto& reading=measurements.reading;
@@ -1027,7 +1029,7 @@ void FpgaDeviceController::setDac(int channel, bool enable)
 
 void FpgaDeviceController::setSensorEnabled(quint16 source, bool enable)
 {
-    if(source==0x4a) {configureTec103(enable);return;}
+    if(source>=0x48 && source<=0x4a) {configureTec103(enable,source);return;}
     if (!ready_ || !FpgaExtensions::sensor(source) || !begin(QStringLiteral("设置传感器状态"))) return;
     if(enable)trackConnection(source);
     if (source==0x43 && enable && (registers_.value(0x6304)&1)) {
@@ -1039,32 +1041,46 @@ void FpgaDeviceController::setSensorEnabled(quint16 source, bool enable)
 
 void FpgaDeviceController::stopTec103()
 {
-    ++tec103Generation_;tec103Timer_.stop();tec103Enabled_=false;tec103PollPending_=false;
+    ++tec103Generation_;tec103Timer_.stop();tec103Enabled_=false;tec103PollPending_.fill(false);
+    tec103PortEnabled_.fill(false);tec103PortConnected_.fill(false);tec103PortIdentifying_.fill(false);
     tec103Identified_.fill(false);tec103Online_.fill(false);tec103Valid_.fill(false);
     tec103Data_=TemperatureControllerData{};tec103PortData_={};
     tec103Data_.device_address=tec103Data_.rs485_baud_index=-1;
     tec103Data_.controller_mode=tec103Data_.overtemp_output_mode=-1;
     const bool wasConnected=tec103Connected_ || !tec103Detail_.isEmpty();tec103Connected_=false;tec103Detail_.clear();
+    publishTec103Ports();
     if(wasConnected)emit temperatureConnectionChanged(false,QStringLiteral("TEC103 GPIO 通信已断开。"));
     emit temperatureDataUpdated(tec103Data_);
 }
 
-void FpgaDeviceController::configureTec103(bool enable)
+void FpgaDeviceController::publishTec103Ports()
 {
-    if(!ready_ || !begin(enable?QStringLiteral("连接双 TEC103 GPIO 温控"):QStringLiteral("断开双 TEC103 GPIO 温控")))return;
-    stopTec103();
-    if(enable)trackConnection(0x4a);
-    for(quint32 base:{0x6800u,0x6900u}) {read(base,6);read(base+0x20,2);}
-    callback([this,enable] {
-        if(registers_.value(0x6800)!=0x00480100 || registers_.value(0x6900)!=0x00490100) {
+    QJsonObject ports;
+    for (int i = 0; i < 2; ++i) {
+        ports[QString::number(i+1)] = QJsonObject{{"connected",tec103PortConnected_[i]},
+            {"identifying",tec103PortIdentifying_[i]}, {"valid",tec103Valid_[i]}, {"error",int(tec103PortData_[i].error_code)}};
+    }
+    emit temperaturePortsChanged(ports);
+}
+
+void FpgaDeviceController::configureTec103(bool enable, quint16 source)
+{
+    const QString device = source == 0x48 ? QStringLiteral("原位 TEC103") : source == 0x49 ? QStringLiteral("遥测 TEC103") : QStringLiteral("双 TEC103");
+    if(!ready_ || !begin((enable ? QStringLiteral("连接") : QStringLiteral("断开")) + device)) return;
+    const QVector<quint32> ports = source == 0x4a ? QVector<quint32>{0x6800,0x6900}
+        : QVector<quint32>{source == 0x48 ? 0x6800u : 0x6900u};
+    if(enable)trackConnection(source);
+    for(quint32 base:ports) {read(base,6);read(base+0x20,2);}
+    callback([this,enable,ports,source] {
+        for (auto base : ports) if(registers_.value(base)!=(base==0x6800 ? 0x00480100u : 0x00490100u)) {
             fail(QStringLiteral("TEC103 所需的 LC0/LC1 GPIO UART 桥版本不匹配。"));return;
         }
-        if(enable)for(quint32 base:{0x6800u,0x6900u}) {
+        if(enable)for(quint32 base:ports) {
             if((registers_.value(base+8)&8) || registers_.value(base+0x20)) {
                 fail(QStringLiteral("GPIO UART 仍在收发，连接已停止，请等待当前事务完成。"));return;
             }
         }
-        for(quint32 base:{0x6800u,0x6900u}) {
+        for(quint32 base:ports) {
             if (enable && registers_.value(base+0x24)) {
                 report(QStringLiteral("LC%1 重新连接：空闲接收队列残留 %2 字节，将在停用 UART 时清除并重新识别设备。")
                     .arg(base==0x6800 ? 0 : 1).arg(registers_.value(base+0x24)), LogLevel::Warning);
@@ -1077,39 +1093,51 @@ void FpgaDeviceController::configureTec103(bool enable)
             }
         }
         if(enable) {write(4,registers_.value(4)|1u);verify(4,registers_.value(4)|1u);}
-        for(quint32 base:{0x6800u,0x6900u}) {
+        for(quint32 base:ports) {
             if(enable) {write(base+4,1);verify(base+4,1);waitFor(base+8,1,1);}
             read(base,6);read(base+0x20,8);
         }
-        callback([this,enable] {
-            tec103Enabled_=enable;
-            if(enable) {
-                tec103Detail_ = QStringLiteral("正在识别 TEC103");
-                emit temperatureConnectionChanged(false, tec103Detail_, true);
-                reportConnection(0x4a,QStringLiteral("waiting"),QStringLiteral("GPIO_UART_ENABLED"),
-                    QStringLiteral("LC0/LC1 已配置 38400/8N1，正在分别识别 TEC103 并读取内部 TC1。"));
-                tec103Timer_.start();QTimer::singleShot(0,this,&FpgaDeviceController::pollTec103);
-            } else {
-                pendingConnections_.remove(0x4a);operationConnections_.remove(0x4a);pendingConnectionLogContexts_.remove(0x4a);
-                emit temperatureConnectionChanged(false,QStringLiteral("TEC103 GPIO 通信已断开；仪表输出状态未修改。"));
+        callback([this,enable,ports,source] {
+            for (auto base : ports) {
+                const int i = base == 0x6800 ? 0 : 1;
+                ++tec103Revision_[i];
+                tec103PortEnabled_[i] = tec103PortIdentifying_[i] = enable;
+                tec103PortConnected_[i] = tec103Identified_[i] = tec103Online_[i] = tec103Valid_[i] = false;
+                tec103PortData_[i] = {};
+                tec103Data_.channels[i] = TemperatureControllerChannelData{};
+                tec103Data_.channels[i].measured_temperature_c = std::numeric_limits<double>::quiet_NaN();
             }
+            tec103Enabled_ = tec103PortEnabled_[0] || tec103PortEnabled_[1];
+            tec103Connected_ = tec103PortConnected_[0] || tec103PortConnected_[1];
+            tec103Data_.valid = tec103Valid_[0] || tec103Valid_[1];
+            tec103Data_.error_code = tec103PortData_[0].error_code | tec103PortData_[1].error_code;
+            tec103Detail_ = enable ? QStringLiteral("正在识别 TEC103") : QStringLiteral("指定 TEC103 已断开");
+            publishTec103Ports();
+            emit temperatureConnectionChanged(tec103Connected_,tec103Detail_,!tec103Connected_ && enable);
+            emit temperatureDataUpdated(tec103Data_);
+            if (tec103Enabled_) {
+                tec103Timer_.start();QTimer::singleShot(0,this,&FpgaDeviceController::pollTec103);
+            } else tec103Timer_.stop();
+            if (enable) reportConnection(source,QStringLiteral("waiting"),QStringLiteral("GPIO_UART_ENABLED"),tec103Detail_);
+            else {pendingConnections_.remove(source);operationConnections_.remove(source);pendingConnectionLogContexts_.remove(source);}
         });
     });
     advance();
 }
 
 void FpgaDeviceController::submitTec103Exchange(QJsonObject request,
-    std::function<void(const QJsonObject&)> reply,quint64 generation,qint64 deadline)
+    std::function<void(const QJsonObject&)> reply,quint64 generation,quint64 revision,qint64 deadline)
 {
-    if(generation!=tec103Generation_ || !tec103Enabled_ || !ready_) {
+    const int port = request.value("channel").toInt()-1;
+    if(generation!=tec103Generation_ || revision!=tec103Revision_[port] || !tec103PortEnabled_[port] || !ready_) {
         reply({{"ok",false},{"detail",QStringLiteral("TEC103 读取已取消或连接已断开。")}});return;
     }
     if(busy_) {
         if(QDateTime::currentMSecsSinceEpoch()>=deadline) {
             reply({{"ok",false},{"detail",QStringLiteral("等待 FPGA 空闲超时；未发送 TEC103 查询。")}});return;
         }
-        QTimer::singleShot(10,this,[this,request,reply=std::move(reply),generation,deadline]() mutable {
-            submitTec103Exchange(request,std::move(reply),generation,deadline);
+        QTimer::singleShot(10,this,[this,request,reply=std::move(reply),generation,revision,deadline]() mutable {
+            submitTec103Exchange(request,std::move(reply),generation,revision,deadline);
         });return;
     }
     const auto ticket=QString::number((quint64(1)<<63)+ ++tec103Ticket_);request["ticket"]=ticket;
@@ -1124,16 +1152,24 @@ void FpgaDeviceController::submitTec103Exchange(QJsonObject request,
 
 void FpgaDeviceController::pollTec103()
 {
-    if(!tec103Enabled_ || tec103PollPending_ || !ready_ || busy_)return;
+    if (!tec103Enabled_ || !ready_ || busy_) return;
+    for (int i=0; i<2; ++i)
+        if (tec103PortEnabled_[i] && !tec103PollPending_[i]) pollTec103Port(i);
+}
+
+void FpgaDeviceController::pollTec103Port(int i)
+{
+    auto& tec103Worker_ = tec103Workers_[i];
+    auto& tec103WorkerThread_ = tec103WorkerThreads_[i];
     if(!tec103Worker_) {
         tec103Worker_=new QObject;tec103Worker_->moveToThread(&tec103WorkerThread_);
         connect(&tec103WorkerThread_,&QThread::finished,tec103Worker_,&QObject::deleteLater);
         tec103WorkerThread_.start();
     }
-    tec103PollPending_=true;
-    const auto generation=tec103Generation_;const auto identified=tec103Identified_;const auto revisions=tec103Revision_;
+    tec103PollPending_[i]=true;
+    const auto generation=tec103Generation_;const auto identified=tec103Identified_[i];const auto revision=tec103Revision_[i];
     QPointer<FpgaDeviceController> owner(this);
-    const Tec103GpioProtocol::Call call=[owner,generation](const QJsonObject& request) {
+    const Tec103GpioProtocol::Call call=[owner,generation,revision](const QJsonObject& request) {
         if(!owner || QThread::currentThread()->isInterruptionRequested())
             return QJsonObject{{"ok",false},{"detail",QStringLiteral("TEC103 读取已停止。")}};
         QEventLoop loop;QTimer timeout;timeout.setSingleShot(true);QTimer interrupted;
@@ -1143,67 +1179,64 @@ void FpgaDeviceController::pollTec103()
         connect(&interrupted,&QTimer::timeout,&loop,[&loop] {
             if(QThread::currentThread()->isInterruptionRequested())loop.quit();
         });interrupted.start(50);
-        QMetaObject::invokeMethod(owner,[owner,generation,request,receiver,result] {
+        QMetaObject::invokeMethod(owner,[owner,generation,revision,request,receiver,result] {
             if(!owner || !receiver)return;
             owner->submitTec103Exchange(request,[receiver,result](const QJsonObject& response) {
                 if(receiver)QMetaObject::invokeMethod(receiver,[receiver,result,response] {
                     if(receiver) {*result=response;receiver->quit();}
                 },Qt::QueuedConnection);
-            },generation,QDateTime::currentMSecsSinceEpoch()+10000);
+            },generation,revision,QDateTime::currentMSecsSinceEpoch()+10000);
         },Qt::QueuedConnection);
         timeout.start(16000);loop.exec();return *result;
     };
-    QMetaObject::invokeMethod(tec103Worker_,[owner,generation,identified,revisions,call] {
-        std::array<Tec103GpioProtocol::Result,2> results;
-        const auto onIdentity = [owner,generation] {
-            if (owner) QMetaObject::invokeMethod(owner,[owner,generation] {
-                if (!owner || generation != owner->tec103Generation_ || owner->tec103Connected_) return;
-                owner->tec103Connected_ = true;
-                owner->tec103Detail_ = QStringLiteral("TEC103 身份已确认，等待有效测量数据。");
-                emit owner->temperatureConnectionChanged(true, owner->tec103Detail_);
-            }, Qt::QueuedConnection);
-        };
-        for(int i=0;i<2;++i)results[size_t(i)]=Tec103GpioProtocol::read(call,i+1,!identified[size_t(i)],onIdentity);
-        if(owner)QMetaObject::invokeMethod(owner,[owner,generation,identified,revisions,results] {
+    QMetaObject::invokeMethod(tec103Worker_,[owner,generation,identified,revision,i,call] {
+            const auto onIdentity = [owner,generation,revision,i] {
+                if (owner) QMetaObject::invokeMethod(owner,[owner,generation,revision,i] {
+                    if (!owner || generation!=owner->tec103Generation_ || revision!=owner->tec103Revision_[i]) return;
+                    owner->tec103PortConnected_[i]=true;owner->tec103PortIdentifying_[i]=false;
+                    owner->publishTec103Ports();
+                    if (!owner->tec103Connected_) {
+                        owner->tec103Connected_=true;
+                        owner->tec103Detail_=QStringLiteral("TEC103 身份已确认，等待有效测量数据。");
+                        emit owner->temperatureConnectionChanged(true,owner->tec103Detail_);
+                    }
+                },Qt::QueuedConnection);
+            };
+        const auto result=Tec103GpioProtocol::read(call,i+1,!identified,onIdentity);
+        if(owner)QMetaObject::invokeMethod(owner,[owner,generation,identified,revision,i,result] {
             if(!owner || generation!=owner->tec103Generation_)return;
-            owner->tec103PollPending_=false;
-            if(revisions!=owner->tec103Revision_) {
-                // A user write invalidated this round while its reads were in
-                // flight. Publishing the unchanged cached slot would undo the
-                // independently verified command result in the UI.
-                QTimer::singleShot(0,owner,&FpgaDeviceController::pollTec103);return;
-            }
+            owner->tec103PollPending_[i]=false;
+            if (revision!=owner->tec103Revision_[i]) return;
             QStringList errors;
-            for(int i=0;i<2;++i) {
-                const auto& result=results[size_t(i)];const auto& incoming=result.data.channels[size_t(i)];
-                auto& channel=owner->tec103Data_.channels[size_t(i)];
-                owner->tec103Online_[size_t(i)]=result.success;
-                owner->tec103Valid_[size_t(i)]=result.success && result.channelValid[size_t(i)];
-                if(result.success) {
-                    if(!result.channelValid[size_t(i)] && !result.message.isEmpty())
-                        errors.append(QStringLiteral("LC%1：%2").arg(i).arg(result.message));
-                    if(!identified[size_t(i)]) {
-                        channel=incoming;owner->tec103PortData_[size_t(i)]=result.data;
-                        owner->tec103Identified_[size_t(i)]=true;
-                        LogRecord record;record.source=QStringLiteral("Ground");record.category=QStringLiteral("device.temperature.identity");record.level=LogLevel::Info;
-                        record.message=QStringLiteral("LC%1 已识别 TEC103，原始固件号 4370，逻辑通道 %2 对应实体内部 TC1。").arg(i).arg(i+1);
-                        record.fields={{"event","tec103_gpio_identified"},{"logical_channel",i+1},{"uart_bridge",QStringLiteral("LC%1").arg(i)},
-                            {"model",103},{"firmware_raw",4370},{"instrument_channel",1},{"baud",38400}};
-                        LogService::addCallLocation(record,VAPORVIEW_LOG_FILE,VAPORVIEW_LOG_FUNCTION,VAPORVIEW_LOG_LINE);
-                        emit owner->logRecordGenerated(record);
-                    }
-                    else {
-                        channel.target_temperature_c=incoming.target_temperature_c;
-                        channel.measured_temperature_c=incoming.measured_temperature_c;
-                        channel.sensor_resistance_ohm=incoming.sensor_resistance_ohm;
-                        channel.output_percent=incoming.output_percent;
-                        channel.output_enabled=incoming.output_enabled;channel.output_mode=incoming.output_mode;
-                    }
-                    owner->tec103PortData_[size_t(i)].error_code=result.data.error_code;
-                } else {
-                    channel.measured_temperature_c=channel.output_percent=channel.sensor_resistance_ohm=std::numeric_limits<double>::quiet_NaN();
+            owner->tec103PortIdentifying_[i]=false;
+            const auto& incoming=result.data.channels[size_t(i)];
+            auto& channel=owner->tec103Data_.channels[size_t(i)];
+            owner->tec103Online_[size_t(i)]=result.success;
+            owner->tec103Valid_[size_t(i)]=result.success && result.channelValid[size_t(i)];
+            if(result.success) {
+                if(!result.channelValid[size_t(i)] && !result.message.isEmpty())
                     errors.append(QStringLiteral("LC%1：%2").arg(i).arg(result.message));
+                if(!identified) {
+                    channel=incoming;owner->tec103PortData_[size_t(i)]=result.data;
+                    owner->tec103Identified_[size_t(i)]=true;
+                    LogRecord record;record.source=QStringLiteral("Ground");record.category=QStringLiteral("device.temperature.identity");record.level=LogLevel::Info;
+                    record.message=QStringLiteral("LC%1 已识别 TEC103，原始固件号 4370，逻辑通道 %2 对应实体内部 TC1。").arg(i).arg(i+1);
+                    record.fields={{"event","tec103_gpio_identified"},{"logical_channel",i+1},{"uart_bridge",QStringLiteral("LC%1").arg(i)},
+                        {"model",103},{"firmware_raw",4370},{"instrument_channel",1},{"baud",38400}};
+                    LogService::addCallLocation(record,VAPORVIEW_LOG_FILE,VAPORVIEW_LOG_FUNCTION,VAPORVIEW_LOG_LINE);
+                    emit owner->logRecordGenerated(record);
                 }
+                else {
+                    channel.target_temperature_c=incoming.target_temperature_c;
+                    channel.measured_temperature_c=incoming.measured_temperature_c;
+                    channel.sensor_resistance_ohm=incoming.sensor_resistance_ohm;
+                    channel.output_percent=incoming.output_percent;
+                    channel.output_enabled=incoming.output_enabled;channel.output_mode=incoming.output_mode;
+                }
+                owner->tec103PortData_[size_t(i)].error_code=result.data.error_code;
+            } else {
+                channel.measured_temperature_c=channel.output_percent=channel.sensor_resistance_ohm=std::numeric_limits<double>::quiet_NaN();
+                errors.append(QStringLiteral("LC%1：%2").arg(i).arg(result.message));
             }
             const bool bothOnline=owner->tec103Online_[0] && owner->tec103Online_[1];
             const bool connected=owner->tec103Connected_ || owner->tec103Online_[0] || owner->tec103Online_[1];
@@ -1232,7 +1265,14 @@ void FpgaDeviceController::pollTec103()
             owner->tec103Data_.timestamp=std::chrono::steady_clock::now();
             owner->tec103Data_.error_message=errors.join(QStringLiteral("；")).toStdString();
             emit owner->temperatureDataUpdated(owner->tec103Data_);
-            if(owner->pendingConnections_.contains(0x4a)) {
+            owner->publishTec103Ports();
+            const quint16 src=0x48+i;
+            if(owner->pendingConnections_.contains(src)) {
+                const bool ok=owner->tec103PortConnected_[i];
+                owner->reportConnection(src,ok?"succeeded":"failed",ok?"TEC103_IDENTIFIED":"TEC103_QUERY_FAILED",result.message);
+                owner->pendingConnections_.remove(src);owner->operationConnections_.remove(src);owner->pendingConnectionLogContexts_.remove(src);
+            }
+            if(!owner->tec103PortIdentifying_[1-i] && owner->pendingConnections_.contains(0x4a)) {
                 owner->reportConnection(0x4a,connected?QStringLiteral("succeeded"):QStringLiteral("failed"),
                     bothOnline?QStringLiteral("TEC103_IDENTIFIED"):connected?QStringLiteral("TEC103_PARTIAL_CONNECTION"):QStringLiteral("TEC103_QUERY_FAILED"),detail);
                 owner->pendingConnections_.remove(0x4a);owner->operationConnections_.remove(0x4a);owner->pendingConnectionLogContexts_.remove(0x4a);
@@ -1280,7 +1320,7 @@ void FpgaDeviceController::connectSensor(const QJsonObject& request)
         fail(QStringLiteral("传感器连接参数或范围无效。"));return;
     }
     const auto source=quint16(request.value("source").toInt());
-    if(source==0x4a) {configureTec103(true);return;}
+    if(source>=0x48 && source<=0x4a) {configureTec103(true,source);return;}
     if (!request.contains("baud") && !request.contains("poll_ms") && !request.contains("parameters") && configuration_.sensorParameters.value(source).isEmpty()) {
         if (source == 0x43 && (registers_.value(0x6304) & 1)) {
             // An already running BMP390 only publishes its factory coefficients at startup.
@@ -1312,7 +1352,7 @@ void FpgaDeviceController::startSensorConfiguration(const QJsonObject& request, 
     if (request.value("op").toString()!=QStringLiteral("sensor_config") || !FpgaRemote::validateControl(request)) {
         fail(QStringLiteral("传感器参数或范围无效。"));return;
     }
-    if(request.value("source").toInt()==0x4a) {configureTec103(false);return;}
+    if(request.value("source").toInt()==0x4a) {configureTec103(false,0x4a);return;}
     if (!ready_ || !begin(QStringLiteral("配置传感器参数并读回"))) return;
     const auto source=quint16(request.value("source").toInt());
     pendingSensorParameters_=request.value("parameters").toObject();

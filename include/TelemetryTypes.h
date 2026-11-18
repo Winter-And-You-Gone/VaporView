@@ -139,6 +139,8 @@ enum class SkyDeviceId : quint8
     Fpga = 8,
     Bmp390 = 9,
     Sht45 = 10,
+    Tec103InSitu = 11,
+    Tec103Remote = 12,
     All = 255,
 };
 

@@ -73,6 +73,7 @@ signals:
     void observationEpochReceived(const QByteArray& encodedEpoch);
     void measurementUpdated(const VaporView::FpgaSensor::AdaptedMeasurements& measurements);
     void temperatureDataUpdated(const VaporView::TemperatureControllerData& data);
+    void temperaturePortsChanged(const QJsonObject& ports);
     void temperatureConnectionChanged(bool connected, const QString& detail, bool identifying = false);
     void waveformUpdated(const VaporView::FpgaWave::CompletedStream& stream);
     void harmonicCycleReady(quint64 hostTimestampUs, const VaporView::FpgaWave::CompletedStream& stream);
@@ -121,10 +122,11 @@ private:
     void callback(std::function<void()> action);
     void executeExtension(const QJsonObject& request, bool polling = false);
     void deferExtensionOperation(const QJsonObject& request,quint64 generation,qint64 deadline);
-    void configureTec103(bool enable);
+    void configureTec103(bool enable, quint16 source);
+    void publishTec103Ports();
     void pollTec103();
     void submitTec103Exchange(QJsonObject request, std::function<void(const QJsonObject&)> reply,
-                              quint64 generation, qint64 deadline);
+                              quint64 generation, quint64 revision, qint64 deadline);
     void stopTec103();
     void startSensorConfiguration(const QJsonObject& request, bool connectAfter);
     void prepareSensorConfiguration(quint16 source, quint32 baud, quint32 pollMs, bool connectAfter);
@@ -146,17 +148,20 @@ private:
 
     FpgaDeviceSession *session_ = nullptr;
     FpgaUartExchange *uartExchange_ = nullptr;
-    QThread tec103WorkerThread_;
-    QObject *tec103Worker_ = nullptr;
+    std::array<QThread,2> tec103WorkerThreads_;
+    std::array<QObject*,2> tec103Workers_{};
+    std::array<bool,2> tec103PollPending_{};
+    void pollTec103Port(int i);
     QTimer tec103Timer_;
     TemperatureControllerData tec103Data_;
     std::array<TemperatureControllerData,2> tec103PortData_;
+    std::array<bool,2> tec103PortEnabled_{}, tec103PortConnected_{}, tec103PortIdentifying_{};
     std::array<bool,2> tec103Identified_{};
     std::array<bool,2> tec103Online_{};
     std::array<bool,2> tec103Valid_{};
     std::array<quint64,2> tec103Revision_{};
     quint64 tec103Generation_ = 0, tec103Ticket_ = 0;
-    bool tec103Enabled_ = false, tec103PollPending_ = false, tec103Connected_ = false;
+    bool tec103Enabled_ = false, tec103Connected_ = false;
     QString tec103Detail_;
     bool tec103PollExchange_ = false;
     FpgaControlConfig configuration_;

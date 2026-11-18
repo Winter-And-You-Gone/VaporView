@@ -1169,7 +1169,7 @@ void MainWindow::maybeConnectRemoteDevices()
         using VaporView::SkyDeviceId;
         state_->fpga_home_connect_queue_ = {SkyDeviceId::Epsilon, SkyDeviceId::Ptb, SkyDeviceId::Hc2a,
             SkyDeviceId::Lidar, SkyDeviceId::Ai8TemperatureController, SkyDeviceId::Bmp390,
-            SkyDeviceId::Sht45, SkyDeviceId::TemperatureController, SkyDeviceId::WaveTcp};
+            SkyDeviceId::Sht45, SkyDeviceId::Tec103InSitu, SkyDeviceId::Tec103Remote, SkyDeviceId::WaveTcp};
         connectNextHomeFpgaDevice();
     } else {
         remote->sendCommand(VaporView::CommandId::ConnectAllDevices);
@@ -2796,6 +2796,14 @@ void MainWindow::updateAi8TemperatureTitleStatus()
     state_->ai8_temperature_title_status_lbl_->setAccessibleName(toolTip);
 }
 
+VaporView::SkyDeviceId MainWindow::selectedTemperatureDevice() const
+{
+    using VaporView::SkyDeviceId;
+    if (!isFpgaRelayPath()) return SkyDeviceId::TemperatureController;
+    return state_->temperature_controller_panel_ && state_->temperature_controller_panel_->remoteTec103Selected()
+        ? SkyDeviceId::Tec103Remote : SkyDeviceId::Tec103InSitu;
+}
+
 void MainWindow::updateTemperatureTitleButtonsState()
 {
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
@@ -2898,8 +2906,7 @@ void MainWindow::updateTemperatureTitleButtonsState()
         repolishIfNeeded(button, styleChanged);
     };
 
-    updateTitleButton(state_->temperature_title_action_btn_,
-                      VaporView::SkyDeviceId::TemperatureController);
+    updateTitleButton(state_->temperature_title_action_btn_, selectedTemperatureDevice());
     updateTitleButton(state_->ai8_temperature_title_action_btn_,
                       VaporView::SkyDeviceId::Ai8TemperatureController);
 }

@@ -646,6 +646,12 @@ QString MainWindow::homeDeviceMeasurementWarning(VaporView::SkyDeviceId device, 
     const bool internal = device == SkyDeviceId::Bmp390 || device == SkyDeviceId::Sht45;
     qint64 timeoutMs = internal ? 4000 : 3000;
     const quint16 source = fpga ? homeFpgaSensorSource(device) : 0;
+    if (fpga && (source == 0x48 || source == 0x49)) {
+        const auto port = homeTec103Port(device);
+        if ((remote && std::chrono::steady_clock::now() - state_->fpga_session_.statusTime >= std::chrono::seconds(4)) || !port.value("valid").toBool()) return english ? QStringLiteral("No valid temperature") : QStringLiteral("尚无有效温度");
+        if (port.value("error").toInt()) return english ? QStringLiteral("Controller fault") : QStringLiteral("温控仪故障");
+        return {};
+    }
     if (fpga)
     {
         quint32 pollAddress = 0;
@@ -767,7 +773,7 @@ void MainWindow::updateHomeDeviceStatusCapsules()
             state_->home_device_action_spinner_until_ms_.remove(device);
             // This refresh can consume expiry before the animation timer sees it.
             updateDeviceConfigRemoteActionButton(device);
-            if (device == VaporView::SkyDeviceId::TemperatureController ||
+            if (device == selectedTemperatureDevice() ||
                 device == VaporView::SkyDeviceId::Ai8TemperatureController)
                 updateTemperatureTitleButtonsState();
         }
@@ -939,7 +945,11 @@ void MainWindow::updateHomeDeviceStatusCapsules()
     updateCapsule(state_->home_ptb_status_lbl_, state_->home_ptb_action_btn_, VaporView::SkyDeviceId::Ptb);
     updateCapsule(state_->home_hc2a_status_lbl_, state_->home_hc2a_action_btn_, VaporView::SkyDeviceId::Hc2a);
     updateCapsule(state_->home_lidar_status_lbl_, state_->home_lidar_action_btn_, VaporView::SkyDeviceId::Lidar);
-    updateCapsule(state_->home_temperature_status_lbl_, state_->home_temperature_action_btn_, VaporView::SkyDeviceId::TemperatureController);
+    const bool dualTec = isFpgaRelayPath();
+    updateCapsule(state_->home_temperature_status_lbl_, state_->home_temperature_action_btn_, dualTec ? VaporView::SkyDeviceId::Tec103InSitu : VaporView::SkyDeviceId::TemperatureController);
+    if (state_->home_tec_remote_lbl_) state_->home_tec_remote_lbl_->setVisible(dualTec);
+    if (state_->home_tec_remote_btn_) state_->home_tec_remote_btn_->setVisible(dualTec);
+    if (dualTec) updateCapsule(state_->home_tec_remote_lbl_, state_->home_tec_remote_btn_, VaporView::SkyDeviceId::Tec103Remote);
     updateCapsule(state_->home_wave_status_lbl_, state_->home_wave_action_btn_, VaporView::SkyDeviceId::WaveTcp);
     updateHomeFpgaWaveActions();
     updateCapsule(state_->home_ai8_temperature_status_lbl_, state_->home_ai8_temperature_action_btn_, VaporView::SkyDeviceId::Ai8TemperatureController);
@@ -1003,7 +1013,8 @@ void MainWindow::updateHomeDeviceActionSpinnerIcons()
     updateButton(state_->home_ptb_action_btn_, VaporView::SkyDeviceId::Ptb);
     updateButton(state_->home_hc2a_action_btn_, VaporView::SkyDeviceId::Hc2a);
     updateButton(state_->home_lidar_action_btn_, VaporView::SkyDeviceId::Lidar);
-    updateButton(state_->home_temperature_action_btn_, VaporView::SkyDeviceId::TemperatureController);
+    updateButton(state_->home_temperature_action_btn_, isFpgaRelayPath() ? VaporView::SkyDeviceId::Tec103InSitu : VaporView::SkyDeviceId::TemperatureController);
+    if (isFpgaRelayPath()) updateButton(state_->home_tec_remote_btn_, VaporView::SkyDeviceId::Tec103Remote);
     updateButton(state_->home_wave_action_btn_, VaporView::SkyDeviceId::WaveTcp);
     updateButton(state_->home_ai8_temperature_action_btn_, VaporView::SkyDeviceId::Ai8TemperatureController);
     updateButton(state_->home_bmp390_action_btn_, VaporView::SkyDeviceId::Bmp390);
@@ -1018,8 +1029,7 @@ void MainWindow::updateHomeDeviceActionSpinnerIcons()
                  VaporView::SkyDeviceId::Ai8TemperatureController);
     updateButton(state_->device_config_.tcp_wave_remote_action_btn,
                  VaporView::SkyDeviceId::WaveTcp);
-    updateButton(state_->temperature_title_action_btn_,
-                 VaporView::SkyDeviceId::TemperatureController);
+    updateButton(state_->temperature_title_action_btn_, selectedTemperatureDevice());
     updateButton(state_->ai8_temperature_title_action_btn_,
                  VaporView::SkyDeviceId::Ai8TemperatureController);
     anySpinnerActive |= updateHomeMotionDeviceControls(nowMs, true);
@@ -1944,7 +1954,7 @@ void MainWindow::onConnectClicked()
             || state_->fpga_home_action_device_ != SkyDeviceId::All) return;
         state_->fpga_home_connect_queue_ = {SkyDeviceId::Epsilon, SkyDeviceId::Ptb, SkyDeviceId::Hc2a,
             SkyDeviceId::Lidar, SkyDeviceId::Ai8TemperatureController, SkyDeviceId::Bmp390,
-            SkyDeviceId::Sht45, SkyDeviceId::TemperatureController, SkyDeviceId::WaveTcp};
+            SkyDeviceId::Sht45, SkyDeviceId::Tec103InSitu, SkyDeviceId::Tec103Remote, SkyDeviceId::WaveTcp};
         connectNextHomeFpgaDevice();
         updateConnectionStatus(false);
         return;

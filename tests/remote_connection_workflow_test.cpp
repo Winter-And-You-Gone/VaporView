@@ -79,6 +79,7 @@ static void workflow(bool fpga)
         {"extensions", int(FpgaExtensions::RawSchema2 | FpgaExtensions::EpsilonMailbox | FpgaExtensions::DliaCutoff)},
         {"configuration", config.fpga.configuration.toJson()}};
     TelemetryCodec encoder, decoder; quint16 sequence = 1;
+    QVector<int> sensorRequests;
     int bulk = 0, operations = 0, failures = 0, disconnects = 0;
     const auto send = [&](MsgType type, const QByteArray &payload) {
         require(server.writeBytes(encoder.encodeFrame(type, payload, sequence++, 1)) > 0, "Sky frame delivered");
@@ -117,13 +118,17 @@ static void workflow(bool fpga)
             else if (op == "disconnect") { ++disconnects; status["connected"] = false; status["ready"] = false;status["tec103_connected"]=false; }
             else if (op == "sensor") {
                 const auto source = control.value("source").toInt();
+                sensorRequests.append(source);
                 require(source != 0x42 && source != 0x45 && source != 0x46, "unchecked devices are excluded");
                 if (source == 0x40) {
                     ++failures; response.error_code = CommandErrorCode::ConfigApplyFailed;
                     response.error_message = "test sensor port busy";
-                } else if(source==0x4a) {
-                    registers[QString::number(0x6804)]=1;registers[QString::number(0x6904)]=1;
-                    registers[QString::number(0x6810)]=38400;registers[QString::number(0x6910)]=38400;
+                } else if(source==0x48 || source==0x49) {
+                    const int base = source == 0x48 ? 0x6800 : 0x6900;
+                    registers[QString::number(base+4)]=1;registers[QString::number(base+0x10)]=38400;
+                    auto ports=status.value("tec103_ports").toObject();
+                    ports[source==0x48?"1":"2"]=QJsonObject{{"connected",true},{"valid",false}};
+                    status["tec103_ports"]=ports;
                     status["tec103_connected"]=true;status["tec103_detail"]="two identified GPIO TEC103 fixtures; no temperature sample published";
                 } else registers[QString::number(0x6004 + (source - 0x40) * 0x100)] = 1;
             } else if (op == "acquisition") {
@@ -223,10 +228,17 @@ static void workflow(bool fpga)
     link->trigger();
     require(waitUntil([&] { return state.remote_config_session_.loadedGeneration == window.testRemoteSkyController()->linkGeneration()
         && state.remote_sky_online_; }), "reopening reads configuration for the new link");
+    const auto previousRequests = sensorRequests.size();
     state.connect_btn_->trigger();
-    require(waitUntil([&] { return fpga ? operations == before + 1 && !state.fpga_session_.requestId
+    require(waitUntil([&] { return fpga ? operations > before && !state.fpga_session_.requestId
         && state.fpga_home_connect_queue_.isEmpty() : bulk == 2; }),
-        "explicit reconnect uses fresh config and preserves already running FPGA modules");
+        "explicit reconnect uses fresh configuration");
+    if (fpga) {
+        const auto retries = sensorRequests.sliced(previousRequests);
+        require(retries.contains(0x40) && std::all_of(retries.begin(), retries.end(), [](int source){
+            return source == 0x40 || source == 0x43;
+        }), "reconnect retries failed pressure or invalid BMP measurements and preserves both TEC103 sessions");
+    }
     require(state.disconnect_btn_->isEnabled(), "title disconnect remains usable with remote devices connected");
     state.disconnect_btn_->trigger();
     require(waitUntil([&] { return disconnects == 1 && (!fpga || !state.fpga_session_.requestId); }), "title disconnect sends a device disconnect operation");

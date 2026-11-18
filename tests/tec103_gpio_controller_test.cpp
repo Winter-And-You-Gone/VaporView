@@ -112,6 +112,7 @@ bool sessionCommand(FpgaDeviceSession& session,quint32 address,bool write,quint3
 }
 bool writeAndRead(FpgaDeviceSession& session,quint32 address,quint32 value,QString& error)
 {
+
     const auto expected=value;
     if(!sessionCommand(session,address,true,value,error) || !sessionCommand(session,address,false,value,error))return false;
     if(value==expected)return true;
@@ -149,6 +150,7 @@ int hardwareReadonly(const QString& locator,const QString& output,int expectedCh
     QJsonObject document{{"mode","explicit_hardware_readonly"},{"locator",locator},
         {"instrument_parameter_writes",0},{"instrument_output_writes",0},{"legacy_6a_writes",0},
         {"expected_channel",expectedChannel}};
+    const int source = expectedChannel ? 0x47 + expectedChannel : 0x4a;
     const auto expected=[expectedChannel](int channel) {return expectedChannel==0 || expectedChannel==channel;};
     const auto validSample=[&](const TemperatureControllerData& value) {
         if(!value.valid)return false;
@@ -244,7 +246,7 @@ int hardwareReadonly(const QString& locator,const QString& output,int expectedCh
                 if(!pumpUntil([&]{return !controller.busy();},6500)) {
                     configurationRestored=false;error+=QStringLiteral(" Could not acquire controller for UART cleanup.");
                 } else {
-                    controller.setSensorEnabled(0x4a,false);
+                    controller.setSensorEnabled(source,false);
                     if(!pumpUntil([&]{return !controller.busy();},6500))configurationRestored=false;
                 }
             }
@@ -256,6 +258,7 @@ int hardwareReadonly(const QString& locator,const QString& output,int expectedCh
             QString restoreOpenError;
             if(restoration.open(locator,&restoreOpenError)) {
                 for(quint32 base:{0x6800u,0x6900u}) {
+                    if (!expected(base==0x6800 ? 1 : 2)) continue;
                     QString detail;
                     if(!writeAndRead(restoration,base+4,0,detail)
                         || !writeAndRead(restoration,base+0x10,original.value(base+0x10),detail)
@@ -298,7 +301,7 @@ int hardwareReadonly(const QString& locator,const QString& output,int expectedCh
                 else {
                     started=true;
                     productionTrace=traceSession(*session);
-                    controller.connectSensor({{"op","sensor"},{"source",0x4a},{"enabled",true}});
+                    controller.connectSensor({{"op","sensor"},{"source",source},{"enabled",true}});
                     sampled=pumpUntil([&]{return controller.temperatureConnected() && validSample(data) && samples>=10;},60000);
                     if(!sampled)error=QStringLiteral("Production Controller did not receive ten valid samples from the expected channel(s).");
                     document["sample"]=temperatureDocument(data);document["samples"]=samples;
@@ -332,7 +335,9 @@ int hardwareReadonly(const QString& locator,const QString& output,int expectedCh
     return document.value("ok").toBool()?0:1;
 }
 struct Fixture {
-    FpgaDeviceController controller{makeFpgaUsbSimulator()};
+    std::unique_ptr<FpgaUsbSimulator> transport = makeFpgaUsbSimulator();
+    FpgaUsbSimulator* simulator = transport.get();
+    FpgaDeviceController controller{std::move(transport)};
     QVector<FpgaVlp1::Frame> commands;
     TemperatureControllerData data;
     int updates=0;
@@ -360,7 +365,9 @@ struct Fixture {
                 if (phases.size() == 2) require(!data.valid, "identity confirmation precedes the first valid temperature");
             });
         controller.connectSensor({{"op","sensor"},{"source",0x4a},{"enabled",true}});
-        waitUntil([this]{return controller.temperatureConnected() && data.valid;},
+        waitUntil([this]{return controller.temperatureConnected() && data.valid
+            && std::abs(data.channels[0].measured_temperature_c-24.5)<0.0001
+            && std::abs(data.channels[1].measured_temperature_c-26.5)<0.0001;},
             "both simulated physical TEC103 ports complete identity and full protocol reads");
         QObject::disconnect(observer);
         require(phases.size() >= 2 && phases.front() == 1 && phases[1] == 2 && !phases.contains(0),
@@ -404,6 +411,39 @@ struct Fixture {
         }
     }
 };
+void singlePortConnectionAndFailureIsolation()
+{
+    Fixture f;
+    QJsonObject ports;
+    QObject observer;
+    QObject::connect(&f.controller,&FpgaDeviceController::temperaturePortsChanged,&observer,
+        [&](const QJsonObject& value){ ports=value; });
+    const auto valid=[&](const char* port){return ports.value(port).toObject().value("valid").toBool();};
+    const auto enable=[&](int source,bool enabled){
+        waitUntil([&]{return !f.controller.busy();},"FPGA is available for the individual action");
+        f.controller.setSensorEnabled(source,enabled);
+    };
+    enable(0x48,true);
+    waitUntil([&]{return valid("1");},"LC0 delivers TC1 independently");
+    require(!valid("2") && !(f.controller.hardwareValues().value(0x6904)&1),"LC0 leaves LC1 disabled");
+    f.simulator->injectFault("tec103_lc1_disconnected");
+    enable(0x49,true);
+    waitUntil([&]{return !f.controller.busy() && (f.controller.hardwareValues().value(0x6904)&1)
+        && !ports.value("2").toObject().value("identifying").toBool();},"LC1 identification fails separately",15000);
+    require(valid("1") && !ports.value("2").toObject().value("connected").toBool(),"failed LC1 leaves LC0 connected with valid data");
+    f.simulator->injectFault("tec103_lc1_reconnected");
+    enable(0x49,true);
+    waitUntil([&]{return valid("1") && valid("2");},"both individual sessions deliver TC1");
+    f.simulator->injectFault("tec103_lc1_disconnected");
+    waitUntil([&]{return !valid("2");},"missing LC1 readings clear only its measurement",15000);
+    require(valid("1") && ports.value("2").toObject().value("connected").toBool(),"previously identified LC1 remains connected while LC0 remains healthy");
+    enable(0x49,false);
+    waitUntil([&]{return !f.controller.busy() && !(f.controller.hardwareValues().value(0x6904)&1);},"LC1 disconnect completes");
+    require(valid("1") && (f.controller.hardwareValues().value(0x6804)&1),"LC1 disconnect preserves LC0");
+    const int updates=f.updates;
+    waitUntil([&]{return f.updates>updates && valid("1");},"LC0 continues polling after LC1 disconnect");
+}
+
 void controllerLifecycleAndIndependentPhysicalPorts()
 {
     Fixture f;f.connectTemperature();
@@ -465,6 +505,7 @@ int main(int argc,char** argv)
         if(!validExpected)return 2;
         return hardwareReadonly(argument("--locator"),argument("--output"),channel);
     }
+    singlePortConnectionAndFailureIsolation();
     controllerLifecycleAndIndependentPhysicalPorts();
     std::puts("TEC103 GPIO controller tests passed");return 0;
 }
