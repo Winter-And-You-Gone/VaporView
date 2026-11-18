@@ -5224,6 +5224,7 @@ void MainWindow::setupConfigPanel()
     };
     createTelemetrySection(state_->data_telemetry_summary_layout_);
     createTelemetrySection(state_->data_telemetry_link_summary_layout_);
+    state_->data_telemetry_link_summary_layout_->parent()->installEventFilter(this);
     state_->data_telemetry_summary_card_->setVisible(true);
 
     auto *homeBodyWidget = new QWidget(state_->config_group_);

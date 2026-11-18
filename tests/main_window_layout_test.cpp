@@ -1317,8 +1317,8 @@ void requireHomeDeviceColumnsAligned(QWidget *scope)
     const QList<QWidget *> columns =
         deviceGrid->findChildren<QWidget *>(QStringLiteral("homeDeviceColumn"),
                                             Qt::FindDirectChildrenOnly);
-    require(columns.size() == 3,
-            "home device overview exposes three aligned device columns");
+    require(columns.size() == 2,
+            "home device overview exposes two aligned device columns");
     require(columns.first()->geometry().left() == 0 &&
                 columns.last()->geometry().right() == deviceGrid->width() - 1,
             "Device columns fill both edges of the grid");
@@ -1332,8 +1332,8 @@ void requireHomeDeviceColumnsAligned(QWidget *scope)
         const QList<QToolButton *> actionButtons =
             column->findChildren<QToolButton *>(QStringLiteral("homeDeviceActionButton"),
                                                 Qt::FindDirectChildrenOnly);
-        require(capsules.size() == (columnIndex == 0 ? 4 : 3) && actionButtons.size() == capsules.size(),
-                "home device columns align ten capsules and their actions across four rows");
+        require(capsules.size() == 5 && actionButtons.size() == capsules.size(),
+                "each device column has five capsules and their connection actions");
         for (int i = 1; i < capsules.size(); ++i)
         {
             require(capsules.at(0)->width() == capsules.at(i)->width(),
@@ -4769,6 +4769,7 @@ void requireHomeThreeColumnLayout()
                     const int available = overview->width() - 2 * overview->handleWidth();
                     require(std::abs(widths.at(0) - minima.at(0)) <= 1,
                             "the device overview stays at its content minimum as the window widens");
+                    requireHomeDeviceColumnsAligned(&window);
                     for (int i = 1; i < 3; ++i)
                     {
                         require(widths.at(i) >= minima.at(i) &&

@@ -843,6 +843,12 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
     {
         QTimer::singleShot(0, this, [this]() { reflowDeviceTelemetryData(); });
     }
+    if (eventType == QEvent::Resize && state_->data_telemetry_link_summary_layout_ &&
+        watched == state_->data_telemetry_link_summary_layout_->parent() &&
+        static_cast<QResizeEvent *>(event)->size().width() != static_cast<QResizeEvent *>(event)->oldSize().width())
+    {
+        QTimer::singleShot(0, this, [this]() { updateConfigCardHeightForSourceMode(); });
+    }
     if (eventType == QEvent::LayoutRequest &&
         (watched == state_->epsilon_group_ || watched == state_->home_motion_card_ || watched == state_->env_group_ ||
          watched == state_->config_group_ || watched == state_->home_temperature_overview_column_ ||
