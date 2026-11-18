@@ -1176,6 +1176,11 @@ static void simulatorRefreshBudget()
                 <<" enabled="<<button->isEnabled()<<'\n';
         }
         require(connected,"refresh budget waits for every supported current-firmware device");
+        const auto& state = MainWindowRtcmTestAccess::state(window);
+        const QPoint inSitu = state.home_temperature_status_lbl_->mapTo(grid, QPoint());
+        const QPoint remote = state.home_tec_remote_lbl_->mapTo(grid, QPoint());
+        require(inSitu.y() == remote.y() && inSitu.x() < remote.x(),
+                "in-situ and remote TEC103 capsules appear side by side in that order");
         processFor(500);
 
         int measurements = 0, viewUpdates = 0;
@@ -2406,7 +2411,7 @@ static void remoteTransportAndCapabilities()
     require(!rtk->isRunning(),"direct slot invocation cannot start a bypass RTCM stream");
     auto *readAi8=window.findChild<QAbstractButton*>("ai8ReadParametersButton");
     auto *readEpsilon=window.findChild<QAbstractButton*>("epsilonSettingsReadButton");
-    require(readAi8&&!readAi8->isEnabled()&&readAi8->toolTip().contains("VLP1"),"FPGA AI8 page commands explain unsupported capability");
+    require(readAi8&&!readAi8->isEnabled()&&readAi8->toolTip().contains("AI8") && readAi8->toolTip().contains(QStringLiteral("固件")),"FPGA AI8 page commands explain unsupported capability");
     require(readEpsilon&&!readEpsilon->isEnabled(),"FPGA EPSILON parameter commands are disabled");
     reject=true;path->setCurrentIndex(path->findData("direct_devices"));
     require(waitUntil([&]{return applies==2&&path->isEnabled();}),"path rejection completes");

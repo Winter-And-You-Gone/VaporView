@@ -948,8 +948,8 @@ void MainWindow::updateConfigCardHeightForSourceMode()
                                  scalePixels(kMainPageInputHeight));
         state_->data_telemetry_summary_card_->setMinimumHeight(summaryHeight);
         state_->data_telemetry_summary_card_->setMaximumHeight(summaryHeight);
-        const int homeDeviceRowHeight = scalePixels((kHomeDeviceRowHeight * kHomeDeviceGridRows) +
-                                                    (kHomeDeviceGridRowGap * (kHomeDeviceGridRows - 1)));
+        const int rows = kHomeDeviceGridRows + (isFpgaRelayPath() ? 1 : 0);
+        const int homeDeviceRowHeight = scalePixels(kHomeDeviceRowHeight * rows + kHomeDeviceGridRowGap * (rows - 1));
         const int homeBodySpacing = scalePixels(2);
         const int homeBodyTopPadding = scalePixels(kHomeOverviewBodyPadding);
         const int homeBodyBottomPadding = scalePixels(kConfigHomeBodyBottomPadding);

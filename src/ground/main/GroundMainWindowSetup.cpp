@@ -5292,17 +5292,18 @@ void MainWindow::setupConfigPanel()
         return button;
     };
 
+    std::array<int,kHomeDeviceGridColumns> nextRow{};
     int homeDeviceIndex = 0;
     auto addHomeDevice = [&](QLabel *&label, QToolButton *&button, VaporView::SkyDeviceId device) {
-        const int row = homeDeviceIndex / kHomeDeviceGridColumns;
-        const int column = homeDeviceIndex % kHomeDeviceGridColumns;
+        // The relay-only second TEC occupies an extra row in the right column.
+        const int column = device == VaporView::SkyDeviceId::Tec103Remote ? 1 : homeDeviceIndex++ % kHomeDeviceGridColumns;
+        const int row = nextRow[column]++;
         auto *columnLayout = homeDeviceColumnLayouts[static_cast<std::size_t>(column)];
         QWidget *columnWidget = columnLayout->parentWidget();
         label = createHomeDeviceCapsule(columnWidget);
         button = createHomeDeviceActionButton(columnWidget, device);
         columnLayout->addWidget(label, row, 0);
         columnLayout->addWidget(button, row, 1, Qt::AlignVCenter);
-        ++homeDeviceIndex;
     };
 
     addHomeDevice(state_->home_epsilon_status_lbl_, state_->home_epsilon_action_btn_, VaporView::SkyDeviceId::Epsilon);
@@ -5310,6 +5311,7 @@ void MainWindow::setupConfigPanel()
     addHomeDevice(state_->home_hc2a_status_lbl_, state_->home_hc2a_action_btn_, VaporView::SkyDeviceId::Hc2a);
     addHomeDevice(state_->home_lidar_status_lbl_, state_->home_lidar_action_btn_, VaporView::SkyDeviceId::Lidar);
     addHomeDevice(state_->home_temperature_status_lbl_, state_->home_temperature_action_btn_, VaporView::SkyDeviceId::TemperatureController);
+    addHomeDevice(state_->home_tec_remote_lbl_, state_->home_tec_remote_btn_, VaporView::SkyDeviceId::Tec103Remote);
     addHomeDevice(state_->home_wave_status_lbl_, state_->home_wave_action_btn_, VaporView::SkyDeviceId::WaveTcp);
     addHomeDevice(state_->home_ai8_temperature_status_lbl_, state_->home_ai8_temperature_action_btn_, VaporView::SkyDeviceId::Ai8TemperatureController);
     addHomeDevice(state_->home_bmp390_status_lbl_, state_->home_bmp390_action_btn_, VaporView::SkyDeviceId::Bmp390);
@@ -5326,11 +5328,9 @@ void MainWindow::setupConfigPanel()
         button->setFixedSize(kHomeDeviceButtonSize, kHomeDeviceButtonSize);
         button->setFocusPolicy(Qt::TabFocus);
         connect(button, &QToolButton::clicked, this, &MainWindow::triggerHomeMotionDeviceAction);
-        columnLayout->addWidget(state_->home_motion_status_lbl_, homeDeviceIndex / kHomeDeviceGridColumns, 0);
-        columnLayout->addWidget(button, homeDeviceIndex / kHomeDeviceGridColumns, 1, Qt::AlignVCenter);
+        columnLayout->addWidget(state_->home_motion_status_lbl_, nextRow[homeDeviceIndex % kHomeDeviceGridColumns], 0);
+        columnLayout->addWidget(button, nextRow[homeDeviceIndex % kHomeDeviceGridColumns], 1, Qt::AlignVCenter);
     }
-    ++homeDeviceIndex;
-    addHomeDevice(state_->home_tec_remote_lbl_, state_->home_tec_remote_btn_, VaporView::SkyDeviceId::Tec103Remote);
     state_->home_device_action_spinner_timer_ = new QTimer(this);
     state_->home_device_action_spinner_timer_->setTimerType(Qt::PreciseTimer);
     state_->home_device_action_spinner_timer_->setInterval(kHomeDeviceActionSpinnerIntervalMs);

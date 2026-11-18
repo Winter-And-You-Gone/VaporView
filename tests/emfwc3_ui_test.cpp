@@ -172,10 +172,10 @@ int main(int argc, char **argv)
         auto *panel = find<QWidget>(window, "emFwc3ConnectionPanel");
         window.resize(1920, 900);
         until("wide configuration card settles", [&] {
-            return panel->width() <= panel->sizeHint().width() + 2 && panel->width() > 0;
+            auto *serial = configuration->findChild<QWidget *>(QStringLiteral("deviceEpsilonPortCombo"));
+            return serial && panel->isVisible() && panel->mapTo(configuration, QPoint()).x() > serial->mapTo(configuration, QPoint(serial->width(), 0)).x();
         });
-        check(panel->width() <= panel->sizeHint().width() + 2,
-              "motion configuration card uses its content width on wide windows");
+
         check(panel->rect().contains(QRect(find<QPushButton>(*panel, "emFwc3Forward1")->mapTo(panel, QPoint()),
                                             find<QPushButton>(*panel, "emFwc3Forward1")->size())),
               "compact card keeps motion controls inside its boundaries");

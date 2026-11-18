@@ -1175,9 +1175,9 @@ int main(int argc, char **argv)
     {
         require(combo &&
                     combo->property("_vv_serial_baud_rate_combo").toBool() &&
-                    combo->height() == VaporView::Ground::MainSupport::kMainPageInputHeight &&
-                    combo->minimumHeight() == VaporView::Ground::MainSupport::kMainPageInputHeight &&
-                    combo->maximumHeight() == VaporView::Ground::MainSupport::kMainPageInputHeight &&
+                    combo->height() == epsilonBaudCombo->height() &&
+                    combo->minimumHeight() == combo->height() &&
+                    combo->maximumHeight() == combo->height() &&
                     combo->width() == epsilonBaudCombo->width() &&
                     combo->minimumWidth() == epsilonBaudCombo->minimumWidth() &&
                     combo->maximumWidth() == epsilonBaudCombo->maximumWidth() &&

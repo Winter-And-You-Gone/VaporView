@@ -343,7 +343,7 @@ bool homeTelemetrySummaryShowsUiTestRates(QWidget *homeConfigCard)
 {
     QWidget *summaryContainer = homeTelemetrySummaryContainer(homeConfigCard);
     const QList<QFrame *> sections = sortedHomeTelemetrySections(summaryContainer);
-    if (sections.size() < 3)
+    if (sections.size() != 2)
     {
         return false;
     }
@@ -375,21 +375,14 @@ bool homeTelemetrySummaryShowsUiTestRates(QWidget *homeConfigCard)
         }
     }
 
-    bool sawAvailableData = false;
-    for (QLabel *valueLabel : sections.at(2)->findChildren<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel")))
-    {
-        sawAvailableData = sawAvailableData ||
-            valueLabel->text() == QStringLiteral("有数据") ||
-            valueLabel->text() == QStringLiteral("Data available");
-    }
-    return threeDigitHzValues >= 6 && threeDigitMbpsValues == 3 && sawAvailableData;
+    return threeDigitHzValues >= 6 && threeDigitMbpsValues == 3;
 }
 
 bool homeTelemetrySummaryHasStableCompactTextGaps(QWidget *homeConfigCard)
 {
     QWidget *summaryContainer = homeTelemetrySummaryContainer(homeConfigCard);
     const QList<QFrame *> sections = sortedHomeTelemetrySections(summaryContainer);
-    if (sections.size() < 3)
+    if (sections.size() != 2)
     {
         return false;
     }
@@ -527,7 +520,7 @@ void requireUiTestHomeTelemetryCapsulesCovered(QWidget *homeConfigCard, const ch
     QWidget *summaryContainer = homeTelemetrySummaryContainer(homeConfigCard);
     require(summaryContainer != nullptr, message);
     const QList<QFrame *> sections = sortedHomeTelemetrySections(summaryContainer);
-    require(sections.size() >= 3, message);
+    require(sections.size() == 2, message);
 
     for (QLabel *label : summaryContainer->findChildren<QLabel *>())
     {

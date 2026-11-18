@@ -27,6 +27,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPalette>
 #include <QProgressBar>
@@ -165,6 +166,24 @@ protected:
         return handled;
     }
 
+    void mousePressEvent(QMouseEvent *event) override
+    {
+        dragOffset_ = 0;
+        QStyleOptionSlider option;
+        initStyleOption(&option);
+        const QRect handle = style()->subControlRect(QStyle::CC_Slider, &option, QStyle::SC_SliderHandle, this);
+        if (event->button() == Qt::LeftButton && handle.contains(event->position().toPoint())) {
+            dragOffset_ = event->position().x() - handle.center().x();
+            forwardDragEvent(event);
+        } else QSlider::mousePressEvent(event);
+    }
+
+    void mouseMoveEvent(QMouseEvent *event) override
+    {
+        if (isSliderDown() && dragOffset_ != 0) forwardDragEvent(event);
+        else QSlider::mouseMoveEvent(event);
+    }
+
     void paintEvent(QPaintEvent *) override
     {
         QStyleOptionSlider option;
@@ -201,6 +220,15 @@ protected:
     }
 
 private:
+    void forwardDragEvent(QMouseEvent *event)
+    {
+        const QPointF adjusted = event->position() - QPointF(dragOffset_, 0);
+        QMouseEvent translated(event->type(), adjusted, event->globalPosition(), event->button(), event->buttons(), event->modifiers());
+        if (event->type() == QEvent::MouseButtonPress) QSlider::mousePressEvent(&translated);
+        else QSlider::mouseMoveEvent(&translated);
+        event->setAccepted(translated.isAccepted());
+    }
+    qreal dragOffset_ = 0;
     QLabel *time_label_;
     QLabel *index_label_;
     QLabel *title_label_;
