@@ -1385,26 +1385,18 @@ void requireHomeDeviceMinimumWidthMatchesControls(QWidget *scope)
         std::max(deviceGrid->minimumSizeHint().width(), deviceGrid->sizeHint().width()));
     auto *telemetrySummary = deviceBody->findChild<QWidget *>(
         QStringLiteral("homeTelemetrySummaryContainer"));
-    int telemetrySummaryWidth = 0;
-    if (telemetrySummary)
-    {
-        telemetrySummaryWidth = telemetrySummary->minimumWidth();
-        if (QLayout *summaryLayout = telemetrySummary->layout())
-        {
-            summaryLayout->invalidate();
-            telemetrySummaryWidth = std::max(telemetrySummaryWidth,
-                                             summaryLayout->minimumSize().width());
-        }
-    }
+    require(telemetrySummary && telemetrySummary->width() == controlsWidth &&
+                telemetrySummary->mapTo(deviceBody, QPoint()).x() == deviceGrid->x(),
+            "home telemetry summary matches the width and left edge of both equipment columns");
     const QMargins cardMargins = deviceCard->layout()->contentsMargins();
     const QMargins bodyMargins = deviceBody->layout()->contentsMargins();
-    const int expectedMinimumWidth = std::max(controlsWidth, telemetrySummaryWidth) +
+    const int expectedMinimumWidth = controlsWidth +
                                      cardMargins.left() +
                                      cardMargins.right() +
                                      bodyMargins.left() +
                                      bodyMargins.right();
     require(deviceCard->minimumWidth() == expectedMinimumWidth,
-            "home device card minimum width covers its controls and telemetry summary capsules");
+            "home device card minimum width is set by the equipment columns and padding");
 }
 
 void requireHomeDeviceGeometryStableAcrossCardResize(QWidget *scope,
@@ -4207,13 +4199,8 @@ void requireHomeOverviewLanguageWidthRoundTrip()
         wideOverview->setProperty(VaporView::Ground::MainSupport::kHomeOverviewDeviceProgrammaticResizeProperty, false);
         processEventsFor(200);
         requireHomeLinkRowsPacked(wideSummary);
-        if (width == 800)
-        {
-            const auto pills = sortedTelemetrySections(wideSummary).at(1)->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
-            require(pills.at(0)->parentWidget() == pills.at(1)->parentWidget() &&
-                    pills.at(1)->parentWidget() == pills.at(2)->parentWidget(),
-                    "all three link rates share one row when the overview is wide");
-        }
+        requireHomeDeviceMinimumWidthMatchesControls(&wideOverviewWindow);
+        requireTelemetrySummaryPillsOrdered(wideSummary, "home telemetry pills stay within the equipment width");
     }
     wideOverviewWindow.close();
     require(processEventsUntil(1000, [&wideOverviewWindow]() {
@@ -4758,8 +4745,10 @@ void requireHomeThreeColumnLayout()
                 requireHomeSensorColumnLayout(window);
                 requireHomeTemperatureColumnMinimumHeight(window);
                 requireTelemetryLabelsFit(overview->widget(0), "full overview descriptions fit every pill");
-                requireHomeLinkRowsPacked(overview->widget(0)->findChild<QWidget *>(
-                    QStringLiteral("homeTelemetrySummaryContainer")));
+                auto *summary = overview->widget(0)->findChild<QWidget *>(QStringLiteral("homeTelemetrySummaryContainer"));
+                requireHomeDeviceMinimumWidthMatchesControls(&window);
+                requireTelemetrySummaryPillsOrdered(summary, "both telemetry sections fit the two equipment columns");
+                requireHomeLinkRowsPacked(summary);
                 if (extra >= 0)
                 {
                     require(overview->widget(2) == environment && sensors->count() == 1,
@@ -8362,16 +8351,8 @@ int main(int argc, char **argv)
     QFrame *rawWaveRatePill = findTelemetryPillByName(homeRateSection, QStringLiteral("原始波形"));
     require(featureRatePill != nullptr && statusRatePill != nullptr && rawWaveRatePill != nullptr,
             "home data-stream telemetry section exposes feature, status, and raw-wave pills");
-    const int featureRateY = featureRatePill->mapTo(homeRateSection, QPoint(0, 0)).y();
-    const int statusRateY = statusRatePill->mapTo(homeRateSection, QPoint(0, 0)).y();
-    const int rawWaveRateY = rawWaveRatePill->mapTo(homeRateSection, QPoint(0, 0)).y();
-    const QRect statusRateRect(statusRatePill->mapTo(homeRateSection, QPoint(0, 0)), statusRatePill->size());
-    const QRect rawWaveRateRect(rawWaveRatePill->mapTo(homeRateSection, QPoint(0, 0)), rawWaveRatePill->size());
-    require(statusRateY > featureRateY && std::abs(rawWaveRateY - statusRateY) <= 2,
-            "full status and raw-wave descriptions share the second data-stream line");
-    require(rawWaveRateRect.left() > statusRateRect.right() &&
-                rawWaveRateRect.left() - statusRateRect.right() <= 16,
-            "the second telemetry line keeps adjacent capsules together");
+    requireTelemetrySummaryPillsOrdered(homeTelemetrySummaryContainer,
+                                        "home telemetry reflows without clipping or overlapping");
     requireTelemetryRightPadding(deviceOverviewCard,
                                  homeRateSection,
                                  "home data-stream telemetry row keeps right-side breathing room");

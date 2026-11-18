@@ -235,7 +235,7 @@ bool updateSummarySectionValues(QVBoxLayout *sectionLayout,
     return true;
 }
 
-void reflowHomeDeviceSummary(QVBoxLayout *sectionLayout, int rowHeight, int spacing, int borderAllowance)
+void reflowHomeDeviceSummary(QVBoxLayout *sectionLayout, int sectionWidth, int rowHeight, int spacing, int borderAllowance)
 {
     auto *section = sectionLayout ? qobject_cast<QWidget *>(sectionLayout->parent()) : nullptr;
     // Newly rebuilt rows may not be visible yet, but still need their first reflow.
@@ -271,15 +271,14 @@ void reflowHomeDeviceSummary(QVBoxLayout *sectionLayout, int rowHeight, int spac
     }
     auto *title = lines.first()->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryTitleLabel"));
     const QMargins margins = sectionLayout->contentsMargins();
-    const int available = section->contentsRect().width() - margins.left() - margins.right();
+    const int frameWidth = section->width() - section->contentsRect().width();
+    const int available = sectionWidth - frameWidth - margins.left() - margins.right();
     QList<QList<QFrame *>> rows{{}};
     int used = title ? title->width() : 0;
-    int minimumWidth = used;
     for (QFrame *pill : pills)
     {
         const int width = qBound(pill->minimumWidth(), pill->sizeHint().width(), pill->maximumWidth());
-        minimumWidth = std::max(minimumWidth, width + (pill == pills.first() && title ? title->width() + spacing : 0));
-        if (!rows.last().isEmpty() && used + spacing + width > available)
+        if (used > 0 && used + spacing + width > available)
         {
             rows.append(QList<QFrame *>{});
             used = 0;
@@ -308,7 +307,7 @@ void reflowHomeDeviceSummary(QVBoxLayout *sectionLayout, int rowHeight, int spac
         }
         if (title)
         {
-            lines.first()->layout()->addWidget(title);
+            static_cast<QHBoxLayout *>(lines.first()->layout())->addWidget(title, 0, Qt::AlignVCenter);
         }
         for (int i = 0; i < rows.size(); ++i)
         {
@@ -334,7 +333,6 @@ void reflowHomeDeviceSummary(QVBoxLayout *sectionLayout, int rowHeight, int spac
         line->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
         line->show();
     }
-    section->setMinimumWidth(minimumWidth + margins.left() + margins.right());
     section->setFixedHeight(margins.top() + margins.bottom() + rows.size() * rowHeight +
         (rows.size() - 1) * sectionLayout->spacing() + borderAllowance);
     sectionLayout->activate();
@@ -759,19 +757,7 @@ int MainWindow::homeDeviceOverviewContentMinimumWidth() const
     const int deviceControlsWidth = std::max(
         homeDevices->minimumWidth(),
         std::max(homeDevices->minimumSizeHint().width(), homeDevices->sizeHint().width()));
-    int telemetrySummaryWidth = 0;
-    if (state_->data_telemetry_summary_card_)
-    {
-        telemetrySummaryWidth = state_->data_telemetry_summary_card_->minimumWidth();
-        if (QLayout *summaryLayout = state_->data_telemetry_summary_card_->layout())
-        {
-            summaryLayout->invalidate();
-            telemetrySummaryWidth = std::max(telemetrySummaryWidth,
-                                             summaryLayout->minimumSize().width());
-        }
-    }
-    const int contentWidth = std::max(deviceControlsWidth, telemetrySummaryWidth);
-    return contentWidth +
+    return deviceControlsWidth +
            cardMargins.left() +
            cardMargins.right() +
            bodyMargins.left() +
@@ -806,6 +792,10 @@ void MainWindow::updateHomeDeviceOverviewMinimumWidth()
             deviceLayout->setSizeConstraint(QLayout::SetFixedSize);
             deviceLayout->invalidate();
             deviceLayout->activate();
+        }
+        if (state_->data_telemetry_summary_card_)
+        {
+            state_->data_telemetry_summary_card_->setFixedWidth(homeDevices->minimumWidth());
         }
     }
 
@@ -924,10 +914,15 @@ void MainWindow::updateConfigCardHeightForSourceMode()
         return;
     }
 
-    reflowHomeDeviceSummary(state_->data_telemetry_link_summary_layout_, scalePixels(28), scalePixels(2), scalePixels(2));
     int minimumHeight = scaledConfiguredHeight(state_->config_group_, kConfigCardMinHeight);
     if (state_->data_telemetry_summary_card_)
     {
+        const int summaryWidth = state_->data_telemetry_summary_card_->width();
+        for (QVBoxLayout *sectionLayout : {state_->data_telemetry_summary_layout_,
+                                           state_->data_telemetry_link_summary_layout_})
+        {
+            reflowHomeDeviceSummary(sectionLayout, summaryWidth, scalePixels(28), scalePixels(2), scalePixels(2));
+        }
         if (QLayout *summaryLayout = state_->data_telemetry_summary_card_->layout())
         {
             summaryLayout->invalidate();
@@ -1794,29 +1789,6 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                                        homeSections.linkItems,
                                        false,
                                        state_->is_english_));
-        if (!homeSummaryNeedsRender)
-        {
-            for (QVBoxLayout *sectionLayout : {state_->data_telemetry_summary_layout_,
-                                               state_->data_telemetry_link_summary_layout_})
-            {
-                auto *section = qobject_cast<QWidget *>(sectionLayout->parent());
-                for (int i = 0; i < sectionLayout->count(); ++i)
-                {
-                    QWidget *line = sectionLayout->itemAt(i)->widget();
-                    if (line && line->layout())
-                    {
-                        line->setMinimumWidth(0);
-                        line->layout()->invalidate();
-                    }
-                }
-                if (section) section->setMinimumWidth(0);
-                sectionLayout->invalidate();
-            }
-            state_->data_telemetry_summary_card_->setMinimumWidth(0);
-            state_->data_telemetry_summary_card_->layout()->invalidate();
-            updateHomeDeviceOverviewMinimumWidth();
-            state_->data_telemetry_summary_card_->setProperty(kSummaryStructureKeyProperty, summaryStructureKey);
-        }
     }
 
     bool deviceConfigSummaryNeedsRender = false;
@@ -1844,6 +1816,10 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
 
     if (!homeSummaryNeedsRender && !deviceConfigSummaryNeedsRender)
     {
+        if (state_->home_overview_splitter_)
+        {
+            updateConfigCardHeightForSourceMode();
+        }
         return;
     }
     auto clearLayout = [](QLayout *layout) {
@@ -2023,7 +1999,6 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         }
 
         int renderedLineCount = 0;
-        int explicitSectionMinimumWidth = 0;
         struct RenderedSummaryLine
         {
             QWidget *line = nullptr;
@@ -2059,15 +2034,10 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                 pill->setProperty("summaryItemIndex", i);
                 linePills << pill;
             }
-            if (!useSideTitle)
-            {
-                for (QFrame *pill : linePills)
-                {
-                    pill->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-                }
-            }
+
             lineLayout->addStretch(1);
             renderedLines.push_back({line, lineLayout, linePills});
+            line->setSizePolicy(useSideTitle ? QSizePolicy::Expanding : QSizePolicy::Ignored, QSizePolicy::Fixed);
             linesLayout->addWidget(line, 1, Qt::AlignTop);
         };
 
@@ -2098,41 +2068,33 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             }
             for (const auto& line : renderedLines)
                 for (int i = 0; i < line.pills.size(); ++i) line.pills[i]->setFixedWidth(columnWidths[i]);
-        }
 
-        for (RenderedSummaryLine& renderedLine : renderedLines)
-        {
-            renderedLine.layout->invalidate();
-            renderedLine.layout->activate();
-            const QMargins lineMargins = renderedLine.layout->contentsMargins();
-            int lineMinimumWidth = lineMargins.left() + lineMargins.right();
-            int lineWidgetCount = 0;
-            for (int i = 0; i < renderedLine.layout->count(); ++i)
+            for (RenderedSummaryLine& renderedLine : renderedLines)
             {
-                QWidget *widget = renderedLine.layout->itemAt(i)
-                    ? renderedLine.layout->itemAt(i)->widget()
-                    : nullptr;
-                if (!widget)
+                renderedLine.layout->invalidate();
+                renderedLine.layout->activate();
+                const QMargins lineMargins = renderedLine.layout->contentsMargins();
+                int lineMinimumWidth = lineMargins.left() + lineMargins.right();
+                int lineWidgetCount = 0;
+                for (int i = 0; i < renderedLine.layout->count(); ++i)
                 {
-                    continue;
+                    QWidget *widget = renderedLine.layout->itemAt(i)
+                        ? renderedLine.layout->itemAt(i)->widget()
+                        : nullptr;
+                    if (!widget)
+                    {
+                        continue;
+                    }
+                    if (lineWidgetCount > 0)
+                    {
+                        lineMinimumWidth += renderedLine.layout->spacing();
+                    }
+                    lineMinimumWidth += std::max(
+                        widget->minimumWidth(),
+                        std::max(widget->minimumSizeHint().width(), widget->sizeHint().width()));
+                    ++lineWidgetCount;
                 }
-                if (lineWidgetCount > 0)
-                {
-                    lineMinimumWidth += renderedLine.layout->spacing();
-                }
-                lineMinimumWidth += std::max(
-                    widget->minimumWidth(),
-                    std::max(widget->minimumSizeHint().width(), widget->sizeHint().width()));
-                ++lineWidgetCount;
-            }
-            renderedLine.line->setMinimumWidth(lineMinimumWidth);
-            renderedLine.line->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-            if (!useSideTitle)
-            {
-                const QMargins sectionMargins = sectionLayout->contentsMargins();
-                explicitSectionMinimumWidth = std::max(
-                    explicitSectionMinimumWidth,
-                    lineMinimumWidth + sectionMargins.left() + sectionMargins.right());
+                renderedLine.line->setMinimumWidth(lineMinimumWidth);
             }
         }
 
@@ -2150,34 +2112,14 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                                       (renderedLineCount * rowHeight) +
                                       (std::max(0, renderedLineCount - 1) * rowSpacing) +
                                       borderAllowance;
-            const int sectionMinimumWidth = std::max(sectionLayout->minimumSize().width(), explicitSectionMinimumWidth);
-            section->setMinimumWidth(sectionMinimumWidth);
+            if (useSideTitle)
+            {
+                section->setMinimumWidth(sectionLayout->minimumSize().width());
+            }
             section->setFixedHeight(sectionHeight);
             section->adjustSize();
             section->updateGeometry();
         }
-        if (sectionLayout == state_->data_telemetry_link_summary_layout_)
-        {
-            reflowHomeDeviceSummary(sectionLayout, scalePixels(28), scalePixels(2), scalePixels(2));
-        }
-    };
-    auto updateSummaryMinimumWidth = [](QWidget *summaryWidget) {
-        if (!summaryWidget)
-        {
-            return;
-        }
-        int sectionMinimumWidth = 0;
-        const QList<QFrame*> sections =
-            summaryWidget->findChildren<QFrame *>(QStringLiteral("homeTelemetrySectionCard"));
-        for (const QFrame *section : sections)
-        {
-            sectionMinimumWidth = std::max(sectionMinimumWidth, section->minimumWidth());
-        }
-        const QMargins margins = summaryWidget->layout()
-            ? summaryWidget->layout()->contentsMargins()
-            : QMargins();
-        summaryWidget->setMinimumWidth(sectionMinimumWidth + margins.left() + margins.right());
-        summaryWidget->updateGeometry();
     };
     if (homeSummaryNeedsRender && state_->data_telemetry_summary_card_)
     {
@@ -2198,7 +2140,6 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             summaryLayout->invalidate();
             summaryLayout->activate();
         }
-        updateSummaryMinimumWidth(state_->data_telemetry_summary_card_);
         state_->data_telemetry_summary_card_->updateGeometry();
         updateHomeDeviceOverviewMinimumWidth();
         state_->data_telemetry_summary_card_->setProperty(kSummaryStructureKeyProperty, summaryStructureKey);
