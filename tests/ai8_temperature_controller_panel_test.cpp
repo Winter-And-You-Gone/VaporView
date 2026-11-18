@@ -302,6 +302,14 @@ int main(int argc, char **argv)
     windowedPlot.grab();
     require(windowedPlot.property("xAxisTimeMaxSeconds").toDouble()>=now,
             "Stale telemetry never rewinds the visible clock");
+    windowedPlot.setProperty("temperatureOverviewPlot", true);
+    windowedPlot.setSamples({53.81, 53.82});
+    windowedPlot.setSampleTimes({now - 1.0, now - 0.1});
+    windowedPlot.grab();
+    require(windowedPlot.property("yAxisMinC").toDouble() > 53.0 &&
+                windowedPlot.property("yAxisMaxC").toDouble() < 54.0,
+            "A distant setpoint does not flatten the measured laser temperature trend");
+    windowedPlot.setProperty("temperatureOverviewPlot", false);
     windowedPlot.setSamples({});
     windowedPlot.setSampleTimes({});
     windowedPlot.grab();
@@ -436,13 +444,13 @@ int main(int argc, char **argv)
     overviewLiveData.alarmRaw = 4;
     overview.applyLiveData(overviewLiveData);
     const auto statuses = overview.findChildren<QLabel *>(QStringLiteral("ai8TemperatureOverviewStatusLabel"));
-    require(statuses.size() == 8 && statuses[0]->text() == QStringLiteral("运行") &&
+    require(statuses.size() == 8 && statuses[0]->text() == QStringLiteral("APID调节") &&
         statuses[1]->text() == QStringLiteral("告警") && statuses[2]->text() == QStringLiteral("—"),
         "FPGA scans retain each channel state without leaking it to other channels");
     overviewLiveData.controlRaw = 1;
     overviewLiveData.alarmRaw = 0x20;
     overview.applyLiveData(overviewLiveData);
-    require(statuses[1]->text() == QStringLiteral("运行") && statuses[1]->toolTip().contains("0x20"),
+    require(statuses[1]->text() == QStringLiteral("APID调节") && statuses[1]->toolTip().contains("0x20"),
             "reserved status bit alone preserves running state and raw diagnostic byte");
     overviewLiveData.alarmRaw = 0x21;
     overview.applyLiveData(overviewLiveData);
@@ -522,7 +530,7 @@ int main(int argc, char **argv)
         overview.applyLiveData(scanned);
         for (int cached = 0; cached <= index; ++cached)
         {
-            require(statuses[cached]->text() == (cached < 2 ? QStringLiteral("Running")
+            require(statuses[cached]->text() == (cached < 2 ? QStringLiteral("APID control")
                         : QStringLiteral("Input error")) &&
                         overviewValueLabels[cached]->text() == (cached < 2
                             ? QString::number(22.0 + cached, 'f', 1) + QStringLiteral(" °C")
@@ -537,7 +545,7 @@ int main(int argc, char **argv)
             "A global alarm does not mark the two healthy channels as input faults");
     scanned.detailedChannel = 0;
     overview.applyLiveData(scanned);
-    require(statuses[0]->text() == QStringLiteral("Running") &&
+    require(statuses[0]->text() == QStringLiteral("APID control") &&
                 statuses[7]->text() == QStringLiteral("Input error"),
             "Cached per-channel metadata survives a scan with no detailed channel");
     scanned.controlStates[2] = VaporView::Ai8TemperatureControllerProtocol::ChannelControlState::Unknown;

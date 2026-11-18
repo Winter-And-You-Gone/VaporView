@@ -2006,9 +2006,9 @@ void Ai8TemperatureOverviewPanel::refreshLabels()
         else if (alarms != 0) stateText = english_ ? QStringLiteral("Alarm") : QStringLiteral("告警");
         else switch (control_states_[index])
         {
-        case ChannelControlState::ApidOutput: stateText = english_ ? QStringLiteral("Running") : QStringLiteral("运行"); break;
+        case ChannelControlState::ApidOutput: stateText = english_ ? QStringLiteral("APID control") : QStringLiteral("APID调节"); break;
         case ChannelControlState::AutoTuning: stateText = english_ ? QStringLiteral("Auto tuning") : QStringLiteral("自整定"); break;
-        case ChannelControlState::Stopped: stateText = english_ ? QStringLiteral("Stopped") : QStringLiteral("停止"); break;
+        case ChannelControlState::Stopped: stateText = english_ ? QStringLiteral("Output stopped") : QStringLiteral("停止输出"); break;
         default: stateText = QStringLiteral("—"); break;
         }
         status_labels_[index]->setText(stateText);

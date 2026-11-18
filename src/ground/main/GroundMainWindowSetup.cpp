@@ -4279,7 +4279,8 @@ void MainWindow::updateDeviceConfigTexts()
     }
     if (state_->device_config_.epsilon_lbl) state_->device_config_.epsilon_lbl->setText(state_->is_english_ ? QStringLiteral("EPSILON2-D4G\nIntegrated Navigation") : QStringLiteral("EPSILON2-D4G\n组合导航"));
     if (state_->device_config_.lidar_lbl) state_->device_config_.lidar_lbl->setText(state_->is_english_ ? QStringLiteral("SDFM300\nLiDAR") : QStringLiteral("SDFM300\n激光测距"));
-    if (state_->device_config_.temperature_lbl) state_->device_config_.temperature_lbl->setText(state_->is_english_ ? QStringLiteral("RD105\nLaser Thermal Controller") : QStringLiteral("RD105\n激光驱动温控器"));
+    const QString thermalModel = isFpgaRelayPath() ? QStringLiteral("TEC103") : QStringLiteral("RD105");
+    if (state_->device_config_.temperature_lbl) state_->device_config_.temperature_lbl->setText(thermalModel + (state_->is_english_ ? QStringLiteral("\nLaser Thermal Controller") : QStringLiteral("\n激光驱动温控器")));
     if (state_->device_config_.ai8_temperature_lbl) state_->device_config_.ai8_temperature_lbl->setText(state_->is_english_ ? QStringLiteral("AI-8288D92J0\n8-Channel Thermal") : QStringLiteral("AI-8288D92J0\n八路温控器"));
     if (state_->device_config_.tcp_wave_lbl) state_->device_config_.tcp_wave_lbl->setText(state_->is_english_ ? QStringLiteral("TCP Waveform") : QStringLiteral("TCP 波形"));
     if (state_->device_config_.tcp_wave_host_edit) state_->device_config_.tcp_wave_host_edit->setPlaceholderText(state_->is_english_ ? QStringLiteral("Host address") : QStringLiteral("主机地址"));
@@ -4318,7 +4319,7 @@ void MainWindow::updateDeviceConfigTexts()
     updateEnabledCheckPresentation(state_->device_config_.ptb_enabled_check, state_->is_english_ ? QStringLiteral("Pressure") : QStringLiteral("气压"));
     updateEnabledCheckPresentation(state_->device_config_.hc2a_enabled_check, state_->is_english_ ? QStringLiteral("Humidity") : QStringLiteral("温湿度"));
     updateEnabledCheckPresentation(state_->device_config_.lidar_enabled_check, QStringLiteral("SDFM300"));
-    updateEnabledCheckPresentation(state_->device_config_.temperature_enabled_check, QStringLiteral("RD105"));
+    updateEnabledCheckPresentation(state_->device_config_.temperature_enabled_check, thermalModel);
     updateEnabledCheckPresentation(state_->device_config_.ai8_temperature_enabled_check, QStringLiteral("AI-8288"));
     updateEnabledCheckPresentation(state_->device_config_.tcp_wave_enabled_check,
                                    state_->is_english_ ? QStringLiteral("TCP waveform") : QStringLiteral("TCP 波形"));
@@ -4603,9 +4604,10 @@ void MainWindow::updateDeviceConfigState()
         state_->device_config_.temperature_lbl->setToolTip(
             fpgaRelay && !(homeFpgaExtensions()&VaporView::FpgaExtensions::Rd105)
                 ? (state_->is_english_
-                    ? QStringLiteral("RD105 connection is unavailable: the current FPGA VLP1 relay does not expose an RD105 source.")
-                    : QStringLiteral("当前 FPGA VLP1 中转协议未提供 RD105 通道，暂不支持实际连接。"))
-                : fpgaRelay?QStringLiteral("历史 RD105 扩展与 AI8 共用 RS485，需核对对应固件和仪表通信参数；HC2A 使用独立 UART。"):QString());
+                    ? QStringLiteral("The FPGA relay does not expose the TEC103 ports.")
+                    : QStringLiteral("当前 FPGA 中转未提供 TEC103 接口。"))
+                : fpgaRelay ? (state_->is_english_ ? QStringLiteral("TEC103 #1: in situ (LC0), #2: remote (LC1)")
+                    : QStringLiteral("TEC103 设备1：原位（LC0），设备2：遥测（LC1）")) : QString());
     }
 
     for (QWidget *widget : {state_->device_config_.epsilon_remote_buttons_widget,
@@ -5618,8 +5620,8 @@ void MainWindow::setupDataPanels()
                 this,
                 state_->is_english_ ? QStringLiteral("Enable Temperature Output") : QStringLiteral("开启温控输出"),
                 state_->is_english_
-                    ? QStringLiteral("Enable RD105 output for channel %1? Confirm the target temperature is safe.").arg(channel)
-                    : QStringLiteral("确定开启 RD105 通道%1输出？请确认目标温度安全。").arg(channel));
+                    ? QStringLiteral("Enable controller output for channel %1? Confirm the target temperature is safe.").arg(channel)
+                    : QStringLiteral("确定开启温控器通道%1输出？请确认目标温度安全。").arg(channel));
             if (answer != QMessageBox::Yes)
             {
                 if (state_->temperature_overview_panel_)
@@ -5856,7 +5858,7 @@ void MainWindow::setupDataPanels()
     temperatureTitleLayout->addWidget(state_->temperature_title_action_btn_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     auto* readFpgaTemperature=createTemperatureTitleActionButton(temperatureTitleBar,QStringLiteral("temperatureFpgaReadParameters"),VaporView::SkyDeviceId::TemperatureController);
     readFpgaTemperature->setIcon(createLucideIcon(QStringLiteral("refresh-cw"),toolbarColor(AppThemeColor::ToolbarBlue)));
-    readFpgaTemperature->setToolTip(QStringLiteral("读取 RD105 双通道及通用参数"));readFpgaTemperature->hide();
+    readFpgaTemperature->setToolTip(QStringLiteral("读取两台 TEC103 的参数"));readFpgaTemperature->hide();
     connect(readFpgaTemperature,&QToolButton::clicked,this,[this]{if(isFpgaRelayPath()) {
         VaporView::TemperatureControllerCommand request;request.channel=2;
         sendTemperatureCommand(VaporView::CommandId::QueryDeviceStatus,request);
@@ -5884,8 +5886,8 @@ void MainWindow::setupDataPanels()
                 this,
                 state_->is_english_ ? QStringLiteral("Enable Temperature Output") : QStringLiteral("开启温控输出"),
                 state_->is_english_
-                    ? QStringLiteral("Enable RD105 output for channel %1? Confirm the target temperature and output limit are safe.").arg(channel)
-                    : QStringLiteral("确定开启 RD105 通道%1输出？请确认目标温度和最大输出上限安全。" ).arg(channel));
+                    ? QStringLiteral("Enable controller output for channel %1? Confirm the target temperature and output limit are safe.").arg(channel)
+                    : QStringLiteral("确定开启温控器通道%1输出？请确认目标温度和最大输出上限安全。" ).arg(channel));
             if (answer != QMessageBox::Yes)
             {
                 return;

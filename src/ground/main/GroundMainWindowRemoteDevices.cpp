@@ -2750,6 +2750,12 @@ void MainWindow::setRemoteDeviceButtonsEnabled(bool enabled)
 
 void MainWindow::updateTemperatureControllerTitleText()
 {
+    if (state_->temperature_overview_inline_title_lbl_ && isFpgaRelayPath())
+        state_->temperature_overview_inline_title_lbl_->setText(state_->is_english_
+            ? QStringLiteral("TEC103 · 1 In situ / 2 Remote") : QStringLiteral("TEC103 · 1 原位 / 2 遥测"));
+    else if (state_->temperature_overview_inline_title_lbl_)
+        state_->temperature_overview_inline_title_lbl_->setText(state_->is_english_
+            ? QStringLiteral("Laser Driver Temperature Overview") : QStringLiteral("激光驱动温控概览"));
     if (!state_->temperature_controller_inline_title_lbl_)
     {
         return;

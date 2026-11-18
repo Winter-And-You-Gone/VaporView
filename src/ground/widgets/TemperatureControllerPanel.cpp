@@ -1322,8 +1322,8 @@ private:
             : valid ? (is_english_ ? QStringLiteral("Normal") : QStringLiteral("正常"))
             : (is_english_ ? QStringLiteral("Status: —") : QStringLiteral("状态：—")));
         error_status_label_->setToolTip(valid || latest_data_.error_code != 0
-            ? QString(is_english_ ? "RD105 error code: %1" : "RD105 错误码：%1").arg(errorCode)
-            : (is_english_ ? QStringLiteral("No valid RD105 status") : QStringLiteral("未收到有效 RD105 状态")));
+            ? QString(is_english_ ? "Controller error code: %1" : "温控器错误码：%1").arg(errorCode)
+            : (is_english_ ? QStringLiteral("No valid controller status") : QStringLiteral("未收到有效温控器状态")));
         error_status_label_->setStyleSheet(QStringLiteral("color: %1; background: transparent;")
             .arg(appThemeColor(latest_data_.error_code != 0 ? AppThemeColor::ToolbarRed
                 : valid ? AppThemeColor::ToolbarGreen : AppThemeColor::TextMuted, dark).name()));

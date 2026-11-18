@@ -549,7 +549,7 @@ void MainWindow::setEnglish(bool english)
     }
     if (state_->temperature_overview_inline_title_lbl_)
     {
-        state_->temperature_overview_inline_title_lbl_->setText(english ? "Laser Driver Temperature Overview" : "激光驱动温控概览");
+        updateTemperatureControllerTitleText();
     }
     if (state_->temperature_overview_panel_)
     {

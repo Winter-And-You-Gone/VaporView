@@ -187,9 +187,9 @@ int hardwareReadonly(const QString& locator,const QString& output,int expectedCh
             for(quint32 base:{0x6800u,0x6900u}) {
                 if(!preflight)break;
                 if(original.value(base)!=(base==0x6800?0x00480100u:0x00490100u)
-                    || original.value(base+4)!=0 || (original.value(base+8)&9)
+                    || original.value(base+4)>1 || (original.value(base+8)&8)
                     || original.value(base+0x20) || original.value(base+0x24)) {
-                    preflight=false;error=QStringLiteral("Requires disabled, idle, empty LC UART bridges; no data was flushed.");
+                    preflight=false;error=QStringLiteral("Requires idle, empty LC UART bridges; no data was flushed.");
                 }
             }
             document["preflight_session_diagnostics"]=sessionTrace(inspection,trace);
@@ -232,7 +232,10 @@ int hardwareReadonly(const QString& locator,const QString& output,int expectedCh
         QObject::connect(&controller,&FpgaDeviceController::temperatureDataUpdated,&controller,
             [&](const TemperatureControllerData& value) {
                 data=value;
-                if(validSample(value))++samples;
+                if(validSample(value)) {
+                    if(samples==0)document["first_sample"]=temperatureDocument(value);
+                    ++samples;
+                }
             });
         const auto cleanup=[&] {
             if(cleanupDone)return;
@@ -296,8 +299,8 @@ int hardwareReadonly(const QString& locator,const QString& output,int expectedCh
                     started=true;
                     productionTrace=traceSession(*session);
                     controller.connectSensor({{"op","sensor"},{"source",0x4a},{"enabled",true}});
-                    sampled=pumpUntil([&]{return controller.temperatureConnected() && validSample(data) && samples>=2;},60000);
-                    if(!sampled)error=QStringLiteral("Production Controller did not receive two valid samples from the expected channel(s).");
+                    sampled=pumpUntil([&]{return controller.temperatureConnected() && validSample(data) && samples>=10;},60000);
+                    if(!sampled)error=QStringLiteral("Production Controller did not receive ten valid samples from the expected channel(s).");
                     document["sample"]=temperatureDocument(data);document["samples"]=samples;
                     document["production_session_diagnostics"]=sessionTrace(*session,productionTrace);
                 }
