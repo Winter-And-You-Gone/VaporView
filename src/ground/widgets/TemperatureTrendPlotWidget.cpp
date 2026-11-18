@@ -546,17 +546,6 @@ std::pair<double, double> TemperatureTrendPlotWidget::visibleTemperatureAxisRang
         }
         previous = index;
     }
-    if (property("temperatureOverviewPlot").toBool() && !finiteSamples.isEmpty())
-    {
-        const auto [low, high] = std::minmax_element(finiteSamples.cbegin(), finiteSamples.cend());
-        // Keep small changes legible when the setpoint is far from the load temperature.
-        if (target_temperature_c_ < *low - 1.0 || target_temperature_c_ > *high + 1.0 ||
-            !std::isfinite(target_temperature_c_))
-        {
-            const double padding = std::max(0.1, (*high - *low) * 0.1);
-            return {*low - padding, *high + padding};
-        }
-    }
     return temperatureAxisRange(finiteSamples, target_temperature_c_);
 }
 

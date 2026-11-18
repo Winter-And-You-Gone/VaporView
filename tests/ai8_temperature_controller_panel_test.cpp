@@ -306,9 +306,9 @@ int main(int argc, char **argv)
     windowedPlot.setSamples({53.81, 53.82});
     windowedPlot.setSampleTimes({now - 1.0, now - 0.1});
     windowedPlot.grab();
-    require(windowedPlot.property("yAxisMinC").toDouble() > 53.0 &&
-                windowedPlot.property("yAxisMaxC").toDouble() < 54.0,
-            "A distant setpoint does not flatten the measured laser temperature trend");
+    require(windowedPlot.property("yAxisMinC").toDouble() <= 25.0 &&
+                windowedPlot.property("yAxisMaxC").toDouble() >= 53.82 && windowedPlot.property("targetGuideLineVisible").toBool(),
+            "Laser overview keeps both a distant setpoint and the measured temperature visible");
     windowedPlot.setProperty("temperatureOverviewPlot", false);
     windowedPlot.setSamples({});
     windowedPlot.setSampleTimes({});
