@@ -1914,7 +1914,7 @@ static void simulatedMonitorActions()
         for(auto *plot:window.findChildren<QWidget*>("temperatureTrendPlot"))
             if(plot->property("temperatureOverviewPlot").toBool()&&plot->property("sampleCount").toInt()>=2)++populatedPlots;
         return percent&&percent->property("channel1OutputPercentText").toString()=="0.00%"
-            &&percent->property("channel2OutputPercentText").toString().isEmpty()&&populatedPlots==1;
+            &&percent->property("channel2OutputPercentText").toString()=="0.00%" && percent->text().contains(QStringLiteral("原：")) && percent->text().contains(QStringLiteral("遥："))&&populatedPlots==1;
     },6000),"FPGA overview displays TC1 telemetry and leaves TC2 empty");
     const auto outputs=window.findChildren<QAbstractButton*>("temperatureOverviewOutputSwitch");
     require(outputs.size()==2,"simulated RD105 overview exposes both output controls");
@@ -1962,10 +1962,10 @@ static void simulatedMonitorActions()
         if(!button->property("deviceConfigAction").toBool()&&!button->property("motionDeviceAction").toBool())watched.append(button);
     for(auto *object:watched)object->installEventFilter(&outputState);
     auto *homeDevice = window.findChild<QAbstractButton*>("tec103OverviewDeviceSwitch");
-    require(homeDevice && !homeDevice->isHidden() && outputs[1]->isHidden(), "Home overview hides TC2");
+    require(homeDevice && !homeDevice->isHidden() && !outputs[1]->isHidden(), "Home overview shows both TC1 output switches");
     auto *output = outputs[0];
     for (int instrument = 1; instrument <= 2; ++instrument) {
-        if (instrument == 2) homeDevice->click();
+        output = outputs[instrument - 1];
         require(output->isEnabled(),"simulated RD105 output control is available");
         QTimer confirm;
         QObject::connect(&confirm,&QTimer::timeout,&window,[]{
@@ -1980,13 +1980,15 @@ static void simulatedMonitorActions()
     const auto outputPercent=[&](int channel) {
         return percent->property(channel==1?"channel1OutputPercentText":"channel2OutputPercentText").toString().remove('%').toDouble();
     };
-    require(waitUntil([&]{return outputPercent(1)<0;}), "Remote TC1 displays its own PWM");
+    require(waitUntil([&]{return outputPercent(2)<0;}), "Remote TC1 displays its own PWM");
     homeDevice->click();
+    output = outputs[0];
     require(outputPercent(1)>0, "In situ TC1 displays its own PWM");
     output->click();
     require(waitUntil([&]{return !output->isChecked() && !confirmedOutputs.value(1,true);},6000), "In situ TC1 stops");
     homeDevice->click();
-    require(output->isChecked() && outputPercent(1)<0 && !outputs[1]->isEnabled(), "Remote TC1 remains enabled independently");
+    output = outputs[1];
+    require(output->isChecked() && outputPercent(2)<0 && outputPercent(1)==0, "Remote TC1 remains enabled independently");
     output->click();
     require(waitUntil([&]{return !output->isChecked() && !confirmedOutputs.value(2,true);},6000), "Remote TC1 stops");
     homeDevice->click();
