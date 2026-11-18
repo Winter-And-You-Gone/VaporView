@@ -16,6 +16,8 @@
 #include <QSet>
 #include <atomic>
 
+#include "ground/navigation/NavigationStatusPanel.h"
+class UiTestReplayWindow;
 class FpgaControlPage;
 namespace VaporView::Ground::Calibration { class WaterCalibrationPage; class CalibrationService; class RealtimePeakBus; }
 namespace VaporView::Ground::Motion { class MotionControlPage; class HomeMotionPanel; }
@@ -516,6 +518,9 @@ struct MainWindowState
     QString epsilon_reconfigure_progress_stage_;
     QElapsedTimer epsilon_reconfigure_progress_elapsed_;
     bool is_connected_;
+    UiTestReplayWindow *ui_test_source_window_ = nullptr;
+    bool session_replay_ = false;
+    VaporView::Ground::Navigation::NavigationStatusSnapshot replay_navigation_;
     bool ui_test_mode_enabled_;
     bool ui_test_epsilon_operation_pending_ = false;
     quint64 ui_test_epsilon_operation_generation_ = 0;

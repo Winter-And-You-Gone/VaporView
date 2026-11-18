@@ -1683,8 +1683,15 @@ void Ai8TemperatureControllerPanel::applyPageData(
     updateTemperaturePlot();
 }
 
+void Ai8TemperatureControllerPanel::clearTemperatureHistory()
+{
+    for (auto& history : measured_temperature_history_) history.clear();
+    for (auto& history : measured_temperature_time_history_) history.clear();
+    updateTemperaturePlot();
+}
+
 void Ai8TemperatureControllerPanel::applyLiveData(
-    const Ai8TemperatureControllerProtocol::LiveData& liveData)
+    const Ai8TemperatureControllerProtocol::LiveData& liveData, double sampleTimeSeconds)
 {
     if (fpga_relay_ && liveData.valid && liveData.detailedChannel >= 1 && liveData.detailedChannel <= 8) {
         const int i = liveData.detailedChannel - 1;
@@ -1701,8 +1708,7 @@ void Ai8TemperatureControllerPanel::applyLiveData(
     latest_live_data_ = liveData;
     if (liveData.valid)
     {
-        const double sampleTimeSeconds =
-            static_cast<double>(QDateTime::currentMSecsSinceEpoch()) / 1000.0;
+        if (sampleTimeSeconds < 0) sampleTimeSeconds = QDateTime::currentMSecsSinceEpoch() / 1000.0;
         for (int index = 0; index < Ai8TemperatureControllerProtocol::kChannelCount; ++index)
         {
             if(liveData.sampleTicksValid && previousTicksValid &&

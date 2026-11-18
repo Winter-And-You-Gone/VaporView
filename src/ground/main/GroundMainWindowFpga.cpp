@@ -1448,6 +1448,7 @@ void MainWindow::refreshFpgaTemperaturePanels()
 void MainWindow::updateFpgaPageBackend()
 {
     if (!state_->fpga_page_) return;
+    if (state_->session_replay_) return;
     // Keep the action/readback contract immediate; only the full editor refresh is deferred.
     for (auto device : {VaporView::SkyDeviceId::Epsilon, VaporView::SkyDeviceId::Ptb,
              VaporView::SkyDeviceId::Hc2a, VaporView::SkyDeviceId::Lidar,
@@ -1569,7 +1570,7 @@ void MainWindow::refreshInternalEnvironment()
         const auto id=source==0x43?VaporView::SkyDeviceId::Bmp390:VaporView::SkyDeviceId::Sht45;
         return homeDeviceActionState(id)==VaporView::DeviceState::Connected;
     };
-    if(isUiTestMode()&&!isFpgaRelayPath()&&state_->ui_test_model_->scenario()!=VaporView::Ground::Devices::UiTestScenario::DataStalled) {
+    if(isUiTestMode()&&!state_->session_replay_&&!isFpgaRelayPath()&&state_->ui_test_model_->scenario()!=VaporView::Ground::Devices::UiTestScenario::DataStalled) {
         const double phase=(QDateTime::currentMSecsSinceEpoch()-state_->ui_test_started_ms_)/1000.0;
         for(quint16 source:{0x43,0x44})if(enabled(source)) {
             VaporView::FpgaSensor::Reading sample;sample.source=source;

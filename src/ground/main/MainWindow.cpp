@@ -1,5 +1,6 @@
 #include "ground/calibration/CalibrationService.h"
 #include "ground/main/GroundMainWindowImplementation.h"
+#include "ground/main/UiTestReplayWindow.h"
 #include "LogContext.h"
 #include <QSystemTrayIcon>
 
@@ -796,6 +797,8 @@ void MainWindow::closeEvent(QCloseEvent *event)
     if (isUiTestMode())
     {
         state_->ui_test_application_closing_ = true;
+        delete state_->ui_test_source_window_;
+        state_->ui_test_source_window_ = nullptr;
         // Keep the process-wide write barrier enabled through all child and
         // main-window destructors. Several widgets persist state on teardown.
         VaporView::setSettingsWritesSuspended(true);

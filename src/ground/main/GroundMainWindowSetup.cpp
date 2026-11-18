@@ -2609,6 +2609,7 @@ void MainWindow::setupCentralWidget()
         updateDeviceConfigState();
     }
     state_->combination_navigation_page_->setStatusProvider([this]() {
+        if (state_->session_replay_) return state_->replay_navigation_;
         CombinationNavigationPage::StatusSnapshot snapshot;
         const bool remoteStatusAvailable = !isRemoteSkyMode() || isUiTestMode() ||
             (state_->remote_sky_controller_ &&
@@ -4646,7 +4647,7 @@ void MainWindow::updateDeviceConfigState()
         : (state_->is_english_ ? QStringLiteral("TCP waveform endpoint") : QStringLiteral("TCP 波形主机地址和端口"));
     if (state_->device_config_.tcp_wave_lbl) state_->device_config_.tcp_wave_lbl->setToolTip(waveHint);
     if (state_->device_config_.tcp_wave_transport_hint_lbl) state_->device_config_.tcp_wave_transport_hint_lbl->setToolTip(waveHint);
-    if (state_->tcp_wave_panel_) state_->tcp_wave_panel_->setFpgaMode(fpgaRelay);
+    if (state_->tcp_wave_panel_ && !state_->session_replay_) state_->tcp_wave_panel_->setFpgaMode(fpgaRelay);
     syncFpgaDeviceConfigUi();
 }
 

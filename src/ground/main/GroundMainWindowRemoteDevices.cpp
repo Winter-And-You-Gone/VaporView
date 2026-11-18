@@ -1255,7 +1255,7 @@ double MainWindow::remoteWaveformPacketRate(quint16 channelId) const
 
 MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySections() const
 {
-    const bool uiTestMode = isUiTestMode() && state_->ui_test_model_;
+    const bool uiTestMode = isUiTestMode() && !state_->session_replay_ && state_->ui_test_model_;
     const bool localFpga = isFpgaRelayPath() && (uiTestMode || !isRemoteSkyMode());
     VaporView::Ground::Devices::UiTestSnapshot uiTestSnapshot;
     if (uiTestMode)

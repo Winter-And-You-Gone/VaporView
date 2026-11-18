@@ -331,6 +331,8 @@ private:
     void setUiTestModeEnabled(bool enabled);
     void setUiTestScenario(VaporView::Ground::Devices::UiTestScenario scenario);
     void applyUiTestSnapshot();
+    void openUiTestSourceWindow();
+    void resetReplayDisplays(bool replay);
     bool runUiTestEpsilonOperation(const QString& operation, std::function<QString()> completion, int delayMs = 300);
     void updateUiTestModeUi();
     void publishUiTestEvent(const QString& event,

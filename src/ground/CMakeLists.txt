@@ -62,6 +62,8 @@ set(NAV_WINDOW_SOURCES
     ${CMAKE_SOURCE_DIR}/src/ground/main/GroundMainWindowState.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/main/GroundMainWindowState.h
     ${CMAKE_SOURCE_DIR}/src/ground/main/GroundMainWindowTelemetry.cpp
+    ${CMAKE_SOURCE_DIR}/src/ground/main/UiTestReplayWindow.cpp
+    ${CMAKE_SOURCE_DIR}/src/ground/main/GroundMainWindowSessionReplay.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/main/GroundMainWindowUiTestMode.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/main/GroundMainWindowImplementation.h
     ${CMAKE_SOURCE_DIR}/src/ground/main/RecordingStatusView.cpp
