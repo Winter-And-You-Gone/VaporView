@@ -119,7 +119,8 @@ public:
 
     static SessionWaveformCatalogResult loadCatalog(
         const SessionMetadata& metadata,
-        const ProgressCallback& progress = {});
+        const ProgressCallback& progress = {},
+        bool readOnly = false);
     static SessionWaveformFrameResult readFrame(
         const SessionWaveformCatalog& catalog,
         quint64 frameIndex);

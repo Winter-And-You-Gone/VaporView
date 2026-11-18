@@ -1,4 +1,5 @@
 #include "ground/gateway/GatewayService.h"
+#include "ground/gateway/GatewayListener.h"
 #include "ground/gateway/OfflineQueue.h"
 #include "ground/devices/GroundTelemetryService.h"
 
@@ -178,6 +179,53 @@ public:
         delete manager_;
         manager_ = nullptr;
         queue_.reset();
+    }
+
+    void configureListener(const GatewayListenerConfig& config, const QString& deviceId, quint64 generation,
+                           std::shared_ptr<GatewayListenerIngress> ingress)
+    {
+        listener_.reset();
+        listenerGeneration_ = generation;
+        QString text = QStringLiteral("入站网关未启用");
+        quint16 port = 0;
+        if (config.enabled)
+        {
+            listener_ = std::make_unique<GatewayListener>(config, deviceId, std::move(ingress),
+                [this, generation](const QJsonObject& command) {
+                    const auto owner = owner_;
+                    QMetaObject::invokeMethod(owner, [owner, command, generation] {
+                        if (owner) owner->receiveCommand(command, generation, true);
+                    }, Qt::QueuedConnection);
+                });
+            const auto error = listener_->start();
+            if (!error.isEmpty())
+            {
+                text = error;
+                listener_.reset();
+            }
+            else
+            {
+                port = listener_->port();
+                text = QStringLiteral("HTTPS / WSS 正在监听 %1").arg(QUrl(
+                    QStringLiteral("https://") + (config.address.contains(':')
+                        ? QStringLiteral("[") + config.address + QStringLiteral("]") : config.address) +
+                    QStringLiteral(":") + QString::number(port)).toDisplayString());
+            }
+        }
+        const auto owner = owner_;
+        QMetaObject::invokeMethod(owner, [owner, text, port, generation] {
+            if (!owner || owner->listenerGeneration_ != generation) return;
+            owner->listenerStatus_ = text;
+            owner->listenerPort_ = port;
+            emit owner->listenerStatusChanged(text, port);
+        }, Qt::QueuedConnection);
+    }
+
+    void stopListener() { listener_.reset(); }
+
+    void enqueueListenerResult(const QJsonObject& result, quint64 generation)
+    {
+        if (listener_ && generation == listenerGeneration_) listener_->complete(result);
     }
 
     void enqueueResult(QJsonObject result, quint64 generation)
@@ -507,6 +555,8 @@ private:
     bool sessionTurn_ = false;
     bool ledgerValid_ = true;
     int pollRetryMs_ = 5000;
+    quint64 listenerGeneration_ = 0;
+    std::unique_ptr<GatewayListener> listener_;
 };
 
 GatewayService::GatewayService(QObject *parent) : QObject(parent), ingress_(std::make_shared<GatewayIngress>())
@@ -522,33 +572,64 @@ GatewayService::GatewayService(QObject *parent) : QObject(parent), ingress_(std:
 GatewayService::~GatewayService()
 {
     for (const auto& connection : connections_) disconnect(connection);
-    QMetaObject::invokeMethod(worker_, [this] { worker_->stop(true); }, Qt::BlockingQueuedConnection);
+    QMetaObject::invokeMethod(worker_, [this] {
+        worker_->stopListener();
+        worker_->stop(true);
+    }, Qt::BlockingQueuedConnection);
     thread_.quit();
     thread_.wait();
 }
 
 void GatewayService::configure(const GatewayConfig& config)
 {
-    if (sameConfig(config_, config)) return;
-    const auto sequences = pending_.keys();
-    for (auto sequence : sequences) completeCommand(sequence, "configuration-changed");
+    const bool outboundChanged = !sameConfig(config_, config);
+    const bool listenerChanged = !(config_.listener == config.listener) ||
+        (config.listener.enabled && (config_.deviceId != config.deviceId || listenerPort_ == 0));
+    for (auto sequence : pending_.keys())
+    {
+        const auto& pending = pending_[sequence];
+        if (pending.listener ? listenerChanged : outboundChanged)
+            completeCommand(sequence, "configuration-changed");
+    }
     config_ = config;
-    ++generation_;
-    ingress_ = std::make_shared<GatewayIngress>();
-    ingress_->generation = generation_;
-    const auto generation = generation_;
-    const auto ingress = ingress_;
-    QMetaObject::invokeMethod(worker_, [this, config, generation, ingress] { worker_->configure(config, generation, ingress); }, Qt::QueuedConnection);
+    if (listenerChanged)
+    {
+        listenerPort_ = 0;
+        listenerIngress_ = std::make_shared<GatewayListenerIngress>();
+        listenerIngress_->setConnected(service_ && service_->isOpen());
+        const auto generation = ++listenerGeneration_;
+        const auto ingress = listenerIngress_;
+        QMetaObject::invokeMethod(worker_, [this, config, generation, ingress] {
+            worker_->configureListener(config.listener, config.deviceId, generation, ingress);
+        }, Qt::QueuedConnection);
+    }
+    if (outboundChanged)
+    {
+        ingress_ = std::make_shared<GatewayIngress>();
+        ingress_->generation = ++generation_;
+        const auto generation = generation_;
+        const auto ingress = ingress_;
+        QMetaObject::invokeMethod(worker_, [this, config, generation, ingress] {
+            worker_->configure(config, generation, ingress);
+        }, Qt::QueuedConnection);
+    }
+}
+
+void GatewayService::setListenerCommandPreparation(ListenerCommandPreparation preparation)
+{
+    listenerPreparation_ = std::move(preparation);
 }
 
 void GatewayService::attach(GroundTelemetryService *service)
 {
     for (const auto& connection : connections_) disconnect(connection);
     connections_.clear();
-    pending_.clear();
+    for (auto sequence : pending_.keys()) completeCommand(sequence, "disconnected");
     service_ = service;
+    if (listenerIngress_) listenerIngress_->setConnected(service && service->isOpen());
     if (!service) return;
     connections_.append(connect(service, &GroundTelemetryService::frameReceived, this, [this](const TelemetryFrame& frame) {
+        if (config_.listener.enabled && listenerIngress_) listenerIngress_->enqueue(frame);
         if (!config_.enabled || !dataFrame(frame.type)) return;
         QMutexLocker lock(&ingress_->mutex);
         const qint64 size = frame.payload.size() + 64;
@@ -566,41 +647,64 @@ void GatewayService::attach(GroundTelemetryService *service)
         if (found != pending_.cend() && found->command == command) completeCommand(sequence, "timeout");
     }));
     connections_.append(connect(service, &GroundTelemetryService::linkOpenChanged, this, [this](bool open) {
+        if (listenerIngress_) listenerIngress_->setConnected(open);
         if (open) return;
         const auto sequences = pending_.keys();
         for (auto sequence : sequences) completeCommand(sequence, "disconnected");
     }));
+    connections_.append(connect(service, &QObject::destroyed, this, [this] {
+        if (listenerIngress_) listenerIngress_->setConnected(false);
+        for (auto sequence : pending_.keys()) completeCommand(sequence, "disconnected");
+    }));
 }
 
-void GatewayService::postResult(const QJsonObject& result)
+void GatewayService::postResult(const QJsonObject& result, bool listener)
 {
-    const auto generation = generation_;
-    QMetaObject::invokeMethod(worker_, [this, result, generation] { worker_->enqueueResult(result, generation); }, Qt::QueuedConnection);
+    const auto generation = listener ? listenerGeneration_ : generation_;
+    QMetaObject::invokeMethod(worker_, [this, result, generation, listener] {
+        if (listener) worker_->enqueueListenerResult(result, generation);
+        else worker_->enqueueResult(result, generation);
+    }, Qt::QueuedConnection);
 }
 
-void GatewayService::receiveCommand(const QJsonObject& command, quint64 generation)
+void GatewayService::receiveCommand(const QJsonObject& command, quint64 generation, bool listener)
 {
-    if (generation != generation_ || !config_.enabled) return;
+    if (listener)
+    {
+        if (generation != listenerGeneration_ || !config_.listener.enabled) return;
+    }
+    else if (generation != generation_ || !config_.enabled) return;
     const QString id = command.value("id").toString();
     const double rawCommand = command.value("commandId").toDouble(-1);
     const int commandId = rawCommand >= 0 && rawCommand <= 65535 && std::floor(rawCommand) == rawCommand
         ? static_cast<int>(rawCommand) : -1;
     const qint64 expires = expiry(command);
     QString rejected;
-    if (!config_.allowRemoteCommands || commandId < 0 || commandId > 65535 ||
-        !config_.allowedCommands.contains(static_cast<quint16>(commandId))) rejected = "forbidden";
-    else if (command.value("deviceId").toString() != config_.deviceId) rejected = "wrong-device";
+    const auto& allowed = listener ? config_.listener.allowedCommands : config_.allowedCommands;
+    if (!(listener ? config_.listener.allowCommands : config_.allowRemoteCommands) || commandId < 0 ||
+        !allowed.contains(static_cast<quint16>(commandId))) rejected = "forbidden";
+    else if (!listener && command.value("deviceId").toString() != config_.deviceId) rejected = "wrong-device";
     else if (expires <= now() || expires > now() + kDayMs) rejected = "expired";
     else if (!service_ || !service_->isOpen()) rejected = "disconnected";
     else if (pending_.size() >= 32) rejected = "busy";
     const QByteArray encoded = command.value("payloadBase64").toString().toLatin1();
     const auto decoded = QByteArray::fromBase64Encoding(encoded, QByteArray::AbortOnBase64DecodingErrors);
     if (!decoded || decoded.decoded.size() > 64 * 1024) rejected = "invalid-payload";
-    if (!rejected.isEmpty()) { postResult(resultFor(id, rejected)); return; }
     const auto type = static_cast<CommandId>(commandId);
-    const quint16 sequence = service_->sendCommand(type, decoded.decoded, nullptr, expires);
-    if (!sequence) { postResult(resultFor(id, "not-sent")); return; }
-    pending_.insert(sequence, {id, type, generation});
+    auto payload = decoded.decoded;
+    if (rejected.isEmpty() && listener && listenerPreparation_)
+        rejected = listenerPreparation_(type, payload);
+    if (!rejected.isEmpty()) { postResult(resultFor(id, rejected), listener); return; }
+    const auto linkGeneration = service_->linkGeneration();
+    const quint16 sequence = service_->sendCommand(type, payload, nullptr, expires);
+    if (!sequence)
+    {
+        const bool sameLink = service_ && service_->linkGeneration() == linkGeneration;
+        if (sameLink && listener && type == CommandId::StartRecording && !payload.isEmpty()) emit listenerStartNotSent();
+        postResult(resultFor(id, listener && !sameLink ? "disconnected" : "not-sent"), listener);
+        return;
+    }
+    pending_.insert(sequence, {id, type, generation, listener});
 }
 
 void GatewayService::completeCommand(quint16 sequence, const QString& status, const CommandAck *ack)
@@ -609,12 +713,21 @@ void GatewayService::completeCommand(quint16 sequence, const QString& status, co
     if (found == pending_.end()) return;
     const Pending pending = *found;
     pending_.erase(found);
-    if (pending.generation != generation_) return;
+    if (pending.generation != (pending.listener ? listenerGeneration_ : generation_)) return;
     QJsonObject result = resultFor(pending.id, status);
     result.insert("sequence", sequence);
     result.insert("skyCommandId", static_cast<int>(pending.command));
-    if (ack) { result.insert("errorCode", static_cast<int>(ack->error_code)); result.insert("result", ack->result); }
-    postResult(result);
+    if (ack)
+    {
+        result.insert("errorCode", static_cast<int>(ack->error_code));
+        result.insert("result", ack->result);
+        if (pending.listener)
+        {
+            if (!ack->correlation_id.isEmpty()) result.insert("correlationId", ack->correlation_id);
+            if (!ack->session_id.isEmpty()) result.insert("sessionId", ack->session_id);
+        }
+    }
+    postResult(result, pending.listener);
 }
 
 void GatewayService::enqueueSession(const QString& directory)

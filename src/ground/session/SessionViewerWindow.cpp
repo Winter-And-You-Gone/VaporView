@@ -40,6 +40,8 @@
 #include <QElapsedTimer>
 #include <QEvent>
 #include <QFileDialog>
+#include <QInputDialog>
+#include <vaporview/SessionSdk.h>
 #include <QFileInfo>
 #include <QFutureWatcher>
 #include <QEventLoop>
@@ -363,6 +365,50 @@ void SessionViewerWindow::setupUi()
     device_data_page_ = new SessionDeviceDataWidget(splitter);
     loading_dialog_ = std::make_unique<SessionLoadingDialog>(this);
     upperLayout->addWidget(overview_page_);
+    auto *exportData = new QPushButton(tr("导出 Session 数据"), upperWidget);
+    exportData->setObjectName(QStringLiteral("sessionDataExport"));
+    upperLayout->addWidget(exportData);
+    connect(exportData, &QPushButton::clicked, this, [this, exportData] {
+        using namespace VaporView::SessionSdk;
+        if (ui_test_mode_ || VaporView::settingsWritesSuspended() ||
+            session_loading_ || session_directory_.isEmpty()) return;
+        const QList<Category> categories{Category::Sensors, Category::Waveforms, Category::CycleFeatures,
+            Category::TcpPeaks, Category::NavigationRaw, Category::PressureRaw,
+            Category::TemperatureHumidityRaw, Category::DistanceRaw};
+        const QStringList labels = is_english_
+            ? QStringList{"Sensor and navigation summary", "Waveform samples", "Cycle features and quality",
+                "TCP peak index", "Raw navigation", "Raw pressure", "Raw temperature and humidity", "Raw distance"}
+            : QStringList{"设备与导航汇总", "波形采样数据", "周期特征与质量标志", "TCP 峰值索引",
+                "原始导航", "原始气压", "原始温湿度", "原始测距"};
+        bool confirmed = false;
+        const auto selection = QInputDialog::getItem(this, exportData->text(),
+            is_english_ ? QStringLiteral("Data category") : QStringLiteral("数据类别"), labels, 0, false, &confirmed);
+        if (!confirmed) return;
+        const auto directory = QFileDialog::getExistingDirectory(this, exportData->text());
+        if (directory.isEmpty()) return;
+        const auto category = categories[labels.indexOf(selection)];
+        const auto source = session_directory_;
+        exportData->setEnabled(false);
+        auto *watcher = new QFutureWatcher<Result>(this);
+        connect(watcher, &QFutureWatcher<Result>::finished, this, [this, watcher, exportData] {
+            const auto result = watcher->result();
+            watcher->deleteLater();
+            exportData->setEnabled(true);
+            const auto title = exportData->text();
+            if (!result) {
+                QMessageBox::warning(this, title, result.message);
+                return;
+            }
+            auto message = QString(is_english_ ? "Exported %1 records." : "已导出 %1 条记录。").arg(result.records);
+            if (!result.message.isEmpty()) message += '\n' + result.message;
+            QMessageBox::information(this, title, message);
+        });
+        watcher->setFuture(QtConcurrent::run([source, directory, category] {
+            Reader reader;
+            const auto result = reader.open(source);
+            return result ? reader.exportTo(category, {}, directory) : result;
+        }));
+    });
     auto *calibrationHistory=new QPushButton(QStringLiteral("查看本 Session 定标参数与初始浓度"),upperWidget);
     calibrationHistory->setObjectName(QStringLiteral("sessionCalibrationHistory"));upperLayout->addWidget(calibrationHistory);
     connect(calibrationHistory,&QPushButton::clicked,this,[this]{

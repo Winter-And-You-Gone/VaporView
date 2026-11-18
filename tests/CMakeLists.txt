@@ -491,6 +491,11 @@ if(COMMAND vaporview_stage_osgearth_runtime)
     vaporview_stage_osgearth_runtime(remote_connection_workflow_test)
 endif()
 vaporview_add_test(NAME remote_connection_workflow_test COMMAND remote_connection_workflow_test)
+if(Python3_Interpreter_FOUND)
+    vaporview_add_test(NAME gateway_recording_workflow_test COMMAND remote_connection_workflow_test
+        --gateway "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/gateway_recording_workflow.py")
+    set_tests_properties(gateway_recording_workflow_test PROPERTIES LABELS "gui;gateway;integration" TIMEOUT 120 RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
+endif()
 vaporview_add_test(NAME remote_title_actions_test COMMAND remote_connection_workflow_test --title-actions-only)
 set_tests_properties(remote_title_actions_test PROPERTIES LABELS "gui;fpga;integration" TIMEOUT 90 RUN_SERIAL TRUE)
 set_tests_properties(remote_connection_workflow_test PROPERTIES LABELS "gui;fpga;integration;performance" TIMEOUT 90 RUN_SERIAL TRUE)
@@ -786,6 +791,8 @@ add_executable(session_core_test
 )
 target_link_libraries(session_core_test PRIVATE vaporview_ground_session_core)
 vaporview_add_test(NAME session_core_test COMMAND session_core_test)
+vaporview_add_test(NAME session_sdk_test COMMAND session_sdk_test)
+set_tests_properties(session_sdk_test PROPERTIES LABELS "fast;unit;session" TIMEOUT 60)
 
 add_executable(session_format_test
     ${CMAKE_CURRENT_SOURCE_DIR}/session_format_test.cpp
@@ -954,6 +961,10 @@ add_custom_command(TARGET main_window_layout_test POST_BUILD
     COMMENT "Copying resources for main_window_layout_test"
 )
 vaporview_add_test(NAME main_window_layout_test COMMAND main_window_layout_test)
+vaporview_add_test(NAME session_viewer_data_export_ui_test
+    COMMAND main_window_layout_test --session-data-export-only)
+set_tests_properties(session_viewer_data_export_ui_test PROPERTIES
+    LABELS "integration;session-viewer;ui" TIMEOUT 60 RUN_SERIAL TRUE)
 vaporview_add_test(NAME home_overview_language_layout_test
     COMMAND main_window_layout_test --home-overview-language-only
 )
@@ -1723,6 +1734,11 @@ add_executable(gateway_service_test gateway_service_test.cpp)
 target_link_libraries(gateway_service_test PRIVATE vaporview_ground_gateway Qt6::Network)
 vaporview_add_test(NAME gateway_service_test COMMAND gateway_service_test)
 set_tests_properties(gateway_service_test PROPERTIES LABELS "integration;gateway;tcp" TIMEOUT 90)
+
+add_executable(gateway_listener_test gateway_listener_test.cpp)
+target_link_libraries(gateway_listener_test PRIVATE vaporview_ground_gateway Qt6::WebSockets Qt6::Network)
+vaporview_add_test(NAME gateway_listener_test COMMAND gateway_listener_test)
+set_tests_properties(gateway_listener_test PROPERTIES LABELS "integration;gateway;tcp" TIMEOUT 90 SKIP_RETURN_CODE 77)
 
 add_executable(gateway_settings_test gateway_settings_test.cpp)
 target_link_libraries(gateway_settings_test PRIVATE vaporview_main_window)

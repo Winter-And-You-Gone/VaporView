@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.16)
+project(VaporViewSessionExample LANGUAGES CXX)
+find_package(VaporViewSessionSdk 1.0 CONFIG REQUIRED)
+add_executable(vaporview_session_example main.cpp)
+target_link_libraries(vaporview_session_example PRIVATE VaporView::SessionSdk)

@@ -1,6 +1,7 @@
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/TopLevelCardStyle.h"
 #include "ground/main/MainWindow.h"
+#include "ground/session/SessionViewerWindow.h"
 #include "ground/main/RecordingStatusView.h"
 #include "ground/main/GroundMainWindowSupport.h"
 #include "ground/navigation/CombinationNavigationPage.h"
@@ -29,7 +30,10 @@
 #include <QDoubleSpinBox>
 #include <QEnterEvent>
 #include <QDialog>
+#include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
+#include <QFileDialog>
 #include <QFont>
 #include <QFontMetrics>
 #include <QFrame>
@@ -40,12 +44,14 @@
 #include <QHoverEvent>
 #include <QIcon>
 #include <QImage>
+#include <QInputDialog>
 #include <QLabel>
 #include <QKeyEvent>
 #include <QLayout>
 #include <QLineEdit>
 #include <QMetaObject>
 #include <QMenu>
+#include <QMessageBox>
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QPointer>
@@ -5293,6 +5299,117 @@ void requireHomeThemeLayoutStability()
             "home theme test window closes cleanly");
 }
 
+void testSessionDataExport()
+{
+    QTemporaryDir fixture(VaporViewTest::SettingsSandbox::directory->filePath("export-XXXXXX"));
+    require(fixture.isValid(), "temporary Session export fixture directory");
+    QDir root(fixture.path());
+    require(root.mkpath("session/sensors") && root.mkdir("main-export") && root.mkdir("standalone-export"),
+            "temporary source and independent export directories");
+    const QString session = root.filePath("session");
+    const QByteArray expected = "record_timestamp_us,epsilon_valid,nav_lat_deg,nav_lon_deg,nav_height_m\n"
+                                "1782446035573000,true,30.13698120,120.06938175,9.606\n"
+                                "1782446036573000,true,30.13712000,120.06952000,9.806\n";
+    QFile manifest(root.filePath("session/session.json"));
+    require(manifest.open(QIODevice::WriteOnly) && manifest.write("{\"session_name\":\"export_fixture\",\"state\":\"complete\"}") > 0,
+            "temporary Session manifest written");
+    manifest.close();
+    QFile source(root.filePath("session/sensors/sensor_summary.csv"));
+    require(source.open(QIODevice::WriteOnly) && source.write(expected) == expected.size(),
+            "temporary Session source CSV written");
+    source.close();
+
+    const bool oldNativeDialogSetting = qApp->testAttribute(Qt::AA_DontUseNativeDialogs);
+    qApp->setAttribute(Qt::AA_DontUseNativeDialogs);
+    const auto exportSensors = [&](SessionViewerWindow& viewer, const QString& destination) {
+        viewer.setEnglish(true);
+        require(waitForWindowExposed(&viewer, 5000), "Session viewer becomes exposed");
+        require(viewer.openSessionPath(session), "viewer loads the temporary Session");
+        auto *button = viewer.findChild<QPushButton *>(QStringLiteral("sessionDataExport"));
+        require(button && button->isVisible() && button->isEnabled(), "Session data export button is available");
+
+        bool selectedCategory = false;
+        bool selectedDirectory = false;
+        bool confirmedExport = false;
+        QElapsedTimer deadline;
+        deadline.start();
+        QTimer responder;
+        QObject::connect(&responder, &QTimer::timeout, &viewer, [&] {
+            require(deadline.elapsed() < 10000, "Session export completes its three dialogs");
+            auto *modal = QApplication::activeModalWidget();
+            if (auto *category = qobject_cast<QInputDialog *>(modal))
+            {
+                require(!selectedCategory && category->comboBoxItems().contains("Sensor and navigation summary"),
+                        "Session export category dialog includes sensor and navigation data");
+                category->setTextValue(QStringLiteral("Sensor and navigation summary"));
+                selectedCategory = true;
+                category->accept();
+            }
+            else if (auto *directory = qobject_cast<QFileDialog *>(modal))
+            {
+                require(selectedCategory && !selectedDirectory && directory->fileMode() == QFileDialog::Directory,
+                        "Session export opens a directory selector after choosing the category");
+                directory->setDirectory(destination);
+                directory->selectFile(destination);
+                selectedDirectory = true;
+                QMetaObject::invokeMethod(directory, "accept", Qt::DirectConnection);
+            }
+            else if (auto *result = qobject_cast<QMessageBox *>(modal))
+            {
+                require(selectedDirectory && result->icon() == QMessageBox::Information &&
+                            result->text() == QStringLiteral("Exported 2 records."),
+                        "Session export reports successful export of both records");
+                confirmedExport = true;
+                result->accept();
+            }
+        });
+        responder.start(20);
+        button->click();
+        require(processEventsUntil(10000, [&] { return confirmedExport; }), "Session export success message received");
+        responder.stop();
+        QFile exported(QDir(destination).filePath("sensors.csv"));
+        require(exported.open(QIODevice::ReadOnly) && exported.readAll() == expected,
+                "exported CSV preserves both source rows, timestamps and navigation values");
+    };
+
+    {
+        SessionViewerWindow standalone;
+        standalone.resize(1280, 800);
+        standalone.show();
+        exportSensors(standalone, root.filePath("standalone-export"));
+        standalone.close();
+    }
+    {
+        MainWindow main;
+        main.resize(1280, 800);
+        main.show();
+        require(waitForWindowExposed(&main, 5000), "main window becomes exposed for Data Viewer entry");
+        QAction *entry = nullptr;
+        for (auto *action : main.findChildren<QAction *>())
+        {
+            if (action->text() == QStringLiteral("Data Viewer") || action->text() == QStringLiteral("数据查看器"))
+            {
+                entry = action;
+                break;
+            }
+        }
+        require(entry && entry->isEnabled(), "main window exposes the Data Viewer action");
+        entry->trigger();
+        SessionViewerWindow *viewer = nullptr;
+        for (auto *window : QApplication::topLevelWidgets())
+        {
+            viewer = qobject_cast<SessionViewerWindow *>(window);
+            if (viewer && viewer->isVisible()) break;
+            viewer = nullptr;
+        }
+        require(viewer != nullptr, "main window Data Viewer action opens the real Session viewer");
+        exportSensors(*viewer, root.filePath("main-export"));
+        viewer->close();
+        main.close();
+    }
+    qApp->setAttribute(Qt::AA_DontUseNativeDialogs, oldNativeDialogSetting);
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -5313,6 +5430,13 @@ int main(int argc, char **argv)
     QApplication app(argc, argv);
     app.setOrganizationName(QStringLiteral("VaporViewLayoutTest"));
     app.setApplicationName(QStringLiteral("main_window_layout_test"));
+
+    if (app.arguments().contains(QStringLiteral("--session-data-export-only")))
+    {
+        testSessionDataExport();
+        std::cout << "Session viewer export passed from both entry points.\n";
+        return 0;
+    }
 
     {
         VaporView::Ground::Main::RecordingStatusView view;

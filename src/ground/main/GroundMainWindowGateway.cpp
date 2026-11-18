@@ -1,5 +1,6 @@
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "ground/main/GatewaySettingsDialog.h"
+#include "ground/calibration/CalibrationService.h"
 
 #include <QSystemTrayIcon>
 
@@ -9,6 +10,13 @@ void MainWindow::initializeGateway()
     state_->gateway_service_ = std::make_unique<VaporView::Ground::Gateway::GatewayService>();
     state_->gateway_service_->setObjectName(QStringLiteral("gatewayService"));
     state_->gateway_service_->attach(state_->remote_sky_controller_->telemetryService());
+    state_->gateway_service_->setListenerCommandPreparation(
+        [this](VaporView::CommandId command, QByteArray& payload) {
+            return prepareGatewayListenerCommand(command, payload);
+        });
+    connect(state_->gateway_service_.get(),
+        &VaporView::Ground::Gateway::GatewayService::listenerStartNotSent,
+        this, [this] { state_->calibration_service_->finish(); });
     connect(state_->gateway_service_.get(), &VaporView::Ground::Gateway::GatewayService::statusChanged,
         this, [this](const QString& text) {
             if (state_->gateway_tray_)
@@ -21,7 +29,11 @@ void MainWindow::configureGatewayRuntime()
 {
     if (!state_->gateway_service_) return;
     auto config = state_->gateway_settings_.connection;
-    if (isUiTestMode()) config.enabled = false;
+    if (isUiTestMode())
+    {
+        config.enabled = false;
+        config.listener.enabled = false;
+    }
     state_->gateway_service_->configure(config);
     updateGatewayTray();
 }

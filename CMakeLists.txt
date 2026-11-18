@@ -59,7 +59,13 @@ include(Dependencies)
 include(PlatformConfig)
 include(CTest)
 
+if(VAPORVIEW_BUILD_GROUND AND NOT WIN32)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+endif()
 add_subdirectory(src)
+if(VAPORVIEW_BUILD_GROUND)
+    add_subdirectory(sdk/session)
+endif()
 
 if(BUILD_TESTING)
     if(NOT VAPORVIEW_BUILD_GROUND OR NOT VAPORVIEW_BUILD_SKY_CORE OR NOT VAPORVIEW_BUILD_SKY_TUI)

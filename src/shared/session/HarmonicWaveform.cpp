@@ -105,6 +105,21 @@ bool parseHarmonicLayout(QByteArrayView bytes, quint32 payloadSize, HarmonicLayo
         quint64(kHarmonicHeaderSize) + quint64(l.storedPoints) * width == payloadSize;
 }
 
+bool harmonicSamplePairs(QByteArrayView payload, QVector<double>& h1, QVector<double>& h2)
+{
+    HarmonicLayout l;
+    if (!parseHarmonicLayout(payload, quint32(payload.size()), l)) return false;
+    const int width = l.sampleType == HarmonicSampleType::Int32 ? 4 : 8;
+    h1.resize(l.storedPoints);
+    h2.resize(l.storedPoints);
+    for (quint32 i = 0; i < l.storedPoints; ++i) {
+        const char *p = payload.data() + kHarmonicHeaderSize + qsizetype(i) * width * 2;
+        h1[i] = sample(p, l.sampleType);
+        h2[i] = sample(p + width, l.sampleType);
+    }
+    return true;
+}
+
 QVector<float> harmonicSamples(QByteArrayView payload, int component)
 {
     HarmonicLayout l;

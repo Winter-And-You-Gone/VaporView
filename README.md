@@ -242,7 +242,7 @@ Windows UI Automation 的菜单 selector 和验收路径见
 ### Windows 64 位
 
 - Visual Studio 2022 Build Tools，安装 `Desktop development with C++` / MSVC x64 工具。
-- Qt 6 MSVC Kit，路径由每台机器本地配置提供。
+- 地面端使用 Qt 6.10 或更高版本的 MSVC Kit，包含 Qt HTTP Server 和 Qt WebSockets 模块。路径由每台机器本地配置提供。
 - CMake，推荐 `3.21+`，本仓库提供 `CMakePresets.json`。
 - Ninja，优先使用 VS2022 CMake Tools 随附的 `ninja.exe`。
 
@@ -294,6 +294,8 @@ Ubuntu / Debian ARM64 上可使用：
 sudo apt update
 sudo apt install -y build-essential cmake ninja-build qt6-base-dev qt6-serialport-dev qt6-svg-dev
 ```
+
+构建地面端时还需要同一 Qt 6.10 或更高版本的 Qt HTTP Server 和 Qt WebSockets 开发包。系统仓库版本较旧时，使用包含这两个模块的 Qt Kit。仅构建机载产品沿用原有 Qt 组件。
 
 如 Qt 6 安装在非系统路径，设置：
 

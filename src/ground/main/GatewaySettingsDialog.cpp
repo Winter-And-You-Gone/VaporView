@@ -24,6 +24,25 @@ namespace
 {
 constexpr qint64 kMiB = 1024 * 1024;
 quint16 commandValue(CommandId command) { return static_cast<quint16>(command); }
+const QList<CommandId> kCommands{CommandId::RequestStatus, CommandId::StartRecording, CommandId::StopRecording};
+
+QSet<quint16> loadAllowedCommands(const QVariant& value)
+{
+    QSet<quint16> result;
+    const auto allowed = value.toStringList();
+    for (const auto command : kCommands)
+        if (allowed.contains(QString::number(commandValue(command))))
+            result.insert(commandValue(command));
+    return result;
+}
+
+QStringList saveAllowedCommands(const QSet<quint16>& commands)
+{
+    QStringList result;
+    for (const auto command : kCommands)
+        if (commands.contains(commandValue(command))) result.append(QString::number(commandValue(command)));
+    return result;
+}
 }
 
 GatewaySettings loadGatewaySettings()
@@ -38,15 +57,20 @@ GatewaySettings loadGatewaySettings()
         QUuid::createUuid().toString(QUuid::WithoutBraces)).toString();
     config.token = persisted.value(QStringLiteral("token")).toString();
     config.allowRemoteCommands = persisted.value(QStringLiteral("allow_remote_commands"), false).toBool();
-    config.allowedCommands.clear();
-    const auto allowed = persisted.value(QStringLiteral("allowed_commands"),
-        QStringList{QString::number(commandValue(CommandId::RequestStatus))}).toStringList();
-    for (CommandId command : {CommandId::RequestStatus, CommandId::StartRecording, CommandId::StopRecording})
-        if (allowed.contains(QString::number(commandValue(command))))
-            config.allowedCommands.insert(commandValue(command));
+    const QStringList defaultCommands{QString::number(commandValue(CommandId::RequestStatus))};
+    config.allowedCommands = loadAllowedCommands(persisted.value(QStringLiteral("allowed_commands"), defaultCommands));
     config.maxCacheBytes = qBound<qint64>(kMiB,
         persisted.value(QStringLiteral("max_cache_bytes"), config.maxCacheBytes).toLongLong(), 4096 * kMiB);
     config.retentionHours = qBound(1, persisted.value(QStringLiteral("retention_hours"), 24).toInt(), 720);
+    auto& listener = config.listener;
+    listener.enabled = persisted.value(QStringLiteral("listener_enabled"), false).toBool();
+    listener.address = persisted.value(QStringLiteral("listener_address"), listener.address).toString();
+    listener.port = quint16(qBound(1, persisted.value(QStringLiteral("listener_port"), listener.port).toInt(), 65535));
+    listener.certificateFile = persisted.value(QStringLiteral("listener_certificate_file")).toString();
+    listener.privateKeyFile = persisted.value(QStringLiteral("listener_private_key_file")).toString();
+    listener.token = persisted.value(QStringLiteral("listener_token")).toString();
+    listener.allowCommands = persisted.value(QStringLiteral("listener_allow_commands"), false).toBool();
+    listener.allowedCommands = loadAllowedCommands(persisted.value(QStringLiteral("listener_allowed_commands"), defaultCommands));
     result.closeToTray = persisted.value(QStringLiteral("close_to_tray"), false).toBool();
     return result;
 }
@@ -61,14 +85,19 @@ void saveGatewaySettings(const GatewaySettings& value)
     setPersistentSetting(persisted, QStringLiteral("device_id"), config.deviceId);
     setPersistentSetting(persisted, QStringLiteral("token"), config.token);
     setPersistentSetting(persisted, QStringLiteral("allow_remote_commands"), config.allowRemoteCommands);
-    QStringList allowed;
-    for (CommandId command : {CommandId::RequestStatus, CommandId::StartRecording, CommandId::StopRecording})
-        if (config.allowedCommands.contains(commandValue(command)))
-            allowed.append(QString::number(commandValue(command)));
-    setPersistentSetting(persisted, QStringLiteral("allowed_commands"), allowed);
+    setPersistentSetting(persisted, QStringLiteral("allowed_commands"), saveAllowedCommands(config.allowedCommands));
     setPersistentSetting(persisted, QStringLiteral("max_cache_bytes"), config.maxCacheBytes);
     setPersistentSetting(persisted, QStringLiteral("retention_hours"), config.retentionHours);
     setPersistentSetting(persisted, QStringLiteral("close_to_tray"), value.closeToTray);
+    const auto& listener = config.listener;
+    setPersistentSetting(persisted, QStringLiteral("listener_enabled"), listener.enabled);
+    setPersistentSetting(persisted, QStringLiteral("listener_address"), listener.address);
+    setPersistentSetting(persisted, QStringLiteral("listener_port"), listener.port);
+    setPersistentSetting(persisted, QStringLiteral("listener_certificate_file"), listener.certificateFile);
+    setPersistentSetting(persisted, QStringLiteral("listener_private_key_file"), listener.privateKeyFile);
+    setPersistentSetting(persisted, QStringLiteral("listener_token"), listener.token);
+    setPersistentSetting(persisted, QStringLiteral("listener_allow_commands"), listener.allowCommands);
+    setPersistentSetting(persisted, QStringLiteral("listener_allowed_commands"), saveAllowedCommands(listener.allowedCommands));
 }
 
 GatewaySettingsDialog::GatewaySettingsDialog(const GatewaySettings& value,
@@ -76,7 +105,7 @@ GatewaySettingsDialog::GatewaySettingsDialog(const GatewaySettings& value,
     : QDialog(parent), original_(value), english_(english)
 {
     setObjectName(QStringLiteral("gatewaySettingsDialog"));
-    setWindowTitle(english ? QStringLiteral("Cloud Gateway") : QStringLiteral("云端 Gateway"));
+    setWindowTitle(english ? QStringLiteral("Gateway") : QStringLiteral("Gateway 网关"));
     resize(650, 700);
     auto *layout = new QVBoxLayout(this);
     auto *scroll = new QScrollArea(this);
@@ -91,7 +120,7 @@ GatewaySettingsDialog::GatewaySettingsDialog(const GatewaySettings& value,
     body->addWidget(description);
     auto *form = new QFormLayout;
     form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-    enabled_ = new QCheckBox(english ? QStringLiteral("Enable Gateway") : QStringLiteral("启用 Gateway"), content);
+    enabled_ = new QCheckBox(english ? QStringLiteral("Enable cloud forwarding") : QStringLiteral("启用云端转发"), content);
     enabled_->setObjectName(QStringLiteral("gatewayEnabled"));
     enabled_->setChecked(value.connection.enabled);
     form->addRow(enabled_);
@@ -146,6 +175,76 @@ GatewaySettingsDialog::GatewaySettingsDialog(const GatewaySettings& value,
     start_command_ = addCommand(CommandId::StartRecording, english ? QStringLiteral("Start / resume SkyCore recording") : QStringLiteral("启动 / 恢复 SkyCore 记录"), QStringLiteral("gatewayAllowStartRecording"));
     stop_command_ = addCommand(CommandId::StopRecording, english ? QStringLiteral("Stop SkyCore recording") : QStringLiteral("停止 SkyCore 记录"), QStringLiteral("gatewayAllowStopRecording"));
     body->addWidget(commands);
+
+    const auto& listenerConfig = value.connection.listener;
+    auto *listener = new QGroupBox(english ? QStringLiteral("Inbound HTTPS / WSS") : QStringLiteral("入站 HTTPS / WSS"), content);
+    auto *listenerForm = new QFormLayout(listener);
+    listener_enabled_ = new QCheckBox(english ? QStringLiteral("Enable inbound listener") : QStringLiteral("启用入站监听"), listener);
+    listener_enabled_->setObjectName(QStringLiteral("gatewayListenerEnabled"));
+    listener_enabled_->setChecked(listenerConfig.enabled);
+    listenerForm->addRow(listener_enabled_);
+    listener_address_ = new QLineEdit(listenerConfig.address, listener);
+    listener_address_->setObjectName(QStringLiteral("gatewayListenerAddress"));
+    listenerForm->addRow(english ? QStringLiteral("Bind IP") : QStringLiteral("监听 IP"), listener_address_);
+    listener_port_ = new QSpinBox(listener);
+    listener_port_->setObjectName(QStringLiteral("gatewayListenerPort"));
+    listener_port_->setRange(1, 65535);
+    listener_port_->setValue(listenerConfig.port);
+    listenerForm->addRow(english ? QStringLiteral("Port") : QStringLiteral("端口"), listener_port_);
+    auto pemInput = [&](const QString& label, const QString& path, const QString& objectName) {
+        auto *row = new QWidget(listener);
+        auto *fields = new QHBoxLayout(row);
+        fields->setContentsMargins(0, 0, 0, 0);
+        auto *input = new QLineEdit(path, row);
+        input->setObjectName(objectName);
+        auto *browse = new QPushButton(english ? QStringLiteral("Browse…") : QStringLiteral("浏览…"), row);
+        fields->addWidget(input, 1);
+        fields->addWidget(browse);
+        listenerForm->addRow(label, row);
+        connect(browse, &QPushButton::clicked, this, [this, input, label] {
+            const auto file = QFileDialog::getOpenFileName(this, label, input->text(),
+                QStringLiteral("PEM (*.pem *.crt *.key);;All files (*)"));
+            if (!file.isEmpty()) input->setText(file);
+        });
+        return input;
+    };
+    listener_certificate_ = pemInput(english ? QStringLiteral("Certificate chain") : QStringLiteral("证书链"),
+        listenerConfig.certificateFile, QStringLiteral("gatewayListenerCertificate"));
+    listener_key_ = pemInput(english ? QStringLiteral("Private key") : QStringLiteral("私钥"),
+        listenerConfig.privateKeyFile, QStringLiteral("gatewayListenerPrivateKey"));
+    listener_token_ = new QLineEdit(listenerConfig.token, listener);
+    listener_token_->setObjectName(QStringLiteral("gatewayListenerToken"));
+    listener_token_->setEchoMode(QLineEdit::Password);
+    listener_token_->setMaxLength(256);
+    listenerForm->addRow(english ? QStringLiteral("Inbound bearer token") : QStringLiteral("入站访问令牌"), listener_token_);
+    listener_commands_ = new QCheckBox(english ? QStringLiteral("Allow inbound commands") : QStringLiteral("允许入站控制命令"), listener);
+    listener_commands_->setObjectName(QStringLiteral("gatewayListenerCommands"));
+    listener_commands_->setChecked(listenerConfig.allowCommands);
+    listenerForm->addRow(listener_commands_);
+    auto addListenerCommand = [&](CommandId command, const QString& label, const QString& objectName) {
+        auto *check = new QCheckBox(label, listener);
+        check->setObjectName(objectName);
+        check->setChecked(listenerConfig.allowedCommands.contains(commandValue(command)));
+        check->setEnabled(listener_commands_->isChecked());
+        connect(listener_commands_, &QCheckBox::toggled, check, &QWidget::setEnabled);
+        listenerForm->addRow(check);
+        return check;
+    };
+    listener_status_command_ = addListenerCommand(CommandId::RequestStatus,
+        english ? QStringLiteral("Request SkyCore status") : QStringLiteral("请求 SkyCore 状态"),
+        QStringLiteral("gatewayListenerAllowStatus"));
+    listener_start_command_ = addListenerCommand(CommandId::StartRecording,
+        english ? QStringLiteral("Start / resume SkyCore recording") : QStringLiteral("启动 / 恢复 SkyCore 记录"),
+        QStringLiteral("gatewayListenerAllowStartRecording"));
+    listener_stop_command_ = addListenerCommand(CommandId::StopRecording,
+        english ? QStringLiteral("Stop SkyCore recording") : QStringLiteral("停止 SkyCore 记录"),
+        QStringLiteral("gatewayListenerAllowStopRecording"));
+    auto *listenerStatus = new QLabel(service ? service->listenerStatusText() : QString(), listener);
+    listenerStatus->setObjectName(QStringLiteral("gatewayListenerStatus"));
+    listenerStatus->setWordWrap(true);
+    listenerForm->addRow(listenerStatus);
+    if (service) connect(service, &Gateway::GatewayService::listenerStatusChanged, listenerStatus, &QLabel::setText);
+    body->addWidget(listener);
 
     close_to_tray_ = new QCheckBox(english
         ? QStringLiteral("Keep running in the system tray when the main window is closed")
@@ -211,6 +310,18 @@ GatewaySettings GatewaySettingsDialog::settings() const
     if (stop_command_->isChecked()) config.allowedCommands.insert(commandValue(CommandId::StopRecording));
     config.maxCacheBytes = cache_mib_->value() * kMiB;
     config.retentionHours = retention_hours_->value();
+    auto& listener = config.listener;
+    listener.enabled = listener_enabled_->isChecked();
+    listener.address = listener_address_->text().trimmed();
+    listener.port = quint16(listener_port_->value());
+    listener.certificateFile = listener_certificate_->text().trimmed();
+    listener.privateKeyFile = listener_key_->text().trimmed();
+    listener.token = listener_token_->text();
+    listener.allowCommands = listener_commands_->isChecked();
+    listener.allowedCommands.clear();
+    if (listener_status_command_->isChecked()) listener.allowedCommands.insert(commandValue(CommandId::RequestStatus));
+    if (listener_start_command_->isChecked()) listener.allowedCommands.insert(commandValue(CommandId::StartRecording));
+    if (listener_stop_command_->isChecked()) listener.allowedCommands.insert(commandValue(CommandId::StopRecording));
     result.closeToTray = close_to_tray_->isChecked();
     return result;
 }
@@ -238,6 +349,18 @@ void GatewaySettingsDialog::acceptSettings()
         validation_->show();
         (config.deviceId.isEmpty() ? device_id_ : token_)->setFocus();
         return;
+    }
+    if (config.listener.enabled)
+    {
+        const QString error = config.listener.validationError();
+        if (!error.isEmpty() || config.deviceId.isEmpty() || config.deviceId.size() > 128)
+        {
+            validation_->setText(english_
+                ? QStringLiteral("Enter a bind IP, certificate chain, private key, device ID and a 32–256 character ASCII bearer token.")
+                : (error.isEmpty() ? QStringLiteral("请输入 1 至 128 个字符的设备标识") : error));
+            validation_->show();
+            return;
+        }
     }
     accept();
 }

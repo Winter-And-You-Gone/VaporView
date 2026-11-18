@@ -36,6 +36,7 @@ struct HarmonicLayout
 QJsonObject harmonicProcessingMetadata();
 QByteArray encodeHarmonics(const FpgaWave::CompletedStream& stream, quint64 segment);
 bool parseHarmonicLayout(QByteArrayView prefix, quint32 payloadSize, HarmonicLayout& layout);
+bool harmonicSamplePairs(QByteArrayView payload, QVector<double>& h1, QVector<double>& h2);
 // Components follow the viewer's existing choices: 0=H2, 1=H1, 6=H2/H1.
 QVector<float> harmonicSamples(QByteArrayView payload, int component);
 QByteArray harmonicFeatureCsv(quint64 hostTimeUs, quint64 waveformSequence, QByteArrayView payload);

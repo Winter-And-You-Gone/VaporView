@@ -4,6 +4,7 @@ if(VAPORVIEW_BUILD_GROUND OR VAPORVIEW_BUILD_SKY_TUI)
 endif()
 if(VAPORVIEW_BUILD_GROUND)
     find_package(Qt6 COMPONENTS Concurrent REQUIRED)
+    find_package(Qt6 6.10 COMPONENTS HttpServer WebSockets REQUIRED)
 endif()
 
 if(WIN32)

@@ -1,6 +1,6 @@
 # GUI 内置 Gateway
 
-Gateway 复用 `GroundTelemetryService` 已接收并通过帧校验的数据，在地面端分流到服务器。它不创建 SkyCore 连接，不改变本地显示或天空端订阅；远程命令也经现有服务发送。网络请求、缓存写入和 Session 文件读取在独立工作线程执行，GUI 侧入口有容量上限。
+Gateway 复用 `GroundTelemetryService` 已接收并通过帧校验的数据。地面端可以主动向云端转发，也可以开放 HTTPS 查询、授权控制与 WSS 订阅给外部测试机。两个方向各自配置和授权，共用设备 ID、现有 SkyCore 遥测连接和命令回执。网络、缓存和 Session 文件工作在独立线程执行。
 
 ## 使用
 
@@ -12,11 +12,76 @@ Gateway 复用 `GroundTelemetryService` 已接收并通过帧校验的数据，�
 
 Session 同步仅针对已经落到地面端且结束写入的 Session（v1 `session.json`，状态为 `complete` 或 `recovered`）。手动选择目录后分块上传并记录进度，重启或断网后续传；不会自动从 SkyCore 下载历史文件。请在 Session 完整复制或记录结束后提交同步，上传期间保持源文件可用且不再修改。修改连接设置后需先保存并重新打开对话框，才能提交同步到新目的地。
 
-## 服务器 v1 接口
+## 地面端入站 v1 接口
+
+在“数据 → Gateway 网关”中填写设备标识，再启用“入站 HTTPS / WSS”。监听 IP 默认是 `127.0.0.1`。独立测试机访问时填写地面机在测试网中的网卡 IP，并按部署网络放行该 TCP 端口。Qt HTTP Server 面向可信网络，应通过测试局域网或专用 VPN 提供访问。地面机需要 Qt 6.10 或更新版本及匹配的 HttpServer、WebSockets 模块与可用的 Qt TLS 后端。[Qt HTTP Server 的安全说明](https://doc.qt.io/qt-6.10/qthttpserver-security.html)
+
+选择 PEM 证书链和与之匹配的未加密 RSA 或 EC PEM 私钥。证书链先放服务器证书，再放中间证书。服务器证书的 SAN 应与客户端使用的 DNS 名或 IP 匹配，客户端须信任签发 CA。入站令牌应单独生成，使用 32 至 256 个可见 ASCII 字符，例如通过 `openssl rand -hex 32` 生成。保存后重新打开设置页查看监听状态，证书换新后停用再启用以重新加载。私钥的读取权限应限制到运行程序的账号，令牌随本地应用配置保存。
+
+所有接口使用同一个 TLS 端口和 `Authorization: Bearer <token>`。HTTPS 返回 UTF-8 JSON。WSS 在升级阶段校验同一令牌，每个文本消息包含一条 JSON 事件。
+
+| 方法与路径 | 返回内容 |
+| --- | --- |
+| `GET /api/v1/status` | SkyCore 链路状态，最近一次设备和录制状态（收到后可用）。 |
+| `GET /api/v1/measurements/latest` | `deviceId`、`linkConnected` 和最近一次 `measurement`。启动或断线后尚无新测量时，`measurement` 为 `null`。 |
+| `POST /api/v1/commands` | 受理白名单命令，返回 HTTP 202 和 `status: "accepted"`。 |
+| `GET /api/v1/commands/<id>` | 查询命令受理或最终结果。未知 ID 返回 404。 |
+| `WSS /api/v1/stream` | 连接成功先送状态快照，再送实时测量和状态。 |
+
+### 入站控制
+
+在入站区域单独开启控制权限，并分别勾选允许的命令。首版支持请求 SkyCore 状态（10）、启动或恢复记录（1）、停止记录（3）。应用使用地面 GUI 当前的定标准备流程启动记录。命令体只接受以下三个字段，设备标识取地面端配置。
+
+```json
+{
+  "id": "example-status-request",
+  "commandId": 10,
+  "expiresAt": "2026-11-19T12:00:30.000Z"
+}
+```
+
+`id` 使用 1 至 64 个英文字母、数字、下划线或连字符，`expiresAt` 为地面机时钟当前时间之后 5 分钟以内的 UTC ISO 时间。示例时间需替换为实际测试时间。未认证返回 401，控制关闭或命令未授权返回 403，无效或过期请求返回 400，同一 ID 与不同命令或期限组合返回 409。相同 ID、命令及期限可重试查询原结果，待处理返回 202，完成返回 200。每次监听期间最多保留 4096 条，记录在有效期结束后保留约 24 小时。应用退出或重新启动监听会开始新的命令查询和去重记录。
+
+结果含 `id`、`deviceId`、`skyCommandId`、`status`。终态带有 `completedAt`，SkyCore 回执还包含 `sequence`、`errorCode` 和 `result`，有对应值时附带 `correlationId` 和 `sessionId`。可能的终态包括 `acknowledged`、`rejected`、`timeout`、`disconnected`、`busy`、`expired`、`not-sent`、`device-busy` 和 `calibration-required`。取得启动记录回执后，再通过状态及实际 Session 核实录制结果。若遇到超时或连接中断，先查询实际状态，再决定是否执行新命令。
+
+### 实时消息
+
+| 字段 | 含义 |
+| --- | --- |
+| `kind` | `measurement` 或 `status`。 |
+| `deviceId`、`streamId`、`sequence`、`ingressDropped` | 设备标识、监听实例标识、实例内事件序号、该实例入口累计丢帧数，均为字符串。初始状态快照含 `snapshot:true`，序号为当时的流进度。 |
+| `frameSequence`、`timeUs` | 若事件源自 SkyCore 遥测，含原始帧序号和以十进制字符串表示的微秒帧时间。 |
+| `linkConnected`、`telemetryAvailable` | 状态事件中的机地链路连通性和最近一次 SkyCore 状态的可用性。有状态时另含 `recordingState`（0 停止、1 记录、2 暂停）、`sessionName` 和 `devices`；单设备行给出协议设备 ID、状态、错误码和计数。 |
+| `source`、`channel`、`value`、`unit`、`valid`、`qualityFlags` | 测量来源、协议通道号、峰值、单位、有效性和原始质量位。单位为 `native`，即原始处理量纲。 |
+
+`fpga-cycle-feature` 使用 SkyCore 的 FPGA 全周期特征，另外含 `cycleId`、`hostTimeUs`、`validPoints`。其 `qualityFlags` 位掩码 1、2、4、8、16 对应非有限样本、无有效点、部分、溢出、连续性错误，存在有效点时仍可报告有质量标记的峰值。`waveform-feature` 的质量位为零且峰值有限时有效。无有效峰值时 `value` 为 `null`。两种来源均附带 `peakIndex`、`mean` 和 `rms`，非有限统计值为 `null`。
+
+监听实例最多允许 16 个 WSS 客户端，单个客户端的待写预算为 256 KiB，统计 Qt 中的 WSS 明文和 TLS 密文待写队列，超过预算会断开该客户端。HTTPS 状态的 `slowSubscribersDisconnected` 以十进制字符串报告当前监听实例因此断开的客户端数。遥测入口拥有单独的有界队列，持续采集时可用 `ingressDropped` 检测入口丢帧。重连先看状态快照，再按 `streamId` 和 `sequence` 接收后续事件。需补查当前值时使用 HTTPS 查询。
+
+本机 `gateway_listener_test` 使用 `openssl` 生成临时证书，按正常证书验证连接真实监听端口，并通过模拟 SkyCore 验证协议。若 `openssl` 未在 PATH 中，可将 `VAPORVIEW_TEST_OPENSSL` 设为程序路径。合同 A.19 现场记录还需来自约定平台、真实设备以及独立测试机。
+
+### 用独立客户端核验
+
+仓库提供 [Python 客户端](../tools/gateway_client.py)。在独立测试机上设置环境变量 `VAPORVIEW_GATEWAY_TOKEN`，使用地面端证书匹配的主机名和签发 CA。HTTPS 使用 Python 标准库，WSS 另需 `websocket-client`。在地面端启用控制权限并勾选相应命令后，可以执行录制启停。将示例地址、CA 路径和查询 ID 换成现场值，`$commandId` 取命令输出的 UUID。
+
+```powershell
+$ground = "https://ground.example:8443"
+$ca = "C:/field/gateway-ca.pem"
+python tools/gateway_client.py $ground --ca $ca status
+python tools/gateway_client.py $ground --ca $ca latest
+python tools/gateway_client.py $ground --ca $ca stream --count 20
+python tools/gateway_client.py $ground --ca $ca command start-recording
+python tools/gateway_client.py $ground --ca $ca command stop-recording
+python tools/gateway_client.py $ground --ca $ca result $commandId
+```
+
+命令调用会分别输出受理记录和最终结果。验收时保留命令 ID、SkyCore 序号及 Session 名，按 `hostTimeUs`、`channel` 和 `cycleId` 到机载 Session 的周期特征 CSV 核对 WSS 峰值与质量标志。
+
+## 云端转发 v1 接口
 
 仓库提供可直接运行的[本地网页验证台](../tools/gateway_demo/README.md)，包含协议参考服务端、实时请求面板和真实 Gateway 的一键联调。它使用模拟 SkyCore 验证遥测、命令结果、Session 上传及断网恢复，适合在甲方服务器确定前验证接口。
 
-当前使用 Qt Network 提供 HTTPS REST 上传和异步命令轮询，不依赖 Qt WebSockets。以下是本仓库定义的 v1 对接协议；上线前应与甲方服务端确认并实现对应接口。
+云端链路使用 Qt Network 提供 HTTPS REST 上传和异步命令轮询。以下是本仓库定义的云端 v1 对接协议，上线前应与甲方服务端确认并实现对应接口。
 
 所有路径相对于配置的服务器根地址。请求使用 `Authorization: Bearer <token>` 和 `X-VaporView-Device-Id`，JSON 为 UTF-8。服务端必须将 token 与设备权限绑定，校验设备 ID，并对上传消息 ID 幂等处理。客户端不跟随重定向。命令正常约每 5 秒轮询一次；请求超时为 15 秒，失败逐步退避到最多 60 秒，命令轮询失败不阻止数据上传。响应最大 1 MiB。
 

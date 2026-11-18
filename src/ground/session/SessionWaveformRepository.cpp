@@ -324,7 +324,8 @@ void writeWaveformIndexCache(QFile& source,
 UnifiedRawCatalogResult loadUnifiedRawCatalog(
     const QString& filename,
     VaporView::Ground::SessionWaveformCatalog& catalog,
-    const VaporView::Ground::SessionWaveformRepository::ProgressCallback& progress)
+    const VaporView::Ground::SessionWaveformRepository::ProgressCallback& progress,
+    bool readOnly)
 {
     UnifiedRawCatalogResult result;
     if (filename.isEmpty() || !QFileInfo::exists(filename))
@@ -339,7 +340,7 @@ UnifiedRawCatalogResult loadUnifiedRawCatalog(
         return result;
     }
 
-    const QByteArray signature = waveformSourceSignature(file);
+    const QByteArray signature = readOnly ? QByteArray() : waveformSourceSignature(file);
     if (loadWaveformIndexCache(file, signature, catalog))
     {
         result.status = UnifiedRawCatalogStatus::Loaded;
@@ -439,7 +440,7 @@ UnifiedRawCatalogResult loadUnifiedRawCatalog(
 
 bool loadIndexedCatalog(const VaporView::Ground::SessionMetadata& metadata,
                         VaporView::Ground::SessionWaveformCatalog& catalog,
-                        QString& error)
+                        QString& error, bool readOnly)
 {
     if (metadata.waveformIndexFilename.isEmpty() ||
         !QFileInfo::exists(metadata.waveformIndexFilename))
@@ -490,14 +491,24 @@ bool loadIndexedCatalog(const VaporView::Ground::SessionMetadata& metadata,
         const QString relativeFilename = csvValueAt(fields, filenameIndex).trimmed();
         if (!timeOk || !countOk || pointCount == 0 || relativeFilename.isEmpty())
         {
+            if (readOnly) {
+                error = QStringLiteral("Invalid waveform index row: %1").arg(metadata.waveformIndexFilename);
+                return false;
+            }
             continue;
         }
 
         const QString absolutePath = sessionDir.filePath(relativeFilename);
         const QFileInfo info(absolutePath);
         const quint64 expectedBytes = static_cast<quint64>(pointCount) * kFloatBytes;
-        if (!info.exists() || info.size() < 0 || static_cast<quint64>(info.size()) < expectedBytes)
+        if (!info.isFile() || info.size() < 0 || static_cast<quint64>(info.size()) < expectedBytes ||
+            (readOnly && (!VaporView::isContainedWritePath(metadata.sessionDirectory, absolutePath) ||
+                          expectedBytes > VaporView::SessionRawDat::kMaxPayloadSize)))
         {
+            if (readOnly) {
+                error = QStringLiteral("Missing, truncated or invalid indexed waveform: %1").arg(relativeFilename);
+                return false;
+            }
             continue;
         }
         catalog.indexedFrames.push_back({absolutePath, timestampUs, pointCount});
@@ -594,7 +605,8 @@ QString SessionWaveformCatalog::sourceFilename(quint64 frameIndex) const
 
 SessionWaveformCatalogResult SessionWaveformRepository::loadCatalog(
     const SessionMetadata& metadata,
-    const ProgressCallback& progress)
+    const ProgressCallback& progress,
+    bool readOnly)
 {
     SessionWaveformCatalogResult result;
     result.catalog.sessionDirectory = metadata.sessionDirectory;
@@ -602,7 +614,7 @@ SessionWaveformCatalogResult SessionWaveformRepository::loadCatalog(
     result.catalog.waveformRawFilename = metadata.waveformRawFilename;
     result.catalog.pointsPerFrame = metadata.waveformPointsPerFrame;
 
-    const auto rawResult = loadUnifiedRawCatalog(metadata.waveformRawFilename, result.catalog, progress);
+    const auto rawResult = loadUnifiedRawCatalog(metadata.waveformRawFilename, result.catalog, progress, readOnly);
     if (rawResult.status == UnifiedRawCatalogStatus::Error) { result.error = rawResult.error; return result; }
     if (rawResult.status == UnifiedRawCatalogStatus::Loaded &&
         (!result.catalog.rawTcpFrames.isEmpty() || !result.catalog.fpgaChoices.isEmpty())) {
@@ -689,7 +701,7 @@ SessionWaveformCatalogResult SessionWaveformRepository::loadCatalog(
     result.catalog.rawTcpFrames.clear();
 
     QString indexError;
-    if (loadIndexedCatalog(metadata, result.catalog, indexError) &&
+    if (loadIndexedCatalog(metadata, result.catalog, indexError, readOnly) &&
         !result.catalog.indexedFrames.isEmpty())
     {
         result.catalog.frameCount = static_cast<quint64>(result.catalog.indexedFrames.size());
@@ -698,6 +710,10 @@ SessionWaveformCatalogResult SessionWaveformRepository::loadCatalog(
     }
     result.catalog.indexedFrames.clear();
 
+    if (readOnly && !indexError.isEmpty()) {
+        result.error = indexError;
+        return result;
+    }
     loadLegacyCatalog(metadata, result.catalog, progress);
     if (!result.catalog.legacySegments.isEmpty())
     {

@@ -1,6 +1,8 @@
 add_library(vaporview_ground_gateway STATIC
     GatewayService.cpp
     GatewayService.h
+    GatewayListener.cpp
+    GatewayListener.h
     OfflineQueue.cpp
     OfflineQueue.h
 )
@@ -13,4 +15,5 @@ target_include_directories(vaporview_ground_gateway PUBLIC
 target_link_libraries(vaporview_ground_gateway PUBLIC
     vaporview_ground_device_core
     Qt6::Network
+    PRIVATE Qt6::HttpServer Qt6::WebSockets
 )
