@@ -1,6 +1,8 @@
 #include "ground/widgets/DeviceActionButton.h"
 #include "ground/calibration/CalibrationService.h"
 #include "ground/main/GroundMainWindowImplementation.h"
+#include "shared/theme/SingleLevelPopupComboBox.h"
+#include <QStyleFactory>
 #include "ground/devices/DeviceRatePolicy.h"
 #include "ground/widgets/SerialPortComboSupport.h"
 #include "BaudRateComboSupport.h"
@@ -6018,6 +6020,15 @@ void MainWindow::setupDataPanels()
     ai8TitleLayout->addWidget(ai8TitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
     state_->ai8_temperature_title_port_combo_ = createSingleLevelPopupComboBox(ai8TitleBar, false, true);
+    // Match the application menu's symmetric shadow instead of the extended
+    // bottom shadow used by ordinary single-level popups.
+    auto *ai8Popup = static_cast<VaporView::SingleLevelPopupComboBox *>(state_->ai8_temperature_title_port_combo_)->popupMenu();
+    ai8Popup->setBottomShadowMargin(kFloatingMenuShadowMarginPx);
+    // Windows' menu style adds a hard shadow underneath the custom painting.
+    // Keep only our title-menu shadow, without changing the application style.
+    auto *popupStyle = QStyleFactory::create(QStringLiteral("Fusion"));
+    popupStyle->setParent(ai8Popup);
+    ai8Popup->setStyle(popupStyle);
     state_->ai8_temperature_title_port_combo_->setObjectName(QStringLiteral("ai8TitlePortCombo"));
     state_->ai8_temperature_title_port_combo_->setEditable(false);
     state_->ai8_temperature_title_port_combo_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);

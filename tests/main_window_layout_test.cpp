@@ -7817,6 +7817,20 @@ int main(int argc, char **argv)
                 ai8TitlePortCombo->cursor().shape() == Qt::PointingHandCursor &&
                 ai8TitlePortCombo->focusPolicy() == Qt::TabFocus,
             "AI-8 title is followed by the detected serial-port selector");
+    ai8TitlePortCombo->showPopup();
+    processEventsFor(80);
+    auto *ai8PortPopup = ai8TitlePortCombo->findChild<VaporView::SingleLevelPopupMenu *>();
+    require(ai8PortPopup && ai8PortPopup->isVisible(), "AI-8 serial popup opens");
+    const QImage ai8PopupImage = ai8PortPopup->grab().toImage();
+    const qreal popupDpr = ai8PopupImage.devicePixelRatio();
+    const int bottomMargin = ai8PortPopup->property("shadowBottomMargin").toInt();
+    const QPoint shadowSample(qRound(ai8PortPopup->width() * popupDpr / 2),
+                             qRound((ai8PortPopup->height() - bottomMargin + 1) * popupDpr));
+    require(bottomMargin == 22 &&
+                qAlpha(ai8PopupImage.pixel(shadowSample)) < 140,
+            "AI-8 popup has the title menu's soft shadow without an extra opaque Windows shadow");
+    ai8TitlePortCombo->hidePopup();
+    processEventsFor(40);
     require(ai8TitleLabel != nullptr &&
                 ai8TitleLabel->text() == QStringLiteral("AI-8 系列多回路智能温控器 ·"),
             "AI-8 title uses the same separator as the RD105 title");
