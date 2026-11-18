@@ -1165,7 +1165,14 @@ public:
             plot->setTimeAxisEnabled(true);
             plot->setFixedHeight(144);
             plots_[index] = plot;
-            plots->addWidget(plot, 1);
+            auto *column = new QVBoxLayout;
+            column->setSpacing(0);
+            plot_titles_[index] = new QLabel(this);
+            plot_titles_[index]->setAlignment(Qt::AlignCenter);
+            plot_titles_[index]->hide();
+            column->addWidget(plot_titles_[index]);
+            column->addWidget(plot);
+            plots->addLayout(column, 1);
         }
         layout->addLayout(plots, 1);
 
@@ -1177,12 +1184,6 @@ public:
         titleStatusLayout->setContentsMargins(0, 0, 0, 0);
         titleStatusLayout->setSpacing(8);
         titleStatusLayout->setSizeConstraint(QLayout::SetFixedSize);
-        device_selector_ = new SegmentedSwitchButton(title_status_strip_);
-        device_selector_->setObjectName(QStringLiteral("tec103OverviewDeviceSwitch"));
-        device_selector_->setStyleSheet(QStringLiteral("QPushButton#tec103OverviewDeviceSwitch { min-height: 36px; max-height: 36px; padding: 0; border: none; }"));
-        device_selector_->hide();
-        titleStatusLayout->addWidget(device_selector_);
-        connect(device_selector_, &SegmentedSwitchButton::selectionRequested, this, [this] { refreshChannelUi(); });
         error_status_label_ = new QLabel(title_status_strip_);
         error_status_label_->setObjectName(QStringLiteral("temperatureOverviewErrorStatusLabel"));
         titleStatusLayout->addWidget(error_status_label_);
@@ -1221,8 +1222,10 @@ public:
     {
         if (dual_tec103_ == dual) return;
         dual_tec103_ = dual;
-        device_selector_->setVisible(dual);
-        plots_[1]->setVisible(!dual);
+        for (int index = 0; index < 2; ++index) {
+            plot_titles_[index]->setVisible(dual);
+            plots_[index]->setFixedHeight(dual ? 144 - plot_titles_[index]->sizeHint().height() : 144);
+        }
         setEnglish(is_english_);
     }
 
@@ -1231,15 +1234,11 @@ public:
     void setEnglish(bool english) override
     {
         is_english_ = english;
-        configureTecDeviceSwitch(device_selector_, english);
-        device_selector_->setStateDescription(english ? QStringLiteral("Device") : QStringLiteral("设备"), QStringLiteral(" · "));
         output_label_->setText(english ? QStringLiteral("Output Enable") : QStringLiteral("输出使能"));
         for (int index = 0; index < 2; ++index)
         {
             output_switch_buttons_[index]->setEnglish(english);
             plots_[index]->setEnglish(english);
-            const QString channel = thermalEndpointLabel(false, index + 1, english);
-            plots_[index]->setAccessibleName(channel);
             const QString endpoint = thermalEndpointLabel(dual_tec103_, index + 1, english);
             const QString prefix = dual_tec103_ ? (english ? (index == 0 ? QStringLiteral("I:") : QStringLiteral("R:"))
                                                            : (index == 0 ? QStringLiteral("原：") : QStringLiteral("遥：")))
@@ -1248,7 +1247,9 @@ public:
             output_numbers_[index]->setFixedWidth(output_numbers_[index]->fontMetrics().horizontalAdvance(prefix));
             output_switch_buttons_[index]->setFixedWidth(std::min(94, kOverviewControlWidth - 10 - output_numbers_[index]->width()));
             status_numbers_[index]->setText(prefix);
-            plots_[index]->setToolTip(channel);
+            plot_titles_[index]->setText(endpoint);
+            plots_[index]->setAccessibleName(endpoint);
+            plots_[index]->setToolTip(endpoint);
             output_switch_buttons_[index]->setStateDescription(endpoint + QStringLiteral(" ") + output_label_->text(),
                 english ? QStringLiteral(": ") : QStringLiteral("："));
         }
@@ -1349,11 +1350,6 @@ private:
         title_status_strip_->layout()->activate();
     }
 
-    int sourceIndex(int channelIndex) const
-    {
-        return dual_tec103_ ? int(device_selector_->switchChecked()) : channelIndex;
-    }
-
     void refreshChannelUi()
     {
         const bool dark = VaporView::isDarkThemeEnabled();
@@ -1371,8 +1367,6 @@ private:
         QStringList outputPercentTexts;
         for (int index = 0; index < 2; ++index)
         {
-            const int source = sourceIndex(index);
-            const bool supported = !dual_tec103_ || index == 0;
             const auto &channel = latest_data_.channels[index];
             const bool available = valid && (!dual_tec103_ || std::isfinite(channel.measured_temperature_c));
             outputPercentTexts.append(temperatureOverviewOutputPercentText(available
@@ -1389,9 +1383,9 @@ private:
             const bool outputEnabled = available && channel.output_enabled;
             button->setEnabled(available);
             button->setSwitchChecked(outputEnabled, button->switchChecked() != outputEnabled);
-            plots_[index]->setTargetTemperature(supported ? target_temperature_by_channel_[source] : std::numeric_limits<double>::quiet_NaN());
-            plots_[index]->setSamples(supported ? measured_temperature_history_[source] : QVector<double>{});
-            plots_[index]->setSampleTimes(supported ? measured_temperature_time_history_[source] : QVector<double>{});
+            plots_[index]->setTargetTemperature(target_temperature_by_channel_[index]);
+            plots_[index]->setSamples(measured_temperature_history_[index]);
+            plots_[index]->setSampleTimes(measured_temperature_time_history_[index]);
         }
         setTemperatureOverviewOutputPercentText(output_percent_value_,
             is_english_ ? QStringLiteral("Output Percent") : QStringLiteral("输出百分比"),
@@ -1399,7 +1393,7 @@ private:
         updateOverviewValueWidths();
     }
 
-    SegmentedSwitchButton *device_selector_ = nullptr;
+    std::array<QLabel *, 2> plot_titles_{};
     std::array<QLabel *, 2> output_numbers_{};
     std::array<QLabel *, 2> status_numbers_{};
     QWidget *summary_widget_ = nullptr;
