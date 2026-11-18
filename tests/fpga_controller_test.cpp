@@ -215,14 +215,13 @@ void startupWarningGrace(){
         while(elapsed.elapsed()<2000){QCoreApplication::processEvents();QThread::msleep(1);}
         require(errors()==0,"startup errors are quiet during the grace period");
         while(elapsed.elapsed()<3300){QCoreApplication::processEvents();QThread::msleep(1);}
-        require(errors()==(scenario==0?0:1),"recovered startup is quiet; persistent error or invalid data warns once");
+        require(errors()==(scenario==0 || scenario==4 ? 0 : 1),"recovered startup is quiet; persistent error or invalid data warns once");
         if(scenario>=3)for(const auto& record:f.records)if(record.fields.value("source_id").toUInt()==source) {
             require(record.fields.value("ai8_input_error").toBool()==(scenario==3)
                 && record.fields.value("ai8_global_alarm").toBool()==(scenario==4)
                 && record.fields.value("ai8_system_fault").toBool()==(scenario==5),
                 "startup warning distinguishes channel input, instrument global alarm and system fault");
-            if(scenario==4)require(record.message.contains(QStringLiteral("当前通道测量正常")),
-                "global alarm warning does not misdescribe a healthy channel as an invalid measurement");
+
         }
         if(scenario!=0)for(const auto& record:f.records)
             if((record.fields.value("event")=="fpga_firmware_event" && record.fields.value("source_id").toUInt()==source)
@@ -236,8 +235,9 @@ void startupWarningGrace(){
             }
         if(scenario==0){injectError();require(errors()==1,"new faults after grace are reported immediately");
             require(f.records.constLast().correlation_id.isEmpty() && f.records.constLast().session_id.isEmpty(),"independent post-grace fault does not inherit startup context");}
+        const int warningsBeforeDisconnect=errors();
         samples.stop();f.controller.disconnectDevice();
-        QCoreApplication::processEvents();require(errors()==1,"disconnect does not publish deferred startup errors");
+        QCoreApplication::processEvents();require(errors()==warningsBeforeDisconnect,"disconnect does not publish deferred startup errors");
     }
     Fixture disconnected;disconnected.transport->regs[0x6504]=1;
     disconnected.controller.setOperationLogContext(10,QStringLiteral("cancelled-start"),QStringLiteral("old-session"));

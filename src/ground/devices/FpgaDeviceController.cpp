@@ -222,6 +222,14 @@ void FpgaDeviceController::logManagementEvent(const QJsonObject& event, bool aft
         record.fields.insert(QStringLiteral("ai8_system_fault"),ai8->systemFault);
         record.fields.insert(QStringLiteral("ai8_global_alarm"),ai8->globalAlarm);
     }
+    const auto& scan = latestReadings_.value(source);
+    const bool channelAlarmOnly = source==0x46 && msg==0x1402 && words.size()==7
+        && quint32(words[2].toDouble())==0x40 && scan.ai8Live && scan.ai8Live->valid
+        && QDateTime::currentMSecsSinceEpoch()-lastReadingMs_.value(source)<=5000;
+    if (channelAlarmOnly) {
+        record.level=LogLevel::Info;
+        record.fields["ui_visibility"]="details";
+    }
     if(afterStartup) {
         const qint64 grace=startupWarningGraceMs(source,registers_);
         const QString seconds=QString::number(grace/1000.0,'g',6);
@@ -768,14 +776,14 @@ void FpgaDeviceController::checkStartupWarnings()
         const bool fresh=lastReadingMs_.contains(source)
             && QDateTime::currentMSecsSinceEpoch()-lastReadingMs_.value(source)<=(source==0x45?1000:5000);
         const bool healthy=fresh && validity.structure && validity.crc && validity.deviceOnline && validity.measurement
-            && (!sample.ai8 || (sample.ai8->measurementValid && !sample.ai8->alarm && !sample.ai8->systemFault))
+            && (!sample.ai8 || (sample.ai8Live && sample.ai8Live->valid))
             && sample.reading.hc2aDeviceError.value_or(0)==0;
         const auto words=event.value("words").toArray();
         const quint32 errors=words.size()==7?quint32(words[1].toDouble()):0;
         const quint32 base=0x6000+(source-0x40)*0x100;
         const bool hardwareFault=(errors & registers_.value(base+12) & 0x30)!=0;
         const bool newerSample=event.isEmpty() || sample.reading.timestamp>=event.value("tick").toString().toULongLong();
-        if(!(healthy && newerSample && !hardwareFault) || (sample.ai8 && sample.ai8->globalAlarm && !event.isEmpty())) {
+        if(!(healthy && newerSample && !hardwareFault)) {
             if(!event.isEmpty())logManagementEvent(event,true);
             else reportConnection(source,QStringLiteral("warning"),QStringLiteral("STARTUP_UNHEALTHY"),
                 QStringLiteral("启动等待 %1 秒后仍未获得有效测量或设备仍在报警，请检查设备状态。")
@@ -1526,7 +1534,7 @@ void FpgaDeviceController::acceptReading(const FpgaSensor::Reading& reading)
     if(contextual.source==0x4a && !contextual.rd105Channel && registers_.contains(0x6a1c))contextual.rd105Channel=registers_.value(0x6a1c);
     auto adapted=adapter_.accept(contextual);
     const bool keepHealthyScan=reading.source==0x46 && reading.schema==3 && !adapted.reading.validity.measurement
-        && !(adapted.ai8 && adapted.ai8->snapshotValid && adapted.ai8->systemFault)
+        && adapted.ai8Live && adapted.ai8Live->valid
         && latestReadings_.contains(reading.source) && latestReadings_.value(reading.source).reading.validity.measurement;
     if(!keepHealthyScan)latestReadings_[reading.source]=adapted;
     else latestReadings_[reading.source].ai8Live=adapted.ai8Live;

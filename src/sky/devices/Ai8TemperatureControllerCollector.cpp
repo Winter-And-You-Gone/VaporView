@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <limits>
 #include <thread>
 #include <utility>
 
@@ -721,8 +722,6 @@ bool Ai8TemperatureControllerCollector::readLiveData(LiveData& data)
     {
         data.measuredC[static_cast<size_t>(index)] = decodeSignedTenths(values[static_cast<size_t>(index)]);
     }
-    data.valid = true;
-
     std::vector<quint16> setpoints;
     if (readRegisters(static_cast<quint16>(Register::SetpointBase), kChannelCount, setpoints) &&
         setpoints.size() == kChannelCount)
@@ -759,6 +758,14 @@ bool Ai8TemperatureControllerCollector::readLiveData(LiveData& data)
         data.mainStatusValid = true;
     }
 
+    const bool systemFault = data.mainStatusValid && (data.mainStatusRaw & 0x100);
+    data.valid = false;
+    for (int index = 0; index < kChannelCount; ++index) {
+        const bool inputFault = data.alarmStatusValid &&
+            (decodeChannelAlarmStatus(data.alarmStatusRegisters[index / 2], index + 1) & 1);
+        if (systemFault || inputFault) data.measuredC[index] = std::numeric_limits<double>::quiet_NaN();
+        else data.valid = true;
+    }
     std::vector<quint16> statusValues;
     if (!readRegisters(static_cast<quint16>(Register::ControlStatusBase),
                        kControlStatusRegisterCount,

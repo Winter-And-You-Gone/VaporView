@@ -1364,7 +1364,11 @@ void MainWindow::receiveFpgaMeasurements(const VaporView::FpgaSensor::AdaptedMea
     state_->fpga_sensor_rates_[r.source] = m.sampleRateHz;
     if(!isUiTestMode())state_->fpga_page_->updateSensor(r);
     const bool valid = r.validity.structure && r.validity.crc && r.validity.deviceOnline && r.validity.measurement;
-    if (valid) state_->fpga_sources_.insert(r.source); else state_->fpga_sources_.remove(r.source);
+    // A scan publishes the aggregate once, followed by individual channel updates.
+    if (r.kind != VaporView::FpgaSensor::SensorKind::Ai8 || m.ai8Live) {
+        const bool deviceValid = m.ai8Live ? m.ai8Live->valid : valid;
+        if (deviceValid) state_->fpga_sources_.insert(r.source); else state_->fpga_sources_.remove(r.source);
+    }
     const auto now = std::chrono::steady_clock::now();
     state_->fpga_sensor_times_[r.source] = now;
     updateInternalEnvironment(r);

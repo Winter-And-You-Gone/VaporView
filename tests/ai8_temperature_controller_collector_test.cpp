@@ -143,6 +143,16 @@ int main()
     for (int index = 0; index < 8; ++index)
         require(live.setpointsC[index] == -29.0 + index && live.measuredC[index] == 21.0 + index,
                 "SP polling preserves channel order and negative tenths independently of PV");
+    const auto alarms = static_cast<quint16>(Protocol::Register::AlarmStatusBase);
+    for (int pair=0; pair<4; ++pair) backend.registers[alarms+pair]=0x0101;
+    backend.registers[alarms+3]=0x0100;
+    backend.registers[static_cast<quint16>(Protocol::Register::MainStatus)]=0x0200;
+    require(collector.readLiveData(live) && live.valid && live.measuredC[7]==28.0 && std::isnan(live.measuredC[0]),
+            "one healthy PT100 keeps AI8 online with seven input alarms and a global alarm");
+    backend.registers[alarms+3]=0x0101;
+    require(collector.readLiveData(live) && !live.valid && live.alarmStatusValid && std::isnan(live.measuredC[7]),
+            "eight input faults invalidate the device while retaining channel diagnostics");
+    for (int pair=0; pair<4; ++pair) backend.registers[alarms+pair]=0;
     collector.setRegisterBackendForTest(
         [&backend](quint16 address, quint16 count, std::vector<quint16>& values) {
             return address != static_cast<quint16>(Protocol::Register::SetpointBase) && backend.read(address, count, values);
