@@ -331,6 +331,8 @@ private:
     void setUiTestModeEnabled(bool enabled);
     void setUiTestScenario(VaporView::Ground::Devices::UiTestScenario scenario);
     void applyUiTestSnapshot();
+    void openUiTestSourceWindow();
+    void resetReplayDisplays(bool replay);
     bool runUiTestEpsilonOperation(const QString& operation, std::function<QString()> completion, int delayMs = 300);
     void updateUiTestModeUi();
     void publishUiTestEvent(const QString& event,
@@ -394,7 +396,9 @@ private:
         std::function<bool()> canRun = {});
     void processFpgaActions();
     void cancelFpgaActions();
+    bool homeFpgaNeedsConnect(VaporView::SkyDeviceId device);
     void connectNextHomeFpgaDevice();
+    void handleHomeFpgaFailure(bool transportReady);
     QMap<quint32, quint32> homeFpgaRegisters() const;
     quint32 homeFpgaExtensions() const;
     void submitFpgaInstrument(const QJsonObject& request,std::function<void(const QJsonObject&)> reply);
@@ -410,6 +414,8 @@ private:
     bool homeDeviceActionSpinnerActive(VaporView::SkyDeviceId device, qint64 nowMs) const;
     int homeDeviceActionSpinnerDegrees(VaporView::SkyDeviceId device, qint64 nowMs) const;
     void updateHomeDeviceStatusCapsules();
+    QString homeDeviceMeasurementWarning(VaporView::SkyDeviceId device, qint64 nowMs);
+    bool localDeviceDataFresh(VaporView::SkyDeviceId device, qint64 timeoutMs) const;
     void updateHomeDeviceActionSpinnerIcons();
     void triggerHomeMotionDeviceAction();
     void startHomeMotionDeviceActionSpinner(bool disconnecting);

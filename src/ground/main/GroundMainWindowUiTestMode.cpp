@@ -1,5 +1,6 @@
 #include "ground/main/GroundMainWindowImplementation.h"
 
+#include "ground/main/UiTestReplayWindow.h"
 #include <QSignalBlocker>
 
 using UiTestScenario = VaporView::Ground::Devices::UiTestScenario;
@@ -414,6 +415,7 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
         updateUiTestModeUi();
         updateConnectionStatus(false);
         applyUiTestSnapshot();
+        openUiTestSourceWindow();
         publishUiTestEvent(QStringLiteral("ui_test_mode_enabled"),
                            state_->is_english_
                                ? QStringLiteral("UI Test Mode enabled; device, recording, and settings operations are simulated in memory. RTK mountpoint detection and Test Connection may access the NTRIP network with sandbox settings.")
@@ -421,6 +423,13 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
         return;
     }
 
+    if (state_->session_replay_) {
+        state_->device_panel_coordinator_->clearTemperatureHistory();
+        state_->ai8_temperature_controller_panel_->clearTemperatureHistory();
+    }
+    delete state_->ui_test_source_window_;
+    state_->ui_test_source_window_ = nullptr;
+    state_->session_replay_ = false;
     if (state_->recording_schedule_controller_ && state_->recording_schedule_controller_->isActive())
     {
         state_->recording_schedule_controller_->cancel();
@@ -576,7 +585,7 @@ void MainWindow::updateUiTestModeUi()
     }
     if (QMenu *scenarioMenu = findChild<QMenu *>(QStringLiteral("uiTestScenarioMenu")))
     {
-        scenarioMenu->setEnabled(state_->ui_test_mode_enabled_);
+        scenarioMenu->setEnabled(state_->ui_test_mode_enabled_ && !state_->session_replay_);
     }
     const UiTestScenario scenario = state_->ui_test_model_->scenario();
     for (QAction *action : {state_->ui_test_normal_action_,
@@ -639,7 +648,7 @@ bool MainWindow::runUiTestEpsilonOperation(const QString& operation, std::functi
 
 void MainWindow::applyUiTestSnapshot()
 {
-    if (!isUiTestMode() || !state_->ui_test_model_)
+    if (!isUiTestMode() || state_->session_replay_ || !state_->ui_test_model_)
     {
         return;
     }

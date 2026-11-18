@@ -1,5 +1,6 @@
 #include "ground/calibration/CalibrationService.h"
 #include "ground/main/GroundMainWindowImplementation.h"
+#include "ground/main/UiTestReplayWindow.h"
 #include "LogContext.h"
 #include <QSystemTrayIcon>
 
@@ -796,6 +797,8 @@ void MainWindow::closeEvent(QCloseEvent *event)
     if (isUiTestMode())
     {
         state_->ui_test_application_closing_ = true;
+        delete state_->ui_test_source_window_;
+        state_->ui_test_source_window_ = nullptr;
         // Keep the process-wide write barrier enabled through all child and
         // main-window destructors. Several widgets persist state on teardown.
         VaporView::setSettingsWritesSuspended(true);
@@ -840,12 +843,9 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
     {
         QTimer::singleShot(0, this, [this]() { reflowDeviceTelemetryData(); });
     }
-    if (state_->data_telemetry_device_summary_layout_ &&
-        watched == state_->data_telemetry_device_summary_layout_->parent() &&
-        (eventType == QEvent::LayoutRequest ||
-         (eventType == QEvent::Resize &&
-          static_cast<QResizeEvent *>(event)->size().width() !=
-              static_cast<QResizeEvent *>(event)->oldSize().width())))
+    if (eventType == QEvent::Resize && state_->data_telemetry_link_summary_layout_ &&
+        watched == state_->data_telemetry_link_summary_layout_->parent() &&
+        static_cast<QResizeEvent *>(event)->size().width() != static_cast<QResizeEvent *>(event)->oldSize().width())
     {
         QTimer::singleShot(0, this, [this]() { updateConfigCardHeightForSourceMode(); });
     }

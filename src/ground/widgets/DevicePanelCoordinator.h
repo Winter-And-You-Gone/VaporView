@@ -61,7 +61,8 @@ public:
                                const VaporView::PtbData& ptb,
                                const VaporView::Hc2aData& hc2a,
                                const VaporView::LidarData& lidar);
-    void updateTemperatureData(const VaporView::TemperatureControllerData& temperature);
+    void clearTemperatureHistory();
+    void updateTemperatureData(const VaporView::TemperatureControllerData& temperature, double recordedSeconds = -1);
     void updateTemperatureRate(double rateHz);
     void updateRates(const DevicePanelRates& rates);
     void clearRates();

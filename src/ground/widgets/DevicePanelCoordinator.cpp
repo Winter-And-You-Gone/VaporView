@@ -59,16 +59,22 @@ void DevicePanelCoordinator::updateEnvironmentData(
     }
 }
 
+void DevicePanelCoordinator::clearTemperatureHistory()
+{
+    if (bindings_.temperature) bindings_.temperature->clearTemperatureHistory();
+    if (bindings_.temperatureOverview) bindings_.temperatureOverview->clearTemperatureHistory();
+}
+
 void DevicePanelCoordinator::updateTemperatureData(
-    const VaporView::TemperatureControllerData& temperature)
+    const VaporView::TemperatureControllerData& temperature, double recordedSeconds)
 {
     if (bindings_.temperature)
     {
-        bindings_.temperature->updateData(temperature);
+        bindings_.temperature->updateData(temperature, recordedSeconds);
     }
     if (bindings_.temperatureOverview)
     {
-        bindings_.temperatureOverview->updateData(temperature);
+        bindings_.temperatureOverview->updateData(temperature, recordedSeconds);
     }
 }
 

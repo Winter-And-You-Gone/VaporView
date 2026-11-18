@@ -80,6 +80,7 @@ struct MainWindowRtcmTestAccess
 {
     static auto summary(MainWindow& window) { return window.remoteTelemetrySummarySections(); }
     static void refreshSummary(MainWindow& window) { window.updateRemoteTelemetrySummaryLabel(); }
+    static void refreshCapsules(MainWindow& window) { window.updateHomeDeviceStatusCapsules(); }
     static VaporView::Ground::Main::MainWindowState& state(MainWindow& window) { return *window.state_; }
     static void temperatureResult(MainWindow& window,const VaporView::Ground::Devices::Rd105SessionResult& result)
     { window.onRd105SessionOperationFinished(result); }
@@ -185,22 +186,19 @@ static QLabel *deviceWaveRate(MainWindow &window)
 }
 static bool onlyPressureDataAvailable(MainWindow& window, bool demoRates = false)
 {
-    int found=0;
-    auto *configPage=window.findChild<QWidget*>("deviceConfigPage");
-    QWidget *homeSummary=nullptr;
-    for(auto *candidate:window.findChildren<QWidget*>("homeTelemetrySummaryContainer"))
-        if(!configPage || !configPage->isAncestorOf(candidate)) {homeSummary=candidate;break;}
-    if(!homeSummary)return false;
-    for(auto *pill:homeSummary->findChildren<QFrame*>("homeTelemetrySummaryPill")) {
-        auto *name=pill->findChild<QLabel*>("homeTelemetrySummaryNameLabel");
-        auto *value=pill->findChild<QLabel*>("homeTelemetrySummaryValueLabel");
-        if(!name||!value)continue;
-        if(!demoRates && QStringList{QStringLiteral("基础"),QStringLiteral("特征值"),QStringLiteral("状态"),QStringLiteral("原始波形"),QStringLiteral("谐波波形"),QStringLiteral("波形采集"),QStringLiteral("天→地"),QStringLiteral("地→天"),QStringLiteral("合")}.contains(name->text())&&value->property("telemetryAvailable").toBool())return false;
-        if(!QStringList{"EPSILON","PTB","PTB210","HC2A","Lidar","SDFM300","RD105","AI-8288","BMP390","SHT45",QStringLiteral("波形")}.contains(name->text()))continue;
-        if(value->property("telemetryAvailable").toBool()!=(name->text()=="PTB"||name->text()=="PTB210"))return false;
-        ++found;
+    const auto summary = MainWindowRtcmTestAccess::summary(window);
+    if (summary.deviceItems.size() != 9)
+        return false;
+    if (!demoRates)
+    {
+        for (const auto &item : summary.rateItems)
+            if (item.hasData) return false;
+        for (const auto &item : summary.linkItems)
+            if (item.hasData) return false;
     }
-    return found>=9;
+    for (const auto &item : summary.deviceItems)
+        if (item.hasData != (item.label == QStringLiteral("PTB"))) return false;
+    return true;
 }
 static bool onlyPressureConnected(MainWindow &window)
 {
@@ -1442,6 +1440,18 @@ static void localSimulatorRouting()
         "TEC103 selective connection uses both physical UARTs and leaves legacy RS485 disabled");
     if(disconnect->isEnabled())disconnect->click();
     check(waitUntil([&]{return connectButton->isEnabled();}),"RD105 connection leaves the USB connection releasable");
+    auto& drafts = MainWindowRtcmTestAccess::state(window).fpga_sensor_drafts_[0];
+    const auto savedDraft = drafts.value(0x46);
+    drafts[0x46]["baud"] = QStringLiteral("invalid");
+    window.findChild<QCheckBox*>("deviceRemoteAi8TemperatureEnabledCheck")->setChecked(true);
+    window.findChild<QCheckBox*>("deviceInternalEnabledSHT45")->setChecked(true);
+    connectionSuccesses.clear();
+    QMetaObject::invokeMethod(&window,"onConnectClicked");
+    check(waitUntil([&]{return connectionSuccesses==QSet<quint16>{0x44,0x4a};},15000),
+        "a rejected AI8 draft leaves SHT45 and the two-port temperature controller in the title connection queue");
+    if (savedDraft.isEmpty()) drafts.remove(0x46); else drafts[0x46] = savedDraft;
+    disconnect->click();
+    check(waitUntil([&]{return connectButton->isEnabled();}),"filtered batch after AI8 rejection releases USB");
     for(const auto &name:relaySelectionNames) window.findChild<QCheckBox*>(name)->setChecked(true);
     QMetaObject::invokeMethod(&window,"onConnectClicked");
     check(waitUntil([&]{auto *wave=homeAction(window,QStringLiteral("波形源"));
@@ -2398,18 +2408,36 @@ static void directInternalEnvironmentRouting()
         }
         return bytes;
     };
-    waveSocket->write(frame(2000, false) + frame(1800, true));
-    const auto waveAvailable = [&] {
-        for (auto *pill : window.findChildren<QFrame *>("homeTelemetrySummaryPill"))
-        {
-            auto *name = pill->findChild<QLabel *>("homeTelemetrySummaryNameLabel");
-            auto *value = pill->findChild<QLabel *>("homeTelemetrySummaryValueLabel");
-            if (name && value && name->text() == QStringLiteral("波形") && value->property("telemetryAvailable").toBool()) return true;
-        }
-        return false;
-    };
-    require(waitUntil(waveAvailable), "Local direct summary reports received data while the remote link is closed");
-    require(waitUntil([&] { return !waveAvailable(); }, 5000), "Stalled local waveform becomes unavailable without disconnecting");
+    QLabel *waveCapsule = nullptr;
+    for (auto *label : window.findChildren<QLabel *>("homeDeviceStatusCapsule"))
+    {
+        if (label->text().contains(QStringLiteral("波形")))
+            waveCapsule = label;
+    }
+    require(waveCapsule, "Home waveform capsule exists");
+    const auto hasState = [&](const QString &state) { return waveCapsule->property("state") == state; };
+    MainWindowRtcmTestAccess::refreshCapsules(window);
+    require(hasState(QStringLiteral("connected")), "Waveform has time to deliver its first frame");
+    const int normalWidth = waveCapsule->minimumSizeHint().width();
+    auto &history = MainWindowRtcmTestAccess::state(window).home_device_data_state_[SkyDeviceId::WaveTcp];
+    history.connectedSinceMs -= 4000;
+    MainWindowRtcmTestAccess::refreshCapsules(window);
+    require(hasState(QStringLiteral("warning")) && waveCapsule->property("connected").toBool() &&
+            waveCapsule->toolTip().contains(QStringLiteral("尚未收到有效测量数据")),
+            "Connected waveform without a first frame displays a warning and its reason");
+    require(waveCapsule->minimumSizeHint().width() == normalWidth &&
+            homeAction(window, QStringLiteral("波形源"))->property("state") == QStringLiteral("connected"),
+            "Warning keeps the capsule width and the disconnect action");
+    const QByteArray data = frame(2000, false) + frame(1800, true);
+    waveSocket->write(data);
+    require(waitUntil([&] { return wavePanel->hasRecentData(3000) && hasState(QStringLiteral("connected")); }),
+            "A valid waveform restores the normal capsule");
+    require(waitUntil([&] { return hasState(QStringLiteral("warning")); }, 5000) && wavePanel->isConnected() &&
+            waveCapsule->toolTip().contains(QStringLiteral("测量数据超时")),
+            "A stalled waveform displays a timeout warning while still connected");
+    waveSocket->write(data);
+    require(waitUntil([&] { return hasState(QStringLiteral("connected")); }),
+            "The warning clears when waveform frames resume");
     wavePanel->toggleConnection();
     auto *stack=window.findChild<QStackedWidget*>("mainPageStack");
     QWidget *configPage=path;while(stack->indexOf(configPage)<0)configPage=configPage->parentWidget();

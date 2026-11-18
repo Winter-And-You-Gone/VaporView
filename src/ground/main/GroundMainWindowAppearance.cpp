@@ -368,19 +368,40 @@ QString MainWindow::themedStyleSheet() const
         applyAppThemeTokens(mainCardsTopLevelCardStyleSheet(), state_->dark_theme_enabled_);
     const QString rtkConfigCardStyle =
         applyAppThemeTokens(rtkConfigCardStyleSheet(), state_->dark_theme_enabled_);
+    const QString replayStyle = applyAppThemeTokens(QStringLiteral(R"(
+QWidget#uiTestReplayWindow, QWidget#uiTestReplayWindow QWidget#customTitleBarContent {
+    background: @vv-surface; color: @vv-text;
+}
+QLabel#replaySource { color: @vv-text-title; font-weight: 600; }
+QWidget#uiTestReplayWindow QPushButton {
+    background: @vv-surface; color: @vv-text; border: 1px solid @vv-border;
+    border-radius: 6px; padding: 0px 12px; min-height: 30px; font-size: 13px;
+}
+QWidget#uiTestReplayWindow QPushButton:hover, QToolButton#replayPin:hover { background: @vv-primary-subtle; }
+QWidget#uiTestReplayWindow QPushButton#replayChoose { background: @vv-primary; border-color: @vv-primary; color: @vv-text-inverse; }
+QWidget#uiTestReplayWindow QPushButton#replayChoose:hover { background: @vv-primary-hover; }
+QWidget#uiTestReplayWindow QPushButton:disabled { color: @vv-text-disabled; background: @vv-surface-alt; }
+QToolButton#replayPin { color: @vv-text-secondary; background: transparent; border: none; padding: 4px 8px; border-radius: 5px; }
+QToolButton#replayPin:checked { background: @vv-primary-subtle; color: @vv-primary; }
+QProgressBar#replayLoading { color: @vv-text-strong; background: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 5px; min-height: 18px; }
+QProgressBar#replayLoading::chunk { background: @vv-primary-subtle-pressed; border-radius: 4px; }
+QWidget#uiTestReplayWindow QSlider::groove:horizontal { background: @vv-border; height: 4px; border-radius: 2px; }
+QWidget#uiTestReplayWindow QSlider::sub-page:horizontal { background: @vv-primary; border-radius: 2px; }
+QWidget#uiTestReplayWindow QSlider::handle:horizontal { background: @vv-primary; width: 14px; margin: -5px 0; border-radius: 7px; }
+)"), state_->dark_theme_enabled_);
     return state_->dark_theme_enabled_
         ? baseStyle +
               darkStyle +
               applyAppThemeTokens(darkOverviewStyleSheet(), true) +
               mainCardsScrollBarStyle +
               mainCardsTopLevelCardStyle +
-              rtkConfigCardStyle +
+              rtkConfigCardStyle + replayStyle +
               applyAppThemeTokens(customTitleBarStyleSheet(true), true) +
               applyAppThemeTokens(temperatureControllerConfigStyleSheet(), true)
         : baseStyle +
               mainCardsScrollBarStyle +
               mainCardsTopLevelCardStyle +
-              rtkConfigCardStyle +
+              rtkConfigCardStyle + replayStyle +
               applyAppThemeTokens(customTitleBarStyleSheet(false), false) +
               applyAppThemeTokens(temperatureControllerConfigStyleSheet(), false);
 }

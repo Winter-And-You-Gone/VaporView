@@ -78,9 +78,9 @@ private:
             layout_->removeWidget(serial_);
             layout_->removeWidget(motion_);
             serial_->setSizePolicy(QSizePolicy::Maximum, sideBySide ? QSizePolicy::Preferred : QSizePolicy::Fixed);
-            motion_->setSizePolicy(QSizePolicy::Maximum, sideBySide ? QSizePolicy::Preferred : QSizePolicy::Fixed);
-            layout_->addWidget(serial_, 0, 0, Qt::AlignLeft);
-            layout_->addWidget(motion_, sideBySide ? 0 : 1, sideBySide ? 1 : 0, Qt::AlignLeft);
+            motion_->setSizePolicy(QSizePolicy::Expanding, sideBySide ? QSizePolicy::Preferred : QSizePolicy::Fixed);
+            layout_->addWidget(serial_, 0, 0);
+            layout_->addWidget(motion_, sideBySide ? 0 : 1, sideBySide ? 1 : 0);
             layout_->setColumnStretch(1, sideBySide ? 1 : 0);
             layout_->invalidate();
         });
@@ -128,6 +128,37 @@ protected:
         if (isChecked()) option.palette.setColor(QPalette::ButtonText, Qt::white);
         style()->drawItemText(&painter, textRect, Qt::AlignCenter, option.palette,
                                isEnabled(), text(), QPalette::ButtonText);
+    }
+};
+
+class HomeDeviceStatusCapsule final : public QLabel
+{
+public:
+    using QLabel::QLabel;
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        if (property("state").toString() != QStringLiteral("warning"))
+        {
+            QLabel::paintEvent(event);
+            return;
+        }
+
+        QFrame::paintEvent(event);
+        // Use the normal capsule's padding for the icon so warnings keep the grid width.
+        constexpr int iconSize = 10;
+        constexpr int edge = 3;
+        constexpr int gap = 2;
+        const QColor color = VaporView::appThemeColor(AppThemeColor::Warning,
+                                                       qApp->property(kAppDarkThemeProperty).toBool());
+        QPainter painter(this);
+        painter.setPen(color);
+        const int iconLeft = width() - edge - iconSize;
+        painter.drawText(QRect(edge, 0, iconLeft - edge - gap, height()),
+                         Qt::AlignCenter | Qt::TextSingleLine, text());
+        createLucideIcon(QStringLiteral("triangle-alert"), color).paint(
+            &painter, QRect(iconLeft, (height() - iconSize) / 2, iconSize, iconSize));
     }
 };
 
@@ -2611,6 +2642,7 @@ void MainWindow::setupCentralWidget()
         updateDeviceConfigState();
     }
     state_->combination_navigation_page_->setStatusProvider([this]() {
+        if (state_->session_replay_) return state_->replay_navigation_;
         CombinationNavigationPage::StatusSnapshot snapshot;
         const bool remoteStatusAvailable = !isRemoteSkyMode() || isUiTestMode() ||
             (state_->remote_sky_controller_ &&
@@ -4648,7 +4680,7 @@ void MainWindow::updateDeviceConfigState()
         : (state_->is_english_ ? QStringLiteral("TCP waveform endpoint") : QStringLiteral("TCP 波形主机地址和端口"));
     if (state_->device_config_.tcp_wave_lbl) state_->device_config_.tcp_wave_lbl->setToolTip(waveHint);
     if (state_->device_config_.tcp_wave_transport_hint_lbl) state_->device_config_.tcp_wave_transport_hint_lbl->setToolTip(waveHint);
-    if (state_->tcp_wave_panel_) state_->tcp_wave_panel_->setFpgaMode(fpgaRelay);
+    if (state_->tcp_wave_panel_ && !state_->session_replay_) state_->tcp_wave_panel_->setFpgaMode(fpgaRelay);
     syncFpgaDeviceConfigUi();
 }
 
@@ -5194,7 +5226,7 @@ void MainWindow::setupConfigPanel()
     };
     createTelemetrySection(state_->data_telemetry_summary_layout_);
     createTelemetrySection(state_->data_telemetry_link_summary_layout_);
-    createTelemetrySection(state_->data_telemetry_device_summary_layout_);
+    state_->data_telemetry_link_summary_layout_->parent()->installEventFilter(this);
     state_->data_telemetry_summary_card_->setVisible(true);
 
     auto *homeBodyWidget = new QWidget(state_->config_group_);
@@ -5234,7 +5266,7 @@ void MainWindow::setupConfigPanel()
     }
 
     auto createHomeDeviceCapsule = [](QWidget *parent) {
-        auto *label = new QLabel(parent);
+        auto *label = new HomeDeviceStatusCapsule(parent);
         label->setObjectName(QStringLiteral("homeDeviceStatusCapsule"));
         label->setAlignment(Qt::AlignCenter);
         label->setTextFormat(Qt::PlainText);

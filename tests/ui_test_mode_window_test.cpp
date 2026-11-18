@@ -1,6 +1,11 @@
 #include "test_settings_sandbox.h"
 #include "FpgaDeviceController.h"
 #include "ground/main/MainWindow.h"
+#include "ground/main/UiTestReplayWindow.h"
+#include <QSlider>
+#include <QElapsedTimer>
+#include <QFile>
+#include <QThread>
 #include "ground/main/RecordingStatusView.h"
 #include "ground/devices/RemoteSkyController.h"
 #include "ground/main/UiLogModel.h"
@@ -961,6 +966,108 @@ int main(int argc, char **argv)
     auto *window = new MainWindow();
     window->show();
     processEvents();
+
+    if (application.arguments().contains("--session-replay-only"))
+    {
+        auto *mode = window->findChild<QAction *>("uiTestModeAction");
+        mode->trigger();
+        auto *source = dynamic_cast<UiTestReplayWindow *>(window->findChild<QWidget *>("uiTestReplayWindow"));
+        require(source && source->isVisible() && source->isWindow(), "floating source selector is visible");
+        auto *pin = source->findChild<QToolButton *>("replayPin");
+        auto *loading = source->findChild<QProgressBar *>("replayLoading");
+        require(pin && loading && source->findChild<QWidget *>("customTitleBar"), "source uses the app title bar");
+        const auto position = source->pos();
+        pin->click();
+        require(source->windowFlags().testFlag(Qt::WindowStaysOnTopHint) && source->isVisible(), "pin makes source stay on top");
+        pin->click();
+        require(!source->windowFlags().testFlag(Qt::WindowStaysOnTopHint) && position == source->pos(), "unpin preserves position");
+        const auto write = [&](const QString& name, const QByteArray& bytes) {
+            QFile file(settingsDirectory.filePath(name));
+            require(file.open(QIODevice::WriteOnly) && file.write(bytes) == bytes.size(), "write replay fixture");
+        };
+        const auto makeSession = [&](const QString& name, int latitude) {
+            QDir dir(settingsDirectory.path());
+            require(dir.mkpath(name + "/sensors"), "create fixture package");
+            write(name + "/session.json", "{\"recording_origin\":\"ground\"}");
+            write(name + "/sensors/sensor_summary.csv", "record_timestamp_us,epsilon_valid,nav_lat_deg,nav_lon_deg,nav_height_m\n1000000,1,"
+                + QByteArray::number(latitude) + ",120,7\n1200000,1," + QByteArray::number(latitude + 1) + ",120,8\n");
+            require(dir.mkpath(name + "/raw"), "create waveform directory");
+            namespace Raw = VaporView::SessionRawDat;
+            QFile wave(dir.filePath(name + "/raw/waveform.dat"));
+            require(wave.open(QIODevice::WriteOnly) && Raw::writeFileHeader(wave, Raw::kSourceWaveform),
+                    "write waveform header");
+            for (int i = 0; i < 2; ++i) {
+                const float value = float(latitude + i);
+                const QByteArray samples(reinterpret_cast<const char*>(&value), sizeof(value));
+                QByteArray payload;
+                require(Raw::encodeWaveformPayload({}, samples, &payload), "encode test waveform");
+                Raw::RawRecordHeader header;
+                header.hostTimestampUs = 1000000;
+                header.sourceId = Raw::kSourceWaveform;
+                header.recordType = Raw::kRecordTypeWaveformPayload;
+                header.flags = Raw::kWaveformCombinedPayloadFlag |
+                    VaporView::tcpFloatEncodingToRawDatFlags(VaporView::TcpFloatEncoding::LittleEndian);
+                header.sequence = i;
+                header.payloadSize = quint32(payload.size());
+                require(Raw::writeRecord(wave, header, payload), "write coincident waveform frames");
+            }
+            return settingsDirectory.filePath(name);
+        };
+        auto *slider = source->findChild<QSlider *>();
+        auto *play = source->findChild<QPushButton *>("replayPlay");
+        auto *navigation = window->findChild<VaporView::Ground::Navigation::CombinationNavigationPage *>();
+        auto *status = dynamic_cast<VaporView::Ground::Navigation::NavigationStatusPanel *>(
+            navigation->findChild<QWidget *>("navigationStatusPanel"));
+        const auto waitForLatitude = [&](int latitude) {
+            QElapsedTimer timeout;
+            timeout.start();
+            do {
+                processEvents();
+                navigation->refreshStatus();
+                if (status->snapshot().latitudeDeg == latitude) return true;
+                QThread::msleep(5);
+            } while (timeout.elapsed() < 8000);
+            return false;
+        };
+        require(slider && play && status && !slider->isEnabled(), "initial source uses simulated data");
+        const auto first = makeSession("one", 30);
+        const auto second = makeSession("two", 40);
+        QVector<float> delivered;
+        QObject::connect(window->findChild<TcpWavePanel *>(), &TcpWavePanel::normalizedSecondHarmonicFrameReady,
+            source, [&](quint64, const QVector<float>& samples) { delivered += samples; });
+        source->loadSession(first);
+        require(loading->isVisible() && loading->value() == 0, "folder load shows progress immediately");
+        require(waitForLatitude(31) && slider->value() == slider->maximum(), "session runs through final sample");
+        require(!loading->isVisible(), "load completion hides loading progress");
+        const auto *choose = source->findChild<QPushButton *>("replayChoose");
+        require(choose && choose->isVisible() && choose->mapTo(source, QPoint()).y() + choose->height() <=
+                slider->mapTo(source, QPoint()).y(), "source controls are laid out above the playback timeline");
+        require(delivered == QVector<float>{30, 31}, "both waveform frames at the same timestamp reach the wave panel");
+        slider->setValue(0);
+        require(waitForLatitude(30), "backward seek restores recorded position");
+        play->click();
+        source->loadSession(second);
+        require(waitForLatitude(41), "replacing a playing session delivers the new file");
+        source->loadSession(settingsDirectory.filePath("invalid.json"));
+        auto *sourceLabel = source->findChild<QLabel *>("replaySource");
+        QElapsedTimer errorTimeout;
+        errorTimeout.start();
+        while (!sourceLabel->text().contains("invalid.json") && errorTimeout.elapsed() < 5000) {
+            processEvents();
+            QThread::msleep(5);
+        }
+        require(sourceLabel->text().contains("invalid.json") && waitForLatitude(41),
+                "bad selection reports the error and preserves the previous reading");
+        source->findChild<QPushButton *>("replaySimulate")->click();
+        require(!slider->isEnabled(), "simulation clears playback controls");
+        source->loadSession(first);
+        source->close();
+        processEvents();
+        require(!mode->isChecked() && !window->findChild<QWidget *>("uiTestReplayWindow"), "exit destroys popup during load");
+        processEvents();
+        delete window;
+        return 0;
+    }
 
     if (application.arguments().contains(QStringLiteral("--navigation-coverage-only")))
     {

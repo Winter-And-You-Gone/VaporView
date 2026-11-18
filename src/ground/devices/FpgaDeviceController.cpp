@@ -1052,13 +1052,18 @@ void FpgaDeviceController::configureTec103(bool enable)
             fail(QStringLiteral("TEC103 所需的 LC0/LC1 GPIO UART 桥版本不匹配。"));return;
         }
         if(enable)for(quint32 base:{0x6800u,0x6900u}) {
-            if((registers_.value(base+8)&8) || registers_.value(base+0x20) || registers_.value(base+0x24)) {
-                fail(QStringLiteral("GPIO UART 仍有未完成收发或未读取字节；未清空数据，请先完成当前事务。"));return;
+            if((registers_.value(base+8)&8) || registers_.value(base+0x20)) {
+                fail(QStringLiteral("GPIO UART 仍在收发，连接已停止，请等待当前事务完成。"));return;
             }
         }
         for(quint32 base:{0x6800u,0x6900u}) {
+            if (enable && registers_.value(base+0x24)) {
+                report(QStringLiteral("LC%1 重新连接：空闲接收队列残留 %2 字节，将在停用 UART 时清除并重新识别设备。")
+                    .arg(base==0x6800 ? 0 : 1).arg(registers_.value(base+0x24)), LogLevel::Warning);
+            }
             write(base+4,0);verify(base+4,0);waitFor(base+8,9,0);
             if(enable) {
+                verify(base+0x24,0);
                 write(base+0x10,38400);verify(base+0x10,38400);
                 write(base+0x14,0x108);verify(base+0x14,0x108);
             }
@@ -1259,7 +1264,19 @@ void FpgaDeviceController::connectSensor(const QJsonObject& request)
     const auto source=quint16(request.value("source").toInt());
     if(source==0x4a) {configureTec103(true);return;}
     if (!request.contains("baud") && !request.contains("poll_ms") && !request.contains("parameters") && configuration_.sensorParameters.value(source).isEmpty()) {
-        setSensorEnabled(quint16(request.value("source").toInt()),true);return;
+        if (source == 0x43 && (registers_.value(0x6304) & 1)) {
+            // An already running BMP390 only publishes its factory coefficients at startup.
+            // Preserve the active address and configuration while requesting a fresh calibration frame.
+            if (!ready_ || !begin(QStringLiteral("重新获取 BMP390 校准系数"))) return;
+            trackConnection(source);
+            Step stop; stop.kind=Kind::Sensor; stop.address=1; stop.source=source; stop.expected=0;
+            steps_.push_back(stop); verify(0x6304,0); waitFor(0x6308,9,0);
+            Step start=stop; start.expected=1;
+            steps_.push_back(start); verify(0x6304,1);
+            Step confirm; confirm.kind=Kind::ConfirmConnection; confirm.source=source;
+            steps_.push_back(confirm); readAll(); advance(); return;
+        }
+        setSensorEnabled(source,true);return;
     }
     auto settings=request;settings["op"]="sensor_config";settings.remove("enabled");
     if(!settings.contains("parameters") && !configuration_.sensorParameters.value(source).isEmpty())settings["parameters"]=configuration_.sensorParameters.value(source);

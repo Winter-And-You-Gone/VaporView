@@ -418,11 +418,15 @@ void UiTestDataModel::applyTemperatureCommand(
     }
 }
 
+bool UiTestDataModel::dataStalled(qint64 elapsedMs) const
+{
+    return scenario_ == UiTestScenario::DataStalled && elapsedMs - scenario_started_ms_ >= 3000;
+}
+
 UiTestSnapshot UiTestDataModel::snapshot(qint64 elapsedMs) const
 {
     UiTestSnapshot result;
-    const bool stalled = scenario_ == UiTestScenario::DataStalled &&
-        elapsedMs - scenario_started_ms_ >= 3000;
+    const bool stalled = dataStalled(elapsedMs);
     const qint64 sampleElapsedMs = stalled ? scenario_started_ms_ + 3000 : elapsedMs;
     const qint64 nonNegativeElapsedMs = std::max<qint64>(0, sampleElapsedMs);
     const double seconds = std::max<qint64>(0, sampleElapsedMs) / 1000.0;

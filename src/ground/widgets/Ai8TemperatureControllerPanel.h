@@ -39,7 +39,8 @@ public:
     QString currentOutputStatusText() const;
     Ai8TemperatureControllerProtocol::PageData currentPageData() const;
     void applyPageData(const Ai8TemperatureControllerProtocol::PageData& pageData);
-    void applyLiveData(const Ai8TemperatureControllerProtocol::LiveData& liveData);
+    void clearTemperatureHistory();
+    void applyLiveData(const Ai8TemperatureControllerProtocol::LiveData& liveData, double sampleTimeSeconds = -1);
 
 signals:
     void readPageRequested();

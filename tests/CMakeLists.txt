@@ -1047,6 +1047,7 @@ target_include_directories(ui_test_mode_window_test PRIVATE
 target_link_libraries(ui_test_mode_window_test PRIVATE vaporview_main_window Qt6::Network)
 add_dependencies(ui_test_mode_window_test VaporViewRuntimeResources)
 vaporview_add_test(NAME ui_test_mode_window_test COMMAND ui_test_mode_window_test)
+vaporview_add_test(NAME ui_test_session_replay_test COMMAND ui_test_mode_window_test --session-replay-only)
 vaporview_add_test(NAME ui_test_navigation_coverage_test
     COMMAND ui_test_mode_window_test --navigation-coverage-only
 )

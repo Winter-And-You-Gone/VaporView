@@ -1196,7 +1196,7 @@ public:
         }
         title_status_strip_->installEventFilter(this);
         setEnglish(false);
-        updateData(VaporView::TemperatureControllerData());
+        updateData(VaporView::TemperatureControllerData(), -1.0);
     }
 
     QWidget *titleStatusWidget() const override { return title_status_strip_; }
@@ -1219,7 +1219,16 @@ public:
         refreshChannelUi();
     }
 
-    void updateData(const VaporView::TemperatureControllerData& sample)
+    void clearTemperatureHistory() override
+    {
+        for (auto& history : measured_temperature_history_) history.clear();
+        for (auto& history : measured_temperature_time_history_) history.clear();
+        target_temperature_by_channel_.fill(std::numeric_limits<double>::quiet_NaN());
+        last_temperature_timestamp_ = {};
+        temperature_history_origin_valid_ = false;
+    }
+
+    void updateData(const VaporView::TemperatureControllerData& sample, double recordedSeconds) override
     {
         latest_data_ = sample;
         if (sample.valid)
@@ -1242,7 +1251,7 @@ public:
                     measured_temperature_time_history_[i].clear();
                 }
             }
-            const double sampleTimeSeconds = temperature_history_origin_local_seconds_ +
+            const double sampleTimeSeconds = recordedSeconds >= 0 ? recordedSeconds : temperature_history_origin_local_seconds_ +
                 std::chrono::duration<double>(sampleTimestamp - temperature_history_origin_).count();
             for (int i = 0; i < static_cast<int>(measured_temperature_history_.size()); ++i)
             {
@@ -3832,7 +3841,15 @@ void TemperatureControllerPanel::updateChannelData(int index, const VaporView::T
     }
 }
 
-void TemperatureControllerPanel::updateData(const VaporView::TemperatureControllerData& controllerData)
+void TemperatureControllerPanel::clearTemperatureHistory()
+{
+    for (auto& history : measured_temperature_history_) history.clear();
+    for (auto& history : measured_temperature_time_history_) history.clear();
+    target_temperature_by_channel_.fill(std::numeric_limits<double>::quiet_NaN());
+    last_temperature_timestamp_ = {};
+}
+
+void TemperatureControllerPanel::updateData(const VaporView::TemperatureControllerData& controllerData, double recordedSeconds)
 {
     internal_temperature_label_->setText(fixedDecimalWithUnit(controllerData.valid ? controllerData.internal_temperature_c : std::numeric_limits<double>::quiet_NaN(), 2, 8, QStringLiteral("°C")));
     error_code_label_->setText(controllerData.valid ? QStringLiteral("0x%1").arg(controllerData.error_code, 4, 16, QLatin1Char('0')).toUpper() : QStringLiteral("---"));
@@ -3913,7 +3930,7 @@ void TemperatureControllerPanel::updateData(const VaporView::TemperatureControll
     }
     if (controllerData.valid)
     {
-        const double sampleTimeSeconds = localClockSeconds();
+        const double sampleTimeSeconds = recordedSeconds >= 0 ? recordedSeconds : localClockSeconds();
         // Keep acquisition history independent of the main window refresh rate.
         const bool appendSample = controllerData.timestamp == std::chrono::steady_clock::time_point{} ||
             controllerData.timestamp != last_temperature_timestamp_;

@@ -525,11 +525,24 @@ bool MainWindow::updateHomeMotionDeviceControls(qint64 nowMs, bool animationOnly
     const QString stateKey = connected ? QStringLiteral("connected")
         : motionState.busy ? QStringLiteral("connecting")
         : ready ? QStringLiteral("disconnected") : QStringLiteral("disabled");
-    const QString statusText = connected
+    QString statusText = connected
         ? (state_->is_english_ ? QStringLiteral("Connected") : QStringLiteral("已连接"))
         : motionState.busy ? (state_->is_english_ ? QStringLiteral("Connecting") : QStringLiteral("连接中"))
         : ready ? (state_->is_english_ ? QStringLiteral("Ready to connect") : QStringLiteral("可以连接"))
         : (state_->is_english_ ? QStringLiteral("Not ready") : QStringLiteral("未就绪"));
+    auto &connectedSinceMs = state_->home_motion_connected_since_ms_;
+    bool warning = false;
+    if (!connected)
+        connectedSinceMs = 0;
+    else
+    {
+        if (connectedSinceMs == 0)
+            connectedSinceMs = nowMs;
+        warning = !motionState.valid[0] && nowMs - connectedSinceMs >= 3000;
+        if (warning)
+            statusText = state_->is_english_ ? QStringLiteral("Connected; no valid angle feedback")
+                                             : QStringLiteral("已连接；未收到有效角度反馈");
+    }
     if (auto *label = state_->home_motion_status_lbl_)
     {
         setLabelTextIfChanged(label, state_->is_english_ ? QStringLiteral("EM-FWC3 Motor") : QStringLiteral("EM-FWC3电机"));
@@ -537,8 +550,15 @@ bool MainWindow::updateHomeMotionDeviceControls(qint64 nowMs, bool animationOnly
             ? QStringLiteral("EM-FWC3 motor controller status: %1 (local USB direct)").arg(statusText)
             : QStringLiteral("EM-FWC3 电机控制器状态：%1（本机 USB 直连）").arg(statusText));
         bool changed = setDynamicPropertyIfChanged(label, "connected", connected);
-        changed |= setDynamicPropertyIfChanged(label, "state", stateKey);
-        if (changed) { label->style()->unpolish(label); label->style()->polish(label); }
+        changed |= setDynamicPropertyIfChanged(label, "state", warning ? QStringLiteral("warning") : stateKey);
+        if (label->accessibleDescription() != label->toolTip())
+            label->setAccessibleDescription(label->toolTip());
+        if (changed)
+        {
+            label->style()->unpolish(label);
+            label->style()->polish(label);
+            label->update();
+        }
     }
     const QString actionText = spinnerActive
         ? (state_->home_motion_disconnecting_
@@ -579,6 +599,155 @@ bool MainWindow::updateHomeMotionDeviceControls(qint64 nowMs, bool animationOnly
                 combo->fontMetrics().horizontalAdvance(combo->currentText()) + scalePixels(kTemperatureTitlePortChromeWidth),
                 scalePixels(kTemperatureTitlePortMinimumWidth), scalePixels(kTemperatureTitlePortMaximumWidth)));
     return spinnerActive;
+}
+
+bool MainWindow::localDeviceDataFresh(VaporView::SkyDeviceId device, qint64 timeoutMs) const
+{
+    const auto fresh = [timeoutMs](const auto &sample) {
+        const auto age = std::chrono::steady_clock::now() - sample.timestamp;
+        return sample.valid && sample.timestamp != std::chrono::steady_clock::time_point{} &&
+            age >= std::chrono::steady_clock::duration::zero() &&
+            age < std::chrono::milliseconds(timeoutMs);
+    };
+    switch (device)
+    {
+    case VaporView::SkyDeviceId::Epsilon: return fresh(state_->current_epsilon_);
+    case VaporView::SkyDeviceId::Ptb: return fresh(state_->current_ptb_);
+    case VaporView::SkyDeviceId::Hc2a: return fresh(state_->current_hc2a_);
+    case VaporView::SkyDeviceId::Lidar: return fresh(state_->current_lidar_);
+    case VaporView::SkyDeviceId::TemperatureController: return fresh(state_->current_temperature_controller_);
+    case VaporView::SkyDeviceId::Ai8TemperatureController: {
+        const auto collectors = snapshotCollectors();
+        return collectors.ai8_temperature_controller && collectors.ai8_temperature_controller->getLatestData().valid;
+    }
+    case VaporView::SkyDeviceId::Bmp390:
+    case VaporView::SkyDeviceId::Sht45: {
+        const quint16 source = device == VaporView::SkyDeviceId::Bmp390 ? 0x43 : 0x44;
+        const auto age = std::chrono::steady_clock::now() - state_->internal_environment_times_.value(source);
+        return state_->internal_environment_.value(source).validity.measurement &&
+            age >= std::chrono::steady_clock::duration::zero() && age < std::chrono::milliseconds(timeoutMs);
+    }
+    case VaporView::SkyDeviceId::WaveTcp:
+        return state_->tcp_wave_panel_ && state_->tcp_wave_panel_->hasRecentData(timeoutMs);
+    default: return false;
+    }
+}
+
+QString MainWindow::homeDeviceMeasurementWarning(VaporView::SkyDeviceId device, qint64 nowMs)
+{
+    using VaporView::SkyDeviceId;
+    auto &history = state_->home_device_data_state_[device];
+    if (history.connectedSinceMs == 0)
+        history.connectedSinceMs = nowMs;
+
+    const bool english = state_->is_english_;
+    const bool fpga = isFpgaRelayPath();
+    const bool remote = isRemoteSkyMode() && !isUiTestMode();
+    const bool internal = device == SkyDeviceId::Bmp390 || device == SkyDeviceId::Sht45;
+    qint64 timeoutMs = internal ? 4000 : 3000;
+    const quint16 source = fpga ? homeFpgaSensorSource(device) : 0;
+    if (fpga)
+    {
+        quint32 pollAddress = 0;
+        switch (source)
+        {
+        case 0x40: pollAddress = 0x6018; break;
+        case 0x41: pollAddress = 0x611c; break;
+        case 0x43: pollAddress = 0x6314; break;
+        case 0x44: pollAddress = 0x6414; break;
+        case 0x46: pollAddress = 0x662c; break;
+        }
+        if (pollAddress)
+            timeoutMs = qMax(timeoutMs, qint64(homeFpgaRegisters().value(pollAddress)) * 3);
+    }
+
+    const auto fresh = [timeoutMs](std::chrono::steady_clock::time_point timestamp) {
+        const auto age = std::chrono::steady_clock::now() - timestamp;
+        return timestamp != std::chrono::steady_clock::time_point{} && age >= std::chrono::steady_clock::duration::zero() &&
+            age < std::chrono::milliseconds(timeoutMs);
+    };
+    bool valid = false;
+    QString fault;
+    if (isUiTestMode() && !fpga)
+    {
+        valid = !state_->ui_test_model_->dataStalled(nowMs - state_->ui_test_started_ms_);
+    }
+    else if (remote)
+    {
+        valid = remoteDeviceDataValid(device, timeoutMs);
+        if (fpga && std::chrono::steady_clock::now() - state_->fpga_session_.statusTime >= std::chrono::seconds(4))
+            valid = false;
+        if (!valid && nowMs - history.connectedSinceMs >= timeoutMs)
+            fault = remoteDeviceInvalidText(device, timeoutMs);
+        if (valid && device == SkyDeviceId::Ai8TemperatureController && state_->remote_ai8_fault_metadata_)
+            fault = english ? QStringLiteral("Temperature controller reported invalid readings")
+                            : QStringLiteral("温控仪上报的测量异常");
+    }
+    else if (fpga)
+    {
+        if (device == SkyDeviceId::WaveTcp)
+        {
+            valid = std::any_of(state_->fpga_wave_times_.cbegin(), state_->fpga_wave_times_.cend(), fresh);
+        }
+        else
+        {
+            const auto timestamp = device == SkyDeviceId::TemperatureController
+                ? state_->current_temperature_controller_.timestamp : state_->fpga_sensor_times_.value(source);
+            if (fresh(timestamp))
+            {
+                valid = state_->fpga_sources_.contains(source);
+                if (!valid)
+                    fault = english ? QStringLiteral("FPGA reported an invalid measurement")
+                                    : QStringLiteral("FPGA 上报的测量无效");
+            }
+        }
+    }
+    else
+    {
+        valid = localDeviceDataFresh(device, timeoutMs);
+        const auto sampleFault = [fresh](const auto &sample) {
+            return !sample.valid && fresh(sample.timestamp)
+                ? QString::fromStdString(sample.error_message) : QString();
+        };
+        switch (device)
+        {
+        case SkyDeviceId::Ptb: fault = sampleFault(state_->current_ptb_); break;
+        case SkyDeviceId::Hc2a: fault = sampleFault(state_->current_hc2a_); break;
+        case SkyDeviceId::Lidar: fault = sampleFault(state_->current_lidar_); break;
+        case SkyDeviceId::TemperatureController: fault = sampleFault(state_->current_temperature_controller_); break;
+        case SkyDeviceId::Ai8TemperatureController:
+        {
+            const qint64 timestamp = state_->local_ai8_sample_ms_;
+            if (timestamp <= 0 || nowMs - timestamp >= timeoutMs)
+                valid = false;
+            else if (!valid)
+            {
+                const auto collectors = snapshotCollectors();
+                if (collectors.ai8_temperature_controller)
+                    fault = collectors.ai8_temperature_controller->getLatestData().errorMessage;
+            }
+            break;
+        }
+        default: break;
+        }
+    }
+    if (valid)
+    {
+        history.receivedData = true;
+        const auto &rd105 = state_->current_temperature_controller_;
+        if (device == SkyDeviceId::TemperatureController && rd105.error_code != 0)
+        {
+            const QString code = QString::number(rd105.error_code, 16).rightJustified(4, QLatin1Char('0')).toUpper();
+            fault = (english ? QStringLiteral("Controller fault 0x%1") : QStringLiteral("温控仪故障 0x%1")).arg(code);
+        }
+    }
+    if (!fault.isEmpty())
+        return fault;
+    if (valid || nowMs - history.connectedSinceMs < timeoutMs)
+        return {};
+    if (history.receivedData)
+        return english ? QStringLiteral("Measurement data timed out") : QStringLiteral("测量数据超时");
+    return english ? QStringLiteral("No valid measurement received") : QStringLiteral("尚未收到有效测量数据");
 }
 
 void MainWindow::updateHomeDeviceStatusCapsules()
@@ -631,26 +800,33 @@ void MainWindow::updateHomeDeviceStatusCapsules()
                 : state == VaporView::DeviceState::Disabled
                     ? (state_->is_english_ ? QStringLiteral("Not ready") : QStringLiteral("未就绪"))
                     : (state_->is_english_ ? QStringLiteral("Ready to connect") : QStringLiteral("可以连接"));
-        if (isFpgaRelayPath() && connected) {
-            const bool valid = isRemoteSkyMode()&&!isUiTestMode() ? remoteDeviceDataValid(device, 3000)
-                : state_->fpga_sources_.contains(homeFpgaSensorSource(device));
-            stateText = device == VaporView::SkyDeviceId::WaveTcp
-                ? (state_->is_english_ ? QStringLiteral("Acquisition enabled") : QStringLiteral("采集已启用"))
-                : state_->is_english_ ? (valid ? QStringLiteral("Channel enabled; measurement valid") : QStringLiteral("Channel enabled; no valid measurement"))
-                                     : (valid ? QStringLiteral("通道已启用；测量有效") : QStringLiteral("通道已启用；尚无有效测量"));
+        QString warning;
+        if (connected)
+        {
+            warning = homeDeviceMeasurementWarning(device, nowMs);
+            if (!warning.isEmpty())
+                stateText += (state_->is_english_ ? QStringLiteral("; ") : QStringLiteral("；")) + warning;
+        }
+        else
+        {
+            state_->home_device_data_state_.remove(device);
         }
         const QString deviceName = homeDeviceDisplayName(device, state_->is_english_);
         setLabelTextIfChanged(label, deviceName);
         bool labelStyleChanged = false;
         labelStyleChanged |= setDynamicPropertyIfChanged(label, "connected", connected);
-        labelStyleChanged |= setDynamicPropertyIfChanged(label, "state", stateKey);
-        setWidgetToolTipIfChanged(label, state_->is_english_
-            ? QStringLiteral("%1 status: %2").arg(deviceName, stateText)
-            : QStringLiteral("%1状态：%2").arg(deviceName, stateText));
+        labelStyleChanged |= setDynamicPropertyIfChanged(label, "state",
+            warning.isEmpty() ? stateKey : QStringLiteral("warning"));
+        const QString tooltip = state_->is_english_ ? QStringLiteral("%1 status: %2").arg(deviceName, stateText)
+                                                    : QStringLiteral("%1状态：%2").arg(deviceName, stateText);
+        setWidgetToolTipIfChanged(label, tooltip.toHtmlEscaped());
+        if (label->accessibleDescription() != tooltip)
+            label->setAccessibleDescription(tooltip);
         if (labelStyleChanged)
         {
             label->style()->unpolish(label);
             label->style()->polish(label);
+            label->update();
         }
 
         if (!button)
@@ -2208,6 +2384,7 @@ void MainWindow::onAi8TemperatureControllerDataReady()
     }
     if (available)
     {
+        state_->local_ai8_sample_ms_ = QDateTime::currentMSecsSinceEpoch();
         const auto liveData = collectors.ai8_temperature_controller->getLatestData();
         if (state_->ai8_temperature_controller_panel_)
         {

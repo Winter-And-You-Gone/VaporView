@@ -361,18 +361,22 @@ void requirePillsUseWidestColumnWidth(QFrame *subCard, const char *message)
         for (int i = 0; i < row.size(); ++i)
             widths[i] = std::max(widths[i], row[i]->property("summaryNaturalWidth").toInt());
     }
+    QVector<int> rightEdges(widths.size(), -1);
     for (const auto& row : rows)
         for (int i = 0; i < row.size(); ++i) {
             require(std::abs(row[i]->width() - widths[i]) <= 2, message);
             auto *name = row[i]->findChild<QLabel *>("homeTelemetrySummaryNameLabel");
             auto *value = row[i]->findChild<QLabel *>("homeTelemetrySummaryValueLabel");
             require(name && value && (name->alignment() & Qt::AlignLeft) &&
-                (value->alignment() & Qt::AlignLeft), "capsule name/value alignment");
+                (value->alignment() & Qt::AlignRight), "capsule name/value alignment");
             auto *layout = row[i]->layout();
             auto *spacer = layout && layout->count() > 1 ? layout->itemAt(1)->spacerItem() : nullptr;
             require(spacer && spacer->sizeHint().width() == name->fontMetrics().horizontalAdvance(QStringLiteral("汉")) &&
-                std::abs(value->x() - name->geometry().right() - 1 - spacer->sizeHint().width()) <= 1,
-                "capsule reserves one character between name and value");
+                value->x() - name->geometry().right() - 1 >= spacer->sizeHint().width(),
+                "capsule reserves at least one character between name and value");
+            const int right = value->mapTo(subCard, QPoint(value->width(), 0)).x();
+            if (rightEdges[i] < 0) rightEdges[i] = right;
+            require(std::abs(rightEdges[i] - right) <= 2, "capsule values align to the right within each column");
         }
 }
 
@@ -527,6 +531,35 @@ int main(int argc, char **argv)
     require(linkStatusCard != nullptr, "link-status card can be identified");
     require(serialCard != nullptr, "serial configuration card can be identified");
     require(motionCard != nullptr, "motion control card can be identified");
+    if (app.arguments().contains(QStringLiteral("--motion-width-only")))
+    {
+        const int minimumWidth = motionCard->minimumWidth();
+        int previousWidth = 0;
+        for (const int width : {2000, 2400}) {
+            window.resize(width, 760);
+            VaporViewTest::processEventsFor(180);
+            activateLayouts(&window);
+            VaporViewTest::processEventsFor(100);
+            const QRect serialBounds = rectInPage(serialCard, scrollArea->widget());
+            const QRect motionBounds = rectInPage(motionCard, scrollArea->widget());
+            const auto margins = scrollArea->widget()->layout()->contentsMargins();
+            require(motionBounds.left() > serialBounds.right(), "wide layout places motion beside devices");
+            require(std::abs(motionBounds.right() - (scrollArea->widget()->width() - margins.right() - 1)) <= 2,
+                    "motion card fills the remaining width");
+            require(motionCard->minimumWidth() == minimumWidth, "motion card minimum width is unchanged");
+            require(previousWidth == 0 || motionCard->width() > previousWidth, "motion card grows with the page");
+            previousWidth = motionCard->width();
+        }
+        window.resize(1200, 760);
+        VaporViewTest::processEventsFor(180);
+        activateLayouts(&window);
+        VaporViewTest::processEventsFor(100);
+        require(rectInPage(motionCard, scrollArea->widget()).top() > rectInPage(serialCard, scrollArea->widget()).bottom(),
+                "narrow layout stacks motion below devices");
+        require(motionCard->minimumWidth() == minimumWidth, "narrow layout preserves motion minimum width");
+        VaporView::setSettingsWritesSuspended(false);
+        return 0;
+    }
     if (app.arguments().contains(QStringLiteral("--summary-spacing-only")))
     {
         for (const int width : {1280, 2400, 800}) {

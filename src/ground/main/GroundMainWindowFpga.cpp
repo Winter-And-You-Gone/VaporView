@@ -583,6 +583,16 @@ VaporView::DeviceState MainWindow::homeFpgaDeviceState(VaporView::SkyDeviceId de
     return registers.contains(0x4004) ? DeviceState::Disconnected : DeviceState::Disabled;
 }
 
+bool MainWindow::homeFpgaNeedsConnect(VaporView::SkyDeviceId device)
+{
+    const auto source = homeFpgaSensorSource(device);
+    if (homeFpgaDeviceState(device) != VaporView::DeviceState::Connected || !fpgaSensorDrafts().value(source).isEmpty())
+        return true;
+    if (device != VaporView::SkyDeviceId::Ptb && device != VaporView::SkyDeviceId::Bmp390) return false;
+    return isRemoteSkyMode() && !isUiTestMode() ? !remoteDeviceDataValid(device, 4000)
+                                               : !state_->fpga_sources_.contains(source);
+}
+
 void MainWindow::connectNextHomeFpgaDevice()
 {
     if (!isFpgaRelayPath() || state_->fpga_home_connect_queue_.isEmpty()
@@ -594,11 +604,23 @@ void MainWindow::connectNextHomeFpgaDevice()
         if (!homeFpgaDeviceSelected(device)) continue;
         if(device==VaporView::SkyDeviceId::TemperatureController && !homeFpgaRegisters().isEmpty()
             && !tec103BridgesAvailable(homeFpgaRegisters()))continue;
-        if (homeFpgaDeviceState(device) == VaporView::DeviceState::Connected
-            && fpgaSensorDrafts().value(homeFpgaSensorSource(device)).isEmpty()) continue;
+        if (!homeFpgaNeedsConnect(device)) continue;
         setHomeFpgaDeviceEnabled(device,true);
         return;
     }
+}
+
+void MainWindow::handleHomeFpgaFailure(bool transportReady)
+{
+    const bool continueBatch = transportReady && !state_->fpga_home_connect_queue_.isEmpty();
+    if (!continueBatch) {
+        cancelFpgaActions();
+        state_->fpga_home_connect_queue_.clear();
+    }
+    state_->fpga_home_action_device_ = VaporView::SkyDeviceId::All;
+    state_->fpga_home_action_started_ = false;
+    state_->fpga_home_raw_start_pending_ = false;
+    if (continueBatch) connectNextHomeFpgaDevice();
 }
 
 void MainWindow::setHomeFpgaDeviceEnabled(VaporView::SkyDeviceId device, bool enabled)
@@ -657,8 +679,7 @@ void MainWindow::executeHomeFpgaDeviceAction(VaporView::SkyDeviceId device, bool
                     window->state_->fpga_home_action_device_ = SkyDeviceId::All;
                     if (window->isFpgaRelayPath() && (!window->isRemoteSkyMode() || window->isUiTestMode())
                         && window->homeFpgaDeviceActionState(device) != VaporView::DeviceState::Disabled
-                        && (window->homeFpgaDeviceActionState(device) != VaporView::DeviceState::Connected
-                            || !window->fpgaSensorDrafts().value(window->homeFpgaSensorSource(device)).isEmpty()))
+                        && window->homeFpgaNeedsConnect(device))
                         window->setHomeFpgaDeviceEnabled(device,true);
                     else {
                         window->connectNextHomeFpgaDevice();
@@ -729,11 +750,9 @@ void MainWindow::setupFpgaControlPage()
     connect(page,&FpgaControlPage::simulationSensorConfigurationApplied,this,[this](quint16 source,const QMap<quint32,quint32>& values) {
         if(isUiTestMode())confirmFpgaSensorDraft(source,values);
     });
-    connect(page,&FpgaControlPage::simulationOperationFailed,this,[this] {
-        cancelFpgaActions();
-        state_->fpga_home_connect_queue_.clear();
-        state_->fpga_home_action_device_=VaporView::SkyDeviceId::All;state_->fpga_home_action_started_=false;
-        state_->fpga_home_raw_start_pending_=false;updateHomeDeviceStatusCapsules();
+    connect(page,&FpgaControlPage::simulationOperationFailed,this,[this](bool transportReady) {
+        handleHomeFpgaFailure(transportReady);
+        updateHomeDeviceStatusCapsules();
     });
     connect(page,&FpgaControlPage::simulationMeasurementsUpdated,this,&MainWindow::receiveFpgaMeasurements);
     connect(page,&FpgaControlPage::simulationTemperatureDataUpdated,this,[this](const VaporView::TemperatureControllerData& data) {
@@ -947,9 +966,7 @@ void MainWindow::setupFpgaControlPage()
         auto request=enabled?fpgaSensorConnectRequest(source):QJsonObject{};
         request["op"]="sensor";request["source"]=source;request["enabled"]=enabled;
         if(!VaporView::FpgaRemote::validateControl(request)) {
-            state_->fpga_home_connect_queue_.clear();
-            state_->fpga_home_action_device_=VaporView::SkyDeviceId::All;
-            state_->fpga_home_action_started_=false;
+            handleHomeFpgaFailure(true);
             state_->fpga_page_->appendDiagnostic(state_->is_english_?QStringLiteral("Invalid staged sensor settings; connection was not started.")
                 :QStringLiteral("暂存的波特率或频率无效，未启动设备连接。"));
             updateFpgaPageBackend();return;
@@ -1066,11 +1083,7 @@ void MainWindow::setupFpgaControlPage()
     },Qt::QueuedConnection);
     connect(controller, &Controller::logRecordGenerated, this, [this,page](const VaporView::LogRecord &record) {
         if (record.level>=VaporView::LogLevel::Error && !isRemoteSkyMode()) {
-            cancelFpgaActions();
-            state_->fpga_home_connect_queue_.clear();
-            state_->fpga_home_raw_start_pending_=false;
-            state_->fpga_home_action_device_=VaporView::SkyDeviceId::All;
-            state_->fpga_home_action_started_=false;
+            handleHomeFpgaFailure(record.fields.value("ready").toBool());
         }
         page->appendDiagnostic(record.message);
         VaporView::LogService::withCurrentInstance([&record](VaporView::LogService &service) { service.publish(record); });
@@ -1353,6 +1366,7 @@ void MainWindow::receiveFpgaMeasurements(const VaporView::FpgaSensor::AdaptedMea
     const bool valid = r.validity.structure && r.validity.crc && r.validity.deviceOnline && r.validity.measurement;
     if (valid) state_->fpga_sources_.insert(r.source); else state_->fpga_sources_.remove(r.source);
     const auto now = std::chrono::steady_clock::now();
+    state_->fpga_sensor_times_[r.source] = now;
     updateInternalEnvironment(r);
     if (r.kind == VaporView::FpgaSensor::SensorKind::Ptb210 && r.source == 0x40)
     {
@@ -1448,6 +1462,7 @@ void MainWindow::refreshFpgaTemperaturePanels()
 void MainWindow::updateFpgaPageBackend()
 {
     if (!state_->fpga_page_) return;
+    if (state_->session_replay_) return;
     // Keep the action/readback contract immediate; only the full editor refresh is deferred.
     for (auto device : {VaporView::SkyDeviceId::Epsilon, VaporView::SkyDeviceId::Ptb,
              VaporView::SkyDeviceId::Hc2a, VaporView::SkyDeviceId::Lidar,
@@ -1521,6 +1536,8 @@ void MainWindow::invalidateFpgaMeasurements()
     cancelFpgaActions();
     state_->fpga_home_raw_start_pending_ = false;
     state_->fpga_sensor_rates_.clear();state_->fpga_wave_times_.clear();
+    state_->fpga_sensor_times_.clear();
+    state_->home_device_data_state_.clear();
     { const std::lock_guard<std::mutex> lock(state_->fpga_snapshot_mutex_); state_->fpga_recording_snapshot_ = VaporView::Ground::Session::GroundSensorSnapshot{}; }
     state_->fpga_epsilon_status_fresh_=false;
     state_->fpga_position_valid_=false;
@@ -1569,7 +1586,7 @@ void MainWindow::refreshInternalEnvironment()
         const auto id=source==0x43?VaporView::SkyDeviceId::Bmp390:VaporView::SkyDeviceId::Sht45;
         return homeDeviceActionState(id)==VaporView::DeviceState::Connected;
     };
-    if(isUiTestMode()&&!isFpgaRelayPath()&&state_->ui_test_model_->scenario()!=VaporView::Ground::Devices::UiTestScenario::DataStalled) {
+    if(isUiTestMode()&&!state_->session_replay_&&!isFpgaRelayPath()&&state_->ui_test_model_->scenario()!=VaporView::Ground::Devices::UiTestScenario::DataStalled) {
         const double phase=(QDateTime::currentMSecsSinceEpoch()-state_->ui_test_started_ms_)/1000.0;
         for(quint16 source:{0x43,0x44})if(enabled(source)) {
             VaporView::FpgaSensor::Reading sample;sample.source=source;

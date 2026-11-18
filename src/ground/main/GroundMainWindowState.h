@@ -16,6 +16,8 @@
 #include <QSet>
 #include <atomic>
 
+#include "ground/navigation/NavigationStatusPanel.h"
+class UiTestReplayWindow;
 class FpgaControlPage;
 namespace VaporView::Ground::Calibration { class WaterCalibrationPage; class CalibrationService; class RealtimePeakBus; }
 namespace VaporView::Ground::Motion { class MotionControlPage; class HomeMotionPanel; }
@@ -428,7 +430,14 @@ struct MainWindowState
     QFrame *data_telemetry_summary_source_pill_;
     QVBoxLayout *data_telemetry_summary_layout_;
     QVBoxLayout *data_telemetry_link_summary_layout_;
-    QVBoxLayout *data_telemetry_device_summary_layout_;
+    struct HomeDeviceDataState {
+        qint64 connectedSinceMs = 0;
+        bool receivedData = false;
+    };
+    QHash<VaporView::SkyDeviceId, HomeDeviceDataState> home_device_data_state_;
+    qint64 home_motion_connected_since_ms_ = 0;
+    QMap<quint16, std::chrono::steady_clock::time_point> fpga_sensor_times_;
+    qint64 local_ai8_sample_ms_ = 0;
     QLabel *log_inline_title_lbl_;
     QLabel *epsilon_inline_title_lbl_;
     QLabel *gnss_inline_title_lbl_;
@@ -516,6 +525,9 @@ struct MainWindowState
     QString epsilon_reconfigure_progress_stage_;
     QElapsedTimer epsilon_reconfigure_progress_elapsed_;
     bool is_connected_;
+    UiTestReplayWindow *ui_test_source_window_ = nullptr;
+    bool session_replay_ = false;
+    VaporView::Ground::Navigation::NavigationStatusSnapshot replay_navigation_;
     bool ui_test_mode_enabled_;
     bool ui_test_epsilon_operation_pending_ = false;
     quint64 ui_test_epsilon_operation_generation_ = 0;

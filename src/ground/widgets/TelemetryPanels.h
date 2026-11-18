@@ -228,7 +228,8 @@ class TemperatureControllerPanel : public QWidget
 public:
     explicit TemperatureControllerPanel(QWidget *parent = nullptr);
     QWidget *titleStatusWidget() const;
-    void updateData(const VaporView::TemperatureControllerData& controllerData);
+    void clearTemperatureHistory();
+    void updateData(const VaporView::TemperatureControllerData& controllerData, double recordedSeconds = -1);
     void updateRate(double hz);
     void setEnglish(bool english);
     void setCommandStatus(const QString& text, bool error = false);
