@@ -9,6 +9,7 @@
 #include <functional>
 #include <memory>
 
+class QProgressBar;
 class QLabel;
 class QPushButton;
 class QSlider;
@@ -52,6 +53,7 @@ private:
     QLabel *source_, *time_, *detail_;
     QComboBox *streams_;
     QSlider *slider_;
+    QProgressBar *loading_;
     QTimer timer_;
     QElapsedTimer clock_;
     quint64 position_ = 0, anchor_ = 0;

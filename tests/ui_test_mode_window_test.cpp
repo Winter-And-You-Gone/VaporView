@@ -973,6 +973,14 @@ int main(int argc, char **argv)
         mode->trigger();
         auto *source = dynamic_cast<UiTestReplayWindow *>(window->findChild<QWidget *>("uiTestReplayWindow"));
         require(source && source->isVisible() && source->isWindow(), "floating source selector is visible");
+        auto *pin = source->findChild<QToolButton *>("replayPin");
+        auto *loading = source->findChild<QProgressBar *>("replayLoading");
+        require(pin && loading && source->findChild<QWidget *>("customTitleBar"), "source uses the app title bar");
+        const auto position = source->pos();
+        pin->click();
+        require(source->windowFlags().testFlag(Qt::WindowStaysOnTopHint) && source->isVisible(), "pin makes source stay on top");
+        pin->click();
+        require(!source->windowFlags().testFlag(Qt::WindowStaysOnTopHint) && position == source->pos(), "unpin preserves position");
         const auto write = [&](const QString& name, const QByteArray& bytes) {
             QFile file(settingsDirectory.filePath(name));
             require(file.open(QIODevice::WriteOnly) && file.write(bytes) == bytes.size(), "write replay fixture");
@@ -1003,7 +1011,7 @@ int main(int argc, char **argv)
                 header.payloadSize = quint32(payload.size());
                 require(Raw::writeRecord(wave, header, payload), "write coincident waveform frames");
             }
-            return settingsDirectory.filePath(name + "/session.json");
+            return settingsDirectory.filePath(name);
         };
         auto *slider = source->findChild<QSlider *>();
         auto *play = source->findChild<QPushButton *>("replayPlay");
@@ -1028,7 +1036,12 @@ int main(int argc, char **argv)
         QObject::connect(window->findChild<TcpWavePanel *>(), &TcpWavePanel::normalizedSecondHarmonicFrameReady,
             source, [&](quint64, const QVector<float>& samples) { delivered += samples; });
         source->loadSession(first);
+        require(loading->isVisible() && loading->value() == 0, "folder load shows progress immediately");
         require(waitForLatitude(31) && slider->value() == slider->maximum(), "session runs through final sample");
+        require(!loading->isVisible(), "load completion hides loading progress");
+        const auto *choose = source->findChild<QPushButton *>("replayChoose");
+        require(choose && choose->isVisible() && choose->mapTo(source, QPoint()).y() + choose->height() <=
+                slider->mapTo(source, QPoint()).y(), "source controls are laid out above the playback timeline");
         require(delivered == QVector<float>{30, 31}, "both waveform frames at the same timestamp reach the wave panel");
         slider->setValue(0);
         require(waitForLatitude(30), "backward seek restores recorded position");

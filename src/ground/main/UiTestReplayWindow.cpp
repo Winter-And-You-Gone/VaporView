@@ -1,4 +1,5 @@
 #include "ground/main/UiTestReplayWindow.h"
+#include "ground/widgets/CustomTitleBar.h"
 #include "ground/session/SessionCsv.h"
 #include "ground/session/SessionLoader.h"
 #include "ground/session/SessionWaveformRepository.h"
@@ -17,6 +18,10 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QFrame>
+#include <QProgressBar>
+#include <QPromise>
+#include <QToolButton>
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QVBoxLayout>
@@ -61,7 +66,9 @@ struct UiTestReplayWindow::Index
         tracks.append(std::move(track));
     }
 
-    void csv(Stream type, const QString& path, const std::atomic_bool& cancelled)
+    using Progress = SessionWaveformRepository::ProgressCallback;
+
+    void csv(Stream type, const QString& path, const std::atomic_bool& cancelled, const Progress& progress)
     {
         QFile file(path);
         if (!file.exists()) return;
@@ -69,8 +76,14 @@ struct UiTestReplayWindow::Index
         Track track{type, path, SessionCsv::parseCsvLine(QString::fromUtf8(file.readLine()).trimmed())};
         const int time = SessionCsv::findHeaderIndex(track.columns,
             {"record_timestamp_us", "host_time_us", "timestamp_us", "epsilon_host_timestamp_us", "rtk_timestamp_us"});
+        const auto size = file.size();
+        qint64 nextUpdate = 0;
         while (!file.atEnd() && !cancelled) {
             const qint64 offset = file.pos();
+            if (offset >= nextUpdate) {
+                progress(offset, size);
+                nextUpdate = offset + 64 * 1024;
+            }
             QByteArray line = file.readLine();
             while (line.count('"') % 2 && !file.atEnd() && !cancelled) line += file.readLine();
             if (line.trimmed().isEmpty()) continue;
@@ -82,13 +95,14 @@ struct UiTestReplayWindow::Index
         add(std::move(track));
     }
 
-    void raw(const QString& path, quint16 source, const std::atomic_bool& cancelled)
+    void raw(const QString& path, quint16 source, const std::atomic_bool& cancelled, const Progress& progress)
     {
         QFile file(path);
         if (!file.exists()) return;
         if (!file.open(QIODevice::ReadOnly)) { error = file.errorString(); return; }
         Raw::RawScanOptions options;
         options.expectedSourceId = source;
+        options.progress = progress;
         options.isCancelled = [&] { return cancelled.load(); };
         const auto scan = Raw::scan(file, options);
         if (!scan.success()) { error = path + ": " + scan.error; return; }
@@ -160,7 +174,7 @@ struct UiTestReplayWindow::Index
         for (auto& track : tracksBySource) add(std::move(track));
     }
 
-    void load(const QString& path, const std::atomic_bool& cancelled)
+    void load(const QString& path, const std::atomic_bool& cancelled, QPromise<std::shared_ptr<Index>>& promise)
     {
         const auto metadata = SessionLoader::loadMetadata(path);
         if (!metadata.success) { error = metadata.error; return; }
@@ -169,32 +183,52 @@ struct UiTestReplayWindow::Index
         const auto context = loadSessionPathContext(m.sessionDirectory);
         const auto resolved = [&](SessionFileKind kind) { return resolveSessionPath(context, kind).absolutePath; };
         const auto& layout = standardSessionPackageLayout();
-        csv(Stream::Sensors, m.sensorSummaryCsvFilename, cancelled);
-        csv(Stream::Laser, resolved(SessionFileKind::LaserTemperatureControllerCsv), cancelled);
-        csv(Stream::System, resolved(SessionFileKind::SystemTemperatureControllerCsv), cancelled);
-        csv(Stream::Feature, resolved(SessionFileKind::WaveformFeaturesCsv), cancelled);
-        csv(Stream::Peak, m.waveformPeaksCsvFilename, cancelled);
         const QDir dir(m.sessionDirectory);
-        csv(Stream::NavigationStatus, dir.filePath(layout.navigationStatusCsvPath), cancelled);
-        csv(Stream::Log, dir.filePath(layout.eventLogPath), cancelled);
-        for (const auto& def : standardRawFileDefinitions()) {
+        const auto rawFiles = standardRawFileDefinitions();
+        // One work unit per input plus archive decoding, catalog, legacy frames and final sort.
+        const int steps = 7 + rawFiles.size() + 1 + 4;
+        int step = 0;
+        const auto progress = [&](quint64 done, quint64 total) {
+            const double fraction = total ? double(done) / total : 0.;
+            promise.setProgressValue(int(100 * (step + fraction) / steps));
+        };
+        const auto advance = [&] { ++step; progress(0, 1); };
+        const auto readCsv = [&](Stream type, const QString& file) {
+            csv(type, file, cancelled, progress);
+            advance();
+        };
+        readCsv(Stream::Sensors, m.sensorSummaryCsvFilename);
+        readCsv(Stream::Laser, resolved(SessionFileKind::LaserTemperatureControllerCsv));
+        readCsv(Stream::System, resolved(SessionFileKind::SystemTemperatureControllerCsv));
+        readCsv(Stream::Feature, resolved(SessionFileKind::WaveformFeaturesCsv));
+        readCsv(Stream::Peak, m.waveformPeaksCsvFilename);
+        readCsv(Stream::NavigationStatus, dir.filePath(layout.navigationStatusCsvPath));
+        readCsv(Stream::Log, dir.filePath(layout.eventLogPath));
+        for (const auto& def : rawFiles) {
             if (cancelled || !error.isEmpty()) return;
-            raw(resolved(def.kind), def.sourceId, cancelled);
+            raw(resolved(def.kind), def.sourceId, cancelled, progress);
+            advance();
         }
-        raw(dir.filePath("raw/fpga_vlp1.dat"), Raw::kSourceFpga, cancelled);
+        raw(dir.filePath("raw/fpga_vlp1.dat"), Raw::kSourceFpga, cancelled, progress);
+        advance();
         indexFpga(m.sessionDirectory, cancelled);
+        advance();
         if (!archiveCache && !QFileInfo::exists(m.waveformRawFilename) && !cancelled) {
-            auto result = SessionWaveformRepository::loadCatalog(m);
+            auto result = SessionWaveformRepository::loadCatalog(m, progress);
+            advance();
             if (!result.success) { error = result.error; return; }
             legacy = std::move(result.catalog);
             Track track{Stream::LegacyWave, m.waveformDirectory};
             for (int i = 0; i < legacy.frameCount && !cancelled; ++i) {
+                if (i % 64 == 0) progress(i, legacy.frameCount);
                 const auto frame = SessionWaveformRepository::readFrame(legacy, i);
                 if (!frame.success) { error = frame.error; return; }
                 track.entries.append({frame.timestampUs, i, 0});
             }
             add(std::move(track));
         }
+        if (cancelled) return;
+        promise.setProgressValue(99);
         std::stable_sort(events.begin(), events.end(),
             [](const Event& a, const Event& b) { return a.timestamp < b.timestamp; });
     }
@@ -206,11 +240,18 @@ UiTestReplayWindow::UiTestReplayWindow(QWidget *parent, bool english, const QStr
 {
     setObjectName("uiTestReplayWindow");
     setWindowTitle(label("界面测试 · 数据源", "UI test data source"));
-    auto *layout = new QVBoxLayout(this);
+    auto *root = new QVBoxLayout(this);
+    root->setContentsMargins(0, 0, 0, 0);
+    auto *body = new QWidget(this);
+    root->addWidget(body);
+    auto *layout = new QVBoxLayout(body);
+    layout->setContentsMargins(16, 12, 16, 16);
+    layout->setSpacing(10);
     auto *buttons = new QHBoxLayout;
     simulate_ = new QPushButton(label("模拟数据", "Simulated data"), this);
     simulate_->setObjectName("replaySimulate");
-    choose_ = new QPushButton(label("打开 Session…", "Open Session…"), this);
+    choose_ = new QPushButton(label("选择 Session 文件夹…", "Choose Session folder…"), this);
+    choose_->setObjectName("replayChoose");
     buttons->addWidget(simulate_);
     buttons->addWidget(choose_);
     layout->addLayout(buttons);
@@ -219,6 +260,12 @@ UiTestReplayWindow::UiTestReplayWindow(QWidget *parent, bool english, const QStr
     source_->setTextFormat(Qt::PlainText);
     source_->setWordWrap(true);
     layout->addWidget(source_);
+    loading_ = new QProgressBar(this);
+    loading_->setObjectName("replayLoading");
+    loading_->setAccessibleName(label("Session 加载进度", "Session loading progress"));
+    loading_->setRange(0, 100);
+    loading_->setAlignment(Qt::AlignCenter);
+    layout->addWidget(loading_);
     slider_ = new QSlider(Qt::Horizontal, this);
     slider_->setRange(0, 1000000);
     layout->addWidget(slider_);
@@ -239,9 +286,8 @@ UiTestReplayWindow::UiTestReplayWindow(QWidget *parent, bool english, const QStr
     connect(streams_, &QComboBox::currentIndexChanged, this, [this] { updatePosition(); });
     connect(simulate_, &QPushButton::clicked, this, &UiTestReplayWindow::selectSimulation);
     connect(choose_, &QPushButton::clicked, this, [this] {
-        const auto file = QFileDialog::getOpenFileName(this, label("选择 Session", "Select Session"),
-                                                       directory_, "Session (session.json)");
-        if (!file.isEmpty()) loadSession(file);
+        const QString folder = QFileDialog::getExistingDirectory(this, label("选择 Session 文件夹", "Choose Session folder"), directory_);
+        if (!folder.isEmpty()) loadSession(folder);
     });
     connect(play_, &QPushButton::clicked, this, [this] {
         if (!timer_.isActive() && position_ == index_->events.last().timestamp) seek(index_->events.first().timestamp);
@@ -260,8 +306,27 @@ UiTestReplayWindow::UiTestReplayWindow(QWidget *parent, bool english, const QStr
     });
     timer_.setInterval(20);
     connect(&timer_, &QTimer::timeout, this, &UiTestReplayWindow::tick);
+    VaporView::installCustomTitleBar(this, false);
+    for (auto *tool : findChildren<QToolButton *>()) {
+        if (tool->accessibleName() == "titleLanguageButton" || tool->accessibleName() == "titleThemeButton") tool->hide();
+    }
+    if (auto *separator = findChild<QFrame *>("titleBarSeparator")) separator->hide();
+    auto *pin = new QToolButton(this);
+    pin->setObjectName("replayPin");
+    pin->setText(label("置顶", "Pin"));
+    pin->setToolTip(label("保持窗口置顶", "Keep window on top"));
+    pin->setCheckable(true);
+    VaporView::addWidgetToCustomTitleBar(this, pin);
+    connect(pin, &QToolButton::toggled, this, [this, pin](bool pinned) {
+        const QRect bounds = geometry();
+        setWindowFlag(Qt::WindowStaysOnTopHint, pinned);
+        setGeometry(bounds);
+        show();
+        pin->setText(pinned ? label("已置顶", "Pinned") : label("置顶", "Pin"));
+        pin->setToolTip(pinned ? label("取消置顶", "Unpin window") : label("保持窗口置顶", "Keep window on top"));
+    });
+    setMinimumWidth(360);
     selectSimulation();
-    setMinimumWidth(320);
 }
 
 QString UiTestReplayWindow::label(const char *zh, const char *en) const { return QString::fromUtf8(english_ ? en : zh); }
@@ -280,12 +345,16 @@ void UiTestReplayWindow::selectSimulation()
     if (cancel_) cancel_->store(true);
     setPlaying(false);
     index_.reset();
+    loading_->hide();
     streams_->clear();
     streams_->hide();
     detail_->hide();
     slider_->setValue(0);
     slider_->setEnabled(false);
+    slider_->hide();
     play_->setEnabled(false);
+    play_->hide();
+    time_->hide();
     simulate_->setEnabled(false);
     time_->clear();
     source_->setToolTip({});
@@ -299,11 +368,20 @@ void UiTestReplayWindow::loadSession(const QString& path)
     if (cancel_) cancel_->store(true);
     auto token = cancel_ = std::make_shared<std::atomic_bool>(false);
     simulate_->setEnabled(true);
-    source_->setText(label("正在读取 ", "Loading ") + QFileInfo(path).dir().dirName());
+    const QFileInfo selected(path);
+    const QDir folder = selected.isDir() ? QDir(selected.absoluteFilePath()) : selected.dir();
+    const QString manifest = selected.isDir() ? folder.filePath("session.json") : path;
+    source_->setText(label("正在加载 ", "Loading ") + folder.dirName());
+    loading_->setValue(0);
+    loading_->show();
     auto *watch = new QFutureWatcher<std::shared_ptr<Index>>(this);
-    connect(watch, &QFutureWatcherBase::finished, this, [this, watch, token, path] {
+    connect(watch, &QFutureWatcherBase::progressValueChanged, this, [this, token](int value) {
+        if (!token->load()) loading_->setValue(value);
+    });
+    connect(watch, &QFutureWatcherBase::finished, this, [this, watch, token, folder] {
         watch->deleteLater();
         if (token->load()) return;
+        loading_->hide();
         auto loaded = watch->result();
         if (!loaded->error.isEmpty() || loaded->events.isEmpty()) {
             source_->setText((index_ ? index_->name : label("模拟数据", "Simulated data")) + "\n" +
@@ -313,9 +391,9 @@ void UiTestReplayWindow::loadSession(const QString& path)
         }
         setPlaying(false);
         index_ = std::move(loaded);
-        directory_ = QFileInfo(path).absolutePath();
+        directory_ = QDir::cleanPath(folder.absoluteFilePath(".."));
         source_->setText(index_->name);
-        source_->setToolTip(path);
+        source_->setToolTip(folder.absolutePath());
         {
             const QSignalBlocker block(streams_);
             streams_->clear();
@@ -328,14 +406,19 @@ void UiTestReplayWindow::loadSession(const QString& path)
         streams_->show();
         detail_->show();
         slider_->setEnabled(true);
+        slider_->show();
         play_->setEnabled(true);
+        play_->show();
+        time_->show();
         seek(index_->events.first().timestamp);
         setPlaying(true);
     });
-    watch->setFuture(QtConcurrent::run([token, path] {
+    watch->setFuture(QtConcurrent::run([token, manifest](QPromise<std::shared_ptr<Index>>& promise) {
+        promise.setProgressRange(0, 100);
         auto result = std::make_shared<Index>();
-        result->load(path, *token);
-        return result;
+        result->load(manifest, *token, promise);
+        if (!token->load() && result->error.isEmpty()) promise.setProgressValue(100);
+        promise.addResult(std::move(result));
     }));
 }
 
