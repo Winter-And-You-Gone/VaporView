@@ -1019,11 +1019,7 @@ void configureTecDeviceSwitch(SegmentedSwitchButton *button, bool english)
     const QString left = thermalEndpointLabel(true, 1, english);
     const QString right = thermalEndpointLabel(true, 2, english);
     button->setSegmentTexts(left, right);
-    QFont font = button->font();
-    font.setWeight(QFont::DemiBold);
-    font.setPixelSize(12);
-    const QFontMetrics metrics(font);
-    button->setFixedSize(2 * std::max(metrics.horizontalAdvance(left), metrics.horizontalAdvance(right)) + 20, 26);
+    button->setFixedSize(128, 36);
 }
 
 void setTemperatureOverviewOutputPercentText(QLabel *label, const QString& title, const QString& first, const QString& second,
@@ -1183,7 +1179,7 @@ public:
         titleStatusLayout->setSizeConstraint(QLayout::SetFixedSize);
         device_selector_ = new SegmentedSwitchButton(title_status_strip_);
         device_selector_->setObjectName(QStringLiteral("tec103OverviewDeviceSwitch"));
-        device_selector_->setStyleSheet(QStringLiteral("QPushButton#tec103OverviewDeviceSwitch { min-height: 26px; max-height: 26px; padding: 0; border: none; }"));
+        device_selector_->setStyleSheet(QStringLiteral("QPushButton#tec103OverviewDeviceSwitch { min-height: 36px; max-height: 36px; padding: 0; border: none; }"));
         device_selector_->hide();
         titleStatusLayout->addWidget(device_selector_);
         connect(device_selector_, &SegmentedSwitchButton::selectionRequested, this, [this] { refreshChannelUi(); });
@@ -1714,13 +1710,13 @@ void TemperatureControllerPanel::setupUi()
     title_status_strip_ = new QWidget(this);
     title_status_strip_->setObjectName(QStringLiteral("temperatureTitleStatusStrip"));
     title_status_strip_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-    title_status_strip_->setFixedHeight(28);
+    title_status_strip_->setFixedHeight(36);
     title_status_strip_->setVisible(false);
     auto *statusLayout = new QHBoxLayout(title_status_strip_);
     device_selector_ = new SegmentedSwitchButton(title_status_strip_);
     device_selector_->setObjectName(QStringLiteral("tec103TitleDeviceSwitch"));
     device_selector_->hide();
-    device_selector_->setStyleSheet(QStringLiteral("QPushButton#tec103TitleDeviceSwitch { min-height: 26px; max-height: 26px; padding: 0; border: none; }"));
+    device_selector_->setStyleSheet(QStringLiteral("QPushButton#tec103TitleDeviceSwitch { min-height: 36px; max-height: 36px; padding: 0; border: none; }"));
     statusLayout->addWidget(device_selector_, 0, Qt::AlignVCenter);
     connect(device_selector_, &SegmentedSwitchButton::selectionRequested, this, [this] {
         selectChannel(selected_config_page_index_);

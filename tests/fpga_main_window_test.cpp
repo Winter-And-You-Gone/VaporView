@@ -1932,6 +1932,8 @@ static void simulatedMonitorActions()
     stack->setCurrentWidget(temperaturePage);
     QCoreApplication::processEvents();
     title->layout()->activate();
+    auto *titleSwitch = window.findChild<QAbstractButton*>("titleSensorTransportSwitch");
+    require(titleSwitch && device->size() == titleSwitch->size(), "TEC selector matches window title switches");
     require(title->rect().contains(device->geometry()) && std::abs(title->rect().center().y() - device->geometry().center().y()) <= 1,
             "Device selector is centered and fully contained in its title strip");
     device->click();
@@ -1963,7 +1965,7 @@ static void simulatedMonitorActions()
         if(!button->property("deviceConfigAction").toBool()&&!button->property("motionDeviceAction").toBool())watched.append(button);
     for(auto *object:watched)object->installEventFilter(&outputState);
     auto *homeDevice = window.findChild<QAbstractButton*>("tec103OverviewDeviceSwitch");
-    require(homeDevice && !homeDevice->isHidden() && !outputs[1]->isHidden(), "Home overview shows both TC1 output switches");
+    require(homeDevice && homeDevice->size() == titleSwitch->size() && !homeDevice->isHidden() && !outputs[1]->isHidden(), "Home overview shows both TC1 output switches");
     auto *output = outputs[0];
     for (int instrument = 1; instrument <= 2; ++instrument) {
         output = outputs[instrument - 1];
