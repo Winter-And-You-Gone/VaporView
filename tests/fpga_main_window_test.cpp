@@ -1914,7 +1914,7 @@ static void simulatedMonitorActions()
         for(auto *plot:window.findChildren<QWidget*>("temperatureTrendPlot"))
             if(plot->property("temperatureOverviewPlot").toBool()&&plot->property("sampleCount").toInt()>=2)++populatedPlots;
         return percent&&percent->property("channel1OutputPercentText").toString()=="0.00%"
-            &&percent->property("channel2OutputPercentText").toString()=="---"&&populatedPlots==1;
+            &&percent->property("channel2OutputPercentText").toString().isEmpty()&&populatedPlots==1;
     },6000),"FPGA overview displays TC1 telemetry and leaves TC2 empty");
     const auto outputs=window.findChildren<QAbstractButton*>("temperatureOverviewOutputSwitch");
     require(outputs.size()==2,"simulated RD105 overview exposes both output controls");
@@ -1922,17 +1922,22 @@ static void simulatedMonitorActions()
     auto *tc2 = window.findChild<QAbstractButton*>("temperatureChannelSelectorButton2");
     auto *title = window.findChild<QWidget*>("temperatureTitleStatusStrip");
     auto *device = title ? title->findChild<QAbstractButton*>("tec103TitleDeviceSwitch") : nullptr;
-    auto *unavailable = window.findChild<QLabel*>("tec103ChannelUnavailable");
     auto *pages = window.findChild<QStackedWidget*>("temperatureChannelStack");
-    require(tc1 && tc2 && tc1->text() == QStringLiteral("通道1") && tc2->text() == QStringLiteral("通道2") &&
-            device && !device->isHidden() && unavailable && pages, "Separate TEC103 device and channel selectors exist");
+    require(tc1 && tc2 && tc1->text() == QStringLiteral("通道1") && tc2->isHidden() &&
+            device && !device->isHidden() && pages, "Separate TEC103 device and channel selectors exist");
+    QWidget *temperaturePage = title;
+    while (temperaturePage && stack->indexOf(temperaturePage) < 0) temperaturePage = temperaturePage->parentWidget();
+    require(temperaturePage, "Temperature title belongs to the page stack");
+    auto *previousPage = stack->currentWidget();
+    stack->setCurrentWidget(temperaturePage);
+    QCoreApplication::processEvents();
+    title->layout()->activate();
+    require(title->rect().contains(device->geometry()) && std::abs(title->rect().center().y() - device->geometry().center().y()) <= 1,
+            "Device selector is centered and fully contained in its title strip");
     device->click();
     require(tc1->isChecked() && pages->currentIndex() == 1, "Remote TC1 uses the remote instrument page");
-    tc2->click();
     device->click();
-    require(tc2->isChecked() && !unavailable->isHidden(), "TC2 stays selected across instruments and reports unavailable");
-    tc1->click();
-    require(unavailable->isHidden() && pages->currentIndex() == 0, "In situ TC1 restores its own controls");
+    require(tc1->isChecked() && pages->currentIndex() == 0, "In situ TC1 restores its own controls");
     auto capsules=window.findChildren<QLabel*>("homeDeviceStatusCapsule");
     capsules.removeAll(MainWindowRtcmTestAccess::state(window).home_motion_status_lbl_);
     QList<QObject*> watched;
@@ -1957,7 +1962,7 @@ static void simulatedMonitorActions()
         if(!button->property("deviceConfigAction").toBool()&&!button->property("motionDeviceAction").toBool())watched.append(button);
     for(auto *object:watched)object->installEventFilter(&outputState);
     auto *homeDevice = window.findChild<QAbstractButton*>("tec103OverviewDeviceSwitch");
-    require(homeDevice && !homeDevice->isHidden() && !outputs[1]->isEnabled(), "Home device selector and unavailable TC2");
+    require(homeDevice && !homeDevice->isHidden() && outputs[1]->isHidden(), "Home overview hides TC2");
     auto *output = outputs[0];
     for (int instrument = 1; instrument <= 2; ++instrument) {
         if (instrument == 2) homeDevice->click();

@@ -1025,9 +1025,9 @@ void setTemperatureOverviewOutputPercentText(QLabel *label, const QString& title
     label->setText(QStringLiteral(
         "<div align=\"center\" style=\"line-height: 13px; white-space: nowrap;\">"
         "<span style=\"font-size: 12px; font-weight: 700;\">%1</span><br/>"
-        "<span style=\"font-size: 14px; font-weight: 700;\">1: %2<br/>2: %3</span>"
+        "<span style=\"font-size: 14px; font-weight: 700;\">1: %2%3</span>"
         "</div>")
-        .arg(title.toHtmlEscaped(), first.toHtmlEscaped(), second.toHtmlEscaped()));
+        .arg(title.toHtmlEscaped(), first.toHtmlEscaped(), second.isEmpty() ? QString() : QStringLiteral("<br/>2: %1").arg(second.toHtmlEscaped())));
     label->setProperty("channel1OutputPercentText", first);
     label->setProperty("channel2OutputPercentText", second);
     label->setToolTip(title);
@@ -1120,6 +1120,7 @@ public:
             auto *number = new QLabel(QStringLiteral("%1:").arg(index + 1), outputCapsule);
             number->setObjectName(QStringLiteral("temperatureOverviewOutputChannelLabel"));
             number->setAlignment(Qt::AlignCenter);
+            if (index == 1) second_output_number_ = number;
             number->setFixedWidth(18);
             row->addWidget(number);
             auto *button = new TemperatureOverviewSwitchButton(outputCapsule);
@@ -1186,6 +1187,7 @@ public:
             row->setSpacing(8);
             auto *number = new QLabel(QStringLiteral("%1:").arg(index + 1), title_status_strip_);
             number->setObjectName(QStringLiteral("temperatureOverviewStatusChannelLabel"));
+            if (index == 1) second_status_number_ = number;
             row->addWidget(number);
             for (QLabel **value : {&target_temp_values_[index], &current_temp_values_[index]})
             {
@@ -1210,6 +1212,9 @@ public:
         if (dual_tec103_ == dual) return;
         dual_tec103_ = dual;
         device_selector_->setVisible(dual);
+        for (QWidget *widget : std::array<QWidget *, 6>{plots_[1], output_switch_buttons_[1], second_output_number_,
+                                                        second_status_number_, target_temp_values_[1], current_temp_values_[1]})
+            widget->setVisible(!dual);
         setEnglish(is_english_);
     }
 
@@ -1375,11 +1380,13 @@ private:
         }
         setTemperatureOverviewOutputPercentText(output_percent_value_,
             is_english_ ? QStringLiteral("Output Percent") : QStringLiteral("输出百分比"),
-            outputPercentTexts[0], outputPercentTexts[1]);
+            outputPercentTexts[0], dual_tec103_ ? QString() : outputPercentTexts[1]);
         updateOverviewValueWidths();
     }
 
     SegmentedSwitchButton *device_selector_ = nullptr;
+    QLabel *second_output_number_ = nullptr;
+    QLabel *second_status_number_ = nullptr;
     QWidget *summary_widget_ = nullptr;
     QLabel *output_percent_value_ = nullptr;
     QLabel *output_label_ = nullptr;
@@ -1694,7 +1701,9 @@ void TemperatureControllerPanel::setupUi()
     device_selector_ = new SegmentedSwitchButton(title_status_strip_);
     device_selector_->setObjectName(QStringLiteral("tec103TitleDeviceSwitch"));
     device_selector_->hide();
-    statusLayout->addWidget(device_selector_);
+    device_selector_->setStyleSheet(QStringLiteral("QPushButton#tec103TitleDeviceSwitch { min-height: 26px; max-height: 26px; padding: 0; border: none; }"));
+    device_selector_->setFixedSize(120, 26);
+    statusLayout->addWidget(device_selector_, 0, Qt::AlignVCenter);
     connect(device_selector_, &SegmentedSwitchButton::selectionRequested, this, [this] {
         selectChannel(selected_config_page_index_);
     });
@@ -1885,11 +1894,7 @@ void TemperatureControllerPanel::setupUi()
     channelTopRowLayout->addWidget(channelSelectorRow);
     configCardLayout->addWidget(channelTopRow, 0);
 
-    channel_unavailable_ = new QLabel(configCard);
-    channel_unavailable_->setObjectName(QStringLiteral("tec103ChannelUnavailable"));
-    configCardLayout->addWidget(channel_unavailable_);
     auto *contentRow = new QWidget(configCard);
-    channel_content_ = contentRow;
     contentRow->setObjectName(QStringLiteral("temperatureControllerContentRow"));
     contentRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     contentRow->setFixedHeight(kTemperatureControllerConfigPlotHeight);
@@ -2894,9 +2899,6 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
 void TemperatureControllerPanel::selectChannel(int index)
 {
     selected_config_page_index_ = std::clamp(index, 0, 2);
-    const bool unavailable = dual_tec103_ && selected_config_page_index_ == 1;
-    channel_content_->setVisible(!unavailable);
-    channel_unavailable_->setVisible(unavailable);
     // Both FPGA device slots currently carry their instrument's TC1.
     const int pageIndex = dual_tec103_ && selected_config_page_index_ < 2
         ? int(device_selector_->switchChecked()) : selected_config_page_index_;
@@ -2945,7 +2947,6 @@ void TemperatureControllerPanel::selectChannel(int index)
         placeControllerModeFieldInTopControls(channelIndex, subPageIndex);
         refreshTopControlsLayout();
     }
-    channel_top_controls_stack_->setVisible(!unavailable);
     auto updateButton = [this](QPushButton *button, int buttonIndex) {
         if (!button)
         {
@@ -3301,6 +3302,7 @@ void TemperatureControllerPanel::setDualTec103(bool dual)
     if (dual_tec103_ == dual) return;
     dual_tec103_ = dual;
     device_selector_->setVisible(dual);
+    channel_button_2_->setVisible(!dual);
     selectChannel(0);
     updateChannelTexts();
 }
@@ -3506,8 +3508,6 @@ void TemperatureControllerPanel::updateChannelTexts()
     }
     device_selector_->setSegmentTexts(thermalEndpointLabel(true, 1, is_english_), thermalEndpointLabel(true, 2, is_english_));
     device_selector_->setStateDescription(is_english_ ? QStringLiteral("Device") : QStringLiteral("设备"), QStringLiteral(" · "));
-    channel_unavailable_->setText(is_english_ ? QStringLiteral("TC2 is unavailable on this FPGA connection.")
-                                              : QStringLiteral("当前 FPGA 连接尚未接入通道2（TC2）。"));
     if (channel_button_1_) channel_button_1_->setText(thermalEndpointLabel(false, 1, is_english_));
     if (channel_button_2_) channel_button_2_->setText(thermalEndpointLabel(false, 2, is_english_));
     if (common_settings_button_) common_settings_button_->setText(is_english_ ? QStringLiteral("Common") : QStringLiteral("通用设置"));
