@@ -949,6 +949,20 @@ void MainWindow::updateHomeDeviceStatusCapsules()
     updateCapsule(state_->home_temperature_status_lbl_, state_->home_temperature_action_btn_, dualTec ? VaporView::SkyDeviceId::Tec103InSitu : VaporView::SkyDeviceId::TemperatureController);
     if (state_->home_tec_remote_lbl_) state_->home_tec_remote_lbl_->setVisible(dualTec);
     if (state_->home_tec_remote_btn_) state_->home_tec_remote_btn_->setVisible(dualTec);
+    if (state_->home_motion_status_lbl_)
+    {
+        // The last device starts a new row when both TECs are visible.
+        QWidget *motorColumn = (dualTec ? state_->home_epsilon_status_lbl_ : state_->home_ptb_status_lbl_)->parentWidget();
+        if (state_->home_motion_status_lbl_->parentWidget() != motorColumn)
+        {
+            auto *grid = static_cast<QGridLayout *>(motorColumn->layout());
+            const int row = grid->count() / 2; // Each device has a capsule and a button.
+            grid->addWidget(state_->home_motion_status_lbl_, row, 0);
+            grid->addWidget(state_->home_motion_action_btn_, row, 1, Qt::AlignVCenter);
+            state_->home_motion_status_lbl_->show();
+            state_->home_motion_action_btn_->show();
+        }
+    }
     if (dualTec) updateCapsule(state_->home_tec_remote_lbl_, state_->home_tec_remote_btn_, VaporView::SkyDeviceId::Tec103Remote);
     updateCapsule(state_->home_wave_status_lbl_, state_->home_wave_action_btn_, VaporView::SkyDeviceId::WaveTcp);
     updateHomeFpgaWaveActions();
