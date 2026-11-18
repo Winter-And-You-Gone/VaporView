@@ -1088,6 +1088,16 @@ QToolButton#homeDeviceActionButton[deviceConfigAction="true"]:hover {
     background-color: @vv-surface-alt;
     border: none;
 }
+QToolButton#homeMotionActionButton {
+    background-color: transparent;
+    border: none;
+    border-radius: 7px;
+    padding: 2px;
+}
+QToolButton#homeMotionActionButton:hover {
+    background-color: @vv-title-hover;
+    border: none;
+}
 QLabel#statusIndicator[status="connected"] {
     background-color: @vv-success-bg;
     color: @vv-success;
@@ -1182,9 +1192,11 @@ QPushButton#appSidebarButton:checked:pressed {
     border-color: @vv-primary-pressed;
 }
 QComboBox#temperatureTitlePortCombo,
+QComboBox#homeMotionPort,
 QComboBox#homeMotionChannelCombo,
 QComboBox#ai8TitlePortCombo,
 QComboBox#temperatureTitlePortCombo:disabled,
+QComboBox#homeMotionPort:disabled,
 QComboBox#homeMotionChannelCombo:disabled,
 QComboBox#ai8TitlePortCombo:disabled {
     color: @vv-text-strong;
@@ -1192,6 +1204,9 @@ QComboBox#ai8TitlePortCombo:disabled {
 QComboBox#temperatureTitlePortCombo:hover,
 QComboBox#temperatureTitlePortCombo:focus,
 QComboBox#temperatureTitlePortCombo:on,
+QComboBox#homeMotionPort:hover,
+QComboBox#homeMotionPort:focus,
+QComboBox#homeMotionPort:on,
 QComboBox#homeMotionChannelCombo:hover,
 QComboBox#homeMotionChannelCombo:focus,
 QComboBox#homeMotionChannelCombo:on,
@@ -1203,6 +1218,7 @@ QComboBox#ai8TitlePortCombo:on {
     color: @vv-text-strong;
 }
 QComboBox#temperatureTitlePortCombo::down-arrow,
+QComboBox#homeMotionPort::down-arrow,
 QComboBox#homeMotionChannelCombo::down-arrow,
 QComboBox#ai8TitlePortCombo::down-arrow {
     image: url(lucide/chevron-down-dark.svg);
@@ -1210,6 +1226,9 @@ QComboBox#ai8TitlePortCombo::down-arrow {
 QComboBox#temperatureTitlePortCombo::down-arrow:hover,
 QComboBox#temperatureTitlePortCombo::down-arrow:focus,
 QComboBox#temperatureTitlePortCombo::down-arrow:on,
+QComboBox#homeMotionPort::down-arrow:hover,
+QComboBox#homeMotionPort::down-arrow:focus,
+QComboBox#homeMotionPort::down-arrow:on,
 QComboBox#homeMotionChannelCombo::down-arrow:hover,
 QComboBox#homeMotionChannelCombo::down-arrow:focus,
 QComboBox#homeMotionChannelCombo::down-arrow:on,

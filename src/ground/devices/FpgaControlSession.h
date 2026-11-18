@@ -25,6 +25,7 @@ public:
     void resetRemote();
     void updateRemoteStatus(const QJsonObject& status);
     bool remoteReady() const;
+    QMap<quint32, quint32> remoteRegisterValues() const;
 
     FpgaControlConfig remoteConfig;
     QJsonObject remoteStatus, remoteControl;
@@ -33,6 +34,8 @@ public:
     quint64 discoveryGeneration = 0;
     std::chrono::steady_clock::time_point statusTime{};
 private:
+    mutable QJsonObject cachedRegisters_;
+    mutable QMap<quint32, quint32> decodedRegisters_;
     QThread worker_;
     FpgaDeviceController *controller_ = nullptr;
     quint64 linkGeneration_ = 0;

@@ -276,9 +276,11 @@ quint64 GroundTelemetryService::totalTransmittedBytes() const
     return total_tx_bytes_;
 }
 
-quint16 GroundTelemetryService::sendCommand(CommandId commandId, const QByteArray& payload, QString *correlationId)
+quint16 GroundTelemetryService::sendCommand(CommandId commandId, const QByteArray& payload, QString *correlationId,
+                                           qint64 expiresAtMs)
 {
     if (correlationId) correlationId->clear();
+    if (expiresAtMs && expiresAtMs <= nowMs()) return 0;
     DeviceOperationRequest operation;
     const bool isDeviceOperation = commandId == CommandId::DeviceOperation &&
         TelemetryCodec::parseDeviceOperationRequest(payload, operation);
@@ -335,6 +337,7 @@ quint16 GroundTelemetryService::sendCommand(CommandId commandId, const QByteArra
 
     PendingCommand pending;
     pending.command = command;
+    pending.expires_at_ms = expiresAtMs;
     if (isDeviceOperation && operation.device_id == SkyDeviceId::Epsilon)
     {
         pending.retry_interval_ms = 15000;
@@ -370,9 +373,10 @@ quint16 GroundTelemetryService::sendCommand(CommandId commandId, const QByteArra
     pending.next_retry_ms = nowMs() + pending.retry_interval_ms;
     const quint64 sendGeneration = link_generation_;
     logCommandContext(command, QStringLiteral("ground_command_send"), LogLevel::Info);
-    if (sendGeneration == link_generation_)
+    const bool withinDeadline = !expiresAtMs || expiresAtMs > nowMs();
+    if (sendGeneration == link_generation_ && withinDeadline)
         sendCommandPayload(pending);
-    const bool sentOnSameLink = sendGeneration == link_generation_;
+    const bool sentOnSameLink = sendGeneration == link_generation_ && withinDeadline;
     if (sentOnSameLink)
         pending_commands_.insert(command.command_seq, pending);
     command_sequences_being_sent_.remove(sequence);
@@ -489,6 +493,9 @@ void GroundTelemetryService::onBytesReceived(const QByteArray& bytes)
     for (const TelemetryFrame& frame : frames)
     {
         if (receiveGeneration != link_generation_) break;
+        emit frameReceived(frame);
+        if (!self) return;
+        if (receiveGeneration != link_generation_) break;
         dispatchFrame(frame);
         if (!self) return;
     }
@@ -506,7 +513,8 @@ void GroundTelemetryService::onRetryTimer()
         {
             continue;
         }
-        if (it->retry_count >= kCommandMaxRetries)
+        if (it->retry_count >= kCommandMaxRetries ||
+            (it->expires_at_ms && it->expires_at_ms <= currentMs))
         {
             const PendingCommand pending = it.value();
             pending_commands_.erase(it);
@@ -539,6 +547,7 @@ void GroundTelemetryService::onRetryTimer()
         if (generation != link_generation_) return;
         const auto current = pending_commands_.constFind(sequence);
         if (current == pending_commands_.cend() || current->command.correlation_id != pending.command.correlation_id) continue;
+        if (pending.expires_at_ms && pending.expires_at_ms <= nowMs()) continue;
         sendCommandPayload(pending);
         if (generation != link_generation_) return;
     }

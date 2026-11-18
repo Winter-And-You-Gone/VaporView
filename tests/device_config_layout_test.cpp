@@ -9,6 +9,7 @@
 #include "BaudRateComboSupport.h"
 #include "SkyConfig.h"
 #include "TelemetryCodec.h"
+#include "test_settings_sandbox.h"
 #include "test_ui_helpers.h"
 
 #include <QApplication>
@@ -38,6 +39,7 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSettings>
+#include <QSpacerItem>
 #include <QStackedWidget>
 #include <QStringList>
 #include <QTcpServer>
@@ -352,24 +354,30 @@ void requireAlignedColumns(QFrame *subCard, int columnCount, const char *message
 void requirePillsUseWidestColumnWidth(QFrame *subCard, const char *message)
 {
     const QList<QList<QFrame *>> rows = pillRows(subCard);
-    int widestWidth = 0;
-    int pillCount = 0;
-    for (const QList<QFrame *>& row : rows)
-    {
-        for (QFrame *pill : row)
-        {
-            widestWidth = std::max(widestWidth, pill->width());
-            ++pillCount;
-        }
+    require(!rows.isEmpty(), message);
+    QVector<int> widths;
+    for (const auto& row : rows) {
+        widths.resize(std::max(widths.size(), row.size()));
+        for (int i = 0; i < row.size(); ++i)
+            widths[i] = std::max(widths[i], row[i]->property("summaryNaturalWidth").toInt());
     }
-    require(pillCount > 0 && widestWidth > 0, message);
-    for (const QList<QFrame *>& row : rows)
-    {
-        for (QFrame *pill : row)
-        {
-            require(std::abs(pill->width() - widestWidth) <= 2, message);
+    QVector<int> rightEdges(widths.size(), -1);
+    for (const auto& row : rows)
+        for (int i = 0; i < row.size(); ++i) {
+            require(std::abs(row[i]->width() - widths[i]) <= 2, message);
+            auto *name = row[i]->findChild<QLabel *>("homeTelemetrySummaryNameLabel");
+            auto *value = row[i]->findChild<QLabel *>("homeTelemetrySummaryValueLabel");
+            require(name && value && (name->alignment() & Qt::AlignLeft) &&
+                (value->alignment() & Qt::AlignRight), "capsule name/value alignment");
+            auto *layout = row[i]->layout();
+            auto *spacer = layout && layout->count() > 1 ? layout->itemAt(1)->spacerItem() : nullptr;
+            require(spacer && spacer->sizeHint().width() == name->fontMetrics().horizontalAdvance(QStringLiteral("汉")) &&
+                value->x() - name->geometry().right() - 1 >= spacer->sizeHint().width(),
+                "capsule reserves at least one character between name and value");
+            const int right = value->mapTo(subCard, QPoint(value->width(), 0)).x();
+            if (rightEdges[i] < 0) rightEdges[i] = right;
+            require(std::abs(rightEdges[i] - right) <= 2, "capsule values align to the right within each column");
         }
-    }
 }
 
 void requirePillLabelsFit(QFrame *subCard, const char *message)
@@ -523,6 +531,53 @@ int main(int argc, char **argv)
     require(linkStatusCard != nullptr, "link-status card can be identified");
     require(serialCard != nullptr, "serial configuration card can be identified");
     require(motionCard != nullptr, "motion control card can be identified");
+    if (app.arguments().contains(QStringLiteral("--motion-width-only")))
+    {
+        const int minimumWidth = motionCard->minimumWidth();
+        int previousWidth = 0;
+        for (const int width : {2000, 2400}) {
+            window.resize(width, 760);
+            VaporViewTest::processEventsFor(180);
+            activateLayouts(&window);
+            VaporViewTest::processEventsFor(100);
+            const QRect serialBounds = rectInPage(serialCard, scrollArea->widget());
+            const QRect motionBounds = rectInPage(motionCard, scrollArea->widget());
+            const auto margins = scrollArea->widget()->layout()->contentsMargins();
+            require(motionBounds.left() > serialBounds.right(), "wide layout places motion beside devices");
+            require(std::abs(motionBounds.right() - (scrollArea->widget()->width() - margins.right() - 1)) <= 2,
+                    "motion card fills the remaining width");
+            require(motionCard->minimumWidth() == minimumWidth, "motion card minimum width is unchanged");
+            require(previousWidth == 0 || motionCard->width() > previousWidth, "motion card grows with the page");
+            previousWidth = motionCard->width();
+        }
+        window.resize(1200, 760);
+        VaporViewTest::processEventsFor(180);
+        activateLayouts(&window);
+        VaporViewTest::processEventsFor(100);
+        require(rectInPage(motionCard, scrollArea->widget()).top() > rectInPage(serialCard, scrollArea->widget()).bottom(),
+                "narrow layout stacks motion below devices");
+        require(motionCard->minimumWidth() == minimumWidth, "narrow layout preserves motion minimum width");
+        VaporView::setSettingsWritesSuspended(false);
+        return 0;
+    }
+    if (app.arguments().contains(QStringLiteral("--summary-spacing-only")))
+    {
+        for (const int width : {1280, 2400, 800}) {
+            window.resize(width, 760);
+            VaporViewTest::processEventsFor(180);
+            activateLayouts(&window);
+            auto *summary = linkStatusCard->findChild<QWidget *>(QStringLiteral("homeTelemetrySummaryContainer"));
+            require(summary, "device summary container exists");
+            const auto sections = summary->findChildren<QFrame *>(QStringLiteral("homeTelemetrySectionCard"));
+            require(sections.size() == 3, "device summary has three sections");
+            for (auto *section : sections) {
+                requirePillsUseWidestColumnWidth(section, "summary columns retain their aligned widths");
+                requirePillLabelsFit(section, "summary labels fit after resizing");
+            }
+        }
+        VaporView::setSettingsWritesSuspended(false);
+        return 0;
+    }
     require(linkStatusCard->parentWidget() == serialCard->parentWidget(),
             "link-status and serial configuration cards are siblings");
     QFrame *linkStatusSourcePill = findTelemetrySummarySourcePill(linkStatusCard);
@@ -712,11 +767,11 @@ int main(int argc, char **argv)
     requireAlignedColumns(subCards.at(0), 2,
                           "data-rate subcard keeps all rows aligned to two columns");
     requirePillsUseWidestColumnWidth(subCards.at(0),
-                                     "data-rate subcard uses its widest pill as every column width");
+                                     "data-rate subcard uses each column's widest pill");
     requirePillLabelsFit(subCards.at(0),
                          "data-rate subcard pill labels fit without clipping");
     requirePillsUseWidestColumnWidth(subCards.at(1),
-                                     "link-rate subcard uses its widest pill as every column width");
+                                     "link-rate subcard uses each column's widest pill");
     requirePillLabelsFit(subCards.at(1),
                          "link-rate subcard pill labels fit without clipping");
     const QList<QFrame *> linkPills =
@@ -745,7 +800,7 @@ int main(int argc, char **argv)
     requireAlignedColumns(subCards.at(2), dataColumns,
                           "data subcard keeps all rows aligned to the same columns");
     requirePillsUseWidestColumnWidth(subCards.at(2),
-                                     "data subcard uses its widest pill as every column width");
+                                     "data subcard uses each column's widest pill");
     requirePillLabelsFit(subCards.at(2),
                          "data subcard pill labels fit without clipping");
     for (const auto& scenario : {std::pair<int, int>{2400, 4}, {800, 3}, {2400, 4}})
@@ -955,7 +1010,7 @@ int main(int argc, char **argv)
             {
                 refreshPortsTitleIndex = index;
             }
-            else if (toolTip == QStringLiteral("连接") || toolTip == QStringLiteral("Connect"))
+            else if (toolTip == QStringLiteral("连接所有设备") || toolTip == QStringLiteral("Connect all devices"))
             {
                 connectTitleIndex = index;
             }
@@ -1687,7 +1742,7 @@ int main(int argc, char **argv)
                     static_cast<int>(fakeSkyServer.serverPort()),
             "Sky Link model supplies the fake TCP endpoint before remote connection");
     VaporView::setSettingsWritesSuspended(false);
-    require(QMetaObject::invokeMethod(&window, "onConnectClicked", Qt::DirectConnection) &&
+    require(QMetaObject::invokeMethod(&window, "onTelemetryLinkClicked", Qt::DirectConnection) &&
                 remoteController->telemetryService()->isConnecting() && !remoteController->isOpen(),
             "Remote connection returns while its TCP handshake is pending");
     require(QMetaObject::invokeMethod(&window, "onCancelConnectClicked", Qt::DirectConnection),
@@ -1782,7 +1837,7 @@ int main(int argc, char **argv)
     });
     VaporView::setSettingsWritesSuspended(false);
     const bool remoteConnectInvoked = QMetaObject::invokeMethod(
-        &window, "onConnectClicked", Qt::DirectConnection);
+        &window, "onTelemetryLinkClicked", Qt::DirectConnection);
     const bool remoteOpened = remoteConnectInvoked && VaporViewTest::processEventsUntil(3000, [&] {
         return remoteController->isOpen();
     });

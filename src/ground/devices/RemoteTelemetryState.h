@@ -28,12 +28,12 @@ public:
 
     void notePacket(VaporView::MsgType type, qint64 nowMs);
     void noteWaveformPacket(quint16 channelId, qint64 nowMs);
-    double packetRate(VaporView::MsgType type) const;
-    double waveformPacketRate(quint16 channelId) const;
+    double packetRate(VaporView::MsgType type, qint64 nowMs = 0) const;
+    double waveformPacketRate(quint16 channelId, qint64 nowMs = 0) const;
 
 private:
     static void noteArrival(QVector<qint64>& arrivals, qint64 nowMs);
-    static double rateFromArrivals(const QVector<qint64>& arrivals);
+    static double rateFromArrivals(const QVector<qint64>& arrivals, qint64 nowMs);
 
     QHash<VaporView::SkyDeviceId, VaporView::DeviceState> device_states_;
     QHash<VaporView::SkyDeviceId, qint64> last_data_ms_;

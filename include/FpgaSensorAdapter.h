@@ -22,7 +22,11 @@ struct Ai8Sample
     quint32 sampleCounter = 0;
     quint32 setResultRaw = 0;
     bool online = false;
+    bool snapshotValid = false;
     bool measurementValid = false;
+    bool inputError = false;
+    bool systemFault = false;
+    bool globalAlarm = false;
     bool alarmActive = false;
     bool setResultValid = false;
     bool setSucceeded = false;
@@ -62,7 +66,7 @@ public:
             epsilon_={};epsilonStatusTimestamp_.reset();epsilonPosition_={};epsilonVelocity_={};
             for(int id=0;id<256;++id)rates_.remove(quint16(0x4200+id));
         }
-        if(source==0x46) {for(int i=1;i<=8;++i)rates_.remove(quint16(0x4600+i));ai8ScanValues_={};ai8ScanSetpoints_={};ai8ScanTicks_={};}
+        if(source==0x46) {for(int i=1;i<=8;++i)rates_.remove(quint16(0x4600+i));ai8ScanSnapshots_={};ai8ScanTicks_={};}
     }
     void setAi8Channel(int channel) { ai8Channel_ = channel; }
 
@@ -85,8 +89,7 @@ private:
     NavigationSample epsilonPosition_, epsilonVelocity_;
     quint64 epsilonStatusMaxAgeTicks_;
     int ai8Channel_;
-    std::array<std::optional<double>,8> ai8ScanValues_;
-    std::array<std::optional<double>,8> ai8ScanSetpoints_;
+    std::array<std::optional<Ai8Sample>,8> ai8ScanSnapshots_;
     std::array<quint64,8> ai8ScanTicks_{};
 };
 } // namespace VaporView::FpgaSensor

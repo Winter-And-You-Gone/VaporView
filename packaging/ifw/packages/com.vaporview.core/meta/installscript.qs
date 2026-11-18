@@ -12,6 +12,11 @@ function vaporViewShowSafeRelaunchMessage() {
 }
 
 function Component() {
+    if (installer.isInstaller() && !installer.isCommandLineInstance()) {
+        installer.setDefaultPageVisible(QInstaller.ComponentSelection, false);
+        installer.setDefaultPageVisible(QInstaller.LicenseCheck, false);
+    }
+
     if (vaporViewTargetDirectory.length === 0) {
         vaporViewTargetDirectory = installer.value("TargetDir");
     }

@@ -353,7 +353,15 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
     connect(&device_manager_, &SkyDeviceManager::fpgaSnapshotReceived, this,
         [this](quint64 t,const QJsonObject& o){session_recorder_.recordFpgaSnapshot(t,o);}, Qt::DirectConnection);
     connect(&device_manager_, &SkyDeviceManager::fpgaStatusChanged, this, [this](const QJsonObject&) {
-        sendFrame(MsgType::FpgaStatus, FpgaRemote::encodeStatus(currentFpgaStatus()));
+        // A connection transaction produces many intermediate register/status snapshots.
+        // Commands still receive their final readback response immediately; coalesce display status.
+        if (fpga_status_update_pending_) return;
+        fpga_status_update_pending_ = true;
+        QTimer::singleShot(50, this, [this] {
+            fpga_status_update_pending_ = false;
+            fpga_status_last_sent_ms_ = command_clock_.elapsed();
+            sendFrame(MsgType::FpgaStatus, FpgaRemote::encodeStatus(currentFpgaStatus()));
+        });
     });
     connect(&status_timer_, &QTimer::timeout, this, [this] {
         const qint64 now=command_clock_.elapsed();

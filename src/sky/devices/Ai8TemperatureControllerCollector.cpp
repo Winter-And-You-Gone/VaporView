@@ -175,30 +175,48 @@ bool Ai8TemperatureControllerCollector::readRegistersUnlocked(quint16 address,
         return false;
     }
     const QByteArray request = buildReadRegistersRequest(slaveAddress_.load(), address, count);
-    sleepMs(4);
-    serial_.flush();
-    if (serial_.write(request.constData(), static_cast<size_t>(request.size())) != request.size())
+    values.clear();
+    // Retry only reads. Keep the transaction mutex held so polling cannot
+    // consume a page response, and allow late bytes to arrive before flushing.
+    constexpr int maxAttempts = 3;
+    for (int attempt = 0; attempt < maxAttempts; ++attempt)
     {
-        return false;
+        sleepMs(attempt == 0 ? 4 : waitMs);
+        serial_.flush();
+        if (serial_.write(request.constData(), static_cast<size_t>(request.size())) != request.size())
+        {
+            log("[AI-8288] Read request write failed: " + serial_.lastError());
+            return false;
+        }
+        std::vector<quint8> response;
+        const bool received = readResponseFrame(0x03, response, waitMs);
+        const QByteArray bytes(reinterpret_cast<const char *>(response.data()),
+                               static_cast<int>(response.size()));
+        const ReadResponse parsed = parseReadRegistersResponse(bytes, slaveAddress_.load(), count);
+        if (received && parsed.status == FrameStatus::Ok)
+        {
+            values.assign(parsed.registers.cbegin(), parsed.registers.cend());
+            if (rawRecordType != 0)
+            {
+                publishRawFrame(rawRecordType, response);
+            }
+            return true;
+        }
+        const QString reason = received
+            ? frameStatusText(parsed.status)
+            : QStringLiteral("response timeout");
+        log(QStringLiteral("[AI-8288] Read 0x%1, attempt %2/%3: %4; exception=%5; RX=%6")
+                .arg(address, 4, 16, QLatin1Char('0'))
+                .arg(attempt + 1).arg(maxAttempts).arg(reason)
+                .arg(parsed.exception_code).arg(QString::fromLatin1(bytes.toHex(' ')))
+                .toStdString());
+        // A CRC-valid device exception is not a transient transport failure.
+        if (parsed.status == FrameStatus::ExceptionResponse)
+        {
+            return false;
+        }
     }
-    std::vector<quint8> response;
-    if (!readResponseFrame(0x03, response, waitMs))
-    {
-        return false;
-    }
-    const QByteArray bytes(reinterpret_cast<const char *>(response.data()),
-                           static_cast<int>(response.size()));
-    const ReadResponse parsed = parseReadRegistersResponse(bytes, slaveAddress_.load(), count);
-    if (parsed.status != FrameStatus::Ok)
-    {
-        return false;
-    }
-    values.assign(parsed.registers.cbegin(), parsed.registers.cend());
-    if (rawRecordType != 0)
-    {
-        publishRawFrame(rawRecordType, response);
-    }
-    return true;
+    return false;
 }
 
 bool Ai8TemperatureControllerCollector::readRegisterValue(quint16 address,

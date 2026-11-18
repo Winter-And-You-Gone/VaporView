@@ -1,3 +1,4 @@
+#include "ground/widgets/DeviceActionButton.h"
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "ground/calibration/CalibrationService.h"
 #include "shared/session/HarmonicWaveform.h"
@@ -469,8 +470,120 @@ int MainWindow::homeDeviceActionSpinnerDegrees(VaporView::SkyDeviceId device, qi
     return (frame * 360) / kHomeDeviceActionSpinnerFrames;
 }
 
+void MainWindow::startHomeMotionDeviceActionSpinner(bool disconnecting)
+{
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    if (state_->home_motion_action_spinner_until_ms_ <= nowMs)
+        state_->home_motion_action_spinner_started_ms_ = nowMs;
+    state_->home_motion_action_spinner_until_ms_ = nowMs + kHomeDeviceActionSpinnerMinimumMs;
+    state_->home_motion_disconnecting_ = disconnecting;
+    updateHomeDeviceStatusCapsules();
+}
+
+void MainWindow::triggerHomeMotionDeviceAction()
+{
+    if (!state_->motion_page_) return;
+    auto *session = state_->motion_page_->session();
+    const auto motionState = session->state();
+    if (motionState.busy || state_->home_motion_action_spinner_until_ms_ > QDateTime::currentMSecsSinceEpoch() ||
+        (!motionState.connected && state_->motion_page_->portName().isEmpty())) return;
+    startHomeMotionDeviceActionSpinner(motionState.connected);
+    if (motionState.connected) session->disconnectDevice();
+    else state_->motion_page_->connectDevice();
+}
+
+bool MainWindow::updateHomeMotionDeviceControls(qint64 nowMs, bool animationOnly)
+{
+    const auto motionState = state_->motion_page_
+        ? state_->motion_page_->session()->state() : VaporView::Ground::Motion::EmFwc3State{};
+    const bool connected = motionState.connected;
+    const bool ready = connected || (state_->motion_page_ && !state_->motion_page_->portName().isEmpty());
+    const bool spinnerActive = state_->home_motion_action_spinner_until_ms_ > nowMs ||
+        (motionState.busy && (!connected || state_->home_motion_disconnecting_));
+    const auto buttons = {state_->home_motion_action_btn_, state_->home_motion_title_action_btn_};
+    if (spinnerActive)
+    {
+        if (state_->home_motion_action_spinner_started_ms_ == 0)
+            state_->home_motion_action_spinner_started_ms_ = nowMs;
+        const qint64 elapsedMs = std::max<qint64>(0, nowMs - state_->home_motion_action_spinner_started_ms_);
+        const int frame = static_cast<int>((elapsedMs / kHomeDeviceActionSpinnerIntervalMs) % kHomeDeviceActionSpinnerFrames);
+        const auto icon = createRotatedLucideIcon(QStringLiteral("refresh-cw"),
+            toolbarColor(AppThemeColor::HomeDeviceSuccess), (frame * 360) / kHomeDeviceActionSpinnerFrames);
+        for (auto *button : buttons)
+            if (button && (!animationOnly || button->isVisible())) setDeviceActionAnimationFrame(button, icon);
+        if (animationOnly) return true;
+    }
+    else
+    {
+        state_->home_motion_action_spinner_started_ms_ = 0;
+        state_->home_motion_action_spinner_until_ms_ = 0;
+        state_->home_motion_disconnecting_ = false;
+        if (animationOnly && std::none_of(buttons.begin(), buttons.end(), [](QToolButton *button) {
+            return button && button->property("state").toString() == QStringLiteral("connecting");
+        })) return false;
+    }
+    const QString stateKey = connected ? QStringLiteral("connected")
+        : motionState.busy ? QStringLiteral("connecting")
+        : ready ? QStringLiteral("disconnected") : QStringLiteral("disabled");
+    const QString statusText = connected
+        ? (state_->is_english_ ? QStringLiteral("Connected") : QStringLiteral("已连接"))
+        : motionState.busy ? (state_->is_english_ ? QStringLiteral("Connecting") : QStringLiteral("连接中"))
+        : ready ? (state_->is_english_ ? QStringLiteral("Ready to connect") : QStringLiteral("可以连接"))
+        : (state_->is_english_ ? QStringLiteral("Not ready") : QStringLiteral("未就绪"));
+    if (auto *label = state_->home_motion_status_lbl_)
+    {
+        setLabelTextIfChanged(label, state_->is_english_ ? QStringLiteral("EM-FWC3 Motor") : QStringLiteral("EM-FWC3电机"));
+        setWidgetToolTipIfChanged(label, state_->is_english_
+            ? QStringLiteral("EM-FWC3 motor controller status: %1 (local USB direct)").arg(statusText)
+            : QStringLiteral("EM-FWC3 电机控制器状态：%1（本机 USB 直连）").arg(statusText));
+        bool changed = setDynamicPropertyIfChanged(label, "connected", connected);
+        changed |= setDynamicPropertyIfChanged(label, "state", stateKey);
+        if (changed) { label->style()->unpolish(label); label->style()->polish(label); }
+    }
+    const QString actionText = spinnerActive
+        ? (state_->home_motion_disconnecting_
+            ? (state_->is_english_ ? QStringLiteral("Disconnecting") : QStringLiteral("断开中"))
+            : (state_->is_english_ ? QStringLiteral("Connecting") : QStringLiteral("连接中")))
+        : connected ? (state_->is_english_ ? QStringLiteral("Disconnect") : QStringLiteral("断开"))
+        : ready ? (state_->is_english_ ? QStringLiteral("Connect") : QStringLiteral("连接"))
+        : (state_->is_english_ ? QStringLiteral("Select port first") : QStringLiteral("请先选择串口"));
+    const QString toolTip = state_->is_english_
+        ? QStringLiteral("%1 EM-FWC3 (local USB direct)").arg(actionText)
+        : QStringLiteral("%1 EM-FWC3（本机 USB 直连）").arg(actionText);
+    for (auto *button : buttons)
+    {
+        if (!button) continue;
+        button->setEnabled(ready && !motionState.busy && !spinnerActive);
+        setWidgetToolTipIfChanged(button, toolTip);
+        button->setAccessibleName(toolTip);
+        if (spinnerActive) button->setProperty(kHomeDeviceIconKeyProperty, QStringLiteral("spinner"));
+        else
+        {
+            const QString iconName = connected ? QStringLiteral("unlink") : QStringLiteral("link");
+            const QColor iconColor = connected ? toolbarColor(AppThemeColor::ToolbarRed)
+                : toolbarColor(ready ? AppThemeColor::HomeDeviceSuccess : AppThemeColor::ToolbarDisabled);
+            const QString iconKey = QStringLiteral("%1|%2").arg(iconName, iconColor.name(QColor::HexArgb));
+            if (button->property(kHomeDeviceIconKeyProperty).toString() != iconKey)
+            {
+                button->setProperty(kHomeDeviceIconKeyProperty, iconKey);
+                button->setIcon(createLucideIcon(iconName, iconColor));
+            }
+        }
+        bool changed = setDynamicPropertyIfChanged(button, "connected", connected);
+        changed |= setDynamicPropertyIfChanged(button, "state", spinnerActive ? QStringLiteral("connecting") : stateKey);
+        if (changed) { button->style()->unpolish(button); button->style()->polish(button); }
+    }
+    if (state_->home_motion_card_)
+        if (auto *combo = state_->home_motion_card_->findChild<QComboBox *>(QStringLiteral("homeMotionPort")))
+            combo->setFixedWidth(std::clamp(
+                combo->fontMetrics().horizontalAdvance(combo->currentText()) + scalePixels(kTemperatureTitlePortChromeWidth),
+                scalePixels(kTemperatureTitlePortMinimumWidth), scalePixels(kTemperatureTitlePortMaximumWidth)));
+    return spinnerActive;
+}
+
 void MainWindow::updateHomeDeviceStatusCapsules()
 {
+    updateTelemetryLinkAction();
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
     bool anySpinnerActive = false;
     auto updateCapsule = [this, &anySpinnerActive, nowMs](QLabel *label, QToolButton *button, VaporView::SkyDeviceId device) {
@@ -502,6 +615,7 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         else
         {
             state_->home_device_action_spinner_started_ms_.remove(device);
+            state_->home_device_disconnecting_.remove(device);
         }
         const QString stateKey = connected
             ? QStringLiteral("connected")
@@ -558,7 +672,9 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         const QString actionText = [&]() {
             if (spinnerActive)
             {
-                return state_->is_english_ ? QStringLiteral("Connecting") : QStringLiteral("连接中");
+                return state_->home_device_disconnecting_.contains(device)
+                    ? (state_->is_english_ ? QStringLiteral("Disconnecting") : QStringLiteral("断开中"))
+                    : (state_->is_english_ ? QStringLiteral("Connecting") : QStringLiteral("连接中"));
             }
             if (connected)
             {
@@ -602,7 +718,7 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         if (spinnerActive)
         {
             button->setProperty(kHomeDeviceIconKeyProperty, QStringLiteral("spinner"));
-            button->setIcon(createRotatedLucideIcon(QStringLiteral("refresh-cw"),
+            setDeviceActionAnimationFrame(button, createRotatedLucideIcon(QStringLiteral("refresh-cw"),
                                                     toolbarColor(AppThemeColor::HomeDeviceSuccess),
                                                     homeDeviceActionSpinnerDegrees(device, nowMs)));
         }
@@ -652,6 +768,7 @@ void MainWindow::updateHomeDeviceStatusCapsules()
     updateCapsule(state_->home_ai8_temperature_status_lbl_, state_->home_ai8_temperature_action_btn_, VaporView::SkyDeviceId::Ai8TemperatureController);
     updateCapsule(state_->home_bmp390_status_lbl_, state_->home_bmp390_action_btn_, VaporView::SkyDeviceId::Bmp390);
     updateCapsule(state_->home_sht45_status_lbl_, state_->home_sht45_action_btn_, VaporView::SkyDeviceId::Sht45);
+    anySpinnerActive |= updateHomeMotionDeviceControls(nowMs);
     if (state_->home_device_action_spinner_timer_)
     {
         if (anySpinnerActive)
@@ -694,14 +811,15 @@ void MainWindow::updateHomeDeviceActionSpinnerIcons()
         if (!spinnerActive)
         {
             state_->home_device_action_spinner_started_ms_.remove(device);
+            state_->home_device_disconnecting_.remove(device);
             return;
         }
 
         anySpinnerActive = true;
-        button->setIcon(createRotatedLucideIcon(QStringLiteral("refresh-cw"),
-                                                toolbarColor(AppThemeColor::HomeDeviceSuccess),
-                                                homeDeviceActionSpinnerDegrees(device, nowMs)));
-        button->update();
+        if (!button->isVisible()) return;
+        const auto icon = createRotatedLucideIcon(QStringLiteral("refresh-cw"),
+            toolbarColor(AppThemeColor::HomeDeviceSuccess), homeDeviceActionSpinnerDegrees(device, nowMs));
+        setDeviceActionAnimationFrame(button, icon);
     };
 
     updateButton(state_->home_epsilon_action_btn_, VaporView::SkyDeviceId::Epsilon);
@@ -727,11 +845,15 @@ void MainWindow::updateHomeDeviceActionSpinnerIcons()
                  VaporView::SkyDeviceId::TemperatureController);
     updateButton(state_->ai8_temperature_title_action_btn_,
                  VaporView::SkyDeviceId::Ai8TemperatureController);
+    anySpinnerActive |= updateHomeMotionDeviceControls(nowMs, true);
     if (needsFullRefresh)
     {
         updateHomeDeviceStatusCapsules();
         updateTemperatureTitleButtonsState();
-        updateDeviceConfigState();
+        for (auto device : {VaporView::SkyDeviceId::Epsilon, VaporView::SkyDeviceId::Ptb,
+                 VaporView::SkyDeviceId::Hc2a, VaporView::SkyDeviceId::Lidar,
+                 VaporView::SkyDeviceId::TemperatureController, VaporView::SkyDeviceId::Ai8TemperatureController,
+                 VaporView::SkyDeviceId::WaveTcp}) updateDeviceConfigRemoteActionButton(device);
         return;
     }
     if (!anySpinnerActive && state_->home_device_action_spinner_timer_)
@@ -1452,10 +1574,187 @@ void MainWindow::testApplyLocalPortDetection(const QString& deviceKey,
 }
 #endif
 
+void MainWindow::updateTelemetryLinkAction()
+{
+    if (!state_->telemetry_link_btn_) return;
+    const bool remote = isRemoteSkyMode();
+    const bool active = state_->remote_sky_controller_ &&
+        (state_->remote_sky_controller_->isOpen() || state_->remote_sky_controller_->telemetryService()->isConnecting());
+    const QString text = active
+        ? (state_->is_english_ ? QStringLiteral("Close sky-ground link") : QStringLiteral("断开天地链路"))
+        : (state_->is_english_ ? QStringLiteral("Open sky-ground link") : QStringLiteral("打开天地链路"));
+    state_->telemetry_link_btn_->setVisible(remote);
+    state_->telemetry_link_btn_->setEnabled(remote && !isUiTestMode());
+    state_->telemetry_link_btn_->setText(text);
+    state_->telemetry_link_btn_->setToolTip(text);
+    const QString iconKey = QStringLiteral("%1|%2").arg(active).arg(state_->dark_theme_enabled_);
+    if (state_->telemetry_link_btn_->property("linkIconKey").toString() != iconKey) {
+        state_->telemetry_link_btn_->setProperty("linkIconKey", iconKey);
+        state_->telemetry_link_btn_->setIcon(createLucideIcon(active ? QStringLiteral("unplug") : QStringLiteral("plug"),
+            toolbarColor(active ? AppThemeColor::ToolbarRed : AppThemeColor::ToolbarBlue)));
+    }
+    if (remote && !isUiTestMode() && state_->connect_btn_) {
+        const bool open = state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen();
+        const bool busy = state_->remote_connect_devices_pending_ || !state_->fpga_home_connect_queue_.isEmpty()
+            || state_->fpga_home_action_device_ != VaporView::SkyDeviceId::All
+            || state_->fpga_session_.requestId || !state_->fpga_action_queue_.isEmpty();
+        state_->connect_btn_->setEnabled(open && !busy);
+        state_->disconnect_btn_->setEnabled(open);
+        state_->refresh_ports_btn_->setEnabled(!state_->connection_attempt_in_progress_);
+    }
+}
+
+void MainWindow::onTelemetryLinkClicked()
+{
+    if (!isRemoteSkyMode() || isUiTestMode() || !state_->remote_sky_controller_) return;
+    if (state_->remote_sky_controller_->isOpen() || state_->remote_sky_controller_->telemetryService()->isConnecting()) {
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("telemetry.connection"),
+                         QStringLiteral("remote_sky_disconnection_started"),
+                         QStringLiteral("正在断开天空端数传。"),
+                         {{QStringLiteral("ui_visibility"), QStringLiteral("details")}});
+        state_->connection_attempt_in_progress_ = false;
+        state_->remote_connect_devices_pending_ = false;
+        cancelFpgaActions();
+        state_->fpga_home_connect_queue_.clear();
+        state_->fpga_home_connect_device_ = VaporView::SkyDeviceId::All;
+        state_->remote_sky_controller_->close();
+        clearRemoteSkyDataUi();
+        updateConnectionStatus(false);
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("telemetry.connection"),
+                         QStringLiteral("remote_sky_disconnected"),
+                         QStringLiteral("天空端数传已断开。"),
+                         {{QStringLiteral("ui_visibility"), QStringLiteral("details")}});
+        return;
+    }
+    openRemoteSkyLink();
+}
+
+void MainWindow::openRemoteSkyLink()
+{
+    clearRemoteSkyDataUi();
+    state_->remote_connect_devices_pending_ = false;
+    const auto& skyLink = state_->remote_sky_link_config_;
+    const bool tcpTelemetry = skyLink.transport == VaporView::TelemetryTransportType::Tcp;
+    bool opened = false;
+    QString openedText;
+    if (tcpTelemetry)
+    {
+        const QString host = skyLink.tcpHost.trimmed();
+        const int tcpPort = skyLink.tcpPort;
+        if (host.isEmpty())
+        {
+            state_->remote_connect_devices_pending_ = false;
+            publishGroundLog(VaporView::LogLevel::Warning,
+                             QStringLiteral("telemetry.connection"),
+                             QStringLiteral("remote_sky_connection_rejected_missing_host"),
+                             QStringLiteral("请先输入天空端数传 IP。"),
+                             {{QStringLiteral("reason_code"), QStringLiteral("MISSING_ENDPOINT")},
+                              {QStringLiteral("transport"), QStringLiteral("tcp")},
+                              {QStringLiteral("ui_dedupe_key"), QStringLiteral("remote_sky:tcp:missing_host")}});
+            return;
+        }
+        openedText = QStringLiteral("%1:%2").arg(host).arg(tcpPort);
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("telemetry.connection"),
+                         QStringLiteral("remote_sky_connection_started"),
+                         QStringLiteral("正在连接天空端 TCP 数传。"),
+                         {{QStringLiteral("transport"), QStringLiteral("tcp")},
+                          {QStringLiteral("endpoint"), openedText},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
+        state_->connection_attempt_in_progress_ = true;
+        opened = state_->remote_sky_controller_ && state_->remote_sky_controller_->openTcpAsync(host, static_cast<quint16>(tcpPort));
+        if (opened) {
+            updateConnectionStatus(false);
+            return;
+        }
+    }
+    else
+    {
+        const QString port = skyLink.serialPort.trimmed();
+        const int baud = skyLink.serialBaudRate;
+        if (port.isEmpty())
+        {
+            state_->remote_connect_devices_pending_ = false;
+            publishGroundLog(VaporView::LogLevel::Warning,
+                             QStringLiteral("telemetry.connection"),
+                             QStringLiteral("remote_sky_connection_rejected_missing_port"),
+                             QStringLiteral("请先选择天空端数传串口。"),
+                             {{QStringLiteral("reason_code"), QStringLiteral("MISSING_ENDPOINT")},
+                              {QStringLiteral("transport"), QStringLiteral("serial")},
+                              {QStringLiteral("ui_dedupe_key"), QStringLiteral("remote_sky:serial:missing_port")}});
+            return;
+        }
+        if (!VaporView::isValidSerialBaudRate(baud))
+        {
+            state_->remote_connect_devices_pending_ = false;
+            publishGroundLog(VaporView::LogLevel::Warning,
+                             QStringLiteral("telemetry.connection"),
+                             QStringLiteral("remote_sky_connection_rejected_invalid_baud"),
+                             QStringLiteral("天空端数传串口波特率无效。"),
+                             {{QStringLiteral("reason_code"), QStringLiteral("INVALID_BAUD_RATE")},
+                              {QStringLiteral("error_code"), QStringLiteral("INVALID_BAUD_RATE")},
+                              {QStringLiteral("transport"), QStringLiteral("serial")},
+                              {QStringLiteral("port"), port},
+                              {QStringLiteral("configured_baud"), baud},
+                              {QStringLiteral("ui_dedupe_key"), QStringLiteral("remote_sky:serial:invalid_baud")}});
+            return;
+        }
+        openedText = QStringLiteral("%1 @ %2").arg(port).arg(baud);
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("telemetry.connection"),
+                         QStringLiteral("remote_sky_connection_started"),
+                         QStringLiteral("正在打开天空端数传串口。"),
+                         {{QStringLiteral("transport"), QStringLiteral("serial")},
+                          {QStringLiteral("endpoint"), openedText},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
+        opened = state_->remote_sky_controller_ && state_->remote_sky_controller_->open(port, baud);
+    }
+    if (opened)
+    {
+        updateConnectionStatus(true);
+        state_->remote_sky_controller_->sendCommand(VaporView::CommandId::DisableWaveformStreaming);
+        state_->remote_sky_controller_->sendCommand(VaporView::CommandId::RequestStatus);
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("telemetry.connection"),
+                         QStringLiteral("remote_sky_connection_opened"),
+                         QStringLiteral("数传链路已打开，正在等待天空端握手。"),
+                         {{QStringLiteral("endpoint"), openedText},
+                          {QStringLiteral("transport"), tcpTelemetry ? QStringLiteral("tcp") : QStringLiteral("serial")},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
+    }
+    else
+    {
+        state_->remote_connect_devices_pending_ = false;
+        state_->connection_attempt_in_progress_ = false;
+        updateConnectionStatus(false);
+        publishGroundLog(VaporView::LogLevel::Error,
+                         QStringLiteral("telemetry.connection"),
+                         QStringLiteral("remote_sky_connection_open_failed"),
+                         QStringLiteral("打开天空端数传链路失败。"),
+                         {{QStringLiteral("error_code"), QStringLiteral("TELEMETRY_LINK_OPEN_FAILED")},
+                          {QStringLiteral("endpoint"), openedText},
+                          {QStringLiteral("transport"), tcpTelemetry ? QStringLiteral("tcp") : QStringLiteral("serial")},
+                          {QStringLiteral("ui_message"),
+                           QStringLiteral("无法打开天空端数传链路（%1）。请确认 SkyCore 已启动并监听该地址。")
+                               .arg(openedText)},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("remote_sky:connection_open_failed")}});
+    }
+}
+
 void MainWindow::onConnectClicked()
 {
-    if (isRemoteSkyMode() && !isUiTestMode() && state_->remote_sky_controller_ &&
-        (state_->remote_sky_controller_->isOpen() || state_->remote_sky_controller_->telemetryService()->isConnecting())) return;
+    if (isRemoteSkyMode() && !isUiTestMode())
+    {
+        if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen()
+            || state_->remote_connect_devices_pending_ || !state_->fpga_home_connect_queue_.isEmpty()
+            || state_->fpga_home_action_device_ != VaporView::SkyDeviceId::All) return;
+        state_->remote_connect_devices_pending_ = true;
+        maybeConnectRemoteDevices();
+        updateConnectionStatus(true);
+        return;
+    }
     if (isFpgaRelayPath() &&
         (state_->fpga_connected_ || state_->fpga_busy_ || state_->fpga_replaying_))
     {
@@ -1508,118 +1807,6 @@ void MainWindow::onConnectClicked()
                                state_->is_english_ ? QStringLiteral("All simulated devices connected")
                                                    : QStringLiteral("所有模拟设备已连接"));
         });
-        return;
-    }
-    if (isRemoteSkyMode())
-    {
-        clearRemoteSkyDataUi();
-        state_->remote_connect_devices_pending_ = true;
-        const auto& skyLink = state_->remote_sky_link_config_;
-        const bool tcpTelemetry = skyLink.transport == VaporView::TelemetryTransportType::Tcp;
-        bool opened = false;
-        QString openedText;
-        if (tcpTelemetry)
-        {
-            const QString host = skyLink.tcpHost.trimmed();
-            const int tcpPort = skyLink.tcpPort;
-            if (host.isEmpty())
-            {
-                state_->remote_connect_devices_pending_ = false;
-                publishGroundLog(VaporView::LogLevel::Warning,
-                                 QStringLiteral("telemetry.connection"),
-                                 QStringLiteral("remote_sky_connection_rejected_missing_host"),
-                                 QStringLiteral("请先输入天空端数传 IP。"),
-                                 {{QStringLiteral("reason_code"), QStringLiteral("MISSING_ENDPOINT")},
-                                  {QStringLiteral("transport"), QStringLiteral("tcp")},
-                                  {QStringLiteral("ui_dedupe_key"), QStringLiteral("remote_sky:tcp:missing_host")}});
-                return;
-            }
-            openedText = QStringLiteral("%1:%2").arg(host).arg(tcpPort);
-            publishGroundLog(VaporView::LogLevel::Info,
-                             QStringLiteral("telemetry.connection"),
-                             QStringLiteral("remote_sky_connection_started"),
-                             QStringLiteral("正在连接天空端 TCP 数传。"),
-                             {{QStringLiteral("transport"), QStringLiteral("tcp")},
-                              {QStringLiteral("endpoint"), openedText},
-                              {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
-            state_->connection_attempt_in_progress_ = true;
-            opened = state_->remote_sky_controller_ && state_->remote_sky_controller_->openTcpAsync(host, static_cast<quint16>(tcpPort));
-            if (opened) {
-                updateConnectionStatus(false);
-                return;
-            }
-        }
-        else
-        {
-            const QString port = skyLink.serialPort.trimmed();
-            const int baud = skyLink.serialBaudRate;
-            if (port.isEmpty())
-            {
-                state_->remote_connect_devices_pending_ = false;
-                publishGroundLog(VaporView::LogLevel::Warning,
-                                 QStringLiteral("telemetry.connection"),
-                                 QStringLiteral("remote_sky_connection_rejected_missing_port"),
-                                 QStringLiteral("请先选择天空端数传串口。"),
-                                 {{QStringLiteral("reason_code"), QStringLiteral("MISSING_ENDPOINT")},
-                                  {QStringLiteral("transport"), QStringLiteral("serial")},
-                                  {QStringLiteral("ui_dedupe_key"), QStringLiteral("remote_sky:serial:missing_port")}});
-                return;
-            }
-            if (!VaporView::isValidSerialBaudRate(baud))
-            {
-                state_->remote_connect_devices_pending_ = false;
-                publishGroundLog(VaporView::LogLevel::Warning,
-                                 QStringLiteral("telemetry.connection"),
-                                 QStringLiteral("remote_sky_connection_rejected_invalid_baud"),
-                                 QStringLiteral("天空端数传串口波特率无效。"),
-                                 {{QStringLiteral("reason_code"), QStringLiteral("INVALID_BAUD_RATE")},
-                                  {QStringLiteral("error_code"), QStringLiteral("INVALID_BAUD_RATE")},
-                                  {QStringLiteral("transport"), QStringLiteral("serial")},
-                                  {QStringLiteral("port"), port},
-                                  {QStringLiteral("configured_baud"), baud},
-                                  {QStringLiteral("ui_dedupe_key"), QStringLiteral("remote_sky:serial:invalid_baud")}});
-                return;
-            }
-            openedText = QStringLiteral("%1 @ %2").arg(port).arg(baud);
-            publishGroundLog(VaporView::LogLevel::Info,
-                             QStringLiteral("telemetry.connection"),
-                             QStringLiteral("remote_sky_connection_started"),
-                             QStringLiteral("正在打开天空端数传串口。"),
-                             {{QStringLiteral("transport"), QStringLiteral("serial")},
-                              {QStringLiteral("endpoint"), openedText},
-                              {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
-            opened = state_->remote_sky_controller_ && state_->remote_sky_controller_->open(port, baud);
-        }
-        if (opened)
-        {
-            updateConnectionStatus(true);
-            state_->remote_sky_controller_->sendCommand(VaporView::CommandId::DisableWaveformStreaming);
-            state_->remote_sky_controller_->sendCommand(VaporView::CommandId::RequestStatus);
-            publishGroundLog(VaporView::LogLevel::Info,
-                             QStringLiteral("telemetry.connection"),
-                             QStringLiteral("remote_sky_connection_opened"),
-                             QStringLiteral("数传链路已打开，正在等待天空端握手。"),
-                             {{QStringLiteral("endpoint"), openedText},
-                              {QStringLiteral("transport"), tcpTelemetry ? QStringLiteral("tcp") : QStringLiteral("serial")},
-                              {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
-        }
-        else
-        {
-            state_->remote_connect_devices_pending_ = false;
-            state_->connection_attempt_in_progress_ = false;
-            updateConnectionStatus(false);
-            publishGroundLog(VaporView::LogLevel::Error,
-                             QStringLiteral("telemetry.connection"),
-                             QStringLiteral("remote_sky_connection_open_failed"),
-                             QStringLiteral("打开天空端数传链路失败。"),
-                             {{QStringLiteral("error_code"), QStringLiteral("TELEMETRY_LINK_OPEN_FAILED")},
-                              {QStringLiteral("endpoint"), openedText},
-                              {QStringLiteral("transport"), tcpTelemetry ? QStringLiteral("tcp") : QStringLiteral("serial")},
-                              {QStringLiteral("ui_message"),
-                               QStringLiteral("无法打开天空端数传链路（%1）。请确认 SkyCore 已启动并监听该地址。")
-                                   .arg(openedText)},
-                              {QStringLiteral("ui_dedupe_key"), QStringLiteral("remote_sky:connection_open_failed")}});
-        }
         return;
     }
 
@@ -1783,12 +1970,22 @@ void MainWindow::onConnectClicked()
 }
 void MainWindow::onDisconnectClicked()
 {
+    for (auto device : {VaporView::SkyDeviceId::Epsilon, VaporView::SkyDeviceId::Ptb,
+             VaporView::SkyDeviceId::Hc2a, VaporView::SkyDeviceId::Lidar,
+             VaporView::SkyDeviceId::TemperatureController, VaporView::SkyDeviceId::Ai8TemperatureController,
+             VaporView::SkyDeviceId::WaveTcp, VaporView::SkyDeviceId::Bmp390, VaporView::SkyDeviceId::Sht45}) {
+        if (homeDeviceConnected(device) || homeDeviceActionSpinnerActive(device, QDateTime::currentMSecsSinceEpoch())) {
+            state_->home_device_disconnecting_.insert(device);
+            startHomeDeviceActionSpinner(device);
+        }
+    }
+    updateHomeDeviceStatusCapsules();
     cancelFpgaActions();
     state_->fpga_home_connect_queue_.clear();
     state_->fpga_home_raw_start_pending_=false;
     state_->fpga_home_action_device_=VaporView::SkyDeviceId::All;
     state_->fpga_home_action_started_=false;
-    if (isFpgaRelayPath() &&
+    if (isFpgaRelayPath() && !isRemoteSkyMode() &&
         (state_->fpga_connected_ || state_->fpga_busy_ || state_->fpga_replaying_))
     {
         QMetaObject::invokeMethod(state_->fpga_session_.controller(), &VaporView::Ground::Devices::FpgaDeviceController::disconnectDevice, Qt::QueuedConnection);
@@ -1810,24 +2007,15 @@ void MainWindow::onDisconnectClicked()
     }
     if (isRemoteSkyMode())
     {
-        state_->connection_attempt_in_progress_ = false;
-        publishGroundLog(VaporView::LogLevel::Info,
-                         QStringLiteral("telemetry.connection"),
-                         QStringLiteral("remote_sky_disconnection_started"),
-                         QStringLiteral("正在断开天空端数传。"),
-                         {{QStringLiteral("ui_visibility"), QStringLiteral("details")}});
-        if (state_->remote_sky_controller_)
-        {
-            state_->remote_sky_controller_->close();
-        }
-        state_->remote_recording_state_ = 0;
-        clearRemoteSkyDataUi();
-        updateConnectionStatus(false);
-        publishGroundLog(VaporView::LogLevel::Info,
-                         QStringLiteral("telemetry.connection"),
-                         QStringLiteral("remote_sky_disconnected"),
-                         QStringLiteral("天空端数传已断开。"),
-                         {{QStringLiteral("ui_visibility"), QStringLiteral("details")}});
+        state_->remote_connect_devices_pending_ = false;
+        state_->fpga_home_connect_device_ = VaporView::SkyDeviceId::All;
+        if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen()) return;
+        if (isFpgaRelayPath())
+            queueFpgaAction([this] { sendRemoteFpgaControl({{"op", "disconnect"}}); },
+                [this](const QString& error) { state_->fpga_page_->appendDiagnostic(error); });
+        else
+            state_->remote_sky_controller_->sendCommand(VaporView::CommandId::DisconnectAllDevices);
+        updateConnectionStatus(true);
         return;
     }
 

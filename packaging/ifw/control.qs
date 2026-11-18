@@ -33,12 +33,17 @@ function vaporViewDefaultTargetDirectory(text) {
 }
 
 function Controller() {
-    installer.setDefaultPageVisible(QInstaller.Introduction, true);
-    installer.setDefaultPageVisible(QInstaller.TargetDirectory, true);
-    installer.setDefaultPageVisible(QInstaller.ComponentSelection, true);
+    // The introduction initializes the embedded package tree. Hide it only
+    // after reaching the target-directory page, once packages have been loaded.
+    installer.setDefaultPageVisible(QInstaller.LicenseCheck, false);
 }
 
+Controller.prototype.IntroductionPageCallback = function() {
+    if (installer.isInstaller()) gui.clickButton(buttons.NextButton);
+};
+
 Controller.prototype.TargetDirectoryPageCallback = function() {
+    if (installer.isInstaller()) installer.setDefaultPageVisible(QInstaller.Introduction, false);
     if (systemInfo.productType !== "windows") {
         return;
     }
@@ -49,6 +54,12 @@ Controller.prototype.TargetDirectoryPageCallback = function() {
     }
 
     var lineEdit = page.TargetDirectoryLineEdit;
+    if (page.title !== undefined) {
+        page.title = qsTr("欢迎安装 VaporView");
+    }
+    if (page.subtitle !== undefined) {
+        page.subtitle = qsTr("选择安装文件夹，然后点击下一步开始安装。");
+    }
     var applyDefaultTarget = function(text) {
         var target = vaporViewDefaultTargetDirectory(text);
         if (target !== text) {

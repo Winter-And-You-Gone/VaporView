@@ -45,6 +45,8 @@ Windows 安装包默认安装到 `C:\VaporView`，也支持选择带空格或中
 
 ### VaporViewSkyCore + VaporViewSkyTui
 
+地面 GUI 内置 Gateway 可复用现有 SkyCore 数据流向互联网转发，支持有界离线缓存、受限远程命令和地面 Session 同步。入口、服务器 v1 协议及运行边界见 [GUI Gateway 说明](docs/gui_gateway.md)。
+
 天空端推荐拆成两个进程运行：
 
 - `VaporViewSkyCore`：核心采集进程，负责设备采集、本地记录、天空-地面数传链路和本机 IPC Server。不创建 Qt Widgets 窗口，不依赖 TUI。天空-地面数传默认使用 TCP Server `0.0.0.0:39100`，也可切回串口。

@@ -1,5 +1,6 @@
 #include "ground/devices/RemoteSkyController.h"
 #include <QtEndian>
+#include "FpgaHarmonics.h"
 
 #include "ground/devices/RemoteTelemetryDecoder.h"
 #include "shared/config/SettingsWriteBarrier.h"
@@ -148,16 +149,31 @@ RemoteSkyController::RemoteSkyController(QObject *parent)
             emit internalEnvironmentUpdated(reading);
         },Qt::QueuedConnection);
     },Qt::DirectConnection);
-    connect(&service_, &GroundTelemetryService::fpgaWaveformUpdated, this, [this](const FpgaWave::CompletedStream& stream) {
+    connect(&service_, &GroundTelemetryService::fpgaWaveformUpdated, this, [this, last = QHash<quint16, QString>{}](const FpgaWave::CompletedStream& stream) mutable {
         const auto generation = service_.linkGeneration();
-        QMetaObject::invokeMethod(this, [this, generation, stream] {
+        const QString identity = QStringLiteral("%1/%2/%3").arg(generation).arg(stream.cycleId).arg(stream.timestamp);
+        const bool newPreview = last.value(stream.source) != identity;
+        last[stream.source] = identity;
+        QMetaObject::invokeMethod(this, [this, generation, stream, newPreview] {
             if (!isCurrentOpenEvent(generation)) return;
             const auto now = QDateTime::currentMSecsSinceEpoch();
             state_.notePacket(MsgType::FpgaWaveformPreview, now);
             if (stream.complete) {
                 state_.noteDeviceData(SkyDeviceId::Fpga, now);
                 state_.noteDeviceData(SkyDeviceId::WaveTcp, now);
-                state_.noteWaveformPacket(stream.source < 0x30 ? 1 : 4, now);
+                // DLIA0 + DLIA1 totals; ADC previews are excluded.
+                if (newPreview && (stream.source == 0x30 || stream.source == 0x31) && !stream.partial &&
+                    !stream.overflow && !stream.continuityError && !stream.dliaPoints.isEmpty()) {
+                    state_.noteWaveformPacket(1, now);
+                    for (const auto& point : stream.dliaPoints) {
+                        const double h1 = stream.format == 1 ? std::hypot(double(point.i1), double(point.q1)) : double(point.h1);
+                        const double h2 = stream.format == 1 ? std::hypot(double(point.i2), double(point.q2)) : double(point.h2);
+                        if (std::isfinite(FpgaWave::normalizedSecondHarmonic(h1, h2))) {
+                            state_.noteWaveformPacket(4, now);
+                            break;
+                        }
+                    }
+                }
             }
             emit fpgaWaveformUpdated(stream);
         }, Qt::QueuedConnection);
@@ -590,14 +606,14 @@ qint64 RemoteSkyController::lastDeviceDataMs(SkyDeviceId device) const
     return state_.lastDeviceDataMs(device);
 }
 
-double RemoteSkyController::packetRate(MsgType type) const
+double RemoteSkyController::packetRate(MsgType type, bool requireFresh) const
 {
-    return state_.packetRate(type);
+    return state_.packetRate(type, requireFresh ? QDateTime::currentMSecsSinceEpoch() : 0);
 }
 
-double RemoteSkyController::waveformPacketRate(quint16 channelId) const
+double RemoteSkyController::waveformPacketRate(quint16 channelId, bool requireFresh) const
 {
-    return state_.waveformPacketRate(channelId);
+    return state_.waveformPacketRate(channelId, requireFresh ? QDateTime::currentMSecsSinceEpoch() : 0);
 }
 
 bool RemoteSkyController::isCurrentEvent(quint64 generation) const

@@ -257,6 +257,25 @@ int main(int argc,char **argv)
     FpgaWave::CompletedStream wave;wave.source=0x20;wave.message=0x1000;wave.schema=2;wave.format=0;wave.rate=1000;wave.totalPoints=1;wave.bytesPerPoint=4;wave.adcBits=24;wave.signed32Samples.append(-1);
     write(MsgType::FpgaWaveformPreview,FpgaRemote::encodeWaveformPreview(wave));
     require(waitUntil([&]{return statuses==1 && sensors==1 && waves==1;}),"all typed FPGA telemetry delivered");
+    require(controller.waveformPacketRate(1, true) < 0, "ADC preview does not count as H1/H2");
+    wave.source = 0x30; wave.message = 0x1001; wave.adcBits = 0; wave.complete = true; wave.bytesPerPoint = 8; wave.format = 0;
+    wave.signed32Samples.clear(); wave.dliaPoints.clear();
+    FpgaWave::CompletedStream::DliaPoint point; point.h1 = 10; point.h2 = 5; point.hasHarmonics = true;
+    wave.dliaPoints.append(point);
+    const int beforePreview = waves;
+    write(MsgType::FpgaWaveformPreview, FpgaRemote::encodeWaveformPreview(wave));
+    require(waitUntil([&]{ return waves == beforePreview + 1; }), "DLIA preview delivered");
+    require(controller.waveformPacketRate(1, true) >= 0 && controller.waveformPacketRate(4, true) >= 0,
+            "DLIA preview counts both H1/H2 and valid normalized updates");
+    write(MsgType::FpgaWaveformPreview, FpgaRemote::encodeWaveformPreview(wave));
+    require(waitUntil([&]{ return waves == beforePreview + 2; }), "duplicate preview still delivered to existing consumers");
+    require(controller.waveformPacketRate(1) == 0, "duplicate cycle does not increment preview frequency");
+    wave.source = 0x31; wave.cycleId = 1; wave.dliaPoints[0].h1 = 0;
+    write(MsgType::FpgaWaveformPreview, FpgaRemote::encodeWaveformPreview(wave));
+    require(waitUntil([&]{ return waves == beforePreview + 3; }), "second DLIA channel delivered");
+    require(controller.waveformPacketRate(4) == 0, "invalid normalization does not count as an update");
+    require(controller.waveformPacketRate(1, true) == 0.4 && controller.waveformPacketRate(4, true) == 0.2,
+            "five-second totals include both DLIA channels, exclude duplicate and invalid normalized events");
     auto service=controller.telemetryService();
     DeviceOperationRequest duplicateRequest;
     duplicateRequest.request_id = 703;
@@ -314,7 +333,7 @@ int main(int argc,char **argv)
                  record.fields.value(QStringLiteral("stage")).toString() == QStringLiteral("awaiting_device_result")) cachedDisconnectLogged = true;
     require(disconnectLogged, "disconnect logs unfinished command with its original correlation");
     require(cachedDisconnectLogged, "disconnect logs acknowledged operation still awaiting typed result");
-    require(statuses==1 && sensors==1 && waves==1,"stale queued FPGA telemetry rejected after close");
+    require(statuses==1 && sensors==1 && waves==beforePreview+3,"stale queued FPGA telemetry rejected after close");
     server.close();
     {
         TcpTelemetryLink peer;

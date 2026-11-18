@@ -3,6 +3,8 @@
 #include <QPointer>
 #include <QSet>
 #include <cmath>
+#include <atomic>
+#include <array>
 
 namespace VaporView {
 bool SkyFpgaBackend::validateOperation(const QJsonObject& o, QString *error)
@@ -18,6 +20,7 @@ SkyFpgaBackend::SkyFpgaBackend(std::unique_ptr<Ground::Devices::FpgaUsbTransport
     controller_->moveToThread(&worker_);
     connect(&worker_, &QThread::finished, controller_, &QObject::deleteLater);
     connect(controller_, &Ground::Devices::FpgaDeviceController::transportConnectionChanged, this, [this](bool connected) {
+        status_.remove("acquisition_cycles");
         if (!connected) status_["sensor_rates_hz"] = QJsonObject{};
         status_["connected"] = connected; emit statusChanged(status_);
     });
@@ -42,6 +45,40 @@ SkyFpgaBackend::SkyFpgaBackend(std::unique_ptr<Ground::Devices::FpgaUsbTransport
         status_["sensor_rates_hz"] = rates;
         emit measurementUpdated(m);
     });
+    // Count complete DLIA cycles on the USB worker before preview thinning and UI coalescing.
+    auto cycleCount = std::make_shared<std::atomic<quint64>>(0);
+    auto lastCycles = std::make_shared<std::array<std::pair<quint32, quint64>, 2>>();
+    auto seenCycles = std::make_shared<std::array<bool, 2>>();
+    connect(controller_, &Ground::Devices::FpgaDeviceController::transportConnectionChanged, controller_,
+        [lastCycles, seenCycles](bool) { lastCycles->fill({}); seenCycles->fill(false); });
+    connect(controller_, &Ground::Devices::FpgaDeviceController::harmonicCycleReady, controller_,
+        [cycleCount, lastCycles, seenCycles]
+        (quint64, const FpgaWave::CompletedStream& stream) mutable {
+            if ((stream.source != 0x30 && stream.source != 0x31) || !stream.complete || stream.partial
+                || stream.overflow || stream.continuityError) return;
+            const auto index = stream.source - 0x30;
+            const auto identity = std::make_pair(stream.cycleId, stream.timestamp);
+            if ((*seenCycles)[index] && (*lastCycles)[index] == identity) return;
+            (*seenCycles)[index] = true; (*lastCycles)[index] = identity;
+            cycleCount->fetch_add(1, std::memory_order_relaxed);
+        });
+    auto cycleClock = std::make_shared<QElapsedTimer>(); cycleClock->start();
+    auto *cycleTimer = new QTimer(this); cycleTimer->setInterval(1000);
+    connect(controller_, &Ground::Devices::FpgaDeviceController::transportConnectionChanged, this,
+        [this, cycleCount, cycleClock](bool) {
+            cycleCount->exchange(0, std::memory_order_relaxed); cycleClock->restart();
+            status_.remove("acquisition_cycles");
+        });
+    connect(cycleTimer, &QTimer::timeout, this, [this, cycleCount, cycleClock] {
+        const quint64 count = cycleCount->exchange(0, std::memory_order_relaxed);
+        const qint64 window = cycleClock->restart();
+        if (!status_.value("ready").toBool() || window <= 0) return;
+        status_["acquisition_cycles"] = QJsonObject{{"count", QString::number(count)},
+            {"window_ms", double(window)}, {"rate_hz", count * 1000.0 / window},
+            {"scope", "dlia0+dlia1"}};
+        emit statusChanged(status_);
+    });
+    cycleTimer->start();
     auto previewClock = std::make_shared<QElapsedTimer>(); previewClock->start();
     auto lastPreview = std::make_shared<QHash<quint16,qint64>>();
     connect(controller_, &Ground::Devices::FpgaDeviceController::waveformUpdated, controller_,

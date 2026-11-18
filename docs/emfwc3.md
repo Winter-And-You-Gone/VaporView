@@ -32,20 +32,36 @@ card but require an appropriate manufacturer runtime before connection.
 1. Open **Device configuration → Motion control · EM-FWC3**.
 2. Select the actual COM port. Port numbers may change between computers or
    USB sockets; CH340 identifies the bridge, not uniquely the attached product.
-3. Use the channel dropdown to check each channel's physical motor type
-   (EM-FPM or CEM-FPM; the confirmed project hardware defaults to CEM-FPM on
-   all three channels), then explicitly
-   confirm the three types. They are used by the SDK's angle conversion.
+3. The fitted motor is fixed to CEM-FPM (the manufacturer's SDK spelling),
+   and the UI operates channel 1. There is no model selector, model-confirmation
+   checkbox or channel selector; legacy saved motor types are ignored.
 4. Connect. Success requires initialization, serial open, motor-type setup,
    three finite position responses, and a speed response. Connection never
    homes, moves, changes speed, clears the origin, or writes EEPROM.
-5. Operate the selected channel directly in the same card. Channels 1–3 map
-   to SDK motor indices 0–2. Switching channels retains each channel's target,
-   step and motor type. The serial selector, refresh, connect and disconnect
-   controls are in the card header; no separate motion page is needed.
+5. Operate channel 1 directly in the same card or from the home motion card.
+   Both the home and configuration cards share one USB session and synchronize
+   the selected COM port. The home card header provides the serial selector and
+   one animated icon-only connect/disconnect button and the USB connection
+   status. Current angle, a compact target-angle editor, positioning, home,
+   stop and device settings share one row. Relative steps and continuous
+   directions are available in device configuration.
+   The home device overview also includes EM-FWC3 and shares its connection
+   action and status with the motion card. Refresh and
+   speed/EEPROM settings remain in device configuration. The internal
+   three-channel routing and per-channel target/step state are retained, with
+   channels 1–3 mapping to SDK indices 0–2; both channel selectors stay hidden.
 
 Each channel provides absolute positioning, relative steps, homing, continuous
-motion, and stop. Homing and continuous motion require explicit confirmation.
+motion, and stop. Continuous-direction buttons are always visible; the old
+checkbox only expanded the UI and was not a device requirement. Homing and
+continuous motion retain their action-confirmation dialogs.
+
+UI Test Mode also covers the motor controller. It supplies a simulated USB
+connection, angle and speed, and supports positioning, relative steps, homing,
+continuous motion, stop, and connection actions without calling the vendor SDK.
+Failure and stalled-data scenarios affect simulated feedback. Leaving the mode
+restores the original port, angle editors and speed editor and clears the
+simulated connection; simulated operations never write motor EEPROM.
 The stop controls remain available while another command is pending. Calls
 are serialized on a dedicated worker thread; a stop waits for the in-flight
 SDK call to return. **Stop all** attempts all three channels even if a previous
@@ -57,7 +73,14 @@ is never automatic. Verify speed units, permitted speed, and mechanical
 travel against the actual fitted hardware; numeric input bounds are not
 mechanical limit protection. No XYZ/attitude meaning is assigned to channels.
 
-Position readback is polled every 500 ms, subject to SDK response time. A
+Position readback is polled every 500 ms, subject to SDK response time. On the
+EM-FWC3, reading any channel's position interrupts continuous motion, including
+motion on another channel (verified with the V1.0.1 SDK). During
+continuous motion, all angle polling pauses and both control panels display
+"Reading paused" instead of stale angles. Stop the motion before issuing other
+commands; stop, stop-all and disconnect remain available. Successful stopping
+resumes angle polling. With polling paused, connection-loss detection also
+waits until reading resumes. A
 command returning zero means it was sent successfully, not that the mechanism
 has arrived. The supplied EM-FWC3 API has no separate motion-complete/limit/
 alarm query; the UI reports angles without inventing hardware status. Invalid
@@ -68,8 +91,9 @@ automatic re-homing occurs.
 Disconnect, application shutdown, and connection-loss cleanup attempt to stop
 channels commanded to move by this session, then close the device and release
 the SDK. Read-only connections send no stop command on close. UI test mode
-cannot start while a real motion session is open or connecting, and its write
-barrier blocks motion connections/commands. Port and model choices use the
+cannot start while a real motion session is open or connecting. Its motion
+controls use an in-memory session while the write barrier blocks real commands.
+Port choices use the
 normal settings write barrier; tests isolate settings with the shared sandbox.
 
 ## Verification
@@ -79,9 +103,9 @@ routing, relative/absolute commands, speed readback, explicit EEPROM writes,
 SDK errors, invalid inputs, nonfinite feedback, failed handshakes, lost-device
 cleanup, and stopping owned movement on shutdown.
 
-`emfwc3_ui_test` uses that same isolated SDK to verify explicit model
-confirmation, startup without motion, operation from the real main window,
-independence from Direct/FPGA switching, channel selection and retained inputs,
+`emfwc3_ui_test` uses that same isolated SDK to verify the fixed CEM-FPM model,
+hidden channel selectors, startup without motion, operation from the real main window,
+independence from Direct/FPGA switching, internal channel routing and retained inputs,
 command routing, the UI test barrier, and compact card layout at 100%/130%
 font scales in light/dark themes.
 

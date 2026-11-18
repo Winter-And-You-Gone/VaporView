@@ -1098,7 +1098,7 @@ public:
         output_percent_value_->setObjectName(QStringLiteral("temperatureOverviewOutputPercentPill"));
         output_percent_value_->setAlignment(Qt::AlignCenter);
         output_percent_value_->setWordWrap(false);
-        output_percent_value_->setFixedSize(kOverviewControlWidth, 56);
+        output_percent_value_->setFixedSize(kOverviewControlWidth, 72);
         summaryLayout->addWidget(output_percent_value_);
 
         auto *outputCapsule = new QFrame(summary_widget_);

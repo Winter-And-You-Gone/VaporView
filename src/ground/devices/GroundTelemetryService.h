@@ -44,7 +44,8 @@ public:
     quint64 totalReceivedBytes() const;
     quint64 totalTransmittedBytes() const;
 
-    quint16 sendCommand(CommandId commandId, const QByteArray& payload = QByteArray(), QString *correlationId = nullptr);
+    quint16 sendCommand(CommandId commandId, const QByteArray& payload = QByteArray(), QString *correlationId = nullptr,
+                        qint64 expiresAtMs = 0);
     quint16 sendDeviceOperation(const DeviceOperationRequest& request);
     bool sendRtcmCorrectionData(const QByteArray& data);
     quint16 sendDeviceCommand(CommandId commandId, SkyDeviceId deviceId);
@@ -55,6 +56,8 @@ public:
     quint16 saveSkyConfig();
 
 signals:
+    // CRC/version-checked frames from the existing decoder, without another link.
+    void frameReceived(const VaporView::TelemetryFrame& frame);
     void linkOpenChanged(bool open);
     void basicTelemetryUpdated(const TelemetryBasic& data);
     void waveformUpdated(const DownsampledWaveform& waveform);
@@ -89,6 +92,7 @@ private:
         qint64 next_retry_ms = 0;
         bool ack_received = false;
         bool context_session_observed = false;
+        qint64 expires_at_ms = 0;
     };
     struct AwaitedConfigResult
     {

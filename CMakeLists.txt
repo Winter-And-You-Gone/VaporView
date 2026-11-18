@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(VaporView VERSION 1.0.26 LANGUAGES C CXX)
+project(VaporView VERSION 1.0.30 LANGUAGES C CXX)
 
 option(VAPORVIEW_BUILD_GROUND "Build the Ground desktop application" ON)
 option(VAPORVIEW_BUILD_SKY_CORE "Build the headless SkyCore and FPGA simulator" ON)

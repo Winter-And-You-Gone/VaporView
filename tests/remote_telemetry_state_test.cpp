@@ -44,6 +44,13 @@ int main(int argc, char **argv)
     require(std::abs(state.waveformPacketRate(2) - 4.0) < 1e-9,
             "waveform channels maintain independent rates");
 
+    require(state.packetRate(VaporView::MsgType::FpgaCycleFeature, 2000) < 0,
+            "missing statistics are unavailable, not measured zero");
+    require(std::abs(state.packetRate(VaporView::MsgType::TelemetryBasic, 2000) - 0.6) < 1e-9,
+            "fresh packet statistics remain available");
+    require(state.packetRate(VaporView::MsgType::TelemetryBasic, 7001) < 0 &&
+            state.waveformPacketRate(2, 7001) < 0,
+            "stopped streams expire even if status messages continue");
     state.markLinkClosed();
     require(state.lastStatusMs() == 0 && state.packetRate(VaporView::MsgType::TelemetryBasic) == 0.0,
             "link close invalidates status and packet rates");

@@ -56,6 +56,7 @@ int main(int argc, char **argv)
     const auto closes = fn<int(*)()>(fake, "testCloses");
     const auto deinits = fn<int(*)()>(fake, "testDeinits");
     const auto stops = fn<int(*)(int)>(fake, "testStops");
+    const auto running = fn<int(*)(int)>(fake, "testRunning");
     const auto failRead = fn<void(*)(int)>(fake, "testFailRead");
     const auto failCommand = fn<void(*)(int)>(fake, "testFailCommand");
     const auto nan = fn<void(*)(int)>(fake, "testNonfinite");
@@ -102,6 +103,31 @@ int main(int argc, char **argv)
         session.connectDevice(QStringLiteral("WRONG-COM"), types); until([&] { return done; });
         check(!session.state().connected && closes() == 1 && deinits() == 1, "open serial handle with failed handshake is not a connected device");
         check(motions() == 0 && stops(0) == 0, "failed/read-only connection never sends motion or stop commands");
+    }
+    reset();
+    {
+        EmFwc3Session session(nullptr, directory); int finished = 0;
+        QObject::connect(&session, &EmFwc3Session::operationFinished, [&](const QString&, int, const QString&) { ++finished; });
+        session.connectDevice(QStringLiteral("TEST-COM"), types); until([&] { return finished == 1; });
+        session.execute(Command::Continuous, 0, 1); until([&] { return finished == 2; });
+        QElapsedTimer elapsed; elapsed.start();
+        until([&] { return elapsed.elapsed() >= 1200; });
+        check(running(0) && session.state().continuousMotion, "angle polling never interrupts continuous motion, including queries on other channels");
+        check(!session.state().valid[0] && !session.state().valid[1] && !session.state().valid[2], "paused readbacks are not presented as current positions");
+        session.execute(Command::Relative, 1, 1);
+        check(motions() == 1 && !session.state().busy, "other commands wait until continuous motion is stopped");
+        failCommand(-2);
+        session.execute(Command::Continuous, 0, 0); until([&] { return finished == 3; });
+        check(session.state().continuousMotion && running(0), "failed stop keeps angle polling suspended");
+        failCommand(0);
+        session.execute(Command::Continuous, 0, 0); until([&] { return finished == 4; });
+        until([&] { return session.state().valid[0]; });
+        check(!running(0) && !session.state().continuousMotion && stops(0) == 2, "explicit stop restores angle polling");
+        session.execute(Command::Continuous, 0, -1); until([&] { return finished == 5; });
+        session.execute(Command::StopAll); until([&] { return finished == 6; });
+        until([&] { return session.state().valid[0]; });
+        check(!running(0) && !session.state().continuousMotion, "stop-all also restores polling after reverse motion");
+        session.shutdown();
     }
     reset();
     {

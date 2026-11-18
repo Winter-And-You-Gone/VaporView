@@ -80,8 +80,15 @@ void RemoteTelemetryState::noteArrival(QVector<qint64>& arrivals, qint64 nowMs)
     }
 }
 
-double RemoteTelemetryState::rateFromArrivals(const QVector<qint64>& arrivals)
+double RemoteTelemetryState::rateFromArrivals(const QVector<qint64>& arrivals, qint64 nowMs)
 {
+    if (nowMs > 0) {
+        if (arrivals.isEmpty() || nowMs - arrivals.back() > kPacketRateWindowMs) return -1.0;
+        int count = 0;
+        for (const auto arrival : arrivals)
+            if (arrival <= nowMs && nowMs - arrival <= kPacketRateWindowMs) ++count;
+        return count * 1000.0 / kPacketRateWindowMs;
+    }
     if (arrivals.size() < 2)
     {
         return 0.0;
@@ -102,14 +109,14 @@ void RemoteTelemetryState::noteWaveformPacket(quint16 channelId, qint64 nowMs)
     noteArrival(waveform_arrivals_ms_[static_cast<int>(channelId)], nowMs);
 }
 
-double RemoteTelemetryState::packetRate(VaporView::MsgType type) const
+double RemoteTelemetryState::packetRate(VaporView::MsgType type, qint64 nowMs) const
 {
-    return rateFromArrivals(packet_arrivals_ms_.value(static_cast<int>(type)));
+    return rateFromArrivals(packet_arrivals_ms_.value(static_cast<int>(type)), nowMs);
 }
 
-double RemoteTelemetryState::waveformPacketRate(quint16 channelId) const
+double RemoteTelemetryState::waveformPacketRate(quint16 channelId, qint64 nowMs) const
 {
-    return rateFromArrivals(waveform_arrivals_ms_.value(static_cast<int>(channelId)));
+    return rateFromArrivals(waveform_arrivals_ms_.value(static_cast<int>(channelId)), nowMs);
 }
 
 } // namespace VaporView::Ground::Devices

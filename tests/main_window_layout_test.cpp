@@ -1322,16 +1322,17 @@ void requireHomeDeviceColumnsAligned(QWidget *scope)
                 columns.last()->geometry().right() == deviceGrid->width() - 1,
             "Device columns fill both edges of the grid");
 
-    for (QWidget *column : columns)
+    for (int columnIndex = 0; columnIndex < columns.size(); ++columnIndex)
     {
+        QWidget *column = columns.at(columnIndex);
         const QList<QLabel *> capsules =
             column->findChildren<QLabel *>(QStringLiteral("homeDeviceStatusCapsule"),
                                            Qt::FindDirectChildrenOnly);
         const QList<QToolButton *> actionButtons =
             column->findChildren<QToolButton *>(QStringLiteral("homeDeviceActionButton"),
                                                 Qt::FindDirectChildrenOnly);
-        require(capsules.size() == 3 && actionButtons.size() == capsules.size(),
-                "each home device column contains three aligned capsules and actions");
+        require(capsules.size() == (columnIndex == 0 ? 4 : 3) && actionButtons.size() == capsules.size(),
+                "home device columns align ten capsules and their actions across four rows");
         for (int i = 1; i < capsules.size(); ++i)
         {
             require(capsules.at(0)->width() == capsules.at(i)->width(),
@@ -1425,8 +1426,8 @@ void requireHomeDeviceGeometryStableAcrossCardResize(QWidget *scope,
     {
         controls.append(button);
     }
-    require(controls.size() == 18,
-            "home device resize check covers nine capsules and nine action icons");
+    require(controls.size() == 20,
+            "home device resize check covers ten capsules and ten action icons");
 
     std::vector<std::pair<QWidget *, QRect>> originalGeometries;
     originalGeometries.reserve(static_cast<std::size_t>(controls.size()));
@@ -3487,8 +3488,8 @@ void requireCompactTelemetryPillTextGap(QFrame *pill, const char *message)
     QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
     QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
     require(nameLabel != nullptr && valueLabel != nullptr, message);
-    require(valueLabel->alignment().testFlag(Qt::AlignLeft),
-            "home telemetry values start near their field names");
+    require(valueLabel->alignment().testFlag(Qt::AlignRight),
+            "home telemetry values align units to the right edge");
 
     const int nameTextRight = nameLabel->mapTo(pill, QPoint(0, 0)).x() +
         nameLabel->fontMetrics().horizontalAdvance(nameLabel->text());
@@ -3589,6 +3590,29 @@ void requireTelemetrySummaryPillsOrdered(QWidget *summaryContainer, const char *
     }
 }
 
+void requireHomeLinkRowsPacked(QWidget *summaryContainer)
+{
+    const auto sections = sortedTelemetrySections(summaryContainer);
+    require(sections.size() == 3, "Home summary includes the link-rate section");
+    auto *section = sections.at(1);
+    auto pills = section->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+    std::sort(pills.begin(), pills.end(), [](QFrame *a, QFrame *b) {
+        return a->property("summaryItemIndex").toInt() < b->property("summaryItemIndex").toInt();
+    });
+    require(pills.size() == 3, "Link layout preserves both directions and the total");
+    for (int i = 1; i < pills.size(); ++i)
+    {
+        auto *previous = pills.at(i - 1);
+        auto *next = pills.at(i);
+        if (previous->parentWidget() == next->parentWidget()) continue;
+        const int usedRight = previous->mapTo(section, QPoint()).x() + previous->width();
+        const int contentRight = section->contentsRect().right() + 1 - section->layout()->contentsMargins().right();
+        require(usedRight + previous->parentWidget()->layout()->spacing() + next->width() > contentRight,
+                "Link rates wrap only when the next item cannot fit on the preceding row");
+    }
+    requireTelemetrySummaryPillsOrdered(summaryContainer, "Link rates remain inside their section without overlap");
+}
+
 void requireHomeDataRowsPacked(QWidget *summaryContainer)
 {
     processEventsFor(100);
@@ -3601,7 +3625,15 @@ void requireHomeDataRowsPacked(QWidget *summaryContainer)
         const QPoint right = b->mapTo(section, QPoint());
         return left.y() == right.y() ? left.x() < right.x() : left.y() < right.y();
     });
-    require(pills.size() == 9, "Automatic wrapping preserves all nine devices");
+    require(pills.size() == 10, "Automatic wrapping preserves all ten devices");
+    require(findTelemetryPillByName(section, QStringLiteral("EM-FWC3")), "home data summary includes motor feedback");
+    QWidget *overviewCard = section;
+    while (overviewCard && !qobject_cast<QGroupBox *>(overviewCard))
+        overviewCard = overviewCard->parentWidget();
+    require(overviewCard, "data section belongs to an overview card");
+    for (auto *pill : pills)
+        require(pill->mapTo(overviewCard, QPoint(0, pill->height())).y() <= overviewCard->height() - 4,
+                "overview bottom edge leaves clearance below every data capsule");
     for (int i = 1; i < pills.size(); ++i)
     {
         auto *previous = pills.at(i - 1);
@@ -3994,6 +4026,7 @@ void requireHomeOverviewLanguageWidthRoundTrip()
         languageTelemetrySummaryContainer,
         "language overview telemetry labels fit at startup");
     requireHomeDataRowsPacked(languageTelemetrySummaryContainer);
+    requireHomeLinkRowsPacked(languageTelemetrySummaryContainer);
     const QVector<TelemetryPillWidthSnapshotItem> initialTelemetryPillWidths =
         telemetryPillWidthSnapshot(languageTelemetrySummaryContainer);
     requireEpsilonSectionTitleWidths(languageEpsilonPanel, false);
@@ -4005,6 +4038,17 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     activateLayouts(languageDeviceOverviewCard);
     requireHomeDeviceColumnsAligned(&languageOverviewWindow);
     requireHomeDeviceMinimumWidthMatchesControls(&languageOverviewWindow);
+    const auto linkSections = sortedTelemetrySections(languageTelemetrySummaryContainer);
+    require(linkSections.size() == 3, "language overview exposes the link-rate section");
+    QStringList linkNames;
+    for (auto *pill : linkSections.at(1)->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill")))
+        linkNames << pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"))->text();
+    require(linkNames == QStringList{QStringLiteral("天→地"), QStringLiteral("地→天"), QStringLiteral("合计")},
+            "home link rates preserve receive, transmit, total order with compact Chinese labels");
+    bool hasMotorController = false;
+    for (auto *capsule : languageDeviceOverviewCard->findChildren<QLabel *>(QStringLiteral("homeDeviceStatusCapsule")))
+        hasMotorController |= capsule->text() == QStringLiteral("EM-FWC3电机");
+    require(hasMotorController, "language overview includes the local motor controller");
 
     const QList<int> initialHomeOverviewSizes = languageHomeOverviewSplitter->sizes();
     require(initialHomeOverviewSizes.size() == 2,
@@ -4076,6 +4120,7 @@ void requireHomeOverviewLanguageWidthRoundTrip()
         languageTelemetrySummaryContainer,
         "language overview telemetry labels fit in English");
     requireHomeDataRowsPacked(languageTelemetrySummaryContainer);
+    requireHomeLinkRowsPacked(languageTelemetrySummaryContainer);
     requireEpsilonSectionTitleWidths(languageEpsilonPanel, true);
     require(QMetaObject::invokeMethod(&languageOverviewWindow,
                                       "onSwitchLanguage",
@@ -4115,6 +4160,7 @@ void requireHomeOverviewLanguageWidthRoundTrip()
         languageTelemetrySummaryContainer,
         "language overview telemetry labels fit after returning to Chinese");
     requireHomeDataRowsPacked(languageTelemetrySummaryContainer);
+    requireHomeLinkRowsPacked(languageTelemetrySummaryContainer);
     requireTelemetryPillWidthSnapshotNotWider(
         initialTelemetryPillWidths,
         telemetryPillWidthSnapshot(languageTelemetrySummaryContainer),
@@ -4197,6 +4243,26 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     requireEpsilonSectionCardsFillRows(
         wideEpsilonPanel,
         "wide overview EPSILON cards fill one or two rows without a center gap");
+    auto *wideSummary = wideOverview->widget(0)->findChild<QWidget *>(QStringLiteral("homeTelemetrySummaryContainer"));
+    const int compactOverviewWidth = wideOverview->widget(0)->minimumWidth();
+    wideOverview->setProperty(VaporView::Ground::MainSupport::kHomeOverviewDeviceAutoManagedWidthProperty, false);
+    for (int width : {800, compactOverviewWidth, 800})
+    {
+        auto sizes = wideOverview->sizes();
+        sizes[0] = width;
+        wideOverview->setProperty(VaporView::Ground::MainSupport::kHomeOverviewDeviceProgrammaticResizeProperty, true);
+        wideOverview->setSizes(sizes);
+        wideOverview->setProperty(VaporView::Ground::MainSupport::kHomeOverviewDeviceProgrammaticResizeProperty, false);
+        processEventsFor(200);
+        requireHomeLinkRowsPacked(wideSummary);
+        if (width == 800)
+        {
+            const auto pills = sortedTelemetrySections(wideSummary).at(1)->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+            require(pills.at(0)->parentWidget() == pills.at(1)->parentWidget() &&
+                    pills.at(1)->parentWidget() == pills.at(2)->parentWidget(),
+                    "all three link rates share one row when the overview is wide");
+        }
+    }
     wideOverviewWindow.close();
     require(processEventsUntil(1000, [&wideOverviewWindow]() {
                 return !wideOverviewWindow.isVisible();
@@ -4417,8 +4483,8 @@ void requireHomeSensorColumnLayout(MainWindow& window)
             "home EPSILON and motion cards are visible");
     auto *motionPanel = motion->findChild<QWidget *>(QStringLiteral("homeMotionPanel"));
     require(motionPanel != nullptr, "home motion controls exist");
-    for (const char *name : {"homeMotionPosition", "homeMotionTarget", "homeMotionStep",
-                             "homeMotionGo", "homeMotionMinus", "homeMotionPlus"})
+    for (const char *name : {"homeMotionPosition", "homeMotionTarget", "homeMotionGo",
+                             "homeMotionHome", "homeMotionStopAll", "homeMotionConfigure"})
     {
         auto *control = motionPanel->findChild<QWidget *>(QString::fromLatin1(name));
         require(control && control->isVisible(), "home motion channel control is visible");
@@ -4440,11 +4506,16 @@ void requireHomeSensorColumnLayout(MainWindow& window)
     }
     const QRect epsilonRect(epsilon->mapTo(column, QPoint()), epsilon->size());
     const QRect motionRect(motion->mapTo(column, QPoint()), motion->size());
-    require(std::abs(epsilonRect.left() - motionRect.left()) <= 2 &&
-                std::abs(epsilonRect.right() - motionRect.right()) <= 2 &&
-                motionRect.top() > epsilonRect.bottom() &&
-                column->rect().contains(epsilonRect) && column->rect().contains(motionRect),
-            "home motion card fits below and aligns with the EPSILON card");
+    require(column->rect().contains(epsilonRect) && column->rect().contains(motionRect),
+            "navigation and motion cards stay inside their shared container");
+    if (motionRect.left() > epsilonRect.right()) {
+        require(splitter->indexOf(environment) < 0 && std::abs(epsilonRect.top() - motionRect.top()) <= 2,
+                "navigation and motion share a row only when environment is in the overview");
+    } else {
+        require(std::abs(epsilonRect.left() - motionRect.left()) <= 2 &&
+                    std::abs(epsilonRect.right() - motionRect.right()) <= 2 && motionRect.top() > epsilonRect.bottom(),
+                "stacked motion card aligns below the navigation card");
+    }
     if (splitter->orientation() == Qt::Horizontal && splitter->indexOf(environment) >= 0)
     {
         const QRect columnRect(column->mapTo(&window, QPoint()), column->size());
@@ -4601,9 +4672,10 @@ void requireHomeEpsilonHeightAfterMaximize()
             requireHomeSensorColumnLayout(window);
             if (width == 3200)
             {
-                require(overview->count() == 3 &&
-                            epsilonSectionCardsShareRow(panel),
-                        "wide EPSILON height test exercises the single-row section layout");
+                require(overview->count() == 3,
+                        "wide EPSILON height test keeps environment in the overview");
+                requireEpsilonSectionCardsFillRows(panel,
+                    "EPSILON sections use the width available beside motion controls");
             }
             if (overview->count() == 3)
             {
@@ -5130,8 +5202,11 @@ void requireHomeSensorLayoutAfterSidebarRestore()
             const int requiredWidth = std::max(epsilon->minimumSizeHint().width(),
                 panel->preferredWrappedWidth() + margins.left() + margins.right()) +
                 cards->handleWidth() + std::max(environment->minimumWidth(), environment->minimumSizeHint().width());
-            require(cards->parentWidget()->width() >= requiredWidth,
-                    "collapsed sidebar leaves enough space for both sensor cards");
+            if (cards->parentWidget()->width() < requiredWidth) {
+                require(cards->orientation() == Qt::Vertical,
+                        "sensor cards stack when reserved motor feedback width exceeds the available row");
+                continue;
+            }
             require(cards->orientation() == Qt::Horizontal &&
                         std::abs(epsilon->y() - environment->y()) <= 1 &&
                         epsilon->x() > environment->geometry().right(),
@@ -5331,6 +5406,48 @@ int main(int argc, char **argv)
         require(false, "main window exposes requested font-scale action");
     };
 
+    if (app.arguments().contains(QStringLiteral("--ai8-editors-only")))
+    {
+        MainWindow window;
+        window.resize(1280, 850); window.show();
+        require(waitForWindowExposed(&window), "AI-8 test window becomes exposed");
+        auto *pages = window.findChild<QStackedWidget *>(QStringLiteral("mainPageStack"));
+        auto *temperature = window.findChild<QWidget *>(QStringLiteral("temperaturePage"));
+        auto *panel = window.findChild<VaporView::Ground::Widgets::Ai8TemperatureControllerPanel *>();
+        require(pages && temperature && panel, "AI-8 temperature page exists");
+        pages->setCurrentWidget(temperature);
+        auto *stack = panel->findChild<QStackedWidget *>(QStringLiteral("ai8ParameterStack"));
+        auto *plot = panel->findChild<QWidget *>(QStringLiteral("ai8TemperatureTrendPlot"));
+        require(stack && plot, "AI-8 common parameter stack and plot exist");
+        for (int scale : {100, 130, 100}) {
+            triggerFontScaleAction(window, scale);
+            for (bool english : {false, true}) {
+                if (english) QMetaObject::invokeMethod(&window, "onSwitchLanguage", Qt::DirectConnection);
+                for (int width : {1280, 1000, 1600}) {
+                    window.resize(width, 850); processEventsFor(150);
+                    for (int page = 0; page < 4; ++page) {
+                        auto *button = panel->findChild<QPushButton *>(QStringLiteral("ai8PageSelectorButton%1").arg(page + 1));
+                        require(button, "AI-8 page selector exists"); button->click(); processEventsFor(50);
+                        auto *current = stack->currentWidget();
+                        for (auto *field : current->findChildren<QFrame *>(QStringLiteral("ai8ParameterField"))) {
+                            const QRect fieldRect(field->mapTo(stack, QPoint()), field->size());
+                            require(stack->rect().contains(fieldRect), "AI-8 field remains inside the common stack");
+                            for (auto *editor : field->findChildren<QWidget *>(QString(), Qt::FindDirectChildrenOnly)) {
+                                if (qobject_cast<QLabel *>(editor)) continue;
+                                const QRect editorRect(editor->mapTo(stack, QPoint()), editor->size());
+                                const QRect plotRect(plot->mapTo(stack, QPoint()), plot->size());
+                                require(stack->rect().contains(editorRect) && !editorRect.intersects(plotRect),
+                                        "AI-8 editor is fully visible and does not overlap the plot");
+                            }
+                        }
+                    }
+                }
+                if (english) QMetaObject::invokeMethod(&window, "onSwitchLanguage", Qt::DirectConnection);
+            }
+        }
+        window.close();
+        return 0;
+    }
     if (app.arguments().contains(QStringLiteral("--home-overview-language-only")))
     {
         requireHomeOverviewLanguageWidthRoundTrip();
@@ -7507,17 +7624,19 @@ int main(int argc, char **argv)
 
     const QList<QLabel*> homeDeviceCapsules =
         window.findChildren<QLabel *>(QStringLiteral("homeDeviceStatusCapsule"));
-    require(homeDeviceCapsules.size() == 9,
-            "home device overview includes all nine status capsules");
+    require(homeDeviceCapsules.size() == 10,
+            "home device overview includes all ten status capsules");
     QStringList homeDeviceNames;
     for (auto *capsule : homeDeviceCapsules)homeDeviceNames.append(capsule->text());
     require(homeDeviceNames.contains(QStringLiteral("BMP390 气压")) &&
                 homeDeviceNames.contains(QStringLiteral("SHT45 温湿度")),
             "internal sensors include their model and measurement description");
+    require(homeDeviceNames.contains(QStringLiteral("EM-FWC3电机")),
+            "home device overview includes the local EM-FWC3 motor controller");
     const QList<QToolButton*> homeDeviceActionButtons =
         window.findChildren<QToolButton *>(QStringLiteral("homeDeviceActionButton"));
-    require(homeDeviceActionButtons.size() >= 9,
-            "home device overview includes all nine connection action buttons");
+    require(homeDeviceActionButtons.size() >= 10,
+            "home device overview includes all ten connection action buttons");
     requireHomeDeviceColumnsAligned(&window);
     requireHomeDeviceMinimumWidthMatchesControls(&window);
     const bool homeDeviceActionDark =
@@ -8084,7 +8203,7 @@ int main(int argc, char **argv)
                                  QStringLiteral("QPushButton#temperatureOverviewOutputSwitch {"),
                                  QStringLiteral("font-size: 14px"),
                                  "temperature overview output switch font is enlarged for readability");
-    require(temperatureOutputPercentPill->height() == 56 && temperatureOutputCapsule->height() == 84,
+    require(temperatureOutputPercentPill->height() == 72 && temperatureOutputCapsule->height() == 84,
             "temperature overview capsules fit the two channel rows");
     require(temperatureValuePills[0]->geometry().right() < temperatureValuePills[1]->geometry().left() &&
                 temperatureValuePills[2]->geometry().right() < temperatureValuePills[3]->geometry().left() &&
@@ -8135,10 +8254,10 @@ int main(int argc, char **argv)
             linkRateNames << nameLabel->text();
         }
     }
-    require(linkRateNames == QStringList{QStringLiteral("天空端→地面端"),
-                                         QStringLiteral("地面端→天空端"),
+    require(linkRateNames == QStringList{QStringLiteral("天→地"),
+                                         QStringLiteral("地→天"),
                                          QStringLiteral("合计")},
-            "home link-rate pills expose full direction and total descriptions");
+            "home link-rate pills show compact directions before the total");
     const QList<QFrame*> ratePills =
         homeRateSection->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
     require(!ratePills.isEmpty(),
@@ -8151,8 +8270,8 @@ int main(int argc, char **argv)
         QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
         require(valueLabel != nullptr,
                 "home data-stream telemetry pill has a value label");
-        require(valueLabel->width() >= valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 Hz")),
-                "home data-stream rate value label reserves room for 999.9 Hz");
+        require(valueLabel->width() >= valueLabel->fontMetrics().horizontalAdvance(valueLabel->text()),
+                "home data-stream rate value label fits current text");
         if (nameLabel && nameLabel->text().contains(QStringLiteral("波形总包")))
         {
             waveformTotalRateVisible = true;
@@ -8196,11 +8315,8 @@ int main(int argc, char **argv)
             "home link-rate telemetry section includes only the three link-rate pills");
     require(findTelemetryPillByName(homeLinkSection, QStringLiteral("目标")) == nullptr,
             "home link-rate telemetry section omits the target capsule");
-    QSet<int> linkRateRows;
     for (QFrame *pill : linkRatePills)
     {
-        const int pillY = pill->mapTo(homeLinkSection, QPoint(0, 0)).y();
-        linkRateRows.insert(pillY);
         QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
         require(valueLabel != nullptr,
                 "home link-rate pill has a value label");
@@ -8208,16 +8324,15 @@ int main(int argc, char **argv)
                 "home link-rate value text fits its compact label");
         const int compactKbpsWidth = valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 kbps"));
         const int oldMbpsReserveWidth = valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 Mbps")) + 8;
-        require(valueLabel->width() >= compactKbpsWidth,
-                "home link-rate value label reserves room for 999.9 kbps");
+        require(valueLabel->width() <= std::max(compactKbpsWidth, valueLabel->fontMetrics().horizontalAdvance(valueLabel->text())) + 4,
+                "home link-rate value label avoids excess reserved space");
         require(valueLabel->width() < oldMbpsReserveWidth,
                 "home link-rate value label no longer reserves the wider 999.9 Mbps width");
         requireCompactTelemetryPillTextGap(
             pill,
             "home link-rate telemetry field/value gap remains compact");
     }
-    require(linkRateRows.size() == 2,
-            "full link direction and total descriptions use two telemetry lines");
+    requireHomeLinkRowsPacked(homeTelemetrySummaryContainer);
     QFrame *homeDataSection = homeTelemetrySections.at(2);
     QLabel *homeDataTitle =
         homeDataSection->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryTitleLabel"));
@@ -8228,7 +8343,7 @@ int main(int argc, char **argv)
     bool homeDataHasEpsilon = false;
     const QList<QFrame*> dataPills =
         homeDataSection->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
-    require(dataPills.size() == 9,
+    require(dataPills.size() == 10,
             "home data availability row covers all nine devices");
     const QStringList compactDeviceNames = {"EPSILON", "PTB210", "HC2A", "TFA1500-L", "RD105", "AI-8288", "BMP390", "SHT45", QStringLiteral("波形"), "Waveform"};
     for (QFrame *pill : dataPills)
@@ -11983,7 +12098,7 @@ int main(int argc, char **argv)
             {
                 refreshPortsTitleIndex = index;
             }
-            else if (toolTip == QStringLiteral("连接") || toolTip == QStringLiteral("Connect"))
+            else if (toolTip == QStringLiteral("连接所有设备") || toolTip == QStringLiteral("Connect all devices"))
             {
                 connectTitleIndex = index;
             }

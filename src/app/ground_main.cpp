@@ -249,7 +249,7 @@ void startAi8RemoteE2e(QApplication& app, MainWindow& window, const QString& out
         }
         if (*step == 0)
         {
-            if (!QMetaObject::invokeMethod(&window, "onConnectClicked", Qt::DirectConnection))
+            if (!QMetaObject::invokeMethod(&window, "onTelemetryLinkClicked", Qt::DirectConnection))
             {
                 finish(false, QStringLiteral("MainWindow connect action is unavailable"));
                 return;
@@ -451,7 +451,7 @@ void startRemoteDeviceE2e(QApplication& app, MainWindow& window, const QString& 
                 finish(false, QStringLiteral("Remote Device Config did not explain the unloaded SkyConfig state"));
                 return;
             }
-            if (!QMetaObject::invokeMethod(&window, "onConnectClicked", Qt::DirectConnection))
+            if (!QMetaObject::invokeMethod(&window, "onTelemetryLinkClicked", Qt::DirectConnection))
             {
                 finish(false, QStringLiteral("MainWindow connect action is unavailable"));
                 return;
