@@ -73,7 +73,7 @@ signals:
     void observationEpochReceived(const QByteArray& encodedEpoch);
     void measurementUpdated(const VaporView::FpgaSensor::AdaptedMeasurements& measurements);
     void temperatureDataUpdated(const VaporView::TemperatureControllerData& data);
-    void temperatureConnectionChanged(bool connected, const QString& detail);
+    void temperatureConnectionChanged(bool connected, const QString& detail, bool identifying = false);
     void waveformUpdated(const VaporView::FpgaWave::CompletedStream& stream);
     void harmonicCycleReady(quint64 hostTimestampUs, const VaporView::FpgaWave::CompletedStream& stream);
     void logRecordGenerated(const VaporView::LogRecord& record);

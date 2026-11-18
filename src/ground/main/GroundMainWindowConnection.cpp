@@ -743,7 +743,8 @@ QString MainWindow::homeDeviceMeasurementWarning(VaporView::SkyDeviceId device, 
     }
     if (!fault.isEmpty())
         return fault;
-    if (valid || nowMs - history.connectedSinceMs < timeoutMs)
+    const bool laserController = fpga && device == SkyDeviceId::TemperatureController;
+    if (valid || (!laserController && nowMs - history.connectedSinceMs < timeoutMs))
         return {};
     if (history.receivedData)
         return english ? QStringLiteral("Measurement data timed out") : QStringLiteral("测量数据超时");

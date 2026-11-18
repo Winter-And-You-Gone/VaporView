@@ -575,6 +575,9 @@ VaporView::DeviceState MainWindow::homeFpgaDeviceState(VaporView::SkyDeviceId de
         if(!tec103BridgesAvailable(registers))return DeviceState::Disabled;
         const bool connected=isUiTestMode()?state_->fpga_page_->property("tec103Connected").toBool():isRemoteSkyMode()
             ?state_->fpga_session_.remoteStatus.value("tec103_connected").toBool():state_->fpga_tec103_connected_;
+        const bool identifying=isUiTestMode()?state_->fpga_page_->property("tec103Identifying").toBool():isRemoteSkyMode()
+            ?state_->fpga_session_.remoteStatus.value("tec103_identifying").toBool():state_->fpga_tec103_identifying_;
+        if (identifying) return DeviceState::Connecting;
         return connected?DeviceState::Connected:DeviceState::Disconnected;
     }
     if (source) {
@@ -1100,10 +1103,11 @@ void MainWindow::setupFpgaControlPage()
         updateConnectionStatus(anyLocalDeviceConnected());
     }, Qt::QueuedConnection);
     connect(controller,&Controller::measurementUpdated,this,&MainWindow::receiveFpgaMeasurements,Qt::QueuedConnection);
-    connect(controller,&Controller::temperatureConnectionChanged,this,[this](bool connected,const QString& detail) {
+    connect(controller,&Controller::temperatureConnectionChanged,this,[this](bool connected,const QString& detail,bool identifying) {
+        state_->fpga_tec103_identifying_=identifying;
         state_->fpga_tec103_connected_=connected;
         if(isRemoteSkyMode())return;
-        state_->fpga_page_->setTemperatureConnectionState(connected,detail);
+        state_->fpga_page_->setTemperatureConnectionState(connected,detail,identifying);
         if(!connected) {
             state_->current_temperature_controller_=VaporView::TemperatureControllerData{};
             state_->fpga_rd105_ui_dirty_=true;
@@ -1328,7 +1332,7 @@ void MainWindow::receiveRemoteFpgaStatus(const QJsonObject& status)
     state_->fpga_session_.updateRemoteStatus(status);
     if(isRemoteSkyMode() && (previousStatus.value("tec103_connected")!=status.value("tec103_connected")
         || previousStatus.value("tec103_detail")!=status.value("tec103_detail"))) {
-        state_->fpga_page_->setTemperatureConnectionState(status.value("tec103_connected").toBool(),status.value("tec103_detail").toString());
+        state_->fpga_page_->setTemperatureConnectionState(status.value("tec103_connected").toBool(),status.value("tec103_detail").toString(),status.value("tec103_identifying").toBool());
         syncFpgaDeviceConfigUi();
     }
     if (configurationChanged && !state_->remote_config_session_.applying) {

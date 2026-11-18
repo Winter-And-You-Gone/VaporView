@@ -1044,7 +1044,7 @@ void FpgaDeviceController::stopTec103()
     tec103Data_=TemperatureControllerData{};tec103PortData_={};
     tec103Data_.device_address=tec103Data_.rs485_baud_index=-1;
     tec103Data_.controller_mode=tec103Data_.overtemp_output_mode=-1;
-    const bool wasConnected=tec103Connected_;tec103Connected_=false;tec103Detail_.clear();
+    const bool wasConnected=tec103Connected_ || !tec103Detail_.isEmpty();tec103Connected_=false;tec103Detail_.clear();
     if(wasConnected)emit temperatureConnectionChanged(false,QStringLiteral("TEC103 GPIO 通信已断开。"));
     emit temperatureDataUpdated(tec103Data_);
 }
@@ -1084,6 +1084,8 @@ void FpgaDeviceController::configureTec103(bool enable)
         callback([this,enable] {
             tec103Enabled_=enable;
             if(enable) {
+                tec103Detail_ = QStringLiteral("正在识别 TEC103");
+                emit temperatureConnectionChanged(false, tec103Detail_, true);
                 reportConnection(0x4a,QStringLiteral("waiting"),QStringLiteral("GPIO_UART_ENABLED"),
                     QStringLiteral("LC0/LC1 已配置 38400/8N1，正在分别识别 TEC103 并读取内部 TC1。"));
                 tec103Timer_.start();QTimer::singleShot(0,this,&FpgaDeviceController::pollTec103);
@@ -1153,7 +1155,15 @@ void FpgaDeviceController::pollTec103()
     };
     QMetaObject::invokeMethod(tec103Worker_,[owner,generation,identified,revisions,call] {
         std::array<Tec103GpioProtocol::Result,2> results;
-        for(int i=0;i<2;++i)results[size_t(i)]=Tec103GpioProtocol::read(call,i+1,!identified[size_t(i)]);
+        const auto onIdentity = [owner,generation] {
+            if (owner) QMetaObject::invokeMethod(owner,[owner,generation] {
+                if (!owner || generation != owner->tec103Generation_ || owner->tec103Connected_) return;
+                owner->tec103Connected_ = true;
+                owner->tec103Detail_ = QStringLiteral("TEC103 身份已确认，等待有效测量数据。");
+                emit owner->temperatureConnectionChanged(true, owner->tec103Detail_);
+            }, Qt::QueuedConnection);
+        };
+        for(int i=0;i<2;++i)results[size_t(i)]=Tec103GpioProtocol::read(call,i+1,!identified[size_t(i)],onIdentity);
         if(owner)QMetaObject::invokeMethod(owner,[owner,generation,identified,revisions,results] {
             if(!owner || generation!=owner->tec103Generation_)return;
             owner->tec103PollPending_=false;
@@ -1196,7 +1206,7 @@ void FpgaDeviceController::pollTec103()
                 }
             }
             const bool bothOnline=owner->tec103Online_[0] && owner->tec103Online_[1];
-            const bool connected=owner->tec103Online_[0] || owner->tec103Online_[1];
+            const bool connected=owner->tec103Connected_ || owner->tec103Online_[0] || owner->tec103Online_[1];
             const auto detail=bothOnline?QStringLiteral("双 TEC103 已连接（LC0/LC1，38400/8N1，各内部 TC1）。"):
                 QStringLiteral("LC0：%1；LC1：%2。%3")
                     .arg(owner->tec103Online_[0]?QStringLiteral("已连接 TEC103"):QStringLiteral("未连接或无有效应答"),

@@ -30,7 +30,7 @@ struct Setting {
 
 // The two logical channels select two physical UARTs. Every instrument uses TC1.
 bool parseValues(const QByteArray& response, Values& values, QString* error = nullptr);
-Result read(const Call& call, int logicalChannel, bool full);
+Result read(const Call& call, int logicalChannel, bool full, const std::function<void()>& onIdentity = {});
 inline Result readData(const Call& call, int logicalChannel, bool full) { return read(call, logicalChannel, full); }
 Result writeVerified(const Call& call, int logicalChannel, const QVector<Setting>& settings);
 

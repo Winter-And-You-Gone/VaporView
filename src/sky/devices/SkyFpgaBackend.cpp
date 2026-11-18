@@ -75,7 +75,8 @@ SkyFpgaBackend::SkyFpgaBackend(std::unique_ptr<Ground::Devices::FpgaUsbTransport
             emit temperatureDataUpdated(data);emit statusChanged(status_);
         });
     connect(controller_, &Ground::Devices::FpgaDeviceController::temperatureConnectionChanged, this,
-        [this,temperatureClock](bool connected,const QString& detail) {
+        [this,temperatureClock](bool connected,const QString& detail,bool identifying) {
+            status_["tec103_identifying"]=identifying;
             status_["tec103_connected"]=connected;status_["tec103_detail"]=detail;
             if(!connected) {
                 temperatureClock->invalidate();auto rates=status_.value("sensor_rates_hz").toObject();
