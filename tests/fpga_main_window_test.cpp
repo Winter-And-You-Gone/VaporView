@@ -1440,6 +1440,18 @@ static void localSimulatorRouting()
         "TEC103 selective connection uses both physical UARTs and leaves legacy RS485 disabled");
     if(disconnect->isEnabled())disconnect->click();
     check(waitUntil([&]{return connectButton->isEnabled();}),"RD105 connection leaves the USB connection releasable");
+    auto& drafts = MainWindowRtcmTestAccess::state(window).fpga_sensor_drafts_[0];
+    const auto savedDraft = drafts.value(0x46);
+    drafts[0x46]["baud"] = QStringLiteral("invalid");
+    window.findChild<QCheckBox*>("deviceRemoteAi8TemperatureEnabledCheck")->setChecked(true);
+    window.findChild<QCheckBox*>("deviceInternalEnabledSHT45")->setChecked(true);
+    connectionSuccesses.clear();
+    QMetaObject::invokeMethod(&window,"onConnectClicked");
+    check(waitUntil([&]{return connectionSuccesses==QSet<quint16>{0x44,0x4a};},15000),
+        "a rejected AI8 draft leaves SHT45 and the two-port temperature controller in the title connection queue");
+    if (savedDraft.isEmpty()) drafts.remove(0x46); else drafts[0x46] = savedDraft;
+    disconnect->click();
+    check(waitUntil([&]{return connectButton->isEnabled();}),"filtered batch after AI8 rejection releases USB");
     for(const auto &name:relaySelectionNames) window.findChild<QCheckBox*>(name)->setChecked(true);
     QMetaObject::invokeMethod(&window,"onConnectClicked");
     check(waitUntil([&]{auto *wave=homeAction(window,QStringLiteral("波形源"));

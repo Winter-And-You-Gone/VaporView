@@ -397,6 +397,7 @@ private:
     void processFpgaActions();
     void cancelFpgaActions();
     void connectNextHomeFpgaDevice();
+    void handleHomeFpgaFailure(bool transportReady);
     QMap<quint32, quint32> homeFpgaRegisters() const;
     quint32 homeFpgaExtensions() const;
     void submitFpgaInstrument(const QJsonObject& request,std::function<void(const QJsonObject&)> reply);

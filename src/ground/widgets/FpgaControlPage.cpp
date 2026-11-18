@@ -1203,7 +1203,7 @@ void FpgaControlPage::simulateOperation(const QJsonObject &request)
             }
             cancelPendingUiTestOperations();setConnectionState(ready_,false,QStringLiteral("等待 FPGA 空闲已取消或超时；操作未发送。"));
             if(request.value("op")=="motor")finishMotorOperation(request,false);
-            emit simulationOperationFailed();
+            emit simulationOperationFailed(false);
         },Qt::QueuedConnection);
     };
     const bool safety=op=="disconnect" || op=="connect" || op=="motor_heartbeat" || motorStop;
@@ -1262,7 +1262,7 @@ void FpgaControlPage::setUiTestState(bool enabled, bool dataStalled, bool partia
             emit simulationSensorConfigurationApplied(source,values);
         });
         connect(controller,&VaporView::Ground::Devices::FpgaDeviceController::logRecordGenerated,receiver,[this](const auto& record) {
-            appendDiagnostic(record.message);if(record.level>=VaporView::LogLevel::Error)emit simulationOperationFailed();
+            appendDiagnostic(record.message);if(record.level>=VaporView::LogLevel::Error)emit simulationOperationFailed(record.fields.value("ready").toBool());
         });
         connect(simulation_.worker.get(),&QThread::finished,controller,&QObject::deleteLater);
         controller->moveToThread(simulation_.worker.get());

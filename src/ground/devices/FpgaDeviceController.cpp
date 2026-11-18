@@ -1052,13 +1052,18 @@ void FpgaDeviceController::configureTec103(bool enable)
             fail(QStringLiteral("TEC103 所需的 LC0/LC1 GPIO UART 桥版本不匹配。"));return;
         }
         if(enable)for(quint32 base:{0x6800u,0x6900u}) {
-            if((registers_.value(base+8)&8) || registers_.value(base+0x20) || registers_.value(base+0x24)) {
-                fail(QStringLiteral("GPIO UART 仍有未完成收发或未读取字节；未清空数据，请先完成当前事务。"));return;
+            if((registers_.value(base+8)&8) || registers_.value(base+0x20)) {
+                fail(QStringLiteral("GPIO UART 仍在收发，连接已停止，请等待当前事务完成。"));return;
             }
         }
         for(quint32 base:{0x6800u,0x6900u}) {
+            if (enable && registers_.value(base+0x24)) {
+                report(QStringLiteral("LC%1 重新连接：空闲接收队列残留 %2 字节，将在停用 UART 时清除并重新识别设备。")
+                    .arg(base==0x6800 ? 0 : 1).arg(registers_.value(base+0x24)), LogLevel::Warning);
+            }
             write(base+4,0);verify(base+4,0);waitFor(base+8,9,0);
             if(enable) {
+                verify(base+0x24,0);
                 write(base+0x10,38400);verify(base+0x10,38400);
                 write(base+0x14,0x108);verify(base+0x14,0x108);
             }

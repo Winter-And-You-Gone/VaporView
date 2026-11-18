@@ -91,7 +91,7 @@ signals:
     void recordingRequested(bool enable);
     void simulationMeasurementsUpdated(const VaporView::FpgaSensor::AdaptedMeasurements &measurements);
     void simulationTemperatureDataUpdated(const VaporView::TemperatureControllerData& data);
-    void simulationOperationFailed();
+    void simulationOperationFailed(bool transportReady);
     void simulationWaveformUpdated(const VaporView::FpgaWave::CompletedStream &stream);
 private:
     void showEvent(QShowEvent *event) override;
