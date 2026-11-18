@@ -439,6 +439,14 @@ int main(int argc, char **argv)
     require(statuses.size() == 8 && statuses[0]->text() == QStringLiteral("运行") &&
         statuses[1]->text() == QStringLiteral("告警") && statuses[2]->text() == QStringLiteral("—"),
         "FPGA scans retain each channel state without leaking it to other channels");
+    overviewLiveData.controlRaw = 1;
+    overviewLiveData.alarmRaw = 0x20;
+    overview.applyLiveData(overviewLiveData);
+    require(statuses[1]->text() == QStringLiteral("运行") && statuses[1]->toolTip().contains("0x20"),
+            "reserved status bit alone preserves running state and raw diagnostic byte");
+    overviewLiveData.alarmRaw = 0x21;
+    overview.applyLiveData(overviewLiveData);
+    require(statuses[1]->text() == QStringLiteral("输入错误"), "reserved bit cannot hide an input fault");
     overviewLiveData.measuredC[0] = std::numeric_limits<double>::quiet_NaN();
     overview.applyLiveData(overviewLiveData);
     require(statuses[0]->text() == QStringLiteral("—"), "Missing FPGA channel clears its cached status");

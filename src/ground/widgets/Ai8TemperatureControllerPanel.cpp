@@ -1998,10 +1998,12 @@ void Ai8TemperatureOverviewPanel::refreshLabels()
         using Ai8TemperatureControllerProtocol::ChannelControlState;
         QString stateText;
         const bool known = alarm_states_[index] >= 0 || control_states_[index] != ChannelControlState::Unknown;
+        // The channel status byte defines alarms in bits 0..4; bits 5..7 are reserved.
+        const int alarms = alarm_states_[index] < 0 ? 0 : alarm_states_[index] & 0x1f;
         if (systemFault && known) stateText = english_ ? QStringLiteral("System fault") : QStringLiteral("系统故障");
-        else if (alarm_states_[index] > 0 && (alarm_states_[index] & 1))
+        else if (alarms & 1)
             stateText = english_ ? QStringLiteral("Input error") : QStringLiteral("输入错误");
-        else if (alarm_states_[index] > 0) stateText = english_ ? QStringLiteral("Alarm") : QStringLiteral("告警");
+        else if (alarms != 0) stateText = english_ ? QStringLiteral("Alarm") : QStringLiteral("告警");
         else switch (control_states_[index])
         {
         case ChannelControlState::ApidOutput: stateText = english_ ? QStringLiteral("Running") : QStringLiteral("运行"); break;
@@ -2016,7 +2018,7 @@ void Ai8TemperatureOverviewPanel::refreshLabels()
         if (!instrumentStatus.isEmpty()) statusTooltip += QStringLiteral("\n") + instrumentStatus;
         status_labels_[index]->setToolTip(statusTooltip);
         status_labels_[index]->setStyleSheet(QStringLiteral("color: %1;")
-            .arg(appThemeColor(alarm_states_[index] > 0 || (systemFault && known) ? AppThemeColor::ToolbarRed
+            .arg(appThemeColor(alarms != 0 || (systemFault && known) ? AppThemeColor::ToolbarRed
                 : AppThemeColor::Text, VaporView::isDarkThemeEnabled()).name()));
         const QString valueText = available
             ? temperatureText(measured)
