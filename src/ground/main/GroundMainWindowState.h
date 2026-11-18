@@ -188,6 +188,7 @@ struct MainWindowState
     Devices::FpgaControlSession fpga_session_;
     quint32 fpga_extensions_=0;
     bool fpga_tec103_connected_=false;
+    bool fpga_tec103_identifying_=false;
     std::function<void(const QJsonObject&)> fpga_instrument_reply_;
     struct FpgaQueuedAction {
         std::function<void()> run;

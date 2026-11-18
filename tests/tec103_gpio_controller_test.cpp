@@ -353,9 +353,18 @@ struct Fixture {
     }
     void connectTemperature()
     {
+        QVector<int> phases;
+        const auto observer = QObject::connect(&controller, &FpgaDeviceController::temperatureConnectionChanged,
+            &controller, [&](bool connected, const QString&, bool identifying) {
+                phases.append(identifying ? 1 : connected ? 2 : 0);
+                if (phases.size() == 2) require(!data.valid, "identity confirmation precedes the first valid temperature");
+            });
         controller.connectSensor({{"op","sensor"},{"source",0x4a},{"enabled",true}});
-        waitUntil([this]{return controller.temperatureConnected() && updates>0;},
+        waitUntil([this]{return controller.temperatureConnected() && data.valid;},
             "both simulated physical TEC103 ports complete identity and full protocol reads");
+        QObject::disconnect(observer);
+        require(phases.size() >= 2 && phases.front() == 1 && phases[1] == 2 && !phases.contains(0),
+            "TEC103 stays connecting until identified and never flashes disconnected before data");
     }
     QJsonObject call(QJsonObject request)
     {

@@ -92,7 +92,6 @@ bool settingRange(const Setting& setting)
 
 bool fullConfiguration(const Call& call, int logicalChannel, TemperatureControllerData& data, QString& error)
 {
-    if (!identity(call, logicalChannel, error)) return false;
     // Read each documented field separately. Legacy INQUIRE streams contain
     // hundreds of bytes and can overrun the raw bridge while USB is delayed.
     Values values;
@@ -179,7 +178,7 @@ bool parseValues(const QByteArray& response, Values& values, QString* error)
     return true;
 }
 
-Result read(const Call& call, int logicalChannel, bool full)
+Result read(const Call& call, int logicalChannel, bool full, const std::function<void()>& onIdentity)
 {
     Result result;
     result.logicalChannel = logicalChannel;
@@ -189,7 +188,11 @@ Result read(const Call& call, int logicalChannel, bool full)
         result.message = QStringLiteral("TEC103 物理通道必须为 1 或 2，且 UART 后端必须可用。");
         return result;
     }
-    if (full && !fullConfiguration(call, logicalChannel, result.data, result.message)) return result;
+    if (full) {
+        if (!identity(call, logicalChannel, result.message)) return result;
+        if (onIdentity) onIdentity();
+        if (!fullConfiguration(call, logicalChannel, result.data, result.message)) return result;
+    }
     Values measurements;
     if (!exchange(call, logicalChannel, "DATADEMAND=1@", measurements, result.message)) return result;
     for (const auto key : {"TC1:TCADJTEMP", "TC1:RESISTOR", "SINTERIORTEMP"}) {

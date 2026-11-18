@@ -723,13 +723,14 @@ void FpgaControlPage::setExtensions(quint32 bits) {
     if(ai8Scan_) {const QSignalBlocker block(ai8Scan_);ai8Scan_->setChecked(config_.ai8.scan && (bits&VaporView::FpgaExtensions::Ai8Scan));}
     updateActions();
 }
-void FpgaControlPage::setTemperatureConnectionState(bool connected,const QString& detail)
+void FpgaControlPage::setTemperatureConnectionState(bool connected,const QString& detail,bool identifying)
 {
     setProperty("tec103Connected",connected);
+    setProperty("tec103Identifying",identifying);
     setProperty("tec103ConnectionDetail",detail);
     if(auto* label=sensorLabels_.value(0x4a)) {
-        label->setText((connected?text("TEC103 两路已确认","Both TEC103 controllers confirmed")
-            :text("TEC103 未连接","TEC103 disconnected"))+(detail.isEmpty()?QString():QStringLiteral(" · ")+detail));
+        label->setText((connected?text("TEC103 已连接","TEC103 connected")
+            :identifying ? text("TEC103 连接中","Connecting TEC103") : text("TEC103 未连接","TEC103 disconnected"))+(detail.isEmpty()?QString():QStringLiteral(" · ")+detail));
         label->setToolTip(label->text());
     }
 }
@@ -1245,8 +1246,8 @@ void FpgaControlPage::setUiTestState(bool enabled, bool dataStalled, bool partia
             setConnectionState(ready,busy,text("界面测试 · VLP1 协议模拟器 · ","UI test · VLP1 protocol simulator · ")+detail);publish();
         });
         connect(controller,&VaporView::Ground::Devices::FpgaDeviceController::hardwareValuesChanged,receiver,[this,publish](const auto& values) {setHardwareValues(values);publish();});
-        connect(controller,&VaporView::Ground::Devices::FpgaDeviceController::temperatureConnectionChanged,receiver,[this,publish](bool connected,const QString& detail) {
-            setTemperatureConnectionState(connected,detail);publish();
+        connect(controller,&VaporView::Ground::Devices::FpgaDeviceController::temperatureConnectionChanged,receiver,[this,publish](bool connected,const QString& detail,bool identifying) {
+            setTemperatureConnectionState(connected,detail,identifying);publish();
         });
         connect(controller,&VaporView::Ground::Devices::FpgaDeviceController::temperatureDataUpdated,receiver,[this](const auto& data) {
             emit simulationTemperatureDataUpdated(data);

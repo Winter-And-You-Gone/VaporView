@@ -48,7 +48,7 @@ public:
     void setUsbDiscoveryResult(const QJsonObject &result);
     quint64 usbDiscoveryGeneration() const { return usbDiscoveryGeneration_; }
     void setHardwareValues(const QMap<quint32, quint32> &values);
-    void setTemperatureConnectionState(bool connected, const QString& detail = {});
+    void setTemperatureConnectionState(bool connected, const QString& detail = {}, bool identifying = false);
     void setManagementState(const QJsonObject& state);
     void finishMotorOperation(const QJsonObject& request, bool success);
     void updateSensor(const VaporView::FpgaSensor::Reading &reading);

@@ -1945,7 +1945,8 @@ static void simulatedMonitorActions()
         bool capsuleChanged=false, actionsLocked=false;
         bool eventFilter(QObject *object,QEvent *event) override {
             if(event->type()==QEvent::DynamicPropertyChange&&object->objectName()=="homeDeviceStatusCapsule")
-                capsuleChanged|=object->property("state")!="connected"||!object->property("connected").toBool();
+                capsuleChanged |= !object->property("connected").toBool() ||
+                    (object->property("state") != "connected" && object->property("state") != "warning");
             if(event->type()==QEvent::EnabledChange&&object->objectName()=="homeDeviceActionButton")
                 actionsLocked|=!static_cast<QWidget*>(object)->isEnabled();
             return false;
