@@ -1767,6 +1767,34 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         state_->device_config_.data_telemetry_summary_card->setVisible(true);
     }
     auto deviceConfigRateItems = sections.rateItems;
+    auto deviceConfigLinkItems = sections.linkItems;
+    auto deviceConfigStatusItems = sections.linkStatusItems;
+    auto deviceConfigDeviceItems = sections.deviceItems;
+    if (isUiTestMode()) {
+        // Preview representative values in this card even before connecting a
+        // simulated device, so its capsule widths can be inspected directly.
+        for (int i = 0; i < deviceConfigRateItems.size(); ++i) {
+            auto& item = deviceConfigRateItems[i];
+            item.value = formatFrequencyText(88.8 + i * 2.2);
+            item.hasData = true;
+        }
+        const double linkRates[] = {234500000.0, 123400000.0, 357900000.0};
+        for (int i = 0; i < deviceConfigLinkItems.size() && i < 3; ++i) {
+            deviceConfigLinkItems[i].value = formatBitRate(linkRates[i]);
+            deviceConfigLinkItems[i].hasData = true;
+        }
+        const QStringList statusValues = {QStringLiteral("128.0 GB"),
+            state_->is_english_ ? QStringLiteral("Recording") : QStringLiteral("记录中"),
+            QStringLiteral("999999")};
+        for (int i = 0; i < deviceConfigStatusItems.size() && i < statusValues.size(); ++i) {
+            deviceConfigStatusItems[i].value = statusValues[i];
+            deviceConfigStatusItems[i].hasData = true;
+        }
+        for (auto& item : deviceConfigDeviceItems) {
+            item.value = state_->is_english_ ? QStringLiteral("data") : QStringLiteral("有数据");
+            item.hasData = true;
+        }
+    }
     if (isRemoteSkyMode() && isFpgaRelayPath() && !isUiTestMode()) {
         for (auto& item : deviceConfigRateItems) {
             item.valueWidthText = QStringLiteral("999.9 Hz");
@@ -1776,8 +1804,8 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             }
         }
     }
-    QList<RemoteTelemetrySummarySections::Item> deviceConfigDataItems = sections.linkStatusItems;
-    for (const RemoteTelemetrySummarySections::Item& item : sections.deviceItems)
+    QList<RemoteTelemetrySummarySections::Item> deviceConfigDataItems = deviceConfigStatusItems;
+    for (const RemoteTelemetrySummarySections::Item& item : deviceConfigDeviceItems)
     {
         auto compactItem = item;
         deviceConfigDataItems << compactItem;
@@ -1836,7 +1864,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                                        false,
                                        state_->is_english_) &&
             updateSummarySectionValues(state_->device_config_.data_telemetry_link_summary_layout,
-                                       sections.linkItems,
+                                       deviceConfigLinkItems,
                                        false,
                                        state_->is_english_) &&
             updateSummarySectionValues(state_->device_config_.data_telemetry_device_summary_layout,
@@ -2234,7 +2262,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         renderSummarySection(state_->device_config_.data_telemetry_summary_card,
                              state_->device_config_.data_telemetry_link_summary_layout,
                              state_->is_english_ ? QStringLiteral("Link rate") : QStringLiteral("链路速率"),
-                             sections.linkItems,
+                             deviceConfigLinkItems,
                              1,
                              1,
                              true);
