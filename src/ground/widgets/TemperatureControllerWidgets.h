@@ -23,6 +23,8 @@ public:
     virtual void setEnglish(bool english) = 0;
 };
 
+QString thermalEndpointLabel(bool dualTec103, int channel, bool english);
+
 class TemperatureControllerOverviewPanel : public QWidget
 {
 public:
@@ -32,6 +34,7 @@ public:
     }
 
     virtual void setEnglish(bool english) = 0;
+    virtual void setDualTec103(bool dual) = 0;
     virtual QWidget *titleStatusWidget() const = 0;
     virtual void clearTemperatureHistory() = 0;
     virtual void updateData(const VaporView::TemperatureControllerData& sample, double recordedSeconds = -1) = 0;

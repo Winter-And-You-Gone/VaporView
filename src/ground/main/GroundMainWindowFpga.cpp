@@ -85,6 +85,8 @@ void MainWindow::syncFpgaDeviceConfigUi()
     }
     if(state_->rd105_device_session_)state_->rd105_device_session_->setFpgaTransport(call,
         homeFpgaDeviceState(VaporView::SkyDeviceId::TemperatureController)==VaporView::DeviceState::Connected);
+    if (state_->temperature_controller_panel_) state_->temperature_controller_panel_->setDualTec103(relay);
+    if (state_->temperature_overview_panel_) state_->temperature_overview_panel_->setDualTec103(relay);
     const QString rd105CommunicationDetail=state_->is_english_
         ? QStringLiteral("Two TEC103 controllers use LC0/LC1 TTL at 38400/8N1. Each uses internal TC1. Communication settings and factory reset are unavailable through this connection.")
         : QStringLiteral("两台 TEC103 分别通过 LC0/LC1 TTL、38400/8N1 连接，每台均使用内部 TC1；此路径不提供通信参数修改和恢复出厂。");

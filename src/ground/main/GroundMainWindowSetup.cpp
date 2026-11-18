@@ -5619,9 +5619,11 @@ void MainWindow::setupDataPanels()
             const QMessageBox::StandardButton answer = QMessageBox::question(
                 this,
                 state_->is_english_ ? QStringLiteral("Enable Temperature Output") : QStringLiteral("开启温控输出"),
-                state_->is_english_
-                    ? QStringLiteral("Enable controller output for channel %1? Confirm the target temperature is safe.").arg(channel)
-                    : QStringLiteral("确定开启温控器通道%1输出？请确认目标温度安全。").arg(channel));
+                (state_->is_english_
+                    ? QStringLiteral("Enable %1 output? Confirm the target temperature is safe.")
+                    : QStringLiteral("确定开启%1输出？请确认目标温度安全。"))
+                    .arg(VaporView::Ground::Widgets::thermalEndpointLabel(isFpgaRelayPath(), channel, state_->is_english_) +
+                         (isFpgaRelayPath() ? QStringLiteral(" TEC103 TC1") : QString())));
             if (answer != QMessageBox::Yes)
             {
                 if (state_->temperature_overview_panel_)
@@ -5885,9 +5887,11 @@ void MainWindow::setupDataPanels()
             const QMessageBox::StandardButton answer = QMessageBox::question(
                 this,
                 state_->is_english_ ? QStringLiteral("Enable Temperature Output") : QStringLiteral("开启温控输出"),
-                state_->is_english_
-                    ? QStringLiteral("Enable controller output for channel %1? Confirm the target temperature and output limit are safe.").arg(channel)
-                    : QStringLiteral("确定开启温控器通道%1输出？请确认目标温度和最大输出上限安全。" ).arg(channel));
+                (state_->is_english_
+                    ? QStringLiteral("Enable %1 output? Confirm the target temperature and output limit are safe.")
+                    : QStringLiteral("确定开启%1输出？请确认目标温度和最大输出上限安全。"))
+                    .arg(VaporView::Ground::Widgets::thermalEndpointLabel(isFpgaRelayPath(), channel, state_->is_english_) +
+                         (isFpgaRelayPath() ? QStringLiteral(" TEC103 TC1") : QString())));
             if (answer != QMessageBox::Yes)
             {
                 return;

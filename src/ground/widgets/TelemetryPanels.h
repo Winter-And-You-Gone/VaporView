@@ -227,6 +227,7 @@ class TemperatureControllerPanel : public QWidget
 
 public:
     explicit TemperatureControllerPanel(QWidget *parent = nullptr);
+    void setDualTec103(bool dual);
     QWidget *titleStatusWidget() const;
     void clearTemperatureHistory();
     void updateData(const VaporView::TemperatureControllerData& controllerData, double recordedSeconds = -1);
@@ -391,6 +392,7 @@ private:
     int channelIndex(quint8 channel) const;
 
     QFrame *channel_top_bar_ = nullptr;
+    bool dual_tec103_ = false;
     QPushButton *channel_button_1_ = nullptr;
     QPushButton *channel_button_2_ = nullptr;
     QPushButton *common_settings_button_ = nullptr;

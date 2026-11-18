@@ -1918,6 +1918,10 @@ static void simulatedMonitorActions()
     },6000),"FPGA simulator fills both RD105 overview trends and both measured output percentages");
     const auto outputs=window.findChildren<QAbstractButton*>("temperatureOverviewOutputSwitch");
     require(outputs.size()==2,"simulated RD105 overview exposes both output controls");
+    auto *inSitu = window.findChild<QAbstractButton*>("temperatureChannelSelectorButton1");
+    auto *remote = window.findChild<QAbstractButton*>("temperatureChannelSelectorButton2");
+    require(inSitu && remote && inSitu->text() == QStringLiteral("原位") && remote->text() == QStringLiteral("遥测"),
+            "FPGA temperature selectors identify the two physical TEC103 instruments");
     auto capsules=window.findChildren<QLabel*>("homeDeviceStatusCapsule");
     capsules.removeAll(MainWindowRtcmTestAccess::state(window).home_motion_status_lbl_);
     QList<QObject*> watched;

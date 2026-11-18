@@ -57,6 +57,7 @@ using VaporView::SingleLevelPopupComboBox;
 using VaporView::Ground::Widgets::SegmentedSwitchButton;
 using VaporView::Ground::Widgets::SourceModeOverviewSwitchButton;
 using VaporView::Ground::Widgets::TemperatureControllerOverviewPanel;
+using VaporView::Ground::Widgets::thermalEndpointLabel;
 
 namespace
 {
@@ -1199,6 +1200,13 @@ public:
         updateData(VaporView::TemperatureControllerData(), -1.0);
     }
 
+    void setDualTec103(bool dual) override
+    {
+        if (dual_tec103_ == dual) return;
+        dual_tec103_ = dual;
+        setEnglish(is_english_);
+    }
+
     QWidget *titleStatusWidget() const override { return title_status_strip_; }
 
     void setEnglish(bool english) override
@@ -1209,8 +1217,7 @@ public:
         {
             output_switch_buttons_[index]->setEnglish(english);
             plots_[index]->setEnglish(english);
-            const QString channel = english ? QStringLiteral("Channel %1").arg(index + 1)
-                                            : QStringLiteral("通道%1").arg(index + 1);
+            const QString channel = thermalEndpointLabel(dual_tec103_, index + 1, english);
             plots_[index]->setAccessibleName(channel);
             plots_[index]->setToolTip(channel);
             output_switch_buttons_[index]->setStateDescription(channel + QStringLiteral(" ") + output_label_->text(),
@@ -1374,6 +1381,7 @@ private:
     double temperature_history_origin_local_seconds_ = 0.0;
     std::function<void(quint8, bool)> output_enabled_callback_;
     bool temperature_history_origin_valid_ = false;
+    bool dual_tec103_ = false;
     bool is_english_ = false;
 };
 
@@ -3253,6 +3261,13 @@ void TemperatureControllerPanel::updateRate(double hz)
     }
 }
 
+void TemperatureControllerPanel::setDualTec103(bool dual)
+{
+    if (dual_tec103_ == dual) return;
+    dual_tec103_ = dual;
+    updateChannelTexts();
+}
+
 void TemperatureControllerPanel::setEnglish(bool english)
 {
     is_english_ = english;
@@ -3452,8 +3467,8 @@ void TemperatureControllerPanel::updateChannelTexts()
             : QStringLiteral("RD105 CONTMODE。使用模式2和3时，通道2传感器接口应接入电阻温度传感器。"));
         fitControllerModeComboWidth();
     }
-    if (channel_button_1_) channel_button_1_->setText(is_english_ ? QStringLiteral("Channel 1") : QStringLiteral("通道1"));
-    if (channel_button_2_) channel_button_2_->setText(is_english_ ? QStringLiteral("Channel 2") : QStringLiteral("通道2"));
+    if (channel_button_1_) channel_button_1_->setText(thermalEndpointLabel(dual_tec103_, 1, is_english_));
+    if (channel_button_2_) channel_button_2_->setText(thermalEndpointLabel(dual_tec103_, 2, is_english_));
     if (common_settings_button_) common_settings_button_->setText(is_english_ ? QStringLiteral("Common") : QStringLiteral("通用设置"));
     if (common_.address_label_text) common_.address_label_text->setText(is_english_ ? QStringLiteral("RS485 address") : QStringLiteral("设置温控器485站号"));
     if (common_.rs485_baud_label_text) common_.rs485_baud_label_text->setText(is_english_ ? QStringLiteral("RS485 baud") : QStringLiteral("设置485串口波特率"));
@@ -3998,6 +4013,14 @@ void TemperatureControllerPanel::setOutputEnabledControl(quint8 channel, bool en
 
 namespace VaporView::Ground::Widgets
 {
+QString thermalEndpointLabel(bool dualTec103, int channel, bool english)
+{
+    if (!dualTec103)
+        return (english ? QStringLiteral("Channel %1") : QStringLiteral("通道%1")).arg(channel);
+    if (channel == 1) return english ? QStringLiteral("In situ") : QStringLiteral("原位");
+    return english ? QStringLiteral("Remote") : QStringLiteral("遥测");
+}
+
 
 QComboBox *createSingleLevelPopupComboBox(QWidget *parent,
                                           bool showSelectionCheck,

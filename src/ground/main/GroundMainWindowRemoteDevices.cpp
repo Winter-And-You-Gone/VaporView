@@ -2764,8 +2764,8 @@ void MainWindow::updateTemperatureControllerTitleText()
     const QString portText = state_->local_device_config_.temperatureController.port;
     const bool hasPort = !portText.isEmpty() && !portText.startsWith(QStringLiteral("--"));
     const QString base = isFpgaRelayPath()?(state_->is_english_
-        ?QStringLiteral("TEC103 Laser Temperature · LC0 / LC1")
-        :QStringLiteral("TEC103 激光温控 · 原位 / 遥测")):state_->is_english_
+        ?QStringLiteral("TEC103 · In situ / Remote · TC1")
+        :QStringLiteral("TEC103 激光温控 · 原位 / 遥测 · TC1")):state_->is_english_
         ? QStringLiteral("RD105 Laser Driver Board Temperature Controller")
         : QStringLiteral("RD105激光驱动板温控器");
     const QString portDisplay = hasPort
