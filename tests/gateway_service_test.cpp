@@ -21,7 +21,6 @@
 #include <QTemporaryDir>
 #include <QThread>
 #include <QTimer>
-#include <QUuid>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
@@ -77,9 +76,12 @@ public:
                     const QByteArray headers = buffer->left(end);
                     qint64 length = 0;
                     for (const auto& header : headers.split('\n'))
-                        if (header.toLower().startsWith("content-length:")) length = header.mid(15).trimmed().toLongLong();
+                    {
+                        const auto lower = header.toLower();
+                        if (lower.startsWith("content-length:")) length = header.mid(15).trimmed().toLongLong();
+                        require(!lower.startsWith("authorization:"), "outbound requests omit the Authorization header");
+                    }
                     if (buffer->size() < end + 4 + length) return;
-                    require(headers.contains("Authorization: Bearer " + token.toUtf8()), "bearer header");
                     ++requests;
                     const QByteArray target = headers.split('\n').first().split(' ').value(1);
                     const QJsonObject body = QJsonDocument::fromJson(buffer->mid(end + 4, length)).object();
@@ -138,7 +140,6 @@ public:
     }
     QUrl url() const { return QUrl(QStringLiteral("http://127.0.0.1:%1").arg(serverPort())); }
     bool offline = true;
-    QString token = QUuid::createUuid().toString(QUuid::WithoutBraces);
     bool blockSessionAfterFirst = false;
     bool failPoll = false;
     int requests = 0, polls = 0, sessionChunks = 0, sessionsCompleted = 0;
@@ -162,7 +163,6 @@ bool hasResult(const Cloud& cloud, const QString& id, const QString& status)
 int webDemo()
 {
     const QUrl cloudUrl(QString::fromUtf8(qgetenv("GATEWAY_DEMO_URL")));
-    const QString token = QString::fromUtf8(qgetenv("GATEWAY_DEMO_TOKEN"));
     const QString device = QString::fromUtf8(qgetenv("GATEWAY_DEMO_DEVICE"));
     const QString reportPath = QString::fromUtf8(qgetenv("GATEWAY_DEMO_REPORT"));
     const QString cancelPath = QString::fromUtf8(qgetenv("GATEWAY_DEMO_CANCEL"));
@@ -201,11 +201,8 @@ int webDemo()
     };
     const bool loopback = cloudUrl.host() == QLatin1String("127.0.0.1") ||
         cloudUrl.host() == QLatin1String("::1") || cloudUrl.host() == QLatin1String("localhost");
-    const bool validEnvironment = loopback && cloudUrl.isValid() && cloudUrl.userInfo().isEmpty() &&
-        !cloudUrl.hasQuery() && !cloudUrl.hasFragment() &&
-        (cloudUrl.scheme() == QLatin1String("http") || cloudUrl.scheme() == QLatin1String("https")) &&
-        !token.isEmpty() && !device.isEmpty();
-    addCheck("local_demo_environment", validEnvironment, QStringLiteral("Demo cloud must be a loopback server with an isolated token and device."));
+    const bool validEnvironment = loopback && isGatewayServerUrlValid(cloudUrl) && !device.isEmpty();
+    addCheck("local_demo_environment", validEnvironment, QStringLiteral("Demo cloud must be a loopback server with an isolated device."));
     if (!validEnvironment) return finish();
 
     QTemporaryDir temporary;
@@ -290,7 +287,6 @@ int webDemo()
         GatewayConfig config;
         config.enabled = true;
         config.serverUrl = cloudUrl;
-        config.token = token;
         config.deviceId = device;
         config.cacheDirectory = temporary.filePath("cache");
         config.allowRemoteCommands = true;
@@ -387,7 +383,6 @@ int main(int argc, char **argv)
     config.enabled = true;
     config.serverUrl = cloud.url();
     config.deviceId = "test-aircraft";
-    config.token = cloud.token;
     config.cacheDirectory = temporary.filePath("gateway-cache");
     config.allowRemoteCommands = true;
 
@@ -402,7 +397,7 @@ int main(int argc, char **argv)
         const QByteArray basic = TelemetryCodec::serializeBasicTelemetry(TelemetryBasic{});
         peer->write(encoder.encodeFrame(MsgType::TelemetryBasic, basic, 11, 123456789));
         peer->write(encoder.encodeFrame(MsgType::SkyConfig,
-            QJsonDocument(QJsonObject{{"token", cloud.token}}).toJson(QJsonDocument::Compact), 12, 1));
+            QJsonDocument(QJsonObject{{"serialPort", "test-config-only"}}).toJson(QJsonDocument::Compact), 12, 1));
         require(waitUntil([&] { return localUpdates == 1; }), "offline upload never blocks local parsing");
         settle(500);
         require(cloud.telemetry.isEmpty(), "cloud offline");
@@ -423,7 +418,7 @@ int main(int argc, char **argv)
             for (const auto& value : batch.value("frames").toArray())
             {
                 const auto frame = value.toObject();
-                require(frame.value("type").toInt() == static_cast<int>(MsgType::TelemetryBasic), "config secrets excluded from forwarding");
+                require(frame.value("type").toInt() == static_cast<int>(MsgType::TelemetryBasic), "configuration frames excluded from forwarding");
                 require(frame.value("timeUs").toString() == "123456789", "microseconds preserved as string");
                 ++forwarded;
             }
@@ -459,10 +454,10 @@ int main(int argc, char **argv)
         require(cloud.sessionsCompleted == 1 && cloud.sessionData.value("wave.dat") == QByteArray(600000, 's'), "Session bytes are complete");
         const int requests = cloud.requests;
         GatewayConfig invalid = config;
-        invalid.serverUrl = QUrl("http://example.com");
+        invalid.serverUrl.setScheme("ftp");
         gateway.configure(invalid);
         settle(500);
-        require(cloud.requests == requests && gateway.statusText().contains(QStringLiteral("配置无效")), "remote cleartext endpoint refused");
+        require(cloud.requests == requests && gateway.statusText().contains(QStringLiteral("配置无效")), "unsupported forwarding scheme is rejected before sending");
     }
     // A failing command API must not hold up healthy telemetry uploads.
     {

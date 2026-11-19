@@ -50,16 +50,8 @@ qint64 expiry(const QJsonObject& command)
 bool sameConfig(const GatewayConfig& a, const GatewayConfig& b)
 {
     return a.enabled == b.enabled && a.serverUrl == b.serverUrl && a.deviceId == b.deviceId &&
-        a.token == b.token && a.allowRemoteCommands == b.allowRemoteCommands && a.allowedCommands == b.allowedCommands &&
+        a.allowRemoteCommands == b.allowRemoteCommands && a.allowedCommands == b.allowedCommands &&
         a.maxCacheBytes == b.maxCacheBytes && a.retentionHours == b.retentionHours && a.cacheDirectory == b.cacheDirectory;
-}
-bool safeServer(const QUrl& url)
-{
-    const bool loopback = url.host() == QLatin1String("127.0.0.1") ||
-        url.host() == QLatin1String("::1") || url.host() == QLatin1String("localhost");
-    return url.isValid() && !url.host().isEmpty() && url.userInfo().isEmpty() &&
-        !url.hasQuery() && !url.hasFragment() &&
-        (url.scheme() == QLatin1String("https") || (loopback && url.scheme() == QLatin1String("http")));
 }
 bool dataFrame(MsgType type)
 {
@@ -92,6 +84,13 @@ QJsonObject resultFor(const QString& id, const QString& status)
 }
 }  // namespace
 
+bool isGatewayServerUrlValid(const QUrl& url)
+{
+    return url.isValid() && !url.host().isEmpty() && !url.authority().contains(QLatin1Char('@')) &&
+        !url.hasQuery() && !url.hasFragment() &&
+        (url.scheme() == QLatin1String("https") || url.scheme() == QLatin1String("http"));
+}
+
 struct GatewayIngress
 {
     QMutex mutex;
@@ -122,12 +121,12 @@ public:
         const auto badHeader = [](const QString& value) {
             return std::any_of(value.cbegin(), value.cend(), [](QChar ch) { return ch.unicode() < 33 || ch.unicode() > 126; });
         };
-        if (!safeServer(config.serverUrl) || config.deviceId.trimmed().isEmpty() || badHeader(config.deviceId) ||
-            config.deviceId.size() > 128 || config.token.trimmed().isEmpty() || config.token.contains('\n') ||
-            config.token.contains('\r') || badHeader(config.token) || config.maxCacheBytes < 1024 * 1024 || config.retentionHours < 1 ||
+        if (!isGatewayServerUrlValid(config.serverUrl) || config.deviceId.trimmed().isEmpty() ||
+            badHeader(config.deviceId) || config.deviceId.size() > 128 ||
+            config.maxCacheBytes < 1024 * 1024 || config.retentionHours < 1 ||
             config.retentionHours > 720)
         {
-            report(QStringLiteral("Gateway 配置无效：需要 HTTPS 地址、设备 ID、令牌和有效缓存限制"));
+            report(QStringLiteral("Gateway 配置无效：需要 HTTP 或 HTTPS 地址、设备 ID 和有效缓存限制"));
             return;
         }
         QString base = config.cacheDirectory;
@@ -368,7 +367,6 @@ private:
         if (get) { QUrlQuery query; query.addQueryItem("deviceId", config_.deviceId); base.setQuery(query); }
         QNetworkRequest request(base);
         request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-        request.setRawHeader("Authorization", "Bearer " + config_.token.toUtf8());
         request.setRawHeader("X-VaporView-Device-Id", config_.deviceId.toUtf8());
         request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
         request.setTransferTimeout(15000);

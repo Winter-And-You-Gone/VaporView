@@ -25,7 +25,6 @@ class DemoServerTest(unittest.TestCase):
         self.web.mkdir()
         (self.web / "index.html").write_text("<html>demo</html>", encoding="utf-8")
         self.state = demo.DemoState(self.root / "data")
-        self.token = self.state.token
         self.server = demo.DemoServer(0, self.state, self.web)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
@@ -37,10 +36,8 @@ class DemoServerTest(unittest.TestCase):
         self.state.close()
         self.temporary.cleanup()
 
-    def request(self, method, path, body=None, headers=None, authenticated=True):
+    def request(self, method, path, body=None, headers=None):
         request_headers = {"Content-Type": "application/json"}
-        if authenticated:
-            request_headers.update(Authorization="Bearer " + self.token, **{"X-VaporView-Device-Id": "demo-aircraft"})
         request_headers.update(headers or {})
         connection = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=5)
         connection.request(method, path, None if body is None else json.dumps(body), request_headers)
@@ -60,23 +57,25 @@ class DemoServerTest(unittest.TestCase):
                 "totalBytes": str(total), "dataBase64": base64.b64encode(data).decode(),
                 "chunkSha256": hashlib.sha256(data).hexdigest(), "complete": False}
 
-    def test_local_host_origin_auth_and_no_implicit_token(self):
+    def test_same_origin_requests_without_credentials(self):
         self.assertEqual(self.server.server_address[0], "127.0.0.1")
         self.assertEqual(self.request("GET", "/")[0], 200)
         self.assertEqual(self.request("GET", "/server.py")[0], 404)
         self.assertEqual(self.request("GET", "/../server.py")[0], 404)
-        self.assertEqual(self.request("POST", "/gateway/v1/telemetry", self.telemetry(), authenticated=False)[0], 401)
-        self.assertEqual(self.request("POST", "/gateway/v1/telemetry", self.telemetry(),
-                                      {"X-VaporView-Device-Id": "different"})[0], 403)
+        self.assertEqual(self.request("POST", "/gateway/v1/telemetry", self.telemetry())[0], 200)
+        self.assertEqual(self.request("POST", "/demo/v1/commands", {"commandId": 10},
+                                      {"Origin": self.state.url})[0], 200)
         self.assertEqual(self.request("POST", "/demo/v1/commands", {"commandId": 10},
                                       {"Origin": "https://external.example"})[0], 403)
         self.assertEqual(self.request("POST", "/demo/v1/commands", {"commandId": 10},
                                       {"Host": "external.example"})[0], 403)
-        status, state = self.request("GET", "/demo/v1/state", authenticated=False)
+        status, state = self.request("GET", "/demo/v1/state")
         self.assertEqual(status, 200)
-        self.assertNotIn("token", state["connection"])
-        self.assertNotIn(self.token, json.dumps(state))
-        self.assertEqual(self.request("GET", "/demo/v1/connection", authenticated=False)[1]["token"], self.token)
+        self.assertEqual(self.request("POST", "/gateway/v1/telemetry", self.telemetry(),
+                                      {"X-VaporView-Device-Id": "another-device"})[0], 400)
+        expected = {"url": self.state.url, "deviceId": "demo-aircraft"}
+        self.assertEqual(state["connection"], expected)
+        self.assertEqual(self.request("GET", "/demo/v1/connection"), (200, expected))
 
     def test_telemetry_durable_idempotency_and_reused_id(self):
         body = self.telemetry()

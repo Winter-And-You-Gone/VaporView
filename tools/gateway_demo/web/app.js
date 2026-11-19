@@ -19,7 +19,6 @@
   const signatures = new Map();
   let currentState = null;
   let connection = null;
-  let tokenVisible = false;
   let verifying = false;
   let sendingCommand = false;
   let changingNetwork = false;
@@ -99,7 +98,7 @@
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: controller.signal,
         cache: "no-store",
-        credentials: "same-origin"
+        credentials: "omit"
       });
       const raw = await response.text();
       let data;
@@ -400,22 +399,11 @@
       $("connection-device").value = connection.deviceId;
       $("copy-url").disabled = false;
       $("copy-device").disabled = false;
-      $("reveal-token").disabled = !connection.token;
     } catch (error) { setMessage("connection-message", `无法读取连接配置：${error.message}。刷新页面可重试。`, true); }
   }
 
   $("copy-url").addEventListener("click", () => copy(connection?.url, "connection-message"));
   $("copy-device").addEventListener("click", () => copy(connection?.deviceId, "connection-message"));
-  $("reveal-token").addEventListener("click", () => {
-    tokenVisible = !tokenVisible;
-    $("connection-token").type = tokenVisible ? "text" : "password";
-    $("connection-token").value = tokenVisible ? connection?.token || "" : "";
-    $("copy-token").disabled = !tokenVisible;
-    $("reveal-token").setAttribute("aria-expanded", String(tokenVisible));
-    text("reveal-token", tokenVisible ? "隐藏" : "显示");
-    setMessage("connection-message", tokenVisible ? "访问令牌仅供本地连接，请勿包含在截图或共享记录中。" : "");
-  });
-  $("copy-token").addEventListener("click", () => copy(tokenVisible ? connection?.token : "", "connection-message"));
   $("close-payload").addEventListener("click", () => $("payload-dialog").close());
   $("copy-payload").addEventListener("click", () => copy(currentPayload, "payload-message"));
   $("payload-dialog").addEventListener("click", event => {

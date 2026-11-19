@@ -26,12 +26,13 @@ struct GatewayListenerConfig
 
 bool isListenerCommand(int commandId);
 
+bool isGatewayServerUrlValid(const QUrl& url);
+
 struct GatewayConfig
 {
     bool enabled = false;
     QUrl serverUrl;
     QString deviceId;
-    QString token;
     bool allowRemoteCommands = false;
     QSet<quint16> allowedCommands{static_cast<quint16>(CommandId::RequestStatus)};
     qint64 maxCacheBytes = 64 * 1024 * 1024;

@@ -38,7 +38,6 @@ private:
     QCheckBox *enabled_;
     QLineEdit *server_url_;
     QLineEdit *device_id_;
-    QLineEdit *token_;
     QCheckBox *remote_commands_;
     QCheckBox *status_command_;
     QCheckBox *start_command_;
