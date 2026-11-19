@@ -1,7 +1,6 @@
 #include "MotionControlPage.h"
 #include "shared/config/SettingsWriteBarrier.h"
 #include "shared/theme/AppTheme.h"
-#include "shared/theme/TopLevelCardStyle.h"
 #include "ground/widgets/LabelTextSelection.h"
 #include <QComboBox>
 #include <QDoubleSpinBox>
@@ -82,7 +81,7 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
 {
     setObjectName(QStringLiteral("emFwc3ConnectionPanel"));
     setProperty("emFwc3Card", true);
-    configureTopLevelCard(this);
+    setAttribute(Qt::WA_StyledBackground, true);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     auto& s = *state_;
     s.session = new EmFwc3Session(this, sdkDirectory);
@@ -94,7 +93,7 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
     s.headerLayout = new QGridLayout(s.header); s.headerLayout->setContentsMargins(10, 2, 10, 2);
     s.headerLayout->setHorizontalSpacing(12); s.headerLayout->setVerticalSpacing(4);
     s.title = new VisualTextLabel(s.header); s.title->setObjectName(QStringLiteral("sectionTitleLabel"));
-    configureSelectableCardTitle(s.title); wording(s.title, "运动控制 · EM-FWC3", "Motion control · EM-FWC3");
+    configureSelectableCardTitle(s.title); s.title->setText(QStringLiteral("EM-FWC3"));
     s.headerLayout->addWidget(s.title, 0, 0);
     s.connectionControls = new QWidget(s.header);
     auto *connectionLayout = new QHBoxLayout(s.connectionControls);
@@ -140,13 +139,19 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
         auto *card = new QWidget(s.channels); card->setObjectName(QStringLiteral("emFwc3Channel") + suffix);
         auto *v = new QVBoxLayout(card); v->setContentsMargins(0, 0, 0, 0); v->setSpacing(8);
         auto *moves = new QGridLayout; moves->setHorizontalSpacing(12); moves->setVerticalSpacing(6);
-        auto *targetGroup = new QWidget(card); auto *targetRow = new QHBoxLayout(targetGroup);
-        targetRow->setContentsMargins(0, 0, 0, 0); targetRow->setSpacing(6);
-        targetRow->addWidget(label(card, "当前角度", "Current angle"));
+        auto *positionRow = new QHBoxLayout;
+        positionRow->setSpacing(6);
+        auto *positionLabel = label(card, "当前角度", "Current angle");
+        positionLabel->setProperty("motionFormLabel", true);
+        positionRow->addWidget(positionLabel);
         s.positions[i] = new QLabel(QStringLiteral("—"), card);
         s.positions[i]->setObjectName(QStringLiteral("emFwc3Position") + suffix);
-        targetRow->addWidget(s.positions[i]); targetRow->addSpacing(12);
+        positionRow->addWidget(s.positions[i]); positionRow->addStretch();
+        v->addLayout(positionRow);
+        auto *targetGroup = new QWidget(card); auto *targetRow = new QHBoxLayout(targetGroup);
+        targetRow->setContentsMargins(0, 0, 0, 0); targetRow->setSpacing(6);
         auto *targetLabel = label(card, "目标角度", "Target angle");
+        targetLabel->setProperty("motionFormLabel", true);
         targetRow->addWidget(targetLabel);
         s.targets[i] = angle(card, QStringLiteral("emFwc3Target") + suffix, false); targetRow->addWidget(s.targets[i]);
         auto *go = button(card, qPrintable(QStringLiteral("emFwc3Go") + suffix), "定位", "Move to target");

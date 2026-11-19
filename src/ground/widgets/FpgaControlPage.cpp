@@ -136,7 +136,7 @@ void FpgaControlPage::label(QWidget *w, const QString &zh, const QString &en) {
     }
 }
 
-FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
+FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout) : QWidget(parent) {
     motorHeartbeatTimer_.setParent(this);motorHeartbeatTimer_.setInterval(200);
     connect(&motorHeartbeatTimer_,&QTimer::timeout,this,[this] {
         if(motorLeaseRequested_ && connected_ && ready_)emit motorHeartbeatRequested();
@@ -147,10 +147,10 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     setObjectName("fpgaControlPage");
     setAttribute(Qt::WA_StyledBackground, true);
     auto *root=new QVBoxLayout(this); root->setContentsMargins(0,4,0,8); root->setSpacing(12);
-    auto card = [this](QWidget *parent, QBoxLayout *layout, const QString &zh, const QString &en, const QString &iconName) {
+    auto card = [this](QWidget *parent, QBoxLayout *layout, const QString &zh, const QString &en, const QString &iconName, bool topLevel = true) {
         auto *frame = new QFrame(parent);
         frame->setObjectName(QStringLiteral("fpgaSectionCard"));
-        VaporView::configureTopLevelCard(frame);
+        if (topLevel) VaporView::configureTopLevelCard(frame);
         auto *cardLayout = new QVBoxLayout(frame);
         cardLayout->setContentsMargins(1,0,1,1); cardLayout->setSpacing(0);
         auto *header = new QWidget(frame); header->setObjectName(QStringLiteral("sectionTitleBar"));
@@ -456,13 +456,16 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
         for(int i=0;i<sensorForms.size();++i)sensorForms[i]->setVisible(i==current);
         sensorStack->updateGeometry();
     });
-    auto number=[this](QGridLayout *grid,int row,const char *title,const char *name,double low,double high,double value,int decimals=0) {
-        auto *label=new QLabel(QString::fromUtf8(title),this);label->setWordWrap(true);grid->addWidget(label,row,0);
+    auto number=[this](QGridLayout *grid,int row,const char *title,const char *name,double low,double high,double value,
+                       int decimals=0,const char *englishTitle=nullptr) {
+        auto *caption=new QLabel(QString::fromUtf8(title),this);caption->setWordWrap(true);grid->addWidget(caption,row,0);
+        if (englishTitle) label(caption, QString::fromUtf8(title), QString::fromUtf8(englishTitle));
         auto *spin=new QDoubleSpinBox(this);spin->setObjectName(QString::fromLatin1(name));spin->setRange(low,high);spin->setDecimals(decimals);spin->setValue(value);spin->setKeyboardTracking(false);grid->addWidget(spin,row,1);return spin;
     };
     auto operation=[this](QGridLayout *grid,int row,int col,const char *zh,const char *en,const char *name,std::function<QJsonObject()> request) {
         auto *button=new QPushButton(this);label(button,QString::fromUtf8(zh),QString::fromUtf8(en));button->setObjectName(QString::fromLatin1(name));
         grid->addWidget(button,row,col);onlineControls_.append(button);
+        button->setFocusPolicy(Qt::TabFocus);
         connect(button,&QPushButton::clicked,this,[this,request] {
             const auto command=request();if(!prepareMotorOperation(command))return;
             lockOperation();emit operationRequested(command);
@@ -515,17 +518,50 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
         {0x103c,"当前 GNSS 标签高位","Actual GNSS tag high"},{0x1040,"串口 GNSS 标签有效（非 UTC 锚点）","Serial GNSS tag valid (not a UTC anchor)"},
         {0x1048,"PPS 实测 tick/s","Measured PPS ticks/s"},{0x104c,"PPS 序号","PPS sequence"},{0x1060,"原子校准状态","Atomic calibration status"},
         {0x1064,"不合格 PPS 间隔累计数","Rejected PPS interval count"}});
-    auto *motor=card(advanced,advancedLayout,QStringLiteral("步进电机（仅显式运行）"),QStringLiteral("Stepper motor (explicit run only)"),QStringLiteral("settings"));auto *mg=new QGridLayout(motor);
-    auto *frequency=number(mg,0,"步进频率 / Hz (20..400)","fpgaMotorFrequency",20,400,100);
-    operation(mg,0,2,"应用电机参数并停用","Configure and disable","fpgaMotorConfigure",[frequency]{return QJsonObject{{"op","motor_config"},{"frequency",frequency->value()}};});
-    motorStatus_=new QLabel(motor);motorStatus_->setObjectName("fpgaMotorSafetyStatus");motorStatus_->setWordWrap(true);mg->addWidget(motorStatus_,1,0,1,3);
-    motorProgress_=new QLabel(motor);motorProgress_->setObjectName("fpgaMotorProgress");motorProgress_->setWordWrap(true);mg->addWidget(motorProgress_,2,0,1,3);
-    auto *steps=number(mg,4,"相对运动脉冲数 (±1..5000，正值向上接入)","fpgaMotorSteps",-5000,5000,40);
-    operation(mg,5,0,"启用电机","Enable motor","fpgaMotorEnable",[]{return QJsonObject{{"op","motor"},{"action",4},{"value",1}};});operation(mg,5,1,"运行相对运动","Run relative move","fpgaMotorRun",[steps]{return QJsonObject{{"op","motor"},{"action",1},{"value",steps->value()}};});
-    auto *stop=operation(mg,5,2,"停止电机（保持使能）","Stop motor (hold enabled)","fpgaMotorStop",[]{return QJsonObject{{"op","motor"},{"action",2},{"value",0}};});stop->setProperty("fpgaSafetyControl",true);
-    auto *disable=operation(mg,6,0,"停用电机","Disable motor","fpgaMotorDisable",[]{return QJsonObject{{"op","motor"},{"action",4},{"value",0}};});disable->setProperty("fpgaSafetyControl",true);
-    operation(mg,6,1,"软件脉冲位置清零","Zero software pulse position","fpgaMotorZero",[]{return QJsonObject{{"op","motor"},{"action",3},{"value",0}};});
-    readbacks(mg,7,{{0x6704,"电机控制","Motor control"},{0x6708,"电机状态","Motor status"},{0x670c,"电机错误","Motor errors"},
+    auto *motor = card(motionLayout ? motionLayout->parentWidget() : advanced,
+                       motionLayout ? motionLayout : advancedLayout,
+                       QStringLiteral("步进电机（仅显式运行）"), QStringLiteral("Stepper motor (explicit run only)"),
+                       QStringLiteral("sliders-vertical"), !motionLayout);
+    motorCard_ = static_cast<QFrame *>(motor->parentWidget());
+    motorCard_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    auto *motorGrid = new QGridLayout(motor);
+    motorGrid->setContentsMargins(12, 10, 12, 12);
+    motorGrid->setSpacing(8);
+    motorGrid->setColumnStretch(0, 1);
+    motorGrid->setColumnStretch(1, 1);
+    auto *frequency = number(motorGrid, 0, "步进频率 / Hz (20..400)", "fpgaMotorFrequency", 20, 400, 100,
+                             0, "Step frequency / Hz (20..400)");
+    auto *steps = number(motorGrid, 1, "相对运动脉冲数 (±1..5000，正值向上接入)", "fpgaMotorSteps", -5000, 5000, 40,
+                         0, "Relative move (±1..5000 pulses)");
+    operation(motorGrid, 2, 0, "应用电机参数并停用", "Configure and disable", "fpgaMotorConfigure",
+              [frequency] { return QJsonObject{{"op","motor_config"},{"frequency",frequency->value()}}; });
+    operation(motorGrid, 2, 1, "启用电机", "Enable motor", "fpgaMotorEnable",
+              [] { return QJsonObject{{"op","motor"},{"action",4},{"value",1}}; });
+    operation(motorGrid, 3, 0, "运行相对运动", "Run relative move", "fpgaMotorRun",
+              [steps] { return QJsonObject{{"op","motor"},{"action",1},{"value",steps->value()}}; });
+    auto *stop = operation(motorGrid, 3, 1, "停止（保持使能）", "Stop (hold enabled)", "fpgaMotorStop",
+                           [] { return QJsonObject{{"op","motor"},{"action",2},{"value",0}}; });
+    stop->setProperty("fpgaSafetyControl", true);
+    auto *disable = operation(motorGrid, 4, 0, "停用电机", "Disable motor", "fpgaMotorDisable",
+                              [] { return QJsonObject{{"op","motor"},{"action",4},{"value",0}}; });
+    disable->setProperty("fpgaSafetyControl", true);
+    operation(motorGrid, 4, 1, "软件脉冲位置清零", "Zero software pulse position", "fpgaMotorZero",
+              [] { return QJsonObject{{"op","motor"},{"action",3},{"value",0}}; });
+    motorStatus_ = new QLabel(motor); motorStatus_->setObjectName("fpgaMotorSafetyStatus");
+    motorStatus_->setWordWrap(true); motorGrid->addWidget(motorStatus_, 5, 0, 1, 2);
+    motorProgress_ = new QLabel(motor); motorProgress_->setObjectName("fpgaMotorProgress");
+    motorProgress_->setWordWrap(true); motorGrid->addWidget(motorProgress_, 6, 0, 1, 2);
+    auto *showReadbacks = new FpgaCheckBox(motor);
+    showReadbacks->setObjectName("fpgaMotorShowReadbacks");
+    label(showReadbacks, QStringLiteral("显示寄存器读回"), QStringLiteral("Show register readbacks"));
+    motorGrid->addWidget(showReadbacks, 7, 0, 1, 2);
+    auto *motorReadbacks = new QWidget(motor);
+    auto *readbackGrid = new QGridLayout(motorReadbacks);
+    readbackGrid->setContentsMargins(0, 0, 0, 0);
+    motorGrid->addWidget(motorReadbacks, 8, 0, 1, 2);
+    motorReadbacks->hide();
+    connect(showReadbacks, &QCheckBox::toggled, motorReadbacks, &QWidget::setVisible);
+    readbacks(readbackGrid,0,{{0x6704,"电机控制","Motor control"},{0x6708,"电机状态","Motor status"},{0x670c,"电机错误","Motor errors"},
         {0x6714,"当前步进频率","Actual step frequency"},{0x6718,"固定 50% 占空比半周期 / tick","Fixed 50% duty half-period / ticks"},{0x671c,"固定 10 ms 方向建立时间 / tick","Fixed 10 ms direction setup / ticks"},
         {0x6724,"输出脉冲软件位置（非机械位置）","Software pulse position (not mechanical position)"},{0x6728,"剩余脉冲","Remaining pulses"},{0x6730,"固定极性 4（EN 高为禁用）","Fixed polarity 4 (EN high disables)"},
         {0x6738,"真实心跳累计数","Real heartbeat count"},{0x673c,"DM422 核心状态","DM422 core status"},{0x6744,"失联超时 / ms","Heartbeat timeout / ms"}});
@@ -717,9 +753,9 @@ void FpgaControlPage::updateActions(){
     }refresh_->setEnabled(connected_&&!busy_);record_->setEnabled(!property("fpgaUiTestMode").toBool()&&(ready_||recording_));
     const bool motorBlocked=motorLocked();
     for(const char *name:{"fpgaMotorRun","fpgaMotorEnable","fpgaMotorConfigure","fpgaMotorZero"})
-        if(auto *button=findChild<QPushButton*>(QString::fromLatin1(name)))button->setEnabled(button->isEnabled()&&!motorBlocked);
+        if(auto *button=motorCard_->findChild<QPushButton*>(QString::fromLatin1(name)))button->setEnabled(button->isEnabled()&&!motorBlocked);
     for(const char *name:{"fpgaMotorFrequency","fpgaMotorSteps"})
-        if(auto *input=findChild<QDoubleSpinBox*>(QString::fromLatin1(name)))input->setEnabled(!motorBlocked&&!busy_);
+        if(auto *input=motorCard_->findChild<QDoubleSpinBox*>(QString::fromLatin1(name)))input->setEnabled(!motorBlocked&&!busy_);
     if(auto *module=findChild<QComboBox*>("fpgaMaintenanceModule"))if(module->currentData().toInt()==0x47 && motorBlocked)
         for(const char *name:{"fpgaModuleReset","fpgaModuleClearErrors","fpgaSensorClearFifo"})
             if(auto *button=findChild<QPushButton*>(QString::fromLatin1(name)))button->setEnabled(false);
@@ -1042,7 +1078,15 @@ void FpgaControlPage::setManagementState(const QJsonObject& state)
     managementStatus_->setText(lines.join(QChar('\n')));
 }
 void FpgaControlPage::appendDiagnostic(const QString &s){diagnostics_->appendPlainText(s);}
-void FpgaControlPage::setLanguage(bool en){english_=en;for(auto *w:findChildren<QWidget*>())if(w->property("fpgaZh").isValid())label(w,w->property("fpgaZh").toString(),w->property("fpgaEn").toString());
+void FpgaControlPage::setLanguage(bool en){
+    english_ = en;
+    const auto retranslate = [this](QWidget *root) {
+        for (auto *widget : root->findChildren<QWidget *>())
+            if (widget->property("fpgaZh").isValid())
+                label(widget, widget->property("fpgaZh").toString(), widget->property("fpgaEn").toString());
+    };
+    retranslate(this);
+    if (!isAncestorOf(motorCard_)) retranslate(motorCard_);
     const bool rendering=rerendering_;rerendering_=true;setHardwareValues(hardwareValues_);rerendering_=rendering;updateMotorProgress();
     backend_->setItemText(backend_->findData(QStringLiteral("simulator")),text("模拟器","Simulator"));
     for(int i=0;i<tabs_->count();++i)tabs_->setTabText(i,tabs_->widget(i)->property(en?"fpgaEn":"fpgaZh").toString());
@@ -1065,31 +1109,37 @@ void FpgaControlPage::setTheme(bool dark,int fontScalePercent){
         auto *scroll=qobject_cast<QScrollArea*>(tabs_->widget(i));
         scroll->widget()->layout()->setContentsMargins(pixels(18),pixels(12),shadowInset,pixels(8));
     }
-    setStyleSheet(applyAppThemeTokens(QStringLiteral(
+    const QString cardStyle = applyAppThemeTokens(QStringLiteral(
+        "QFrame#fpgaSectionCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 12px; }"
+        "QFrame#fpgaSectionCard > QWidget#sectionTitleBar { background-color: @vv-surface-raised; border: none; border-bottom: 1px solid @vv-border; border-top-left-radius: 11px; border-top-right-radius: 11px; min-height: %1px; max-height: %1px; }"
+        "QWidget#fpgaCardBody { background-color: @vv-surface-raised; border: none; border-bottom-left-radius: 11px; border-bottom-right-radius: 11px; }"
+        "QLabel { background-color: transparent; border: none; color: @vv-text; }"
+        "QLabel#sectionTitleLabel { font-size: %2px; font-weight: 700; padding: 0; margin: 0; }"
+        "QLabel[fpgaSecondaryText=\"true\"] { color: @vv-text-secondary; font-weight: 400; }")
+        .arg(pixels(40)).arg(pixels(16)), dark);
+    if (!isAncestorOf(motorCard_)) {
+        motorCard_->setPalette(appThemePalette(dark, motorCard_->palette()));
+        motorCard_->setStyleSheet(cardStyle);
+    }
+    setStyleSheet(cardStyle + applyAppThemeTokens(QStringLiteral(
         "QWidget#fpgaControlPage { background-color: @vv-window; }"
-        "QWidget#fpgaControlPage QFrame#fpgaSectionCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 12px; }"
-        "QWidget#fpgaControlPage QFrame#fpgaSectionCard > QWidget#sectionTitleBar { background-color: @vv-surface-raised; border: none; border-bottom: 1px solid @vv-border; border-top-left-radius: 11px; border-top-right-radius: 11px; min-height: %1px; max-height: %1px; }"
-        "QWidget#fpgaControlPage QWidget#fpgaCardBody { background-color: @vv-surface-raised; border: none; border-bottom-left-radius: 11px; border-bottom-right-radius: 11px; }"
-        "QWidget#fpgaControlPage QLabel { background-color: transparent; border: none; color: @vv-text; }"
-        "QWidget#fpgaControlPage QLabel#sectionTitleLabel { font-size: %2px; font-weight: 700; padding: 0; margin: 0; }"
-        "QWidget#fpgaControlPage QLabel[fpgaSecondaryText=\"true\"] { color: @vv-text-secondary; font-weight: 400; }"
         "QWidget#fpgaControlPage QTabWidget::pane { border: none; background-color: @vv-window; }"
-        "QWidget#fpgaControlPage QTabWidget#fpgaTabs::tab-bar { left: %7px; }"
-        "QWidget#fpgaControlPage QTabBar::tab { background-color: @vv-surface-alt; color: @vv-text; border: 1px solid transparent; border-radius: 6px; padding: 0 %3px; margin-right: 4px; min-height: %4px; font-weight: 600; }"
+        "QWidget#fpgaControlPage QTabWidget#fpgaTabs::tab-bar { left: %5px; }"
+        "QWidget#fpgaControlPage QTabBar::tab { background-color: @vv-surface-alt; color: @vv-text; border: 1px solid transparent; border-radius: 6px; padding: 0 %1px; margin-right: 4px; min-height: %2px; font-weight: 600; }"
         "QWidget#fpgaControlPage QTabBar::tab:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
         "QWidget#fpgaControlPage QTabBar::tab:selected { background-color: @vv-primary; color: @vv-white; }"
         "QWidget#fpgaControlPage QTabBar::tab:focus { border-color: @vv-focus; }"
         "QWidget#fpgaControlPage QScrollArea, QWidget#fpgaControlPage QScrollArea > QWidget, QWidget#fpgaControlPage QScrollArea > QWidget > QWidget { background-color: @vv-window; border: none; }"
-        "QWidget#fpgaControlPage QScrollArea#mainCardsScrollArea QScrollBar:vertical { width: %6px; }"
+        "QWidget#fpgaControlPage QScrollArea#mainCardsScrollArea QScrollBar:vertical { width: %4px; }"
         "QWidget#fpgaControlPage QPushButton[fpgaSecondaryAction=\"true\"] { background-color: @vv-surface-alt; color: @vv-text; border: 1px solid @vv-border; }"
         "QWidget#fpgaControlPage QPushButton[fpgaSecondaryAction=\"true\"]:hover { background-color: @vv-primary-subtle; color: @vv-primary; border-color: @vv-primary; }"
         "QWidget#fpgaControlPage QPushButton[fpgaSecondaryAction=\"true\"]:focus { border-color: @vv-focus; }"
         "QWidget#fpgaControlPage QPushButton[fpgaSecondaryAction=\"true\"]:disabled { background-color: @vv-surface-alt; color: @vv-text-muted; border-color: @vv-border; }"
-        "QWidget#fpgaControlPage QPushButton[fpgaIconOnly=\"true\"] { background-color: transparent; border: 1px solid transparent; border-radius: 7px; padding: 0; min-width: %5px; max-width: %5px; min-height: %5px; max-height: %5px; }"
+        "QWidget#fpgaControlPage QPushButton[fpgaIconOnly=\"true\"] { background-color: transparent; border: 1px solid transparent; border-radius: 7px; padding: 0; min-width: %3px; max-width: %3px; min-height: %3px; max-height: %3px; }"
         "QWidget#fpgaControlPage QPushButton[fpgaIconOnly=\"true\"]:hover, QWidget#fpgaControlPage QPushButton[fpgaIconOnly=\"true\"]:pressed { background-color: @vv-surface-alt; border-color: transparent; }"
         "QWidget#fpgaControlPage QPushButton[fpgaIconOnly=\"true\"]:focus { border-color: @vv-focus; }"
         "QWidget#fpgaControlPage QPushButton[fpgaIconOnly=\"true\"]:disabled { background-color: transparent; border-color: transparent; }")
-        .arg(pixels(40)).arg(pixels(16)).arg(pixels(12)).arg(pixels(36)).arg(pixels(40)-2).arg(pixels(8)).arg(pixels(18)),dark));
+        .arg(pixels(12)).arg(pixels(36)).arg(pixels(40)-2).arg(pixels(8)).arg(pixels(18)),dark));
     locator_->setMinimumWidth(pixels(200)); locator_->setMaximumWidth(QWIDGETSIZE_MAX); locator_->setFixedHeight(pixels(40));
     backend_->setMinimumWidth(pixels(104)); backend_->setMaximumWidth(QWIDGETSIZE_MAX); backend_->setFixedHeight(pixels(40));
     for (auto *button : {discover_,connect_,disconnect_}) {
@@ -1102,7 +1152,10 @@ void FpgaControlPage::setTheme(bool dark,int fontScalePercent){
         QPixmap pixmap(qRound(size*dpr),qRound(size*dpr)); pixmap.setDevicePixelRatio(dpr); pixmap.fill(Qt::transparent);
         QSvgRenderer renderer(svg); QPainter painter(&pixmap); renderer.render(&painter,QRectF(0,0,size,size)); painter.end(); button->setIcon(QIcon(pixmap));
     }
-    for (auto *icon : findChildren<QLabel*>(QStringLiteral("fpgaCardIcon"))) {
+    const QString iconObjectName = QStringLiteral("fpgaCardIcon");
+    auto icons = findChildren<QLabel *>(iconObjectName);
+    if (!isAncestorOf(motorCard_)) icons.append(motorCard_->findChildren<QLabel *>(iconObjectName));
+    for (auto *icon : icons) {
         const int size=pixels(20); icon->setFixedSize(size,size);
         QFile file(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/lucide/%1.svg").arg(icon->property("fpgaIconName").toString())));
         if (!file.open(QIODevice::ReadOnly)) continue;

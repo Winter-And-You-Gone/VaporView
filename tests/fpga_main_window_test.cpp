@@ -441,10 +441,10 @@ static void remotePageRouting()
         send(MsgType::DeviceOperationResponse, TelemetryCodec::serializeDeviceOperationResponse(response));
         require(waitUntil([&] { return acquisition->isEnabled(); }), "final response unlocks actions");
         {
-            auto *run=page->findChild<QAbstractButton*>("fpgaMotorRun");
-            auto *stop=page->findChild<QAbstractButton*>("fpgaMotorStop");
-            auto *steps=page->findChild<QDoubleSpinBox*>("fpgaMotorSteps");
-            auto *progress=page->findChild<QLabel*>("fpgaMotorProgress");
+            auto *run=window.findChild<QAbstractButton*>("fpgaMotorRun");
+            auto *stop=window.findChild<QAbstractButton*>("fpgaMotorStop");
+            auto *steps=window.findChild<QDoubleSpinBox*>("fpgaMotorSteps");
+            auto *progress=window.findChild<QLabel*>("fpgaMotorProgress");
             require(run&&stop&&steps&&progress,"remote motor controls expose command progress");
             QJsonObject registers;
             for(const auto pair:{qMakePair(0x6700u,0x00470200u),qMakePair(0x6704u,1u),
@@ -1363,12 +1363,12 @@ static void localSimulatorRouting()
     check(waitUntil([&]{return connectionSuccesses.contains(0x40);})&&connectionSuccesses.size()==1,
         "only the requested simulated sensor reports a connection result");
     {
-        auto *run=page->findChild<QAbstractButton*>("fpgaMotorRun");
-        auto *stop=page->findChild<QAbstractButton*>("fpgaMotorStop");
-        auto *enable=page->findChild<QAbstractButton*>("fpgaMotorEnable");
-        auto *disable=page->findChild<QAbstractButton*>("fpgaMotorDisable");
-        auto *steps=page->findChild<QDoubleSpinBox*>("fpgaMotorSteps");
-        auto *progress=page->findChild<QLabel*>("fpgaMotorProgress");
+        auto *run=window.findChild<QAbstractButton*>("fpgaMotorRun");
+        auto *stop=window.findChild<QAbstractButton*>("fpgaMotorStop");
+        auto *enable=window.findChild<QAbstractButton*>("fpgaMotorEnable");
+        auto *disable=window.findChild<QAbstractButton*>("fpgaMotorDisable");
+        auto *steps=window.findChild<QDoubleSpinBox*>("fpgaMotorSteps");
+        auto *progress=window.findChild<QLabel*>("fpgaMotorProgress");
         check(run&&stop&&enable&&disable&&steps&&progress,"local simulator exposes the motor command controls");
         check(page->configuration().backend=="simulator"&&devices->currentData().toString()=="simulation://fpga",
             "motor integration uses only the selected protocol simulator, never hardware USB");
@@ -2831,6 +2831,166 @@ static void liveVirtualFpga(quint16 port)
     std::cout << "AI-8 0x6650: " << qint32(original) << " -> " << readback << " -> " << qint32(restored) << '\n';
 }
 
+static void liveVirtualFpgaAcquisition(quint16 port)
+{
+    using VaporView::Ground::Devices::FpgaDeviceController;
+    using VaporView::FpgaWave::CompletedStream;
+    constexpr int operationTimeoutMs = 60000;
+    const auto check = [](bool ok, const char *message) {
+        if (!ok) throw std::runtime_error(message);
+    };
+    QTemporaryDir output(QDir::temp().filePath("vaporview-xsi-acquisition-XXXXXX"));
+    check(output.isValid(), "create isolated XSI recording directory");
+    output.setAutoRemove(false);
+    std::cout << "XSI artifacts " << output.path().toStdString() << std::endl;
+    QSettings native("VaporView", "MainWindow");
+    native.setValue("recording_directory", output.path());
+
+    unsigned rawLanes = 0, dliaLanes = 0;
+    QJsonObject deviceIdentity;
+    QMap<quint32, quint32> registers;
+    bool ready = false, busy = true;
+    auto calibration = std::make_shared<VaporView::Ground::Calibration::CalibrationService>(output.path());
+    MainWindow window(nullptr, calibration, port);
+    auto *controller = window.testFpgaController();
+    auto *page = window.findChild<FpgaControlPage *>("fpgaControlPage");
+    check(controller && page, "find native FPGA controller and page");
+    auto *backend = page->findChild<QComboBox *>("fpgaBackend");
+    check(backend && !backend->isEnabled() && backend->currentData().toString() == "virtual-tcp",
+          "require pinned virtual transport before sending commands");
+    QObject::connect(controller, &FpgaDeviceController::connectionChanged, &window,
+                     [&](bool isReady, bool isBusy, const QString &detail) {
+        ready = isReady;
+        busy = isBusy;
+        std::cout << "XSI controller ready=" << ready << " busy=" << busy << ' '
+                  << detail.toStdString() << std::endl;
+    });
+    QObject::connect(controller, &FpgaDeviceController::hardwareValuesChanged, &window,
+                     [&](const QMap<quint32, quint32> &values) { registers = values; });
+    QObject::connect(controller, &FpgaDeviceController::snapshot, &window,
+                     [&](quint64, const QJsonObject &snapshot) {
+        if (snapshot.value("event") == "config" && snapshot.value("ready").toBool()) {
+            const auto diagnostic = snapshot.value("usb").toObject();
+            deviceIdentity = {{"transport", "fpga_virtual_tcp"}, {"backend", diagnostic.value("mode")},
+                              {"locator", QString()}, {"usb", diagnostic}};
+        }
+    });
+    QObject::connect(controller, &FpgaDeviceController::waveformUpdated, &window,
+                     [&](const CompletedStream &stream) {
+        if (stream.source < 0x20 || stream.source > 0x21 || !stream.totalPoints ||
+            (stream.signed32Samples.isEmpty() && stream.unsigned32Samples.isEmpty())) return;
+        const unsigned lane = 1u << (stream.source - 0x20);
+        if (!(rawLanes & lane))
+            std::cout << "RTL RAW source=" << stream.source << " points=" << stream.totalPoints << std::endl;
+        rawLanes |= lane;
+    });
+    QObject::connect(controller, &FpgaDeviceController::harmonicCycleReady, &window,
+                     [&](quint64, const CompletedStream &stream) {
+        if (stream.source < 0x30 || stream.source > 0x31 || !stream.complete || stream.dliaPoints.isEmpty() ||
+            !stream.dliaPoints.front().hasHarmonics) return;
+        const unsigned lane = 1u << (stream.source - 0x30);
+        if (!(dliaLanes & lane))
+            std::cout << "RTL DLIA source=" << stream.source << " points=" << stream.totalPoints << std::endl;
+        dliaLanes |= lane;
+    });
+    window.show();
+    const auto idle = [&] { return ready && !busy; };
+    const auto reg = [&](quint32 address) { return registers.value(address); };
+    check(waitUntil(idle, operationTimeoutMs), "wait for native FPGA handshake");
+    QMetaObject::invokeMethod(controller, &FpgaDeviceController::snapshotConfiguration, Qt::QueuedConnection);
+    check(waitUntil([&] { return !deviceIdentity.isEmpty(); }), "read virtual endpoint diagnostic identity");
+    check(waitUntil([&] { return calibration->view().connected; }), "calibration service sees virtual FPGA");
+    check(deviceIdentity.value("backend") == "virtual-tcp", "verify reported calibration device is virtual TCP");
+    // Recording requires a valid two-wavelength calibration. Only the fixture's
+    // calibration coefficients are synthetic. All recorded waveforms come from RTL.
+    IndependentCalibrationTest::Rig fixture;
+    auto project = fixture.complete().project;
+    project.deviceIdentity = deviceIdentity;
+    for (auto &stage : project.stages)
+        for (auto &laneSamples : stage.samples)
+            for (auto &sample : laneSamples) sample.deviceIdentity = deviceIdentity;
+    VaporView::Ground::Calibration::CalibrationFile file;
+    QString calibrationError;
+    const bool generated = VaporView::Ground::Calibration::CalibrationFileStore(output.path()).generate(
+        project, QStringLiteral("XSI TEST ONLY"), file, &calibrationError);
+    if (!generated) throw std::runtime_error(calibrationError.toStdString());
+    calibration->selectFile(file.filename);
+    calibration->synchronize();
+    check(calibration->view().selected.valid, "select isolated test calibration for native recording");
+
+    // Match the short continuous scan exercised by the Lab's RTL regression.
+    auto config = page->configuration();
+    for (int lane = 0; lane < 2; ++lane) {
+        config.wms[lane].scanMilliHz = 2000000;
+        config.dlia[lane].outputRateHz = 100000;
+        config.dlia[lane].fragmentPoints = 17;
+    }
+    emit page->applyWmsRequested(config);
+    check(waitUntil([&] { return idle() && reg(0x2010) == 2000000 && reg(0x2110) == 2000000; }, operationTimeoutMs),
+          "verify WMS scan frequency readback");
+    emit page->applyDliaRequested(config);
+    check(waitUntil([&] { return idle() && reg(0x504c) == 100000 && reg(0x514c) == 100000; }, operationTimeoutMs),
+          "verify active DLIA rate readback");
+    // The native acquisition action leaves independent DAC enables untouched.
+    for (int lane = 0; lane < 2; ++lane) {
+        const quint32 control = 0x3004 + 0x100 * lane;
+        emit page->dacRequested(lane, true);
+        check(waitUntil([&] { return idle() && (reg(control) & 1); }, operationTimeoutMs),
+              "enable virtual DAC for native WMS cycle timing");
+    }
+    emit page->acquisitionRequested(true);
+    check(waitUntil([&] { return idle() && (reg(0x4004) & 1) && (reg(0x4104) & 1); }, operationTimeoutMs),
+          "start native acquisition and verify both ADCs enabled");
+
+    auto &state = MainWindowRtcmTestAccess::state(window);
+    check(bool(state.recording_service_), "find native session recording service");
+    const auto status = [&] { return state.recording_service_->status(); };
+    QTimer recordingDialogWatch;
+    QObject::connect(&recordingDialogWatch, &QTimer::timeout, &window, [] {
+        if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+            std::cerr << "XSI recording warning: " << box->text().toStdString() << std::endl;
+            box->reject();
+        }
+    });
+    recordingDialogWatch.start(100);
+    emit page->recordingRequested(true);
+    recordingDialogWatch.stop();
+    check(waitUntil([&] { return status().active; }, 5000), "start native recording");
+    const auto directory = status().sessionDirectory;
+    std::cout << "XSI recording " << directory.toStdString() << std::endl;
+    auto finishRecording = qScopeGuard([&] {
+        if (status().sessionOpen) emit page->recordingRequested(false);
+    });
+    dliaLanes = 0;
+    emit page->rawRequested(true);
+    check(waitUntil([&] { return rawLanes == 3 && dliaLanes == 3 && status().waveformFrames >= 2; }, operationTimeoutMs),
+          "receive RAW and complete DLIA on both lanes and record harmonic cycles");
+    emit page->recordingRequested(false);
+    check(waitUntil([&] { return !status().sessionOpen; }, operationTimeoutMs), "stop and drain native recording");
+    finishRecording.dismiss();
+
+    const auto metadata = VaporView::Ground::SessionLoader::loadMetadata(directory);
+    check(metadata.success && metadata.metadata.waveformFrames >= 2, "load persisted harmonic session metadata");
+    const auto catalog = VaporView::Ground::SessionWaveformRepository::loadCatalog(metadata.metadata);
+    check(catalog.success && VaporView::Ground::SessionWaveformRepository::readFrame(catalog.catalog, 0).success,
+          "decode persisted harmonic waveform");
+    std::cout << "XSI persisted waveform frames=" << metadata.metadata.waveformFrames << std::endl;
+
+    check(waitUntil(idle, operationTimeoutMs), "wait for RAW enable to settle before stopping acquisition");
+    emit page->acquisitionRequested(false);
+    check(waitUntil([&] { return idle() && !(reg(0x4004) & 1) && !(reg(0x4104) & 1); }, operationTimeoutMs),
+          "stop native acquisition and verify both ADCs disabled");
+    for (int lane = 0; lane < 2; ++lane) {
+        const quint32 offset = 0x100 * lane;
+        emit page->waveformRequested(lane, false);
+        check(waitUntil([&] { return idle() && !(reg(0x2004 + offset) & 1); }, operationTimeoutMs),
+              "disable the virtual WMS lane");
+        emit page->dacRequested(lane, false);
+        check(waitUntil([&] { return idle() && !(reg(0x3004 + offset) & 1); }, operationTimeoutMs),
+              "disable the virtual DAC lane");
+    }
+}
+
 int main(int argc,char **argv)
 {
     require(VaporViewTest::SettingsSandbox::initialized,"isolated native/INI application settings");
@@ -2853,11 +3013,21 @@ int main(int argc,char **argv)
     app.setApplicationName(QStringLiteral("fpga_main_window_test"));
     const auto args = app.arguments();
     const int xsiPortIndex = args.indexOf(QStringLiteral("--xsi-port"));
+    const bool xsiAcquisition = args.contains(QStringLiteral("--xsi-acquisition"));
+    require(!xsiAcquisition || xsiPortIndex >= 0, "--xsi-acquisition requires --xsi-port");
     if (xsiPortIndex >= 0) {
         bool valid = false;
         const quint16 port = args.value(xsiPortIndex + 1).toUShort(&valid);
         require(valid && port, "--xsi-port requires an isolated VirtualLab loopback port");
-        liveVirtualFpga(port);
+        if (xsiAcquisition) {
+            try { liveVirtualFpgaAcquisition(port); }
+            catch (const std::exception &error) {
+                std::cerr << "XSI acquisition failed: " << error.what() << '\n';
+                return 1;
+            }
+        } else {
+            liveVirtualFpga(port);
+        }
         return 0;
     }
     QSettings native("VaporView","MainWindow");

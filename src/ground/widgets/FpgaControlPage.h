@@ -22,16 +22,18 @@ class QAbstractButton;
 class QCheckBox;
 class QComboBox;
 class QDoubleSpinBox;
+class QFrame;
 class QLabel;
 class QPlainTextEdit;
 class QTabWidget;
 class QThread;
+class QVBoxLayout;
 
 class FpgaControlPage final : public QWidget
 {
     Q_OBJECT
 public:
-    explicit FpgaControlPage(QWidget *parent = nullptr);
+    explicit FpgaControlPage(QWidget *parent = nullptr, QVBoxLayout *motionLayout = nullptr);
     ~FpgaControlPage() override;
     VaporView::Ground::Devices::FpgaDeviceController* uiTestController() const;
     bool uiTestReady() const { return ready_; }
@@ -131,6 +133,7 @@ private:
     } simulation_;
     FpgaControlConfig config_;
     QVector<Field> fields_;
+    QFrame *motorCard_ = nullptr;
     QVector<QWidget*> onlineControls_;
     QMap<quint32, QLabel*> hardwareLabels_;
     QMap<quint32,QDoubleSpinBox*> sensorParameterInputs_;

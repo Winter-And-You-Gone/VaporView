@@ -282,7 +282,7 @@ void MainWindow::loadModernStyleSheet()
             "QWidget#ai8TemperatureControllerPanel QWidget[ai8DetailContent=\"true\"] { background-color: transparent; border: none; }"
             "QToolTip { background-color: rgb(45, 45, 45); color: #FFFFFF; border: 1px solid #474747; border-radius: 13px; padding: 8px 16px; font-size: 16px; }"
             "QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"], QGroupBox#homeMotionCard[vaporViewTopLevelCard=\"true\"], QGroupBox#deviceRemoteSkyConfigCard[vaporViewTopLevelCard=\"true\"], QFrame#epsilonSectionCard[vaporViewTopLevelCard=\"true\"], QFrame#recordingStatusCard[vaporViewTopLevelCard=\"true\"], QFrame#logPanelFrame[vaporViewTopLevelCard=\"true\"], QFrame[vaporViewTopLevelCard=\"true\"] { background-color: @vv-surface-raised; border: 1px solid rgba(0, 0, 0, 0.04); border-radius: 12px; }"
-            "QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar, QGroupBox#homeMotionCard[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar, QGroupBox#deviceRemoteSkyConfigCard[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar, QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"] > QWidget#environmentSectionTitleBar, QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"] > TcpWavePanel > QWidget#sectionTitleBar, QFrame#epsilonSectionCard[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar, QFrame#recordingStatusCard[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar, QFrame#logPanelFrame[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar { background-color: @vv-surface-raised; border-top-left-radius: 11px; border-top-right-radius: 11px; }"
+            "QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar, QGroupBox#homeMotionCard[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar, QGroupBox#deviceRemoteSkyConfigCard[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar, QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"] > QWidget#environmentSectionTitleBar, QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"] > TcpWavePanel > QWidget#sectionTitleBar, QFrame#epsilonSectionCard[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar, QFrame#deviceMotionCard[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar, QFrame#recordingStatusCard[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar, QFrame#logPanelFrame[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar { background-color: @vv-surface-raised; border-top-left-radius: 11px; border-top-right-radius: 11px; }"
             "QFrame#recordingStatusCard[vaporViewTopLevelCard=\"true\"] > QWidget#recordingStatusBody { background-color: @vv-surface-raised; border-bottom-left-radius: 11px; border-bottom-right-radius: 11px; }";
     }
 
@@ -590,6 +590,9 @@ void MainWindow::updateAppSidebarButtonTexts()
 
     applyButtonText(state_->home_nav_btn_, state_->is_english_ ? QStringLiteral("Home") : QStringLiteral("首页"));
     applyButtonText(state_->temperature_nav_btn_, state_->is_english_ ? QStringLiteral("Thermal") : QStringLiteral("温控"));
+    if (state_->device_config_.motion_title_lbl)
+        state_->device_config_.motion_title_lbl->setText(state_->is_english_
+            ? QStringLiteral("Motion control") : QStringLiteral("运动控制"));
     if (state_->motion_page_) state_->motion_page_->setLanguage(state_->is_english_);
     if (state_->home_motion_panel_) state_->home_motion_panel_->setLanguage(state_->is_english_);
     applyButtonText(state_->rtk_config_nav_btn_, state_->is_english_ ? QStringLiteral("Combination Navigation") : QStringLiteral("组合导航"),
