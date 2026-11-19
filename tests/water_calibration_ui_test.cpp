@@ -177,25 +177,31 @@ int main(int argc,char **argv)
         const auto lastCenter = steps.back()->geometry().center();
         check(lastCenter.x() - firstCenter.x() >= 350 * scale / 100 && lastCenter.y() == firstCenter.y(),
               "path has six evenly aligned, widely spaced nodes");
-        const auto ring = stepImage(steps.front());
-        const auto middle = ring.rect().center();
-        QRect ink;
-        for (int y = 0; y < ring.height(); ++y) {
-            for (int x = 0; x < ring.width(); ++x) {
-                if (qAlpha(ring.pixel(x, y))) ink = ink.united(QRect(x, y, 1, 1));
-            }
-        }
-        check(ring.rect().adjusted(1, 1, -1, -1).contains(ink) && ink.width() * 4 > ring.width() * 3 &&
-                  ink.height() * 4 > ring.height() * 3 &&
-                  qAlpha(ring.pixel(ink.left() + 1, middle.y())) && qAlpha(ring.pixel(ink.right() - 1, middle.y())) &&
-                  qAlpha(ring.pixel(middle.x(), ink.top() + 1)) && qAlpha(ring.pixel(middle.x(), ink.bottom() - 1)),
-              "pending circle has a visible outline in all four directions and transparent padding");
+        auto *node = steps.front();
+        node->clearFocus();
+        const auto bg = [&](bool hovered) {
+            node->setAttribute(Qt::WA_UnderMouse, hovered);
+            const auto image = node->grab().toImage();
+            return image.pixelColor(image.width() / 2, image.height() / 5);
+        };
+        check(node->width() == qRound(32 * scale / 100.0) &&
+                  node->iconSize().width() == qRound(18 * scale / 100.0),
+              "node uses the home connection button proportions");
+        check(bg(false) == VaporView::appThemeColor(VaporView::AppThemeColor::HomeDeviceDangerBackground, false) &&
+                  bg(true) == VaporView::appThemeColor(VaporView::AppThemeColor::PrimarySubtle, false),
+              "pending button renders a red background and the home action hover color");
+        node->setAttribute(Qt::WA_UnderMouse, false);
     }
     page.setTheme(false,100);page.resize(1280,1000);QApplication::processEvents();
     control<QLineEdit>(page,"calibrationTaskName")->setText(QStringLiteral("软件测试独立任务"));
     control<QPushButton>(page,"calibrationCreateTask")->click();r.service->synchronize();QApplication::processEvents();
     checkSteps({true, false, false, false, false, false});
     check(stepImage(steps[0]) != incompleteIcon, "creating a task completes only the first indicator");
+    steps.front()->setAttribute(Qt::WA_UnderMouse, false);
+    const auto completeButton = steps.front()->grab().toImage();
+    check(completeButton.pixelColor(completeButton.width() / 2, completeButton.height() / 5) ==
+              VaporView::appThemeColor(VaporView::AppThemeColor::HomeDeviceSuccessBackground, false),
+          "completed button repaints its green background");
     check(control<QSpinBox>(page,"calibrationStageSeconds")->value()==600,"UI ten-minute default");
     auto *concentration = control<QDoubleSpinBox>(page, "calibrationStageConcentration");
     auto *addStage = control<QPushButton>(page, "calibrationAddStage");

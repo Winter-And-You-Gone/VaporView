@@ -15,7 +15,6 @@
 #include <QHelpEvent>
 #include <QHBoxLayout>
 #include <QImage>
-#include <QKeyEvent>
 #include <QKeySequence>
 #include <QLabel>
 #include <QLayout>
@@ -415,7 +414,8 @@ class AppTooltipPopup final : public QFrame
 {
 public:
     AppTooltipPopup()
-        : QFrame(nullptr, Qt::ToolTip | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint)
+        : QFrame(nullptr, Qt::ToolTip | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint |
+                          Qt::WindowTransparentForInput | Qt::WindowDoesNotAcceptFocus)
         , text_label_(new QLabel(this))
         , shortcut_label_(new QLabel(this))
     {
@@ -481,57 +481,32 @@ public:
 
     void handleInteraction(QObject *watched, QEvent *event)
     {
-        switch (event->type())
+        const auto type = event->type();
+        if (dismissed_target_ && watched == dismissed_target_.data() &&
+            (type == QEvent::Hide || (type == QEvent::Leave &&
+             !dismissed_target_->rect().contains(dismissed_target_->mapFromGlobal(QCursor::pos())))))
         {
-        case QEvent::Leave:
-            if (dismissed_target_.data() == watched)
-            {
-                dismissed_target_.clear();
-            }
-            if (!pinned_target_)
-            {
-                hide();
-            }
-            break;
-        case QEvent::MouseButtonPress:
-            if (pinned_target_.data() != watched)
-            {
-                dismiss();
-            }
-            break;
-        case QEvent::KeyPress:
-        {
-            const int key = static_cast<QKeyEvent *>(event)->key();
-            if (pinned_target_.data() != watched || (key != Qt::Key_Space && key != Qt::Key_Select))
-            {
-                dismiss();
-            }
-            break;
+            dismissed_target_.clear();
         }
-        case QEvent::Hide:
-            if (dismissed_target_.data() == watched)
-            {
-                dismissed_target_.clear();
-            }
-            if (pinned_target_.data() == watched)
+
+        if (pinned_target_)
+        {
+            if (type == QEvent::Hide && watched == pinned_target_.data())
             {
                 dismiss();
             }
-            break;
-        case QEvent::Move:
-        case QEvent::Resize:
-            if (pinned_target_ && (watched == pinned_target_.data() || watched == pinned_target_->window()))
+            else if ((type == QEvent::Move || type == QEvent::Resize || type == QEvent::ToolTipChange) &&
+                     (watched == pinned_target_.data() || watched == pinned_target_->window()))
             {
-                dismiss();
+                showFor(pinned_target_, pinned_target_->toolTip(), {}, isDarkThemeEnabled());
             }
-            break;
-        case QEvent::Wheel:
-        case QEvent::ApplicationDeactivate:
-        case QEvent::WindowDeactivate:
-            dismiss();
-            break;
-        default:
-            break;
+            return;
+        }
+
+        if (type == QEvent::Leave || type == QEvent::MouseButtonPress || type == QEvent::KeyPress ||
+            type == QEvent::Wheel || type == QEvent::ApplicationDeactivate || type == QEvent::WindowDeactivate)
+        {
+            hide();
         }
     }
 
