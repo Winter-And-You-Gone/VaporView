@@ -482,6 +482,7 @@ void MainWindow::startHomeMotionDeviceActionSpinner(bool disconnecting)
 
 void MainWindow::triggerHomeMotionDeviceAction()
 {
+    if (state_->virtual_fpga_port_) return;
     if (!state_->motion_page_) return;
     auto *session = state_->motion_page_->session();
     const auto motionState = session->state();
@@ -1466,6 +1467,7 @@ void MainWindow::onRemoteSerialPortDetectionResult(const QJsonObject& result)
 
 void MainWindow::onAutoDetectPortsClicked()
 {
+    if (state_->virtual_fpga_port_) return;
     if (isUiTestMode())
     {
         onRefreshPortsClicked();
@@ -1834,6 +1836,7 @@ void MainWindow::onTelemetryLinkClicked()
 
 void MainWindow::openRemoteSkyLink()
 {
+    if (state_->virtual_fpga_port_) return;
     clearRemoteSkyDataUi();
     state_->remote_connect_devices_pending_ = false;
     const auto& skyLink = state_->remote_sky_link_config_;

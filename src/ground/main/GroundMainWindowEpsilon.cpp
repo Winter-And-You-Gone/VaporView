@@ -753,6 +753,7 @@ std::function<void(const QJsonObject&)> MainWindow::fpgaRtcmCompletion(const QSt
 
 void MainWindow::onRtkConfigClicked()
 {
+    if (state_->virtual_fpga_port_) return;
     syncRtkConfigPageState();
     if (state_->main_page_stack_ &&
         state_->combination_navigation_page_ &&

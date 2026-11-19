@@ -44,6 +44,7 @@ public:
     void setConfiguration(const FpgaControlConfig &config);
     void setConnectionState(bool ready, bool busy, const QString &detail = {});
     void setTransportConnected(bool connected);
+    void setVirtualTcpMode();
     void setUsbDiscoveryHost(bool remote, bool available = true);
     void setUsbDiscoveryResult(const QJsonObject &result);
     quint64 usbDiscoveryGeneration() const { return usbDiscoveryGeneration_; }

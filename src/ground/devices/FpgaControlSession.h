@@ -16,7 +16,7 @@ public:
     FpgaControlSession(const FpgaControlSession&) = delete;
     FpgaControlSession& operator=(const FpgaControlSession&) = delete;
     FpgaDeviceController* controller() const { return controller_; }
-    void startWorker();
+    void startWorker(quint16 virtualTcpPort = 0);
     void shutdown();
     Submission submitRemote(RemoteSkyController& remote, const QJsonObject& request,
                             quint64 discovery, QString *error);

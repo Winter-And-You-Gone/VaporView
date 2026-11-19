@@ -279,6 +279,7 @@ void MainWindow::onUiTestScenarioTriggered(QAction *action)
 
 void MainWindow::setUiTestModeEnabled(bool enabled)
 {
+    if (state_->virtual_fpga_port_) return;
     if (!enabled) {
         state_->fpga_home_connect_queue_.clear();
         state_->fpga_home_action_device_=VaporView::SkyDeviceId::All;

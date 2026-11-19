@@ -1,5 +1,6 @@
 #include "ground/calibration/CalibrationService.h"
 #include "ground/main/GroundMainWindowImplementation.h"
+#include "FpgaVirtualTcpTransport.h"
 #include "ground/devices/UiTestDataModel.h"
 #include "BaudRateComboSupport.h"
 #include <QFileDialog>
@@ -738,6 +739,7 @@ void MainWindow::executeHomeFpgaDeviceAction(VaporView::SkyDeviceId device, bool
 void MainWindow::setupFpgaControlPage()
 {
     using Controller = VaporView::Ground::Devices::FpgaDeviceController;
+    using VaporView::Ground::Devices::FpgaVirtualTcpBackend;
     qRegisterMetaType<VaporView::FpgaWave::CompletedStream>();
     QSettings settings = VaporView::applicationConfigSettings();
     for (int target = 0; target < 2; ++target) {
@@ -747,6 +749,7 @@ void MainWindow::setupFpgaControlPage()
     }
     const auto saved = QJsonDocument::fromJson(settings.value(QStringLiteral("Fpga/desiredConfiguration")).toByteArray());
     state_->fpga_config_ = FpgaControlConfig::fromJson(saved.object());
+    if (state_->virtual_fpga_port_) state_->fpga_config_.backend = QString::fromLatin1(FpgaVirtualTcpBackend);
     state_->fpga_session_.remoteConfig = FpgaControlConfig::fromJson(
         QJsonDocument::fromJson(settings.value(QStringLiteral("Fpga/remoteDesiredConfiguration")).toByteArray()).object());
     state_->fpga_page_ = new FpgaControlPage(state_->main_page_stack_);
@@ -756,7 +759,8 @@ void MainWindow::setupFpgaControlPage()
     state_->fpga_page_->setTheme(state_->dark_theme_enabled_, state_->font_scale_percent_);
     state_->main_page_stack_->addWidget(state_->fpga_page_);
     state_->fpga_ai8_live_.measuredC.fill(std::numeric_limits<double>::quiet_NaN());
-    state_->fpga_session_.startWorker();
+    if (state_->virtual_fpga_port_) state_->fpga_page_->setVirtualTcpMode();
+    state_->fpga_session_.startWorker(state_->virtual_fpga_port_);
     auto *controller = state_->fpga_session_.controller();
     auto *page = state_->fpga_page_;
     connect(page,&FpgaControlPage::simulationStateChanged,this,[this](bool ready,bool busy,const QMap<quint32,quint32>& values,quint16 pressure) {
@@ -966,7 +970,8 @@ void MainWindow::setupFpgaControlPage()
         const bool pressureChanged = state_->fpga_config_.pressureSource != config.pressureSource;
         state_->fpga_config_ = config;
         QSettings settings = VaporView::applicationConfigSettings();
-        VaporView::setPersistentSetting(settings, QStringLiteral("Fpga/desiredConfiguration"), QJsonDocument(config.toJson()).toJson(QJsonDocument::Compact));
+        if (!state_->virtual_fpga_port_)
+            VaporView::setPersistentSetting(settings, QStringLiteral("Fpga/desiredConfiguration"), QJsonDocument(config.toJson()).toJson(QJsonDocument::Compact));
         QMetaObject::invokeMethod(controller, [controller, config] { controller->setConfiguration(config); }, Qt::QueuedConnection);
         if (pressureChanged && (state_->fpga_ready_ || state_->fpga_replaying_))
         {
@@ -1168,7 +1173,8 @@ void MainWindow::setupFpgaControlPage()
     connect(controller,&Controller::transportConnectionChanged,peakBus,[peakBus](bool connected){if(!connected)peakBus->setDevice(false,{});},Qt::DirectConnection);
     connect(controller,&Controller::snapshot,peakBus,[peakBus,calibration](quint64,const QJsonObject& o){
         if(o.value("event")=="connected") {
-            const QJsonObject identity{{"transport","fpga_usb"},{"backend",o.value("backend")},
+            const bool virtualTcp = o.value("backend").toString() == QString::fromLatin1(FpgaVirtualTcpBackend);
+            const QJsonObject identity{{"transport",virtualTcp ? "fpga_virtual_tcp" : "fpga_usb"},{"backend",o.value("backend")},
                                        {"locator",o.value("locator")},{"usb",o.value("usb")}};
             peakBus->setDevice(true,identity);
             calibration->ensureSimulationFile(identity);
@@ -1179,6 +1185,12 @@ void MainWindow::setupFpgaControlPage()
     connect(controller,&Controller::snapshot,this,[recorder](quint64 t,const QJsonObject &o){recorder->recordFpgaSnapshot(t,o);},Qt::DirectConnection);
     const auto config = state_->fpga_config_;
     QMetaObject::invokeMethod(controller,[controller,config]{controller->setConfiguration(config);},Qt::QueuedConnection);
+    if (state_->virtual_fpga_port_) {
+        QMetaObject::invokeMethod(controller, [controller] {
+            controller->connectDevice({}, QString::fromLatin1(FpgaVirtualTcpBackend),
+                                      Controller::ConnectMode::PreserveRunningModules);
+        }, Qt::QueuedConnection);
+    }
 
     using Remote = VaporView::Ground::Devices::RemoteSkyController;
     auto *remote = state_->remote_sky_controller_.get();
@@ -1527,9 +1539,10 @@ void MainWindow::updateFpgaPageBackend()
                                    : QStringLiteral("传感器 -> FPGA 中转 -> VaporView · "))
             : (state_->is_english_ ? QStringLiteral("FPGA control page · direct sensors · ")
                                    : QStringLiteral("FPGA 控制页 · 传感器直连 · "));
-        state_->fpga_page_->setConnectionState(state_->fpga_ready_, state_->fpga_busy_, state_->is_english_
-            ? routeDetail + QStringLiteral("Local USB (bench mode)")
-            : routeDetail + QStringLiteral("本机 USB（调试模式）"));
+        const QString localTransport = state_->virtual_fpga_port_
+            ? QStringLiteral("127.0.0.1:%1").arg(state_->virtual_fpga_port_)
+            : (state_->is_english_ ? QStringLiteral("Local USB (bench mode)") : QStringLiteral("本机 USB（调试模式）"));
+        state_->fpga_page_->setConnectionState(state_->fpga_ready_, state_->fpga_busy_, routeDetail + localTransport);
         return;
     }
     const bool link = state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen();

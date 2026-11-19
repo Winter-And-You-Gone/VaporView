@@ -1,6 +1,7 @@
 #include "FpgaDeviceController.h"
 #include "FpgaHarmonics.h"
 #include "FpgaUsbSimulator.h"
+#include "FpgaVirtualTcpTransport.h"
 #include "FpgaTelemetry.h"
 #include "FpgaAdvancedParameters.h"
 #include "FpgaExtensions.h"
@@ -37,8 +38,9 @@ qint64 startupWarningGraceMs(quint16 source,const QMap<quint32,quint32>& registe
 
 quint64 FpgaDeviceController::nowUs() { return quint64(QDateTime::currentMSecsSinceEpoch()) * 1000; }
 
-FpgaDeviceController::FpgaDeviceController(std::unique_ptr<FpgaUsbTransport> transport, QObject *parent)
-    : QObject(parent), injected_(bool(transport))
+FpgaDeviceController::FpgaDeviceController(std::unique_ptr<FpgaUsbTransport> transport, QObject *parent,
+                                           quint16 virtualTcpPort)
+    : QObject(parent), virtualTcpPort_(virtualTcpPort), injected_(bool(transport) && !virtualTcpPort)
 {
     observations_=Ppk::RawSatelliteAssembler([this](const std::string& event,const std::string& reason,quint8 receiver,quint64 utc,int received,int expected) {
         if(event=="epsilon_raw_satellite_epoch_completed")return;
@@ -66,7 +68,7 @@ FpgaDeviceController::FpgaDeviceController(std::unique_ptr<FpgaUsbTransport> tra
             readAll(); steps_.push_back({Kind::CheckVersions}); advance();
         }
     });
-    if (transport) installSession(std::move(transport));
+    if (injected_) installSession(std::move(transport));
 }
 
 FpgaDeviceController::~FpgaDeviceController()
@@ -79,6 +81,7 @@ FpgaDeviceController::~FpgaDeviceController()
 
 QJsonObject FpgaDeviceController::discoverDevices(const QString& backend) const
 {
+    if (virtualTcpPort_) return makeFpgaVirtualTcpTransport(virtualTcpPort_)->discoverDevices();
     if (injected_) return session_->transport()->discoverDevices();
     if ((backend.isEmpty() ? configuration_.backend : backend) == QStringLiteral("simulator"))
         return makeFpgaUsbSimulator()->discoverDevices();
@@ -251,10 +254,13 @@ void FpgaDeviceController::logManagementEvent(const QJsonObject& event, bool aft
     emit logRecordGenerated(record);
 }
 
-void FpgaDeviceController::connectDevice(const QString& locator, const QString& backend, ConnectMode mode)
+void FpgaDeviceController::connectDevice(const QString& locator, const QString& requestedBackend, ConnectMode mode)
 {
     disconnectDevice();
-    if (!injected_ && (!session_ || installedBackend_ != backend)) {
+    const auto backend = virtualTcpPort_ ? QString::fromLatin1(FpgaVirtualTcpBackend) : requestedBackend;
+    if (virtualTcpPort_) {
+        installSession(makeFpgaVirtualTcpTransport(virtualTcpPort_));
+    } else if (!injected_ && (!session_ || installedBackend_ != backend)) {
         installSession(makeFpgaUsbHardwareTransport(backend));
         installedBackend_ = backend;
     }

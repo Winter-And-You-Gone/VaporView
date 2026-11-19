@@ -5,10 +5,10 @@ namespace VaporView::Ground::Devices
 {
 FpgaControlSession::~FpgaControlSession() { shutdown(); }
 
-void FpgaControlSession::startWorker()
+void FpgaControlSession::startWorker(quint16 virtualTcpPort)
 {
     if (worker_.isRunning()) return;
-    controller_ = new FpgaDeviceController;
+    controller_ = new FpgaDeviceController({}, nullptr, virtualTcpPort);
     controller_->moveToThread(&worker_);
     QObject::connect(&worker_, &QThread::finished, controller_, &QObject::deleteLater);
     worker_.setObjectName(QStringLiteral("fpgaUsbWorkerThread"));

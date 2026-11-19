@@ -1064,7 +1064,9 @@ bool MainWindow::startRecordingSession()
     {
         options.baseDirectory = defaultRecordingDirectory();
     }
-    if (!isRemoteSkyMode() && isFpgaRelayPath() && state_->fpga_config_.backend == QStringLiteral("simulator"))
+    if (state_->virtual_fpga_port_)
+        options.baseDirectory = QDir(options.baseDirectory).filePath(QStringLiteral("virtual_fpga_sessions"));
+    else if (!isRemoteSkyMode() && isFpgaRelayPath() && state_->fpga_config_.backend == QStringLiteral("simulator"))
         options.baseDirectory = QDir(options.baseDirectory).filePath(QStringLiteral("simulated_sessions"));
     options.exportRateHz = state_->recording_export_rate_hz_;
     if (isFpgaRelayPath()) options.fpgaConfiguration = state_->fpga_config_.toJson();

@@ -36,6 +36,7 @@
 #include "app/StartupSplash.h"
 #include "ground/devices/RemoteSkyController.h"
 #include "ground/main/MainWindow.h"
+#include "FpgaVirtualTcpTransport.h"
 #ifdef VAPORVIEW_HAS_OSGEARTH
 #include "ground/map/Map3DController.h"
 #endif
@@ -746,12 +747,29 @@ int runApplication(int argc, char *argv[])
     QCommandLineOption remoteDeviceE2eOption(QStringLiteral("remote-device-e2e-output"),
                                              QStringLiteral("Run the remote device E2E and write a result file"),
                                              QStringLiteral("path"));
-    parser.addOptions({modeOption, sourceOption, telemetryPortOption, telemetryBaudOption,
+    const QCommandLineOption virtualFpgaOption(QStringLiteral("virtual-fpga"),
+        QStringLiteral("Use the local virtual FPGA exclusively and connect on startup."));
+    const QCommandLineOption virtualFpgaPortOption(QStringLiteral("virtual-fpga-port"),
+        QStringLiteral("Loopback TCP port for --virtual-fpga."), QStringLiteral("port"),
+        QString::number(VaporView::Ground::Devices::DefaultFpgaVirtualTcpPort));
+    parser.addOptions({virtualFpgaOption, virtualFpgaPortOption, modeOption, sourceOption, telemetryPortOption, telemetryBaudOption,
                        telemetryTransportOption, telemetryHostOption, telemetryTcpPortOption,
                        skyConfigOption,
                        skySimulateOption, skyWaveHostOption, skyWavePortOption,
                        ai8RemoteE2eOption, remoteDeviceE2eOption});
     parser.process(app);
+
+    quint16 virtualFpgaPort = 0;
+    if (parser.isSet(virtualFpgaOption) || parser.isSet(virtualFpgaPortOption)) {
+        bool validPort = false;
+        virtualFpgaPort = parser.value(virtualFpgaPortOption).toUShort(&validPort);
+        if (!parser.isSet(virtualFpgaOption) || !validPort || !virtualFpgaPort ||
+            parser.value(modeOption).compare(QStringLiteral("ground"), Qt::CaseInsensitive) != 0 ||
+            parser.isSet(ai8RemoteE2eOption) || parser.isSet(remoteDeviceE2eOption)) {
+            qCritical("Virtual FPGA requires --virtual-fpga in ground mode and a TCP port from 1 to 65535.");
+            return requestProcessExit(2, "invalid_virtual_fpga_options");
+        }
+    }
 
     if (parser.value(modeOption).compare(QStringLiteral("sky"), Qt::CaseInsensitive) == 0)
     {
@@ -895,9 +913,10 @@ int runApplication(int argc, char *argv[])
         app.setWindowIcon(windowIcon);
     }
 
-    MainWindow mainWindow;
+    MainWindow mainWindow(nullptr, {}, virtualFpgaPort);
     VaporView::writeLifecycleBreadcrumb("main_window_created");
-    mainWindow.setWindowTitle("VaporView");
+    mainWindow.setWindowTitle(virtualFpgaPort ? QStringLiteral("VaporView · Virtual FPGA TCP")
+                                              : QStringLiteral("VaporView"));
     if (!app.windowIcon().isNull())
     {
         mainWindow.setWindowIcon(app.windowIcon());

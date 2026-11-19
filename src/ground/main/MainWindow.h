@@ -114,7 +114,8 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    explicit MainWindow(QWidget *parent = nullptr, std::shared_ptr<VaporView::Ground::Calibration::CalibrationService> calibration = {});
+    explicit MainWindow(QWidget *parent = nullptr, std::shared_ptr<VaporView::Ground::Calibration::CalibrationService> calibration = {},
+                        quint16 virtualFpgaPort = 0);
     ~MainWindow() override;
 
 #ifdef VAPORVIEW_MAIN_WINDOW_TESTING

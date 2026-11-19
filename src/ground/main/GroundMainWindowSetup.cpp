@@ -961,7 +961,7 @@ void MainWindow::setupCustomTitleBar()
             &VaporView::Ground::Widgets::SegmentedSwitchButton::selectionRequested,
             this, [this](bool fpgaSelected) {
                 auto *combo = state_->device_config_.sensor_transport_path_combo;
-                if (!combo) return;
+                if (!combo || state_->virtual_fpga_port_) return;
                 const int index = combo->findData(VaporView::sensorTransportPathToString(fpgaSelected
                     ? VaporView::SensorTransportPath::FpgaRelay : VaporView::SensorTransportPath::DirectDevices));
                 if (index < 0 || index == combo->currentIndex()) return;
@@ -2499,6 +2499,7 @@ void MainWindow::setupCentralWidget()
     state_->home_page_ = state_->main_cards_scroll_area_;
     state_->main_page_stack_->addWidget(state_->home_page_);
     state_->motion_page_ = new VaporView::Ground::Motion::MotionControlPage(state_->main_page_stack_);
+    if (state_->virtual_fpga_port_) state_->motion_page_->setEnabled(false);
     state_->home_motion_panel_ = new VaporView::Ground::Motion::HomeMotionPanel(
         state_->motion_page_,
         state_->home_motion_card_->findChild<QComboBox *>(QStringLiteral("homeMotionChannelCombo")),
@@ -3891,7 +3892,7 @@ void MainWindow::updateLocalDeviceConfigFromUi() const
     if (state_->device_config_.temperature_enabled_check) state_->local_device_config_.temperatureController.enabled = state_->device_config_.temperature_enabled_check->isChecked();
     if (state_->device_config_.ai8_temperature_enabled_check) state_->local_device_config_.ai8TemperatureController.enabled = state_->device_config_.ai8_temperature_enabled_check->isChecked();
     if (state_->device_config_.tcp_wave_enabled_check) state_->local_device_config_.waveTcpEnabled = state_->device_config_.tcp_wave_enabled_check->isChecked();
-    if (state_->device_config_.sensor_transport_path_combo)
+    if (!state_->virtual_fpga_port_ && state_->device_config_.sensor_transport_path_combo)
     {
         VaporView::SensorTransportPath path = state_->local_device_config_.sensorTransportPath;
         if (VaporView::parseSensorTransportPath(
@@ -4124,6 +4125,7 @@ void MainWindow::applyDeviceConfigTcpWaveEndpoint()
 
 VaporView::SensorTransportPath MainWindow::currentSensorTransportPath() const
 {
+    if (state_->virtual_fpga_port_) return VaporView::SensorTransportPath::FpgaRelay;
     return isRemoteSkyMode()
         ? (state_->remote_config_session_.applying ? state_->remote_config_session_.baseline.sensor_transport_path
                                              : state_->remote_config_session_.desired.sensor_transport_path)
@@ -4137,6 +4139,7 @@ bool MainWindow::isFpgaRelayPath() const
 
 void MainWindow::onSensorTransportPathChanged(int index)
 {
+    if (state_->virtual_fpga_port_) return;
     if (!state_->device_config_.sensor_transport_path_combo ||
         state_->remote_sky_config_updating_ui_)
     {
@@ -4419,8 +4422,7 @@ void MainWindow::updateDeviceConfigState()
             !state_->remote_config_session_.applying &&
             !state_->remote_config_session_.saving;
         state_->device_config_.sensor_transport_path_combo->setEnabled(
-            remote ? remoteConfigEditable
-                   : localInputsEnabled);
+            !state_->virtual_fpga_port_ && (remote ? remoteConfigEditable : localInputsEnabled));
     }
     if (state_->sensor_transport_switch_)
     {

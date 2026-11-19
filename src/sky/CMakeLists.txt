@@ -38,6 +38,7 @@ add_library(vaporview_fpga_device_core STATIC
     ${CMAKE_SOURCE_DIR}/src/ground/devices/FpgaSensorDecoder.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/devices/FpgaSensorAdapter.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/devices/FpgaUsbTransport.cpp
+    ${CMAKE_SOURCE_DIR}/src/ground/devices/FpgaVirtualTcpTransport.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/devices/FpgaUsbSimulator.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/devices/FpgaCyApiTransport.cpp
     ${CMAKE_SOURCE_DIR}/src/shared/fpga/FpgaTelemetry.cpp
@@ -59,7 +60,7 @@ target_include_directories(vaporview_fpga_device_core PUBLIC
     ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/src)
 set_target_properties(vaporview_fpga_device_core PROPERTIES AUTOMOC ON)
 target_link_libraries(vaporview_fpga_device_core PUBLIC
-    vaporview_protocol vaporview_session_format vaporview_device_collectors Qt6::Core)
+    vaporview_protocol vaporview_session_format vaporview_device_collectors Qt6::Core Qt6::Network)
 if(WIN32)
     set(VAPORVIEW_CYAPI_ROOT "" CACHE PATH "Cypress USB Suite SDK root (optional CyAPI backend)")
     find_path(VAPORVIEW_CYAPI_INCLUDE_DIR CyAPI.h

@@ -1,4 +1,5 @@
 #include "FpgaControlPage.h"
+#include "FpgaVirtualTcpTransport.h"
 #include "FpgaDeviceController.h"
 #include "FpgaUsbSimulator.h"
 #include "FpgaTelemetry.h"
@@ -609,7 +610,10 @@ void FpgaControlPage::setConfiguration(const FpgaControlConfig &c) {
     if(auto* channel=findChild<QComboBox*>("fpgaAi8RuntimeChannel")) {const QSignalBlocker block(channel);channel->setCurrentIndex(channel->findData(c.ai8.channel));}
     for(const auto& spec:VaporView::FpgaRemote::sensorParameters())if(auto *input=sensorParameterInputs_.value(spec.address)){const QSignalBlocker block(input);input->setValue(c.sensorParameters.value(spec.source).value(spec.key).toDouble(hardwareValues_.value(spec.address,spec.fallback)));}
     for(const auto &f:fields_){const QSignalBlocker block(f.input);f.input->setValue(f.read(c));}
-    {const QSignalBlocker block(backend_);backend_->setCurrentIndex(backend_->findData(c.backend));}
+    if (backend_->currentData().toString() != QLatin1String(VaporView::Ground::Devices::FpgaVirtualTcpBackend)) {
+        const QSignalBlocker block(backend_);
+        backend_->setCurrentIndex(backend_->findData(c.backend));
+    }
     const QSignalBlocker bs(recordSensors_),bd(recordDlia_);
     recordSensors_->setChecked(c.recordSensors);recordDlia_->setChecked(true);
     for(int i=0;i<2;++i){auto *cal=findChild<QCheckBox*>(QString("fpga%1Calibrated").arg(i));const QSignalBlocker b(cal);cal->setChecked(c.frontend[i].calibrated);}
@@ -687,18 +691,21 @@ void FpgaControlPage::updateMotorProgress() {
 }
 void FpgaControlPage::updateActions(){
     for(const auto& spec:VaporView::FpgaRemote::sensorParameters())if(auto *input=sensorParameterInputs_.value(spec.address))input->setEnabled(!busy_ && (!connected_ || (hardwareValues_.contains(0x6004+(spec.source-0x40)*0x100) && !(hardwareValues_.value(0x6004+(spec.source-0x40)*0x100)&1))));
-    locator_->setToolTip(locator_->currentText()+"\n"+(backend_->currentData().toString()==QStringLiteral("simulator")
+    const auto backend = backend_->currentData().toString();
+    const bool virtualTcp = backend == QLatin1String(VaporView::Ground::Devices::FpgaVirtualTcpBackend);
+    locator_->setToolTip(locator_->currentText()+"\n"+(virtualTcp
+        ? text("虚拟 FPGA 的本机回环端点。", "Local loopback endpoint for the virtual FPGA.")
+        : backend == QStringLiteral("simulator")
         ?text("本地 VLP1 协议模拟器，不打开实体 USB。","Local VLP1 protocol simulator; no physical USB access.")
         :text("选择 GP01 FX3（04B4:00F1），插拔后点击刷新设备。连接时核验固件身份。","Select GP01 FX3 (04B4:00F1); refresh after plugging/unplugging. Firmware identity is verified on connect.")));
     auto selected=locator_->currentData(Qt::UserRole+1).toJsonObject();
     const auto devices=usbDiscovery_.value("devices").toArray();
     if(locator_->currentIndex()==0 && devices.size()==1) selected=devices.first().toObject();
-    const auto backend=backend_->currentData().toString();
     const bool usable=property("fpgaUiTestMode").toBool() || ((!usbRemote_||backend!="simulator")&&selected.value("available").toBool()&&!selected.value("locator").toString().isEmpty()
         &&(backend=="auto"||backend==selected.value("backend").toString())&&usbDiscovery_.value("error").toString().isEmpty());
     connect_->setEnabled(!connected_&&!busy_&&!usbDiscovering_&&usbHostAvailable_&&usable);
     locator_->setEnabled(!connected_&&!busy_&&!usbDiscovering_&&usbHostAvailable_);
-    backend_->setEnabled(!connected_&&!busy_&&!usbDiscovering_);
+    backend_->setEnabled(!virtualTcp && !connected_ && !busy_ && !usbDiscovering_);
     discover_->setEnabled(!busy_&&!usbDiscovering_&&usbHostAvailable_);
     disconnect_->setEnabled(connected_&&!busy_);for(auto *w:onlineControls_) {
         const quint32 bit=w->property("fpgaExtension").toUInt();const bool safety=w->property("fpgaSafetyControl").toBool();
@@ -743,6 +750,14 @@ void FpgaControlPage::requestUsbDiscovery(){
     ++usbDiscoveryGeneration_;usbDiscovering_=true;
     discoveryStatus_->setText(text("正在查找…","Searching…"));discoveryStatus_->setToolTip(discoveryStatus_->text());updateActions();emit discoverDevicesRequested();
 }
+void FpgaControlPage::setVirtualTcpMode()
+{
+    const QSignalBlocker blocker(backend_);
+    backend_->addItem(QStringLiteral("Virtual TCP"), QString::fromLatin1(VaporView::Ground::Devices::FpgaVirtualTcpBackend));
+    backend_->setCurrentIndex(backend_->count() - 1);
+    rebuildUsbDevices();
+}
+
 void FpgaControlPage::setUsbDiscoveryHost(bool remote,bool available){
     if(usbRemote_==remote&&usbHostAvailable_==available)return;
     usbRemote_=remote;usbHostAvailable_=available;usbDiscovering_=false;++usbDiscoveryGeneration_;usbDiscovery_={};
@@ -771,8 +786,10 @@ void FpgaControlPage::rebuildUsbDevices(){
     if(index<0)index=devices.size()==1?1:0;
     locator_->setCurrentIndex(index);
     const bool simulated=backend_->currentData().toString()==QStringLiteral("simulator");
-    const QString host=text(simulated?"本地模拟器":usbRemote_?"天空端 USB":"本机 USB",
-                            simulated?"Local simulator":usbRemote_?"Sky USB":"Local USB");
+    const bool virtualTcp = backend_->currentData().toString() == QLatin1String(VaporView::Ground::Devices::FpgaVirtualTcpBackend);
+    const QString host = virtualTcp ? text("虚拟 FPGA TCP", "Virtual FPGA TCP")
+        : text(simulated?"本地模拟器":usbRemote_?"天空端 USB":"本机 USB",
+               simulated?"Local simulator":usbRemote_?"Sky USB":"Local USB");
     const auto error=usbDiscovery_.value("error").toString();
     discoveryStatus_->setText(!usbHostAvailable_?text("请先连接 SkyCore","Connect to SkyCore first")
         :!error.isEmpty()?host+" · "+error:!usbDiscovery_.contains("devices")?host+text(" · 等待枚举"," · Awaiting discovery")
@@ -800,6 +817,8 @@ void FpgaControlPage::setConnectionState(bool ready,bool busy,const QString &det
     if(!ready_)motorLeaseRequested_=false;
     if(!ready_ && motorPhase_!=MotorPhase::Idle) {motorPhase_=MotorPhase::Unconfirmed;motorMoveClock_.invalidate();updateMotorProgress();}
     status_->setText(ready?text("已连接","Connected"):connected_?text("已连接未就绪 · 禁止写操作","Connected, not ready · Writes disabled"):text("离线","Offline"));
+    if (backend_->currentData().toString() == QLatin1String(VaporView::Ground::Devices::FpgaVirtualTcpBackend))
+        status_->setText(text("虚拟 FPGA TCP · ", "Virtual FPGA TCP · ") + status_->text());
     if(!usbRemote_&&backend_->currentData().toString()==QStringLiteral("simulator"))
         status_->setText(text("协议模拟 · ","Protocol simulation · ")+status_->text());
     status_->setText(status_->text()+(busy?text(" · 正在处理"," · Working"):QString())+(detail.isEmpty()?QString():" · "+detail));

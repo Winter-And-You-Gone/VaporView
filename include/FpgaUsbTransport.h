@@ -50,8 +50,8 @@ struct FpgaUsbDiagnostic
 // availability in this build. Firmware identity is still verified by open().
 QJsonObject discoverFpgaUsbDevices();
 
-// Transport boundary used by VLP framing. Implementations must not split a
-// VLP frame at USB read boundaries; the caller owns reassembly and CRC checks.
+// Byte transport used by VLP framing. Reads may return any stream chunk.
+// The caller owns frame reassembly and CRC checks.
 class FpgaUsbTransport : public QObject
 {
     Q_OBJECT

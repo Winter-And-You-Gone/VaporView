@@ -31,7 +31,8 @@ public:
     void clearOperationLogContext(quint64 identity)
     { if (operationLogIdentity_ == identity) { operationLogIdentity_ = 0; operationCorrelationId_.clear(); operationSessionId_.clear(); } }
     enum class ConnectMode { RecoverEnabledModules, PreserveRunningModules };
-    explicit FpgaDeviceController(std::unique_ptr<FpgaUsbTransport> transport = {}, QObject *parent = nullptr);
+    explicit FpgaDeviceController(std::unique_ptr<FpgaUsbTransport> transport = {}, QObject *parent = nullptr,
+                                  quint16 virtualTcpPort = 0);
     ~FpgaDeviceController() override;
     bool connected() const { return session_ && session_->isOpen(); }
     bool ready() const { return ready_; }
@@ -193,6 +194,7 @@ private:
     bool interruptingForMotorStop_ = false;
     QSet<quint32> motorSafetySequences_;
     qint16 temperatureTarget_ = 0;
+    const quint16 virtualTcpPort_;
     bool injected_ = false, ready_ = false, busy_ = false, replaying_ = false;
     bool drainWaveforms_ = false, backgroundRefresh_ = false, recoveringConnection_ = false, connectionRecoveryFailed_ = false;
     QString operation_, detail_, installedBackend_;

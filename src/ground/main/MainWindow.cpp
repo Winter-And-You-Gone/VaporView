@@ -4,10 +4,12 @@
 #include "LogContext.h"
 #include <QSystemTrayIcon>
 
-MainWindow::MainWindow(QWidget *parent, std::shared_ptr<VaporView::Ground::Calibration::CalibrationService> calibration)
+MainWindow::MainWindow(QWidget *parent, std::shared_ptr<VaporView::Ground::Calibration::CalibrationService> calibration,
+                       quint16 virtualFpgaPort)
     : QMainWindow(parent)
     , state_(std::make_unique<MainWindowState>())
 {
+    state_->virtual_fpga_port_ = virtualFpgaPort;
     if(calibration)state_->calibration_service_=std::move(calibration);
     VaporView::LogService::withCurrentInstance([this](VaporView::LogService& logService) {
         connect(&logService, &VaporView::LogService::recordPublished, this,

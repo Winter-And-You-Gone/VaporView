@@ -387,6 +387,11 @@ target_link_libraries(fpga_sensor_decoder_test PRIVATE vaporview_ground_device_c
 vaporview_add_test(NAME fpga_sensor_decoder_test COMMAND fpga_sensor_decoder_test)
 set_tests_properties(fpga_sensor_decoder_test PROPERTIES LABELS "fast;unit;fpga")
 
+add_executable(fpga_virtual_tcp_transport_test fpga_virtual_tcp_transport_test.cpp)
+target_link_libraries(fpga_virtual_tcp_transport_test PRIVATE vaporview_fpga_device_core)
+vaporview_add_test(NAME fpga_virtual_tcp_transport_test COMMAND fpga_virtual_tcp_transport_test)
+set_tests_properties(fpga_virtual_tcp_transport_test PROPERTIES LABELS "fast;integration;fpga" TIMEOUT 20)
+
 add_executable(fpga_device_session_test
     ${CMAKE_CURRENT_SOURCE_DIR}/fpga_device_session_test.cpp
 )

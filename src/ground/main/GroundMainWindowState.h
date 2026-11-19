@@ -185,6 +185,7 @@ struct DeviceConfigPageWidgets
 struct MainWindowState
 {
     Devices::RemoteConfigSession remote_config_session_;
+    quint16 virtual_fpga_port_ = 0;
     Devices::FpgaControlSession fpga_session_;
     quint32 fpga_extensions_=0;
     bool fpga_tec103_connected_=false;

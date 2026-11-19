@@ -389,6 +389,7 @@ bool MainWindow::isRemoteSkyTcpMode() const
 
 void MainWindow::requestSourceModeSelection(bool remoteSelected)
 {
+    if (state_->virtual_fpga_port_) return;
     if (!state_->data_source_mode_combo_)
     {
         return;
@@ -425,6 +426,7 @@ void MainWindow::requestSourceModeSelection(bool remoteSelected)
 
 void MainWindow::onDataSourceModeChanged(int index)
 {
+    if (state_->virtual_fpga_port_) return;
     if (index == 1 && (state_->fpga_connected_ || state_->fpga_busy_ || state_->fpga_replaying_))
     {
         const QSignalBlocker blocker(state_->data_source_mode_combo_);

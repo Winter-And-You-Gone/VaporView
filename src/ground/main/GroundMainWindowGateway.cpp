@@ -29,7 +29,7 @@ void MainWindow::configureGatewayRuntime()
 {
     if (!state_->gateway_service_) return;
     auto config = state_->gateway_settings_.connection;
-    if (isUiTestMode())
+    if (isUiTestMode() || state_->virtual_fpga_port_)
     {
         config.enabled = false;
         config.listener.enabled = false;
@@ -78,7 +78,7 @@ void MainWindow::updateGatewayTray()
 
 void MainWindow::showGatewaySettings()
 {
-    if (isUiTestMode()) return;
+    if (isUiTestMode() || state_->virtual_fpga_port_) return;
     VaporView::Ground::Main::GatewaySettingsDialog dialog(
         state_->gateway_settings_, state_->gateway_service_.get(), state_->is_english_, this);
     connect(&dialog, &VaporView::Ground::Main::GatewaySettingsDialog::sessionSyncRequested,
