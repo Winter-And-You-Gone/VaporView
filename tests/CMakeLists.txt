@@ -496,6 +496,8 @@ if(COMMAND vaporview_stage_osgearth_runtime)
     vaporview_stage_osgearth_runtime(remote_connection_workflow_test)
 endif()
 vaporview_add_test(NAME remote_connection_workflow_test COMMAND remote_connection_workflow_test)
+vaporview_add_test(NAME sky_simulated_transport_switch_test COMMAND remote_connection_workflow_test --simulation-switch-only)
+set_tests_properties(sky_simulated_transport_switch_test PROPERTIES LABELS "gui;fpga;integration;sky" TIMEOUT 60 RUN_SERIAL TRUE)
 if(Python3_Interpreter_FOUND)
     vaporview_add_test(NAME gateway_recording_workflow_test COMMAND remote_connection_workflow_test
         --gateway "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/gateway_recording_workflow.py")

@@ -4,6 +4,7 @@
 #include "ground/main/GroundMainWindowState.h"
 #include "ground/devices/RemoteSkyController.h"
 #include "ground/devices/Rd105DeviceSession.h"
+#include "ground/widgets/SegmentedSwitchButton.h"
 #include "ground/calibration/CalibrationService.h"
 #include "TcpTelemetryLink.h"
 #include "FpgaTelemetry.h"
@@ -61,6 +62,7 @@ static void workflow(bool fpga)
     MainWindow window(nullptr, std::make_shared<VaporView::Ground::Calibration::CalibrationService>(logsDirectory.path()));
     QMetaObject::invokeMethod(&window, "onDataSourceModeChanged", Q_ARG(int, 1));
     auto &state = MainWindowRtcmTestAccess::state(window);
+    state.developer_options_action_->setChecked(true);
     state.remote_sky_link_config_.transport = TelemetryTransportType::Tcp;
     state.remote_sky_link_config_.tcpHost = "127.0.0.1";
     state.remote_sky_link_config_.tcpPort = server.localPort();
@@ -266,7 +268,8 @@ static void checkGatewayRecording(MainWindow& window, const QTemporaryDir& direc
     require(finished && client.exitStatus() == QProcess::NormalExit && client.exitCode() == 0, "external recording workflow");
     require(sawRecording && state.remote_status_.recording_state == 0, "ground UI observed start and stop");
 }
-static void simulatedSkyWorkflow(const QString& gatewayInterpreter = {}, const QString& gatewayScript = {})
+static void simulatedSkyWorkflow(const QString& gatewayInterpreter = {}, const QString& gatewayScript = {},
+                                 bool switchTransportOnly = false)
 {
     using namespace VaporView;
     QTemporaryDir directory;
@@ -289,7 +292,7 @@ static void simulatedSkyWorkflow(const QString& gatewayInterpreter = {}, const Q
 #endif
         ;
     child.process.setProcessChannelMode(QProcess::MergedChannels);
-    child.process.start(executable, {"--fpga-simulate-data", "--sky-config", directory.filePath("sky.json"),
+    child.process.start(executable, {"--simulate", "--sky-config", directory.filePath("sky.json"),
         "--telemetry-transport", "tcp", "--telemetry-host", "127.0.0.1",
         "--telemetry-tcp-port", QString::number(port), "--ipc-port", "0"});
     require(child.process.waitForStarted(5000), "real SkyCore simulator starts");
@@ -305,6 +308,7 @@ static void simulatedSkyWorkflow(const QString& gatewayInterpreter = {}, const Q
     MainWindow window(nullptr, std::make_shared<VaporView::Ground::Calibration::CalibrationService>(directory.path()));
     QMetaObject::invokeMethod(&window, "onDataSourceModeChanged", Q_ARG(int, 1));
     auto &state = MainWindowRtcmTestAccess::state(window);
+    state.developer_options_action_->setChecked(true);
     state.remote_sky_link_config_.transport = TelemetryTransportType::Tcp;
     state.remote_sky_link_config_.tcpHost = "127.0.0.1";
     state.remote_sky_link_config_.tcpPort = port;
@@ -312,6 +316,42 @@ static void simulatedSkyWorkflow(const QString& gatewayInterpreter = {}, const Q
     window.show();
     QMetaObject::invokeMethod(&window, "onTelemetryLinkClicked");
     require(waitUntil([&] { return state.remote_config_session_.loaded && state.remote_sky_online_; }), "simulator telemetry handshake");
+    if (switchTransportOnly) {
+        const auto linkGeneration = window.testRemoteSkyController()->linkGeneration();
+        require(state.remote_config_session_.baseline.sensor_transport_path == SensorTransportPath::FpgaRelay,
+                "unified simulator starts in FPGA mode");
+        state.sensor_transport_switch_->selectionRequested(false);
+        require(waitUntil([&] {
+            return !state.remote_config_session_.applying &&
+                   state.remote_config_session_.baseline.sensor_transport_path == SensorTransportPath::DirectDevices &&
+                   state.current_ptb_.valid && std::abs(state.current_ptb_.pressure_hpa - 900.0) <= 1.5;
+        }), "switching to direct devices starts simulated sensor data on the same telemetry link");
+
+        state.sensor_transport_switch_->selectionRequested(true);
+        require(waitUntil([&] {
+            return !state.remote_config_session_.applying &&
+                   state.remote_config_session_.baseline.sensor_transport_path == SensorTransportPath::FpgaRelay;
+        }), "switch back to simulated FPGA on the same telemetry link");
+        QSet<quint16> harmonicSources;
+        const auto cycleConnection = QObject::connect(window.testRemoteSkyController()->telemetryService(),
+            &GroundTelemetryService::fpgaCycleFeatureUpdated, &window, [&](quint64, const auto& stream) {
+                if (stream.complete && stream.normalizedFeature && stream.normalizedFeature->validPoints > 0 &&
+                    std::isfinite(stream.normalizedFeature->peak)) {
+                    harmonicSources.insert(stream.source);
+                }
+            });
+        QMetaObject::invokeMethod(&window, "onConnectClicked");
+        require(waitUntil([&] {
+            return state.fpga_session_.remoteStatus.value("ready").toBool() &&
+                   state.fpga_session_.remoteStatus.value("simulation").toBool() &&
+                   harmonicSources.contains(0x30) && harmonicSources.contains(0x31);
+        }, 15000), "switching back receives both simulated FPGA DLIA channels");
+        QObject::disconnect(cycleConnection);
+        require(window.testRemoteSkyController()->linkGeneration() == linkGeneration,
+                "transport switches do not reopen the telemetry connection");
+        std::cout << "SkyCore simulation switched FPGA -> direct -> FPGA on one connection\n";
+        return;
+    }
     QElapsedTimer initialLayout; initialLayout.start();
     waitUntil([&] { return initialLayout.elapsed() >= 500; });
     QElapsedTimer connectClock; connectClock.start();
@@ -425,6 +465,10 @@ int main(int argc, char **argv)
     QApplication app(argc, argv);
     try {
     const auto args = app.arguments();
+    if (args.contains("--simulation-switch-only")) {
+        simulatedSkyWorkflow({}, {}, true);
+        return 0;
+    }
     if (args.size() == 3 && args[1] == "--gateway-browser") {
         const auto node = qEnvironmentVariable("VAPORVIEW_TEST_GATEWAY_NODE");
         if (node.isEmpty()) {

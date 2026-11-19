@@ -46,10 +46,12 @@ FPGA 页在界面测试模式中禁用记录按钮，不再伪造记录成功；
 跨工控机/H300 验证时，在工控机目录运行以下入口之一；先退出占用同端口的服务，不同时启动两个：
 
 ```powershell
-.\VaporViewSkyCore.exe --fpga-simulate-data --telemetry-transport tcp --telemetry-host 0.0.0.0 --telemetry-tcp-port 39100
+.\VaporViewSkyCore.exe --simulate --telemetry-transport tcp --telemetry-host 0.0.0.0 --telemetry-tcp-port 39100
 # 或独立模拟服务
 .\VaporViewFpgaSimulator.exe --telemetry-host 0.0.0.0 --telemetry-tcp-port 39100
 ```
+
+远程模拟服务启动时选择 FPGA 中转。VaporView 正常启动并连接 SkyCore 后，在应用菜单的「开发者」中打开「开发者选项」，再用标题栏的「直连 / FPGA」切换。切到直连时，SkyCore 生成模拟传感器数据。切回 FPGA 后，使用「连接」恢复双路模拟采集。整个过程沿用同一个 SkyCore 进程和天地链路。原有 `--fpga-simulate-data` 也可启动同一个模拟服务。
 
 本机 VaporView 连接工控机实际 IP。远端使用哪种后端由远端进程决定，本地 FPGA 后端下拉框不会把普通远端 SkyCore 切为模拟服务。板卡状态应包含模拟标识；基础遥测 10 Hz/状态 1 Hz 仅证明通信，不能代替具体设备的数据验收。连接不自动开始记录、激光或 DAC 输出；采集需要的 WMS 周期标签按正常控制流程启动。
 

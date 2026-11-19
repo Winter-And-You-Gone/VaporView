@@ -1047,6 +1047,8 @@ ApplyConfigResult SkyDeviceManager::applyConfig(const SkyConfig& requestedConfig
         disconnectAll(false);
     }
     config_ = newConfig;
+    if (diff.sensor_transport_path_changed && simulate_data_)
+        setSimulateData(true);
 
     if (newConfig.sensor_transport_path == SensorTransportPath::FpgaRelay)
     {
