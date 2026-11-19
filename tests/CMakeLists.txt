@@ -1058,7 +1058,8 @@ target_compile_definitions(title_application_menu_test PRIVATE
 target_link_libraries(title_application_menu_test PRIVATE vaporview_main_window)
 add_dependencies(title_application_menu_test VaporViewRuntimeResources)
 vaporview_add_test(NAME title_application_menu_test COMMAND title_application_menu_test)
-set_tests_properties(title_application_menu_test PROPERTIES
+vaporview_add_test(NAME developer_options_test COMMAND title_application_menu_test --developer-options-only)
+set_tests_properties(title_application_menu_test developer_options_test PROPERTIES
     TIMEOUT 120
     LABELS "integration;slow;ui;main-window;title-menu"
 )

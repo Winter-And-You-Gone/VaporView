@@ -5430,6 +5430,8 @@ int main(int argc, char **argv)
     QApplication app(argc, argv);
     app.setOrganizationName(QStringLiteral("VaporViewLayoutTest"));
     app.setApplicationName(QStringLiteral("main_window_layout_test"));
+    QSettings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"))
+        .setValue(QStringLiteral("developer_options_enabled"), true);
 
     if (app.arguments().contains(QStringLiteral("--session-data-export-only")))
     {

@@ -477,6 +477,8 @@ int main(int argc, char **argv)
     legacySettings.setValue(QStringLiteral("sensor/pressure_source"), QStringLiteral("ptb210"));
     legacySettings.setValue(QStringLiteral("sensor/humidity_source"), QStringLiteral("hc2a"));
     legacySettings.sync();
+    QSettings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"))
+        .setValue(QStringLiteral("developer_options_enabled"), true);
     MainWindow window;
     VaporView::setSettingsWritesSuspended(true);
     window.resize(1280, 760);

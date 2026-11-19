@@ -1,9 +1,13 @@
+#include "test_settings_sandbox.h"
+#include "shared/config/ApplicationConfig.h"
 #include "ground/main/MainWindow.h"
+#include "ground/widgets/SegmentedSwitchButton.h"
 #include "ground/main/UiLogModel.h"
 #include "test_ui_helpers.h"
 
 #include <QAction>
 #include <QApplication>
+#include <QComboBox>
 #include <QCursor>
 #include <QEnterEvent>
 #include <QEventLoop>
@@ -165,6 +169,69 @@ void resetToRootKeyboardMenu(QWidget *panel, QWidget *subMenu, QWidget *nestedMe
     VaporViewTest::processEventsFor(80);
 }
 
+void testDeveloperOptions(QSettings &settings)
+{
+    using VaporView::Ground::Widgets::SegmentedSwitchButton;
+    auto inputSettings = VaporView::applicationConfigSettings();
+    inputSettings.setValue(QStringLiteral("MainWindow/source/mode"), QStringLiteral("local"));
+    {
+        MainWindow window;
+        window.resize(1100, 720);
+        window.show();
+        require(VaporViewTest::waitForWindowExposed(&window), "developer options test window is exposed");
+        auto *menu = window.findChild<QToolButton *>(QStringLiteral("titleBarMenuButton"));
+        auto *source = window.findChild<SegmentedSwitchButton *>(QStringLiteral("sourceModeOverviewSwitch"));
+        auto *path = window.findChild<SegmentedSwitchButton *>(QStringLiteral("titleSensorTransportSwitch"));
+        auto *transport = window.findChild<QComboBox *>(QStringLiteral("deviceSensorTransportPathCombo"));
+        require(menu && source && path && transport, "developer mode controls exist");
+        require(source->switchChecked() && path->switchChecked() &&
+                    source->isHidden() && path->isHidden() && transport->isHidden(),
+                "startup defaults to Remote FPGA with hidden selectors even with a saved Local source");
+
+        auto optionRow = [&]() {
+            menu->click();
+            VaporViewTest::processEventsFor(80);
+            auto *root = window.findChild<QFrame *>(QStringLiteral("titleApplicationMainMenu"));
+            auto *developer = findRow(root, QStringLiteral("titleMenuDeveloperSectionAction"));
+            require(developer, "Developer section exists in the application menu");
+            sendMouseEnter(developer);
+            auto *submenu = window.findChild<QFrame *>(QStringLiteral("titleApplicationSubMenu"));
+            auto *row = findRow(submenu, QStringLiteral("titleMenuDeveloperOptionsAction"));
+            require(row && row->isVisible() && row->defaultAction()->isCheckable(),
+                    "Developer submenu exposes a checkable Developer Options entry");
+            return row;
+        };
+        auto *option = optionRow();
+        require(!option->defaultAction()->isChecked(), "Developer Options starts unchecked");
+        sendMouseClick(option);
+        require(source->isVisible() && path->isVisible() && !transport->isHidden() &&
+                    source->switchChecked() && path->switchChecked(),
+                "Developer Options reveals the selectors with Remote FPGA still selected");
+        source->click();
+        require(!source->switchChecked() && !path->switchChecked(), "Local Direct remains selectable");
+
+        option = optionRow();
+        require(option->defaultAction()->isChecked(), "Developer Options reflects its enabled state");
+        sendMouseClick(option);
+        require(source->switchChecked() && path->switchChecked() &&
+                    source->isHidden() && path->isHidden() && transport->isHidden(),
+                "turning Developer Options off returns to Remote FPGA and hides the selectors");
+        settings.sync();
+        require(!settings.value(QStringLiteral("developer_options_enabled"), true).toBool(),
+                "disabled Developer Options is saved");
+
+        sendMouseClick(optionRow());
+        source->click();
+        require(!source->switchChecked(), "Local remains selectable after turning Developer Options back on");
+    }
+    {
+        MainWindow restarted;
+        auto *source = restarted.findChild<SegmentedSwitchButton *>(QStringLiteral("sourceModeOverviewSwitch"));
+        require(source && !source->isHidden() && !source->switchChecked(),
+                "a new window restores enabled Developer Options and the selected Local source");
+    }
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -189,6 +256,13 @@ int main(int argc, char **argv)
     settings.setValue(QStringLiteral("recording_directory"), settingsDirectory.path());
     settings.setValue(QStringLiteral("log_view_mode"), QStringLiteral("attention"));
     settings.sync();
+
+    if (application.arguments().contains(QStringLiteral("--developer-options-only")))
+    {
+        testDeveloperOptions(settings);
+        std::cout << "Developer Options menu and startup behavior passed\n";
+        return 0;
+    }
 
     MainWindow window;
     auto *logProxy=window.findChild<VaporView::Ground::Main::UiLogFilterProxyModel*>();

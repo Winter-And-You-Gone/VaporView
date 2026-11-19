@@ -939,6 +939,7 @@ int main(int argc, char **argv)
         mainSettings.setValue(QStringLiteral("serial/epsilon_port"), QStringLiteral("NORMAL-COM7"));
         mainSettings.setValue(QStringLiteral("dark_theme_enabled"), darkEpsilonLayoutOnly);
         mainSettings.setValue(QStringLiteral("font_scale_percent"), 100);
+        mainSettings.setValue(QStringLiteral("developer_options_enabled"), true);
         mainSettings.setValue(QStringLiteral("recording_directory"), settingsDirectory.filePath(QStringLiteral("business-output")));
         mainSettings.sync();
         QSettings history(QStringLiteral("VaporView"), QStringLiteral("SerialPortHistory"));

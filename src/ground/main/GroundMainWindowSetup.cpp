@@ -672,6 +672,17 @@ void MainWindow::setupMenuBar()
 #endif
 
     state_->developer_menu_ = menuBar()->addMenu("");
+    state_->developer_options_action_ = new QAction(this);
+    state_->developer_options_action_->setObjectName(QStringLiteral("developerOptionsAction"));
+    state_->developer_options_action_->setCheckable(true);
+    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+    state_->developer_options_action_->setEnabled(!state_->virtual_fpga_port_);
+    state_->developer_options_action_->setChecked(!state_->virtual_fpga_port_ &&
+        settings.value(QStringLiteral("developer_options_enabled"), false).toBool());
+    connect(state_->developer_options_action_, &QAction::toggled,
+            this, &MainWindow::onDeveloperOptionsToggled);
+    state_->developer_menu_->addAction(state_->developer_options_action_);
+    state_->developer_menu_->addSeparator();
 #ifdef VAPORVIEW_HAS_OSGEARTH
     state_->developer_menu_->addAction(state_->map3d_diagnostics_action_);
     state_->developer_menu_->addSeparator();
@@ -995,7 +1006,8 @@ void MainWindow::setupCustomTitleBar()
                 combo->setCurrentIndex(index);
             });
     titleLayout->addWidget(state_->sensor_transport_switch_, 0, Qt::AlignVCenter);
-    addTitleBarSeparator(titleLayout);
+    state_->developer_switch_separator_ = addTitleBarSeparator(titleLayout);
+    updateDeveloperSwitchVisibility();
     titleLayout->addWidget(createTitleBarActionButton(state_->telemetry_link_btn_, state_->custom_title_bar_), 0, Qt::AlignVCenter);
     titleLayout->addWidget(createTitleBarActionButton(state_->refresh_ports_btn_, state_->custom_title_bar_), 0, Qt::AlignVCenter);
     titleLayout->addWidget(createTitleBarActionButton(state_->connect_btn_, state_->custom_title_bar_), 0, Qt::AlignVCenter);
@@ -1094,7 +1106,7 @@ QToolButton *MainWindow::createTitleBarIconButton(const QString& objectName, QWi
     return button;
 }
 
-void MainWindow::addTitleBarSeparator(QHBoxLayout *layout)
+QFrame *MainWindow::addTitleBarSeparator(QHBoxLayout *layout)
 {
     auto *separator = new QFrame(state_->custom_title_bar_);
     separator->setObjectName(QStringLiteral("titleBarSeparator"));
@@ -1102,6 +1114,52 @@ void MainWindow::addTitleBarSeparator(QHBoxLayout *layout)
     separator->setFixedHeight(scalePixels(28));
     separator->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     layout->addWidget(separator, 0, Qt::AlignVCenter);
+    return separator;
+}
+
+void MainWindow::updateDeveloperSwitchVisibility()
+{
+    const bool visible = state_->developer_options_action_->isChecked();
+    state_->source_mode_switch_->setVisible(visible);
+    state_->sensor_transport_switch_->setVisible(visible);
+    state_->developer_switch_separator_->setVisible(visible);
+}
+
+void MainWindow::onDeveloperOptionsToggled(bool enabled)
+{
+    if (!enabled && !isRemoteSkyMode())
+    {
+        requestSourceModeSelection(true);
+    }
+
+    const bool remoteDirectInUse = isRemoteSkyMode() && !isUiTestMode() &&
+        state_->remote_sky_controller_->isOpen() && !isFpgaRelayPath();
+    if (!enabled && (!isRemoteSkyMode() || remoteDirectInUse))
+    {
+        const QSignalBlocker blocker(state_->developer_options_action_);
+        state_->developer_options_action_->setChecked(true);
+        if (remoteDirectInUse)
+        {
+            QMessageBox::information(this, state_->developer_options_action_->text(),
+                state_->is_english_
+                    ? QStringLiteral("Switch the remote sensor path to FPGA or disconnect the telemetry link before turning off Developer Options.")
+                    : QStringLiteral("请先将远程传感器路径切换为 FPGA，或断开数传链路，再关闭开发者选项。"));
+        }
+        return;
+    }
+
+    if (enabled && !state_->remote_config_session_.loaded)
+    {
+        // Revealing the selectors keeps the current Remote FPGA preview.
+        state_->remote_config_session_.desired.sensor_transport_path = VaporView::SensorTransportPath::FpgaRelay;
+    }
+    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+    settings.setValue(QStringLiteral("developer_options_enabled"), enabled);
+    updateDeveloperSwitchVisibility();
+    updateDeviceConfigTexts();
+    updateSourceModeUi();
+    updateFpgaPageBackend();
+    syncRtkConfigPageState();
 }
 
 void MainWindow::discardTitleApplicationMenuPanel()
@@ -1438,6 +1496,15 @@ void MainWindow::createTitleApplicationMenuPanel()
     };
 
     TitleMenuSection developerSection{state_->is_english_ ? QStringLiteral("Developer") : QStringLiteral("开发者"), {}};
+    developerSection.commands.push_back(
+        command(QStringLiteral("titleMenuDeveloperOptionsAction"),
+                state_->developer_options_action_->text(),
+                QString(),
+                state_->developer_options_action_->isEnabled(),
+                true,
+                state_->developer_options_action_->isChecked(),
+                true,
+                [this]() { state_->developer_options_action_->trigger(); }));
     QVector<TitleMenuCommand> uiTestScenarioCommands{
         command(QStringLiteral("titleMenuUiTestScenarioNormalAction"),
                 state_->is_english_ ? QStringLiteral("Normal operation") : QStringLiteral("正常运行"),
@@ -4126,10 +4193,20 @@ void MainWindow::applyDeviceConfigTcpWaveEndpoint()
 VaporView::SensorTransportPath MainWindow::currentSensorTransportPath() const
 {
     if (state_->virtual_fpga_port_) return VaporView::SensorTransportPath::FpgaRelay;
-    return isRemoteSkyMode()
-        ? (state_->remote_config_session_.applying ? state_->remote_config_session_.baseline.sensor_transport_path
-                                             : state_->remote_config_session_.desired.sensor_transport_path)
-        : state_->local_device_config_.sensorTransportPath;
+    if (!isRemoteSkyMode())
+    {
+        return state_->local_device_config_.sensorTransportPath;
+    }
+    const auto& config = state_->remote_config_session_;
+    const auto *remote = state_->remote_sky_controller_.get();
+    const bool hasCurrentConfig = isUiTestMode() || (remote && remote->isOpen() &&
+        config.loadedGeneration == remote->linkGeneration());
+    // Use the ground-side default until Sky can report the active transport.
+    if (!state_->developer_options_action_->isChecked() && (!config.loaded || !hasCurrentConfig))
+    {
+        return VaporView::SensorTransportPath::FpgaRelay;
+    }
+    return config.applying ? config.baseline.sensor_transport_path : config.desired.sensor_transport_path;
 }
 
 bool MainWindow::isFpgaRelayPath() const
@@ -4410,6 +4487,7 @@ void MainWindow::updateDeviceConfigState()
         !state_->connection_attempt_in_progress_ && !state_->port_detection_in_progress_ && !state_->epsilon_reconfigure_in_progress_;
     const bool remoteInputsEnabled = remote && (isUiTestMode() || !state_->is_connected_) && !state_->connection_attempt_in_progress_;
     const bool fpgaRelay = currentSensorTransportPath() == VaporView::SensorTransportPath::FpgaRelay;
+    const bool developerOptions = state_->developer_options_action_->isChecked();
     // Direct settings remain stored separately from FPGA configuration.
     const bool sensorInputsEnabled = remote ? remoteInputsEnabled : localInputsEnabled;
     if (state_->device_config_.sensor_transport_path_combo)
@@ -4421,8 +4499,10 @@ void MainWindow::updateDeviceConfigState()
             !state_->remote_config_session_.reading &&
             !state_->remote_config_session_.applying &&
             !state_->remote_config_session_.saving;
+        state_->device_config_.sensor_transport_path_lbl->setVisible(developerOptions);
+        state_->device_config_.sensor_transport_path_combo->setVisible(developerOptions);
         state_->device_config_.sensor_transport_path_combo->setEnabled(
-            !state_->virtual_fpga_port_ && (remote ? remoteConfigEditable : localInputsEnabled));
+            developerOptions && (remote ? remoteConfigEditable : localInputsEnabled));
     }
     if (state_->sensor_transport_switch_)
     {

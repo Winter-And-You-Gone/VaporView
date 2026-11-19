@@ -639,7 +639,10 @@ MainWindow::MainWindow(QWidget *parent, std::shared_ptr<VaporView::Ground::Calib
         }
     });
     loadRememberedInputState();
-    refreshDeviceConfigUiFromLocalModel();
+    if (!isRemoteSkyMode())
+    {
+        refreshDeviceConfigUiFromLocalModel();
+    }
     bindRememberedInputState();
     state_->restoring_persistent_settings_ = false;
     saveRememberedInputState();

@@ -2860,8 +2860,9 @@ int main(int argc,char **argv)
         liveVirtualFpga(port);
         return 0;
     }
-    if(app.arguments().contains("--rtcm-context")) { rtcmCompletionContext(); scheduledRecordingCorrelation(); return 0; }
     QSettings native("VaporView","MainWindow");
+    native.setValue("developer_options_enabled",true);
+    if(app.arguments().contains("--rtcm-context")) { rtcmCompletionContext(); scheduledRecordingCorrelation(); return 0; }
     native.setValue("font_scale_percent",100);
     native.setValue("app_sidebar_width",62);
     if(app.arguments().contains("--epsilon-packets")) {epsilonMixedPacketPresentation();return 0;}

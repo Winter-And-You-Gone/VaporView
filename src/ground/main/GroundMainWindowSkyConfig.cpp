@@ -387,6 +387,7 @@ void MainWindow::enterRemoteSkyDeviceConfigMode()
         : unloadedSkyConfig();
     if (!state_->remote_config_session_.loaded)
     {
+        config.sensor_transport_path = currentSensorTransportPath();
         QSettings settings = VaporView::applicationConfigSettings();
         settings.beginGroup(QStringLiteral("MainWindow"));
         auto rememberedBaud = [&settings](const QString& source, const QString& legacyKey) {

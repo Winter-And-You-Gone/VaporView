@@ -470,7 +470,9 @@ private:
     void updateWindowResizeHandles();
     QToolButton *createTitleBarActionButton(QAction *action, QWidget *parent);
     QToolButton *createTitleBarIconButton(const QString& objectName, QWidget *parent);
-    void addTitleBarSeparator(QHBoxLayout *layout);
+    QFrame *addTitleBarSeparator(QHBoxLayout *layout);
+    void onDeveloperOptionsToggled(bool enabled);
+    void updateDeveloperSwitchVisibility();
     void discardTitleApplicationMenuPanel();
     void createTitleApplicationMenuPanel();
     void showTitleApplicationMenu();

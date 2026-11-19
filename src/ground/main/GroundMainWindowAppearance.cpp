@@ -2000,19 +2000,25 @@ void MainWindow::loadRememberedInputState()
         state_->device_config_.hc2a_port_combo,
         rememberedSensorPort(settings, humiditySource, QStringLiteral("serial/hc2a_port")));
     applyComboText(state_->device_config_.hc2a_baud_combo, humidityBaud);
-    // Capture the local profile before a remembered Remote mode can make the
-    // device page show remote Sky values.
+    // Capture the local profile before the device page can switch to Remote.
     updateLocalDeviceConfigFromUi();
     if (state_->data_source_mode_combo_)
     {
-        const QString value = settings.value(
-            QStringLiteral("source/mode"),
-            sourceModeStorageValue(state_->data_source_mode_combo_->currentIndex())).toString();
-        const int index = sourceModeIndexFromStoredValue(value);
-        if (index >= 0)
+        const QSignalBlocker blocker(state_->data_source_mode_combo_);
+        if (!state_->virtual_fpga_port_ && !state_->developer_options_action_->isChecked())
         {
-            const QSignalBlocker blocker(state_->data_source_mode_combo_);
-            state_->data_source_mode_combo_->setCurrentIndex(index);
+            state_->data_source_mode_combo_->setCurrentIndex(1);
+        }
+        else
+        {
+            const QString value = settings.value(
+                QStringLiteral("source/mode"),
+                sourceModeStorageValue(state_->data_source_mode_combo_->currentIndex())).toString();
+            const int index = sourceModeIndexFromStoredValue(value);
+            if (index >= 0)
+            {
+                state_->data_source_mode_combo_->setCurrentIndex(index);
+            }
         }
     }
     auto& skyLink = state_->remote_sky_link_config_;

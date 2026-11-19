@@ -409,6 +409,7 @@ void MainWindow::setEnglish(bool english)
     state_->session_viewer_action_->setText(english ? "Data Viewer" : "数据查看器");
     setNativeMenuTitle(state_->view_menu_, english ? QStringLiteral("&View") : QStringLiteral("视图(&V)"));
     setNativeMenuTitle(state_->developer_menu_, english ? QStringLiteral("Develo&per") : QStringLiteral("开发者(&P)"));
+    state_->developer_options_action_->setText(english ? QStringLiteral("Developer Options") : QStringLiteral("开发者选项"));
     if (state_->ui_test_mode_action_)
     {
         state_->ui_test_mode_action_->setText(english ? QStringLiteral("UI Test Mode") : QStringLiteral("界面测试模式"));

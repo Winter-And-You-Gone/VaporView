@@ -315,6 +315,7 @@ struct MainWindowState
     QMenu *devices_menu_;
     QMenu *view_menu_;
     QMenu *developer_menu_;
+    QAction *developer_options_action_ = nullptr;
     QMenu *font_menu_;
     QMenu *language_menu_;
     QMenu *help_menu_;
@@ -471,6 +472,7 @@ struct MainWindowState
     QLabel *config_inline_title_lbl_;
     VaporView::Ground::Widgets::SourceModeOverviewSwitchButton *source_mode_switch_;
     VaporView::Ground::Widgets::SegmentedSwitchButton *sensor_transport_switch_;
+    QFrame *developer_switch_separator_ = nullptr;
 
     QComboBox *data_source_mode_combo_;
     QComboBox *imu_format_combo_;
