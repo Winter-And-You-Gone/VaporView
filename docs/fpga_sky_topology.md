@@ -14,7 +14,7 @@ flowchart LR
   Core --> Session[天空完整原始 Session]
 ```
 
-SkyCore 唯一打开 USB 并持续接收 VLP1。同机 GUI 复用 `RemoteSkyController`，连接本机 IPC；地面 GUI 连接数传串口或 TCP 遥测。两个客户端可同时观察和控制同一 SkyCore，均不另开 USB 或设备串口。`fpga.enabled` 默认 false；显式启用后连接/探测不等于打开物理输出。
+SkyCore 唯一打开 USB 并持续接收 VLP1。同机 GUI 复用 `RemoteSkyController`，连接本机 IPC；地面 GUI 连接数传串口或 TCP 遥测。两个客户端可同时观察和控制同一 SkyCore，均不另开 USB 或设备串口。正式 SkyCore 首次启动时，若没有天空端配置文件，默认启用 FPGA 中转，数传端口打开后即主动连接 FPGA。地面端可稍后接入。
 
 无实体板卡时，可使用 [FPGA 协议模拟器](fpga_simulator.md)：Local 在 FPGA 页选择“模拟器”后端，由 Ground 直接生成并解析 VLP1；Remote 运行 `VaporViewFpgaSimulator.exe`，复用 SkyCore/Ground 链路。两种模式独立保存模拟记录，不注册系统 USB 设备，也不代表实板验收。
 
@@ -30,8 +30,7 @@ VaporView 本机，Remote 是 SkyCore。它不表示传感器是否经过 FPGA�
 | SkyCore Remote | 传感器串口 → SkyCore → 遥测 → VaporView | 传感器 → FPGA → SkyCore → 遥测/IPC → VaporView |
 
 本地配置保存为 `MainWindow/sensor/transport_path`，天空端 `SkyConfig` 使用
-`sensor_transport_path`，取值为 `direct_devices` 或 `fpga_relay`。默认值是
-`direct_devices`，以兼容已有设备现场配置。选择 `fpga_relay` 后，采集数据改由
+`sensor_transport_path`，取值为 `direct_devices` 或 `fpga_relay`。已有天空端配置按文件中的设置启动，旧配置未指定路径时按 `direct_devices` 解析。选择 `fpga_relay` 后，采集数据改由
 FPGA 的 VLP1 通道上送，Ground/SkyCore 不再为这些设备启动第二套直连串口采集。
 设备配置页的六行串口在 FPGA 路径下固定显示 `FPGA`，不可选择；直连串口值仍保存在
 原配置中，切回直连后恢复。波特率、频率和数据源仍保留设备参数编辑。RD105 同样
@@ -56,7 +55,9 @@ Windows USB 设备，也不代表已经完成 GP01 实板或 VLP1 原始字节�
 
 ## 配置与启动
 
-将以下 JSON 保存为工控机上的 `sky-fpga.json`。未提供的 FPGA 配置字段按 `FpgaControlConfig` 默认值处理；旧串口/TCP 采集项显式关闭，避免该部署开启第二套设备链路。空 `locator` 交由后端枚举，必须确认唯一目标设备；多设备时可在 GUI 的 FPGA 页选择目标后连接，或在启动配置中填写所选设备的路径。
+直接运行 `VaporViewSkyCore.exe` 时，程序读取同目录的 `sky_config.json`。缺少该文件时，SkyCore 自动查找并连接 FPGA。若已保存为直连，想改用 FPGA 自动连接，可将连接方式保存为 `fpga_relay` 并启用 `fpga.enabled`。
+
+如需指定板卡或自定义配置，可将以下 JSON 保存为工控机上的 `sky-fpga.json`，再用下方的 `--sky-config` 参数启动。未提供的 FPGA 配置字段按 `FpgaControlConfig` 默认值处理；旧串口/TCP 采集项显式关闭，避免该部署开启第二套设备链路。空 `locator` 交由后端枚举，必须确认唯一目标设备；多设备时可在 GUI 的 FPGA 页选择目标后连接，或在启动配置中填写所选设备的路径。
 
 ```json
 {

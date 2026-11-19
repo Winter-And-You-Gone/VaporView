@@ -57,6 +57,24 @@ public:
 };
 }
 
+static void firstStartFpgaTest()
+{
+    QTemporaryDir directory;
+    require(directory.isValid(), "isolated unconfigured SkyCore");
+    SkyRuntimeOptions options;
+    options.config_path = directory.filePath(QStringLiteral("sky_config.json"));
+    options.telemetry_tcp_port = 0;
+    SkyRuntime runtime(options);
+    runtime.setFpgaTransportForTesting(std::make_unique<ScriptedTransport>());
+    require(runtime.start(), "start SkyCore without a saved config or a ground client");
+    const auto config = runtime.currentConfig();
+    require(config.sensor_transport_path == SensorTransportPath::FpgaRelay && config.fpga.enabled,
+            "first hardware startup selects the FPGA relay");
+    waitUntil([&] { return runtime.currentFpgaStatus().value("ready").toBool(); },
+              "first hardware startup completes the FPGA handshake without a ground command");
+    runtime.stop();
+}
+
 static void ai8FaultStatusTest()
 {
     namespace Ai8 = VaporView::Ai8TemperatureControllerProtocol;
@@ -365,7 +383,10 @@ int main(int argc,char **argv)
         storageFailureContextTest(false, false, true);
         return 0;
     }
-    if (!app.arguments().contains("--discovery-only")) asyncConnectionLogTest();
+    if (!app.arguments().contains("--discovery-only")) {
+        firstStartFpgaTest();
+        asyncConnectionLogTest();
+    }
     QTemporaryDir directory; require(directory.isValid(),"isolated config directory");
     auto config=SkyConfig::defaults(); config.fpga.enabled=true; config.fpga.locator="mock";
     const bool discoveryOnly=app.arguments().contains("--discovery-only");
