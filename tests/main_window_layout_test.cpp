@@ -1878,9 +1878,12 @@ void requireRtkSidebarPage(
     clickWidgetAt(guideNode, guideCenter, 0);
     QApplication::sendEvent(guideNode, &guideLeave);
     hoverGuide(otherGuideNode);
+    clickWidgetAt(pageStack, pageStack->rect().center(), 0);
+    QEvent deactivate(QEvent::WindowDeactivate);
+    QApplication::sendEvent(&window, &deactivate);
     guideText = visibleGuide();
     require(guideText && guideText->text() == generationGuide,
-            "click pins the guide across pointer leave and hover on a different node");
+            "pinned guide survives clicks and focus changes away from the node");
     clickWidgetAt(guideNode, guideCenter, 0);
     hoverGuide(guideNode);
     require(!visibleGuide(), "second click closes the pinned guide without immediate hover reopening");
@@ -1896,11 +1899,9 @@ void requireRtkSidebarPage(
     require(!visibleGuide(), "Space also closes the pinned guide");
 
     clickWidgetAt(guideNode, guideCenter, 0);
-    clickWidgetAt(pageStack, pageStack->rect().center(), 0);
-    require(!visibleGuide(), "clicking outside the path node closes the pinned guide");
-
-    clickWidgetAt(guideNode, guideCenter, 0);
-    require(visibleGuide(), "calibration guide can be pinned again");
+    clickWidgetAt(otherGuideNode, otherGuideNode->rect().center(), 0);
+    require(visibleGuide() && visibleGuide()->text().contains(QStringLiteral("创建任务")),
+            "clicking another node switches the fixed guide to that step");
     pageStack->setCurrentIndex(0);
     processEventsFor(60);
     require(!visibleGuide(), "leaving the calibration page closes the pinned guide");

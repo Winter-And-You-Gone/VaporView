@@ -30,6 +30,7 @@
 #include <QSignalBlocker>
 #include <QScopeGuard>
 #include <QSpinBox>
+#include <QStyle>
 #include <QSplitter>
 #include <QTabWidget>
 #include <QTableWidget>
@@ -104,26 +105,17 @@ std::array<bool, StepGuides.size()> completedSteps(const CalibrationProject& pro
             fitted, fitted && project.fileGenerated};
 }
 
-QPixmap stepIndicator(QWidget *widget, bool completed, bool dark)
+QPixmap stepIndicator(QToolButton *button, bool completed, bool dark)
 {
-    const int size = widget->width();
-    const qreal dpr = widget->devicePixelRatioF();
+    const int size = button->iconSize().width();
+    const qreal dpr = button->devicePixelRatioF();
     QPixmap icon(qRound(size * dpr), qRound(size * dpr));
     icon.setDevicePixelRatio(dpr);
     icon.fill(Qt::transparent);
     QPainter painter(&icon);
     painter.setRenderHint(QPainter::Antialiasing);
     const auto color = appThemeColor(completed ? AppThemeColor::HomeDeviceSuccess : AppThemeColor::HomeDeviceDanger, dark);
-    const qreal inset = size / 10.0;
-    const QRectF circle(inset, inset, size - 2 * inset, size - 2 * inset);
-    painter.setPen(QPen(color, 1.5));
-    painter.setBrush(appThemeColor(completed ? AppThemeColor::HomeDeviceSuccessBackground
-                                             : AppThemeColor::HomeDeviceDangerBackground, dark));
-    painter.drawEllipse(circle);
-    const qreal glyphSize = size * 0.63;
-    const qreal glyphInset = (size - glyphSize) / 2.0;
-    painter.translate(glyphInset, glyphInset);
-    painter.scale(glyphSize / 24, glyphSize / 24);
+    painter.scale(size / 24.0, size / 24.0);
     painter.setPen(QPen(color, 2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
     // Paths from the bundled Lucide check.svg and x.svg (24-unit view box).
     if (completed) {
@@ -214,7 +206,7 @@ WaterCalibrationPage::WaterCalibrationPage(QWidget *parent,const QString& root,s
         auto *node = new QToolButton(steps);
         node->setObjectName(QStringLiteral("calibrationStep%1").arg(i + 1));
         node->setProperty("_vv_tooltip_pinnable", true);
-        node->setFocusPolicy(Qt::StrongFocus);
+        node->setFocusPolicy(Qt::TabFocus);
         node->setCursor(Qt::PointingHandCursor);
         node->setToolTipDuration(20000);
         s.stepNodes[i] = node;
@@ -421,6 +413,8 @@ void WaterCalibrationPage::refreshSteps(bool force)
         const auto previous = node->property("completed");
         if (!force && previous.isValid() && previous.toBool() == completed[i]) continue;
         node->setProperty("completed", completed[i]);
+        node->style()->unpolish(node);
+        node->style()->polish(node);
         node->setIcon(QIcon(stepIndicator(node, completed[i], s.dark)));
         const auto title = QStringLiteral("步骤 %1 · %2").arg(i + 1).arg(StepGuides[i].title);
         const auto status = completed[i] ? QStringLiteral("已完成") : QStringLiteral("未完成");
@@ -452,8 +446,10 @@ void WaterCalibrationPage::setTheme(bool dark,int percent)
         "QWidget#waterCalibrationPage QPushButton:pressed { background-color: @vv-primary-pressed; }"
         "QWidget#waterCalibrationPage QPushButton:disabled { background-color: @vv-border-strong; color: @vv-white; }"
         "QWidget#waterCalibrationPage QPushButton:focus { border: 1px solid @vv-focus; }"
-        "QWidget#calibrationStepPath QToolButton { background: transparent; border: none; border-radius: 4px; margin: 0; padding: 0; }"
-        "QWidget#calibrationStepPath QToolButton:focus { background: @vv-primary-subtle; }"
+        "QWidget#calibrationStepPath QToolButton { background-color: @vv-hd-bad-bg; border: 1px solid @vv-hd-bad; border-radius: 7px; padding: 2px; }"
+        "QWidget#calibrationStepPath QToolButton[completed=\"true\"] { background-color: @vv-hd-ok-bg; border-color: @vv-hd-ok; }"
+        "QWidget#calibrationStepPath QToolButton:hover, QWidget#calibrationStepPath QToolButton:focus { background-color: @vv-primary-subtle; border-color: @vv-border-strong; }"
+        "QWidget#calibrationStepPath QToolButton:pressed { border-color: @vv-primary; }"
         "QWidget#waterCalibrationPage QTableWidget, QWidget#waterCalibrationPage QPlainTextEdit { background: @vv-surface; alternate-background-color: @vv-surface-alt; color: @vv-text; gridline-color: @vv-border; }"
         "QWidget#waterCalibrationPage QHeaderView::section { background: @vv-surface-alt; color: @vv-text; padding: 4px; }"
         "QWidget#waterCalibrationPage QLineEdit, QWidget#waterCalibrationPage QComboBox, QWidget#waterCalibrationPage QAbstractSpinBox { background-color: @vv-field-bg; border: 1px solid @vv-border; border-radius: 6px; padding: 4px 10px; min-height: %6px; max-height: %6px; color: @vv-text; font-size: %2px; }"
@@ -477,9 +473,8 @@ void WaterCalibrationPage::setTheme(bool dark,int percent)
     for(auto *combo:findChildren<QComboBox*>())configureComboBoxPopup(combo,dark);
     state_->dark = dark;
     for (auto *node : state_->stepNodes) {
-        const QSize size(pixels(28), pixels(28));
-        node->setFixedSize(size);
-        node->setIconSize(size);
+        node->setFixedSize(pixels(32), pixels(32));
+        node->setIconSize(QSize(pixels(18), pixels(18)));
     }
     for (auto *link : state_->stepLinks) link->setFixedSize(pixels(44), pixels(2));
     refreshSteps(true);
