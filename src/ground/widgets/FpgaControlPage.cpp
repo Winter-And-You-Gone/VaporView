@@ -524,6 +524,15 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout) : Q
                        QStringLiteral("sliders-vertical"), !motionLayout);
     motorCard_ = static_cast<QFrame *>(motor->parentWidget());
     motorCard_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    auto *motorHeader = motorCard_->findChild<QWidget *>(QStringLiteral("sectionTitleBar"), Qt::FindDirectChildrenOnly);
+    auto *showReadbacks = new QPushButton(motorHeader);
+    showReadbacks->setObjectName("fpgaMotorShowReadbacks");
+    showReadbacks->setCheckable(true);
+    showReadbacks->setCursor(Qt::PointingHandCursor);
+    showReadbacks->setFocusPolicy(Qt::TabFocus);
+    label(showReadbacks, QStringLiteral("显示寄存器读回"), QStringLiteral("Show register readbacks"));
+    static_cast<QHBoxLayout *>(motorHeader->layout())->addWidget(showReadbacks, 0, Qt::AlignVCenter);
+
     auto *motorGrid = new QGridLayout(motor);
     motorGrid->setContentsMargins(12, 10, 12, 12);
     motorGrid->setSpacing(8);
@@ -531,8 +540,8 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout) : Q
     motorGrid->setColumnStretch(1, 1);
     auto *frequency = number(motorGrid, 0, "步进频率 / Hz (20..400)", "fpgaMotorFrequency", 20, 400, 100,
                              0, "Step frequency / Hz (20..400)");
-    auto *steps = number(motorGrid, 1, "相对运动脉冲数 (±1..5000，正值向上接入)", "fpgaMotorSteps", -5000, 5000, 40,
-                         0, "Relative move (±1..5000 pulses)");
+    auto *steps = number(motorGrid, 1, "相对运动脉冲数 (±1..5000，正值移入，负值移出)", "fpgaMotorSteps", -5000, 5000, 40,
+                         0, "Relative move (±1..5000 pulses, positive: move in, negative: move out)");
     operation(motorGrid, 2, 0, "应用电机参数并停用", "Configure and disable", "fpgaMotorConfigure",
               [frequency] { return QJsonObject{{"op","motor_config"},{"frequency",frequency->value()}}; });
     operation(motorGrid, 2, 1, "启用电机", "Enable motor", "fpgaMotorEnable",
@@ -551,16 +560,12 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout) : Q
     motorStatus_->setWordWrap(true); motorGrid->addWidget(motorStatus_, 5, 0, 1, 2);
     motorProgress_ = new QLabel(motor); motorProgress_->setObjectName("fpgaMotorProgress");
     motorProgress_->setWordWrap(true); motorGrid->addWidget(motorProgress_, 6, 0, 1, 2);
-    auto *showReadbacks = new FpgaCheckBox(motor);
-    showReadbacks->setObjectName("fpgaMotorShowReadbacks");
-    label(showReadbacks, QStringLiteral("显示寄存器读回"), QStringLiteral("Show register readbacks"));
-    motorGrid->addWidget(showReadbacks, 7, 0, 1, 2);
     auto *motorReadbacks = new QWidget(motor);
     auto *readbackGrid = new QGridLayout(motorReadbacks);
     readbackGrid->setContentsMargins(0, 0, 0, 0);
-    motorGrid->addWidget(motorReadbacks, 8, 0, 1, 2);
+    motorGrid->addWidget(motorReadbacks, 7, 0, 1, 2);
     motorReadbacks->hide();
-    connect(showReadbacks, &QCheckBox::toggled, motorReadbacks, &QWidget::setVisible);
+    connect(showReadbacks, &QPushButton::toggled, motorReadbacks, &QWidget::setVisible);
     readbacks(readbackGrid,0,{{0x6704,"电机控制","Motor control"},{0x6708,"电机状态","Motor status"},{0x670c,"电机错误","Motor errors"},
         {0x6714,"当前步进频率","Actual step frequency"},{0x6718,"固定 50% 占空比半周期 / tick","Fixed 50% duty half-period / ticks"},{0x671c,"固定 10 ms 方向建立时间 / tick","Fixed 10 ms direction setup / ticks"},
         {0x6724,"输出脉冲软件位置（非机械位置）","Software pulse position (not mechanical position)"},{0x6728,"剩余脉冲","Remaining pulses"},{0x6730,"固定极性 4（EN 高为禁用）","Fixed polarity 4 (EN high disables)"},
@@ -1115,8 +1120,12 @@ void FpgaControlPage::setTheme(bool dark,int fontScalePercent){
         "QWidget#fpgaCardBody { background-color: @vv-surface-raised; border: none; border-bottom-left-radius: 11px; border-bottom-right-radius: 11px; }"
         "QLabel { background-color: transparent; border: none; color: @vv-text; }"
         "QLabel#sectionTitleLabel { font-size: %2px; font-weight: 700; padding: 0; margin: 0; }"
-        "QLabel[fpgaSecondaryText=\"true\"] { color: @vv-text-secondary; font-weight: 400; }")
-        .arg(pixels(40)).arg(pixels(16)), dark);
+        "QLabel[fpgaSecondaryText=\"true\"] { color: @vv-text-secondary; font-weight: 400; }"
+        "QPushButton#fpgaMotorShowReadbacks { background-color: @vv-surface-alt; color: @vv-text; border: 1px solid @vv-border; border-radius: 6px; padding: 0 %4px; min-height: %3px; max-height: %3px; }"
+        "QPushButton#fpgaMotorShowReadbacks:hover { background-color: @vv-surface; color: @vv-primary; }"
+        "QPushButton#fpgaMotorShowReadbacks:checked { background-color: @vv-primary-subtle; color: @vv-primary; border-color: @vv-primary; }"
+        "QPushButton#fpgaMotorShowReadbacks:focus { border-color: @vv-primary; }")
+        .arg(pixels(40)).arg(pixels(16)).arg(pixels(28)).arg(pixels(10)), dark);
     if (!isAncestorOf(motorCard_)) {
         motorCard_->setPalette(appThemePalette(dark, motorCard_->palette()));
         motorCard_->setStyleSheet(cardStyle);

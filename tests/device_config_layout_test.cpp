@@ -589,12 +589,17 @@ int main(int argc, char **argv)
         const int summaryWidth = linkStatusCard->minimumSizeHint().width() + contentMargins.left() + contentMargins.right();
         require(scrollArea->widget()->width() <= std::max(scrollArea->viewport()->width(), summaryWidth) + 2,
                 "stacked cards do not make the page wider than the telemetry summary requires");
-        auto *showReadbacks = stepperCard->findChild<QCheckBox *>(QStringLiteral("fpgaMotorShowReadbacks"));
+        auto *stepperHeader = stepperCard->findChild<QWidget *>(QStringLiteral("sectionTitleBar"), Qt::FindDirectChildrenOnly);
+        require(stepperHeader, "the stepper card has a title bar");
+        auto *showReadbacks = stepperHeader->findChild<QPushButton *>(QStringLiteral("fpgaMotorShowReadbacks"));
         auto *readback = stepperCard->findChild<QLabel *>(QStringLiteral("fpgaRegister6708"));
-        require(showReadbacks && readback && !readback->isVisible(), "motor readbacks start collapsed");
+        require(showReadbacks && showReadbacks->isVisible() && showReadbacks->isCheckable() && !showReadbacks->isChecked() &&
+                    readback && !readback->isVisible(), "stepper readback navigation is available in the header and starts collapsed");
         showReadbacks->click();
-        require(readback->isVisible(), "the stepper subcard can show register readbacks");
+        require(showReadbacks->isChecked() && readback->isVisible() && stepper->isVisible(),
+                "register readbacks expand below the motor controls");
         showReadbacks->click();
+        require(!showReadbacks->isChecked() && !readback->isVisible(), "the header toggle also collapses the readbacks");
         window.close();
         VaporView::setSettingsWritesSuspended(false);
         return 0;
