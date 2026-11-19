@@ -1,0 +1,9 @@
+# Windows SDK 随附的 Qt Core
+
+`bin/Qt6Core.dll` 来自 Qt @Qt6_VERSION@。Qt 版权所有者为 The Qt Company Ltd. 及其他贡献者。本开发包按 GNU LGPL 第 3 版动态分发该库。完整许可见本目录的 `LGPL-3.0.txt` 和 `VaporView-GPL-3.0.txt`，Qt Core 所含第三方组件的声明见 `qtcore/`。
+
+接收者可以替换此 DLL，并为调试对库所作的修改进行逆向工程。在关闭宿主程序后，将同架构、二进制兼容的 Qt Core 动态库放入 `bin/`，重新启动宿主即可使用替换后的库。
+
+本次开发包使用 Qt 官方未修改的 Windows 构建。对应源码归档为 `qtbase-everywhere-src-@Qt6_VERSION@.tar.xz`。分发 Windows 二进制开发包时，请在同一交付位置向接收者提供该源码归档或等效的对应源码获取服务。[Qt @Qt6_VERSION@ 对应源码](https://download.qt.io/archive/qt/@Qt6_VERSION_MAJOR@.@Qt6_VERSION_MINOR@/@Qt6_VERSION@/submodules/qtbase-everywhere-src-@Qt6_VERSION@.tar.xz)
+
+VaporView 自身随附仓库的 GPL 第 3 版许可证。请保留开发包对应的 VaporView 源码版本与下游署名材料。[VaporView 源码](https://github.com/Winter-And-You-Gone/VaporView)

@@ -1,4 +1,5 @@
 #include <vaporview/SessionSdk.h>
+#include <vaporview/SessionSdkC.h>
 
 #include <QCoreApplication>
 #include <QCryptographicHash>
@@ -41,7 +42,7 @@ QByteArray fileHeader(quint16 source)
     return bytes;
 }
 
-void addRecord(QByteArray& bytes, quint16 source, quint16 type, quint64 seq, const QByteArray& payload)
+void addRecord(QByteArray& bytes, quint16 source, quint16 type, quint64 seq, const QByteArray& payload, quint32 flags = 0)
 {
     append<quint32>(bytes, 0x44525756);
     append<quint32>(bytes, 36);
@@ -49,7 +50,7 @@ void addRecord(QByteArray& bytes, quint16 source, quint16 type, quint64 seq, con
     append<quint32>(bytes, quint32(payload.size()));
     append(bytes, source);
     append(bytes, type);
-    append<quint32>(bytes, 0);
+    append(bytes, flags);
     append(bytes, seq);
     bytes += payload;
 }
@@ -149,13 +150,103 @@ bool verifyConcentrations(const QDir& source, const QDir& output)
     return true;
 }
 
+bool verifyCAbi(const QDir& source, const QDir& output, const QByteArray& sensors, const QByteArray& waves)
+{
+    VERIFY(vv_session_abi_version() == VV_SESSION_ABI_VERSION && QByteArray(vv_session_version()) == version().toUtf8());
+    const QByteArray path = source.absolutePath().toUtf8();
+    vv_session *opened = nullptr;
+    char *message = nullptr;
+    const auto status = vv_session_open(path.constData(), &opened, &message);
+    const std::unique_ptr<char, decltype(&vv_session_free_string)> openMessage(message, vv_session_free_string);
+    std::unique_ptr<vv_session, decltype(&vv_session_close)> session(opened, vv_session_close);
+    VERIFY(status == VV_SESSION_OK && session && openMessage);
+
+    char *json = nullptr;
+    VERIFY(vv_session_metadata(session.get(), &json, &message) == VV_SESSION_OK && !message);
+    QByteArray metadata(json);
+    vv_session_free_string(json);
+    VERIFY(!QJsonDocument::fromJson(metadata).object()["manifest_present"].toBool(true));
+    VERIFY(vv_session_categories(session.get(), &json, nullptr) == VV_SESSION_OK);
+    QByteArray categoriesJson(json);
+    vv_session_free_string(json);
+    const auto categories = QJsonDocument::fromJson(categoriesJson).array();
+    VERIFY(categories.contains("waveforms") && categories.contains("sensors") && !categories.contains("concentrations"));
+
+    struct Visit {
+        uint64_t seen = 0;
+        bool matched = true;
+        bool cancel = false;
+    } visit;
+    const vv_session_visitor visitor = [](const vv_session_record *record, void *user) -> int32_t {
+        auto& state = *static_cast<Visit *>(user);
+        const auto fields = QJsonDocument::fromJson(record->fields_json).object();
+        state.matched = state.matched && record->timestamp_us == timeUs && record->ordinal == state.seen &&
+                        record->has_sequence == 0 && fields["nav_lat_deg"] == (state.seen == 0 ? "23.2" : "23.3");
+        ++state.seen;
+        return !state.cancel;
+    };
+    uint64_t count = 0;
+    VERIFY(vv_session_visit(session.get(), "sensors", timeUs, timeUs, visitor, &visit, &count, nullptr) == VV_SESSION_OK);
+    VERIFY(visit.matched && visit.seen == 2 && count == 2);
+    visit = {0, true, true};
+    VERIFY(vv_session_visit(session.get(), "sensors", 0, UINT64_MAX, visitor, &visit, &count, nullptr) == VV_SESSION_CANCELLED);
+    VERIFY(visit.matched && visit.seen == 1 && count == 0);
+    VERIFY(vv_session_visit(session.get(), "concentrations", 0, UINT64_MAX, visitor, &visit, &count, nullptr) == VV_SESSION_MISSING);
+    VERIFY(vv_session_visit(session.get(), "sensors", 3, 2, visitor, &visit, &count, nullptr) == VV_SESSION_INVALID_ARGUMENT);
+    VERIFY(vv_session_open("\xc0\xaf", &opened, nullptr) == VV_SESSION_INVALID_ARGUMENT && !opened);
+
+    const auto destination = output.absolutePath().toUtf8();
+    VERIFY(vv_session_export(session.get(), "sensors", 0, UINT64_MAX, destination.constData(), &count, nullptr) == VV_SESSION_OK);
+    QFile exported(output.filePath("sensors.csv"));
+    VERIFY(count == 3 && exported.open(QIODevice::ReadOnly) && exported.readAll() == sensors);
+
+    vv_session_waveform *frame = nullptr;
+    VERIFY(vv_session_read_waveform(session.get(), 0, &frame, nullptr) == VV_SESSION_OK);
+    std::unique_ptr<vv_session_waveform, decltype(&vv_session_free_waveform)> waveform(frame, vv_session_free_waveform);
+    session.reset();
+    vv_session_waveform_view view{};
+    VERIFY(vv_session_waveform_data(waveform.get(), &view) == VV_SESSION_OK);
+    VERIFY(view.record.has_sequence == 1 && view.record.sequence == sequence && view.record.timestamp_us == timeUs);
+    VERIFY(view.h1_count == points && view.h2_count == points && view.h1[0] == 16777217 && view.h2[points - 1] == -300099);
+    VERIFY(!view.raw && view.raw_count == 0 && !view.harmonic && view.harmonic_count == 0);
+
+    // A TCP frame carries independent float32 RAW and harmonic components. Leave an
+    // incomplete record at the end to check the success-with-warning contract.
+    QByteArray tcp = fileHeader(5);
+    QByteArray payload;
+    append<quint32>(payload, 4);
+    append<quint32>(payload, 4);
+    append<quint32>(payload, 0x3fa00000); // 1.25
+    append<quint32>(payload, 0xc0200000); // -2.5
+    addRecord(tcp, 5, 1, sequence, payload, 257);
+    tcp += tcp.mid(20).chopped(1);
+    const auto waveformPath = source.filePath("raw/waveform.dat");
+    VERIFY(write(waveformPath, tcp));
+    VERIFY(vv_session_open(path.constData(), &opened, nullptr) == VV_SESSION_OK);
+    session.reset(opened);
+    VERIFY(vv_session_read_waveform(session.get(), 0, &frame, &message) == VV_SESSION_OK);
+    waveform.reset(frame);
+    const QByteArray warning(message);
+    vv_session_free_string(message);
+    VERIFY(warning.contains("Truncated final raw DAT record payload"));
+    VERIFY(vv_session_waveform_data(waveform.get(), &view) == VV_SESSION_OK);
+    VERIFY(view.raw_count == 1 && view.harmonic_count == 1 && view.raw[0] == 1.25f && view.harmonic[0] == -2.5f);
+    VERIFY(!view.h1 && view.h1_count == 0 && !view.h2 && view.h2_count == 0);
+    session.reset();
+    VERIFY(write(waveformPath, waves));
+    return true;
+}
+
 bool verify()
 {
     QTemporaryDir temporary;
     VERIFY(temporary.isValid());
     QDir root(temporary.path());
-    VERIFY(root.mkpath("source/raw") && root.mkpath("source/sensors") && root.mkdir("out"));
-    QDir source(root.filePath("source"));
+    const auto sourceName = QStringLiteral("source-\u4f1a\u8bdd");
+    VERIFY(root.mkpath(sourceName + "/raw") && root.mkpath(sourceName + "/sensors") && root.mkdir("out"));
+    const auto cOutputName = QStringLiteral("out-\u5bfc\u51fa");
+    VERIFY(root.mkdir(cOutputName));
+    QDir source(root.filePath(sourceName));
     QDir output(root.filePath("out"));
     const QByteArray sensors = "record_timestamp_us,nav_lat_deg,hc2a_temperature_c,hc2a_humidity_rh,ptb_pressure_hpa,sdfm300_distance_m\n"
         "1770000000000123,23.2,27.01,30.04,1001.23,1.3\n"
@@ -174,6 +265,7 @@ bool verify()
         "host_time_us,epsilon_time_us,original_point_count,search_start_index,search_end_index,channel_id,peak,mean,rms,peak_index,peak_x,min_value,max_value,quality_flags,source,component,algorithm_version,cycle_id,segment_id,fpga_tick,waveform_sequence\n"
         "1770000000000123,0,300000,0,0,48,0.25,0.2,0.3,7,7,0.1,0.25,1,fpga,H2/H1,1,77,3,100200300400,9007199254741001\n";
     VERIFY(write(source.filePath("sensors/waveform_features.csv"), features));
+    VERIFY(verifyCAbi(source, QDir(root.filePath(cOutputName)), sensors, waves));
 
     Reader reader;
     VERIFY(reader.open(source.absolutePath()));

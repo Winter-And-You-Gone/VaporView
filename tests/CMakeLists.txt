@@ -793,6 +793,13 @@ target_link_libraries(session_core_test PRIVATE vaporview_ground_session_core)
 vaporview_add_test(NAME session_core_test COMMAND session_core_test)
 vaporview_add_test(NAME session_sdk_test COMMAND session_sdk_test)
 set_tests_properties(session_sdk_test PROPERTIES LABELS "fast;unit;session" TIMEOUT 60)
+if(Python3_Interpreter_FOUND AND Python3_VERSION VERSION_GREATER_EQUAL 3.8)
+    vaporview_add_test(NAME session_sdk_python_test
+        COMMAND ${Python3_EXECUTABLE} -B "${CMAKE_CURRENT_SOURCE_DIR}/session_sdk_python_test.py")
+    set_tests_properties(session_sdk_python_test PROPERTIES
+        ENVIRONMENT "PYTHONPATH=${CMAKE_SOURCE_DIR}/sdk/session/python;VAPORVIEW_TEST_SESSION_SDK_LIBRARY=$<TARGET_FILE:vaporview_session_sdk>"
+        LABELS "fast;unit;session" TIMEOUT 60)
+endif()
 
 add_executable(session_format_test
     ${CMAKE_CURRENT_SOURCE_DIR}/session_format_test.cpp

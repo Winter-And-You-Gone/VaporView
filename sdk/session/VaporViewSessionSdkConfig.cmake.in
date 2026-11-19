@@ -1,6 +1,27 @@
 @PACKAGE_INIT@
 
-include(CMakeFindDependencyMacro)
-find_dependency(Qt6 @Qt6_VERSION@ COMPONENTS Core)
-include("${CMAKE_CURRENT_LIST_DIR}/VaporViewSessionSdkTargets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/VaporViewSessionSdkBinaryTargets.cmake")
+if(NOT TARGET VaporView::SessionSdkC)
+    add_library(VaporView::SessionSdkC INTERFACE IMPORTED)
+    set_property(TARGET VaporView::SessionSdkC PROPERTY
+        INTERFACE_LINK_LIBRARIES VaporViewBinary::SessionSdk)
+endif()
+set(VaporViewSessionSdk_C_FOUND TRUE)
+
+# An explicit C component never searches for Qt. Legacy consumers used
+# find_package without components and still get the Qt target when available.
+if("Qt" IN_LIST VaporViewSessionSdk_FIND_COMPONENTS OR
+   (NOT VaporViewSessionSdk_FIND_COMPONENTS AND CMAKE_CXX_COMPILER_LOADED))
+    find_package(Qt6 @Qt6_VERSION@ QUIET COMPONENTS Core)
+    if(Qt6_FOUND AND TARGET Qt6::Core)
+        if(NOT TARGET VaporView::SessionSdk)
+            include("${CMAKE_CURRENT_LIST_DIR}/VaporViewSessionSdkTargets.cmake")
+            set_target_properties(VaporView::SessionSdk PROPERTIES
+                INTERFACE_LINK_LIBRARIES Qt6::Core INTERFACE_COMPILE_FEATURES cxx_std_17)
+        endif()
+        set(VaporViewSessionSdk_Qt_FOUND TRUE)
+    else()
+        set(VaporViewSessionSdk_Qt_FOUND FALSE)
+    endif()
+endif()
 check_required_components(VaporViewSessionSdk)

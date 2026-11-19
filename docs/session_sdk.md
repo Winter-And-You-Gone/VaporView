@@ -1,34 +1,67 @@
-# VaporView Session SDK 1.0
+# VaporView Session SDK 1.1
 
-SDK 提供 C++17 只读接口，适用于已完成的机载或地面 Session。程序按 Session 实际保存的文件发现数据类别。机载完整采集通常同时保存设备汇总、原始设备 DAT、TCP 波形或 FPGA 成对波形及周期特征。地面 Session 保存的类别取决于当次连接、录制选项与接收的数据。未保存的流在 `categories()` 中缺席，预先创建的零记录流可能存在并返回零条。SDK 不补录缺失的测量结果。
+外部开发者可以用普通 C、C++ 或 Python 读取已完成的机载和地面 Session。Windows x64 开发包自带 SDK 和 Qt Core 运行库。使用标准 C 接口或 Python 封装时，开发机无需安装 Qt。已使用 Qt 的 C++17 程序可继续调用原有的 `Reader`。操作人员可直接在上位机的 Session 查看器导出数据。
 
-## 安装与独立调用
+## 普通 C 或 C++ 工程
 
-从已完成的 Release 构建中安装 SDK 组件。
+解压 Windows x64 开发包到任意目录，例如 `C:/SessionSdk`。用 x64 编译器打开开发终端，以下命令可同时编译包内的 C 和 C++ 示例。Windows 上需有匹配的 Microsoft Visual C++ x64 运行库。[微软运行库下载](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist)
 
 ```powershell
-cmake --install X:/Project/GPS/VaporView/build/Release --config Release --component VaporViewSessionSdk --prefix C:/SessionSdk
-cmake -S C:/SessionSdk/share/VaporViewSessionSdk/example -B C:/SessionExample -DCMAKE_PREFIX_PATH="C:/SessionSdk;F:/Qt/6.10.1/msvc2022_64"
-cmake --build C:/SessionExample --config Release
-$env:Path = "C:/SessionSdk/bin;F:/Qt/6.10.1/msvc2022_64/bin;" + $env:Path
-C:/SessionExample/Release/vaporview_session_example.exe D:/Recordings/Run001 list
+cmake -S C:/SessionSdk/share/VaporViewSessionSdk/example_c -B C:/SessionExample -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=C:/SessionSdk
+cmake --build C:/SessionExample
+$env:Path = "C:/SessionSdk/bin;" + $env:Path
+C:/SessionExample/vaporview_session_c_example.exe D:/Recordings/Run001 list
+C:/SessionExample/vaporview_session_cpp_example.exe D:/Recordings/Run001 list
 ```
 
-示例路径中的 Qt 目录请按安装环境替换。Windows 使用和 SDK 一致的位数、编译器 ABI、运行库和配置。SDK 动态链接 Qt 6 Core，要求和构建 SDK 的 Qt 兼容。运行时需能加载 SDK 和 Qt6Core 的动态库及其运行库依赖。组件包含公共头、动态库、导入库（Windows）、CMake 包和示例源码，Qt 由使用方提供。单配置生成器通常把示例直接输出到构建目录。
+在自己的项目中包含 `<vaporview/SessionSdkC.h>`。CMake 仅需以下两行。直接用 MSVC 时，将包的 `include` 加入包含路径，将 `lib/vaporview_session_sdk.lib` 加入链接输入。部署应用时，可以将包内两个 DLL 放在可执行文件旁边。
 
 ```cmake
-find_package(VaporViewSessionSdk 1.0 CONFIG REQUIRED)
-target_link_libraries(my_program PRIVATE VaporView::SessionSdk)
+find_package(VaporViewSessionSdk 1.1 CONFIG REQUIRED COMPONENTS C)
+target_link_libraries(my_program PRIVATE VaporView::SessionSdkC)
 ```
 
 ```powershell
-vaporview_session_example D:/Recordings/Run001 query sensors 1770000000000123 1770000000000999
-vaporview_session_example D:/Recordings/Run001 frame 0
+C:/SessionExample/vaporview_session_c_example.exe D:/Recordings/Run001 query sensors 1770000000000123 1770000000000999
+C:/SessionExample/vaporview_session_c_example.exe D:/Recordings/Run001 frame 0
 New-Item -ItemType Directory -Force D:/Review/Run001
-vaporview_session_example D:/Recordings/Run001 export waveforms D:/Review/Run001
+C:/SessionExample/vaporview_session_c_example.exe D:/Recordings/Run001 export waveforms D:/Review/Run001 0 18446744073709551615
 ```
 
-## 调用约定
+标准 C ABI 当前为版本 1。路径和 JSON 为以 NUL 结尾的 UTF-8，时间戳和序号使用 64 位无符号整数。同步遍历回调返回 0 可提前结束；记录数统计已返回非零的回调。借用的记录仅在当前回调期间有效。元数据、类别和消息字符串用 `vv_session_free_string` 释放，波形分量指针在 `vv_session_free_waveform` 前有效。相同 Session 句柄上的调用须串行，回调内操作其他独立句柄即可。即使状态为成功，也要检查返回的警告字符串。
+
+## Python
+
+使用与 DLL 同架构的 Python 3.8 或以上版本。将包内的 `python` 加入导入路径即可，无需 pip 安装依赖。模块会从开发包内定位动态库。
+
+```powershell
+$env:PYTHONPATH = "C:/SessionSdk/python"
+python C:/SessionSdk/share/VaporViewSessionSdk/example_python/main.py D:/Recordings/Run001 list
+python C:/SessionSdk/share/VaporViewSessionSdk/example_python/main.py D:/Recordings/Run001 query sensors --limit 1
+```
+
+```python
+from vaporview_session import Session
+
+with Session(r"D:\Recordings\Run001") as session:
+    print(session.categories().value)
+    result = session.read_waveform(0)
+    if result.warning:
+        print(result.warning)
+    print(result.value.record.timestamp_us, len(result.value.raw), len(result.value.h1))
+```
+
+`visit` 在指定的闭区间内逐条调用 Python 函数。回调返回 `True` 继续，返回 `False` 停止。Python 记录及波形采样已复制，可在关闭 Session 后继续使用。`SessionError` 提供状态、消息及已处理记录数。`read_waveform`、`export` 等成功结果包含 `value` 与 `warning`；遍历的结果包含 `records`、`cancelled` 与 `message`。打开时的警告可从 `session.open_warning` 获取。
+
+## 现有 Qt 工程及打包
+
+原有 `find_package(VaporViewSessionSdk 1.0 CONFIG REQUIRED)` 和 `VaporView::SessionSdk` 接法可继续用于有匹配 Qt 6 Core 的 C++17 环境。新项目也可以显式请求 `COMPONENTS Qt`。Qt 示例位于 `share/VaporViewSessionSdk/example`。
+
+维护者可用 `cmake --install build/Release --config Release --component VaporViewSessionSdk --prefix <空目录>` 从 Release 构建组包，将该目录的内容压缩为 ZIP。Windows 组件包含与本次构建匹配的 Qt Core 动态库和许可材料。组包机需要相同版本 Qt Core 的 HTML 文档，另行安装时可用 `VAPORVIEW_QTCORE_DOC_DIR` 指定含有 `qtcore-attribution-*.html` 的目录。随包的 `share/VaporViewSessionSdk/licenses/QtRuntimeNotice.md` 记录对应 Qt 源码的获取与分发方式。
+
+## 读取及导出约定
+
+SDK 按实际保存的文件发现类别。机载完整采集通常同时保存设备汇总、原始设备 DAT、TCP 波形或 FPGA 成对波形及周期特征。地面 Session 的类别取决于当次连接、录制选项与接收的数据。预先创建的空数据流可以列出并返回零条。
 
 - 包含 `<vaporview/SessionSdk.h>`。用 `Reader::open(directory)` 打开独立 Session 目录。无清单的历史 Session 用可识别的源文件和历史别名定位。清单采用允许列表返回录制名称、录制侧、状态、起止 UTC、格式版本、声明计数及记录模式和频率。
 - `categories()` 列出文件存在的数据类别。用 `visit(category, range, visitor)` 遍历指定类别，时间范围两端均包含。顺序按该源存储顺序，同一时间戳的各条记录保留。当前统一波形包含多个通道时，按 DAT 的记录顺序遍历。历史 VLP1 波形按通道分组，区组内保留各通道记录顺序。

@@ -570,6 +570,8 @@ RTK 功能由 `src/RtkConfigDialog.cpp` 和 `src/RtkStreamService.cpp` 实现。
 
 ## 会话记录
 
+外部开发者可用 Session SDK 的标准 C 接口或 Python `ctypes` 模块读取和导出已完成的 Session。Windows x64 开发包自带 Qt Core 运行库，普通 C/C++ 和 Python 工程无需安装 Qt 开发工具。示例和字段说明见 [Session SDK 开发者指南](docs/session_sdk.md)。
+
 当前记录策略由主窗口手动控制：
 
 - 点击“连接”只连接设备，不自动开始记录。
