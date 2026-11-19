@@ -26,7 +26,7 @@ Session 同步仅针对已经落到地面端且结束写入的 Session（v1 `ses
 2. 在地面端关闭“界面测试模式”，打开天地链路。关闭开发者选项时，地面端默认进入远程模式，读回天空端配置前按 FPGA 显示。连接后采用 SkyCore 上报的连接方式。本例的 `--fpga-simulate-data` 让 SkyCore 启动时选择 FPGA 中转。若天空端当前为“直连”，在地面端的“开发者 → 开发者选项”显示标题栏模式开关，切换到“FPGA”，点击标题栏的“连接”。在“水汽定标”页确认“当前定标”显示与该模拟 FPGA 匹配的 `.vcal`，同时显示“设备在线”，再从网页启动记录。
 3. 地面端启动后默认监听 `127.0.0.1:8443`。同机测试可直接打开下一步的网页。需要修改监听地址或端口时，打开“数据 → Gateway 网关”修改并保存。手动关闭监听后，地面端会记住该选择。
 4. 同机测试时，在浏览器打开 `http://127.0.0.1:8443/`。局域网测试时，将监听 IP 改为**地面机**在测试局域网的网卡 IP，例如 `192.168.1.20`，在地面机防火墙为测试网放行该 TCP 端口，然后在测试机打开 `http://192.168.1.20:8443/`。如果修改了端口，浏览器地址也使用新端口。旧验证台的“4.19 地面网关入站测试”也可填这个地址，点击“打开入站测试页”。
-5. 打开首页即自动订阅。先看“机地数传”和“SkyCore 状态”，再看设备表中的 FPGA 状态。如果 SkyCore 已启用 FPGA 且设备未连接，在“机载 FPGA”点“连接 FPGA”。先核对最终回执，再确认设备表更新为“已连接”。
+5. 打开首页即自动订阅。先看“机地数传”和“SkyCore 状态”。下方“传感器读数”显示 HC2A 温湿度、PTB 气压、EPSILON 经纬度与高度、激光测距，以及这一帧的 UTC 时间。缺少有效数据时，对应位置显示 `—`。设备表只列采集设备。如果 SkyCore 已启用 FPGA 且设备未连接，在“机载 FPGA”点“连接 FPGA”。先核对最终回执，再确认设备表更新为“已连接”。
 6. 在“实时峰值趋势”选择 **816 nm（0x31）** 或 **1368 nm（0x30）**。最新峰值、采样时间（UTC）和质量位随实收样本更新。横轴为以最新样本为终点的 60 秒，纵轴为原生峰值（`native`）。带质量标记的峰值与无效样本单独标出。需要逐条对账时展开“实时明细”，可查看最近 50 条事件。手动断开 WS 后点“重新连接 WS”可恢复订阅。
 7. 点“启动／恢复记录”，等待“SkyCore 已应答”并核对上方“记录中”和 Session 名。采集数条测量后点“停止记录”，确认状态回到“停止”。要验证设备控制，可在停止录制后点“断开 FPGA”，观察设备表变为“未连接”，再点“连接 FPGA”，核对状态恢复且采样时间继续更新。命令 ID、最终回执序号和实际状态可一同填入 A.19。
 
@@ -34,18 +34,18 @@ Session 同步仅针对已经落到地面端且结束写入的 Session（v1 `ses
 
 ## 地面端入站 v1 接口
 
-入站使用明文 HTTP 和 WebSocket。仅在同机、可信测试局域网或专用 VPN 内开启监听。监听启用后，能访问该地址的测试机就可以提交本节列出的三种命令。地面机需要 Qt 6.10 或更新版本及匹配的 HttpServer、WebSockets 模块。[Qt HTTP Server 的安全说明](https://doc.qt.io/qt-6.10/qthttpserver-security.html)
+入站使用明文 HTTP 和 WebSocket。仅在同机、可信测试局域网或专用 VPN 内开启监听。监听启用后，能访问该地址的测试机就可以提交本节列出的五种命令。地面机需要 Qt 6.10 或更新版本及匹配的 HttpServer、WebSockets 模块。[Qt HTTP Server 的安全说明](https://doc.qt.io/qt-6.10/qthttpserver-security.html)
 
 网页、查询、命令和订阅使用同一地址及端口。HTTP 接口返回 UTF-8 JSON，每条 WebSocket 文本消息包含一条 JSON 事件。浏览器从地面网关首页调用同源接口。命令提交及 WebSocket 升级若携带 `Origin` 请求头，网关检查它是否与请求的 HTTP 来源匹配。
 
 | 方法与路径 | 返回内容 |
 | --- | --- |
 | `GET /` | 地面网关测试页，浏览器现场操作入口。 |
-| `GET /api/v1/status` | SkyCore 链路状态，最近一次设备和录制状态（收到后可用）。 |
+| `GET /api/v1/status` | SkyCore 链路状态，最近一次设备和录制状态，以及最新传感器读数 `sensors`。 |
 | `GET /api/v1/measurements/latest` | `deviceId`、`linkConnected` 和最近一次 `measurement`。启动或断线后尚无新测量时，`measurement` 为 `null`。 |
 | `POST /api/v1/commands` | 首次受理受支持的命令时，返回 HTTP 202 和 `status: "accepted"`。 |
 | `GET /api/v1/commands/<id>` | HTTP 200 返回命令当前状态或最终结果。未知 ID 返回 HTTP 404 和 `command-not-found`。 |
-| `WS /api/v1/stream` | 连接成功先送状态快照，再送实时测量和状态。升级路径错误返回 404，来源不匹配返回 403，订阅满额返回 503。 |
+| `WS /api/v1/stream` | 连接成功先送状态快照，再推送峰值、传感器读数和状态更新。升级路径错误返回 404，来源不匹配返回 403，订阅满额返回 503。 |
 
 ### 入站控制
 
@@ -77,11 +77,22 @@ Session 同步仅针对已经落到地面端且结束写入的 Session（v1 `ses
 
 | 字段 | 含义 |
 | --- | --- |
-| `kind` | `measurement` 或 `status`。 |
+| `kind` | `measurement` 为峰值，`sensors` 为传感器读数，`status` 为状态。 |
 | `deviceId`、`streamId`、`sequence`、`ingressDropped` | 设备标识、监听实例标识、实例内事件序号、该实例入口累计丢帧数，均为字符串。初始状态快照含 `snapshot:true`，序号为当时的流进度。 |
 | `frameSequence`、`timeUs` | 若事件源自 SkyCore 遥测，含原始帧序号和以十进制字符串表示的微秒帧时间。 |
 | `linkConnected`、`telemetryAvailable` | 状态事件中的机地链路连通性和最近一次 SkyCore 状态的可用性。有状态时另含 `recordingState`（0 停止、1 记录、2 暂停）、`sessionName` 和 `devices`；单设备行给出协议设备 ID、状态、错误码和计数。 |
+| `sensors` | HTTP 状态、WS 状态快照和 `sensors` 事件使用相同结构。见下表。 |
 | `source`、`channel`、`value`、`unit`、`valid`、`qualityFlags` | 测量来源、协议通道号、峰值、单位、有效性和原始质量位。单位为 `native`，即原始处理量纲。 |
+
+传感器读数来自 SkyCore 的 `TelemetryBasic`。网关在推送间隔内取最新一帧，每秒最多推送约 4 次。尚未收到基础遥测或机地断开时，整个 `sensors` 为 `null`。收到帧后，无有效读数的字段为 `null`，有效零值保留。
+
+| `sensors` 字段 | 单位或含义 |
+| --- | --- |
+| `hostTimeUs` | SkyCore 生成基础遥测帧的 UTC 时间，Unix 微秒，十进制字符串。 |
+| `temperatureC`、`humidityPercent` | HC2A 温度（°C）、相对湿度（% RH）。 |
+| `pressureHpa` | PTB 气压（hPa）。 |
+| `latitudeDeg`、`longitudeDeg`、`heightM` | EPSILON 纬度、经度（度）和高度（m）。 |
+| `lidarDistanceM` | 激光测距（m）。 |
 
 `fpga-cycle-feature` 使用 SkyCore 的 FPGA 全周期特征，另外含 `cycleId`、`hostTimeUs`、`validPoints`。其 `qualityFlags` 位掩码 1、2、4、8、16 对应非有限样本、无有效点、部分、溢出、连续性错误，存在有效点时仍可报告有质量标记的峰值。`waveform-feature` 的质量位为零且峰值有限时有效。无有效峰值时 `value` 为 `null`。两种来源均附带 `peakIndex`、`mean` 和 `rms`，非有限统计值为 `null`。
 

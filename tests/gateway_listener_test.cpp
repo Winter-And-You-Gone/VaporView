@@ -17,6 +17,7 @@
 #include <QWebSocket>
 
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 
@@ -116,7 +117,8 @@ try
         return false;
     };
     auto response = http("/api/v1/status");
-    require(response.code == 200 && response.body.value("linkConnected") == QJsonValue(false),
+    require(response.code == 200 && response.body.value("linkConnected") == QJsonValue(false) &&
+        response.body.value("sensors").isNull(),
         "status is available before SkyCore connects");
     require(http("/api/v1/measurements/latest").body.value("measurement").isNull(),
         "latest measurement is null before data");
@@ -181,6 +183,54 @@ try
     require(measurement.value("value").toDouble() == 21.25 && measurement.value("channel").toInt() == 0x30 &&
         measurement.value("unit") == QLatin1String("native") && measurement.value("frameSequence").toInt() == 6,
         "HTTP returns the same native-peak measurement");
+
+    TelemetryBasic basic;
+    basic.host_time_us = 1794614400000000ULL;
+    basic.validity_flags = BasicHasTemperature | BasicHasHumidity | BasicHasPressure | BasicHasPosition | BasicHasLidar;
+    basic.temperature_c = -2.5f;
+    basic.humidity_percent = 58.25f;
+    basic.pressure_hpa = 1013.25f;
+    basic.latitude_deg = 31.125;
+    basic.longitude_deg = 121.25;
+    basic.height_m = 10.5;
+    basic.lidar_distance_m = 2.75f;
+    const auto sendBasic = [&](quint32 sequence) {
+        aircraft->write(codec.encodeFrame(MsgType::TelemetryBasic, TelemetryCodec::serializeBasicTelemetry(basic),
+                                         sequence, basic.host_time_us));
+        require(waitUntil([&] { return events.last().value("kind") == QLatin1String("sensors") &&
+            events.last().value("frameSequence").toInteger() == sequence; }), "sensor update reaches WS");
+        return events.last().value("sensors").toObject();
+    };
+    auto sensors = sendBasic(50);
+    require(sensors.value("temperatureC") == QJsonValue(-2.5) && sensors.value("humidityPercent") == QJsonValue(58.25) &&
+        sensors.value("pressureHpa") == QJsonValue(1013.25) && sensors.value("latitudeDeg") == QJsonValue(31.125) &&
+        sensors.value("longitudeDeg") == QJsonValue(121.25) && sensors.value("heightM") == QJsonValue(10.5) &&
+        sensors.value("lidarDistanceM") == QJsonValue(2.75) && sensors.value("hostTimeUs") == QStringLiteral("1794614400000000"),
+        "valid measurements preserve SkyCore units and host time");
+    require(http("/api/v1/status").body.value("sensors").toObject() == sensors,
+        "HTTP and WS report the same latest sensor readings");
+    {
+        QJsonObject snapshot;
+        QWebSocket newSubscriber(base.toString());
+        newSubscriber.setProxy(QNetworkProxy::NoProxy);
+        QObject::connect(&newSubscriber, &QWebSocket::textMessageReceived, &newSubscriber, [&](const QString& text) {
+            snapshot = QJsonDocument::fromJson(text.toUtf8()).object();
+        });
+        newSubscriber.open(request(streamUrl, "/api/v1/stream"));
+        require(waitUntil([&] { return snapshot.value("snapshot").toBool(); }) &&
+            snapshot.value("sensors").toObject() == sensors, "new WS subscribers receive the latest readings in the snapshot");
+    }
+
+    basic.validity_flags = BasicHasHumidity | BasicHasPressure | BasicHasPosition;
+    basic.humidity_percent = 0.0f;
+    basic.pressure_hpa = std::numeric_limits<float>::quiet_NaN();
+    basic.latitude_deg = 91.0;
+    basic.host_time_us += 100000;
+    sensors = sendBasic(51);
+    require(sensors.value("temperatureC").isNull() && sensors.value("humidityPercent") == QJsonValue(0.0) &&
+        sensors.value("pressureHpa").isNull() && sensors.value("latitudeDeg").isNull() &&
+        sensors.value("longitudeDeg").isNull() && sensors.value("heightM").isNull() &&
+        sensors.value("lidarDistanceM").isNull(), "invalid, unflagged and missing data clears previous values while valid zero remains");
 
     QList<CommandMessage> forwarded;
     TelemetryCodec uplink;
@@ -359,6 +409,8 @@ try
     }), "WS reports the loss of the SkyCore link");
     require(http("/api/v1/measurements/latest").body.value("measurement").isNull(),
         "latest measurement clears on link disconnect");
+    require(events.last().value("sensors").isNull() && http("/api/v1/status").body.value("sensors").isNull(),
+        "WS and HTTP clear sensor readings on link disconnect");
     stream.close();
     require(waitUntil([&] { return stream.state() == QAbstractSocket::UnconnectedState; }), "WS disconnects");
     const auto beforeReconnect = events.size();

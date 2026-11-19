@@ -2,12 +2,15 @@
 
 #include "ground/gateway/GatewayService.h"
 
+#include <QElapsedTimer>
 #include <QHash>
 #include <QJsonObject>
 #include <QList>
 #include <QMutex>
 #include <QSet>
 #include <QTimer>
+
+#include <optional>
 
 class QHttpServer;
 class QHttpServerRequest;
@@ -22,6 +25,7 @@ struct GatewayListenerIngress
 {
     QMutex mutex;
     QList<TelemetryFrame> frames;
+    std::optional<TelemetryFrame> latestBasic;
     qsizetype bytes = 0;
     quint64 dropped = 0;
     quint64 linkRevision = 0;
@@ -59,6 +63,8 @@ private:
     std::unique_ptr<QHttpServer> server_;
     QJsonObject status_;
     QJsonObject measurement_;
+    QJsonValue sensors_{QJsonValue::Null};
+    QElapsedTimer sensorPublishTime_;
     QString streamId_;
     quint64 eventSequence_ = 0;
     quint64 linkRevision_ = 0;

@@ -38,6 +38,7 @@ using Method = QHttpServerRequest::Method;
 constexpr auto kStreamPath = "/api/v1/stream";
 constexpr qsizetype kQueuedBytes = 256 * 1024;
 constexpr int kMaxSubscribers = 16;
+constexpr int kSensorPublishIntervalMs = 250;
 constexpr int kMaxCommands = 4096;
 constexpr qint64 kRetentionMs = 24 * 60 * 60 * 1000;
 constexpr qint64 kMaxCommandLifetimeMs = 5 * 60 * 1000;
@@ -108,6 +109,26 @@ QJsonValue finiteValue(double value)
     return std::isfinite(value) ? QJsonValue(value) : QJsonValue(QJsonValue::Null);
 }
 
+QJsonObject sensorFields(const TelemetryBasic& basic)
+{
+    const auto reading = [&basic](TelemetryBasicValidityFlag flag, double value) {
+        return (basic.validity_flags & flag) != 0 ? finiteValue(value) : QJsonValue(QJsonValue::Null);
+    };
+    const bool positionValid = (basic.validity_flags & BasicHasPosition) != 0 &&
+        std::isfinite(basic.latitude_deg) && std::abs(basic.latitude_deg) <= 90.0 &&
+        std::isfinite(basic.longitude_deg) && std::abs(basic.longitude_deg) <= 180.0 &&
+        std::isfinite(basic.height_m);
+    const auto position = [positionValid](double value) {
+        return positionValid ? QJsonValue(value) : QJsonValue(QJsonValue::Null);
+    };
+    return {{"hostTimeUs", QString::number(basic.host_time_us)},
+            {"temperatureC", reading(BasicHasTemperature, basic.temperature_c)},
+            {"humidityPercent", reading(BasicHasHumidity, basic.humidity_percent)},
+            {"pressureHpa", reading(BasicHasPressure, basic.pressure_hpa)},
+            {"latitudeDeg", position(basic.latitude_deg)}, {"longitudeDeg", position(basic.longitude_deg)},
+            {"heightM", position(basic.height_m)}, {"lidarDistanceM", reading(BasicHasLidar, basic.lidar_distance_m)}};
+}
+
 // Bound kernel buffering before Qt hands the transport to a WebSocket.
 class GatewayTcpServer final : public QTcpServer
 {
@@ -149,10 +170,15 @@ QString GatewayListenerConfig::validationError() const
 
 void GatewayListenerIngress::enqueue(const TelemetryFrame& frame)
 {
-    if (frame.type != MsgType::TelemetryStatus && frame.type != MsgType::WaveformFeature &&
-        frame.type != MsgType::FpgaCycleFeature) return;
+    if (frame.type != MsgType::TelemetryBasic && frame.type != MsgType::TelemetryStatus &&
+        frame.type != MsgType::WaveformFeature && frame.type != MsgType::FpgaCycleFeature) return;
     const auto size = frame.payload.size() + 64;
     QMutexLocker lock(&mutex);
+    if (frame.type == MsgType::TelemetryBasic)
+    {
+        if (connected && size <= kQueuedBytes) latestBasic = frame;
+        return;
+    }
     if (frames.size() >= 256 || size + bytes > kQueuedBytes)
     {
         ++dropped;
@@ -168,6 +194,7 @@ void GatewayListenerIngress::setConnected(bool open)
     connected = open;
     ++linkRevision;
     frames.clear();
+    latestBasic.reset();
     bytes = 0;
 }
 
@@ -329,6 +356,7 @@ QJsonObject GatewayListener::statusMessage() const
     message.insert("deviceId", deviceId_);
     message.insert("linkConnected", connected_);
     message.insert("telemetryAvailable", !status_.isEmpty());
+    message.insert("sensors", sensors_);
     return message;
 }
 
@@ -357,6 +385,7 @@ void GatewayListener::send(QWebSocket *socket, const QString& message)
 void GatewayListener::drain()
 {
     QList<TelemetryFrame> frames;
+    std::optional<TelemetryFrame> basicFrame;
     bool linkChanged;
     {
         QMutexLocker lock(&ingress_->mutex);
@@ -366,13 +395,30 @@ void GatewayListener::drain()
         linkChanged = linkRevision_ != ingress_->linkRevision;
         linkRevision_ = ingress_->linkRevision;
         connected_ = ingress_->connected;
+        if (linkChanged || !sensorPublishTime_.isValid() || sensorPublishTime_.hasExpired(kSensorPublishIntervalMs))
+            basicFrame.swap(ingress_->latestBasic);
     }
     if (linkChanged)
     {
         status_ = {};
         measurement_ = {};
+        sensors_ = QJsonValue(QJsonValue::Null);
+        sensorPublishTime_.invalidate();
         auto message = statusMessage();
         publish(message);
+    }
+    if (basicFrame)
+    {
+        TelemetryBasic basic;
+        if (TelemetryCodec::parseBasicTelemetry(basicFrame->payload, basic))
+        {
+            sensors_ = sensorFields(basic);
+            auto message = frameFields(*basicFrame);
+            message.insert("kind", "sensors");
+            message.insert("sensors", sensors_);
+            publish(message);
+            sensorPublishTime_.start();
+        }
     }
     for (const auto& frame : frames)
     {

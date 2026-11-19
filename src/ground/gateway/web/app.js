@@ -7,7 +7,7 @@ const trendChannel = element("trend-channel");
 const trendCanvas = element("peak-trend");
 const trendDurationUs = 60_000_000n;
 const trendChannels = new Map();
-const deviceNames = [null, "EPSILON", "PTB", "HC2A", "激光雷达", "TCP 波形", "温度控制器", "AI-8 温控", "FPGA", "BMP390", "SHT45", "TEC103 原位", "TEC103 远程"];
+const deviceNames = { 1: "EPSILON", 2: "PTB", 3: "HC2A", 4: "激光雷达", 5: "TCP 波形", 8: "FPGA", 9: "BMP390", 10: "SHT45" };
 const deviceStates = ["已禁用", "未连接", "连接中", "已连接", "故障", "重连中"];
 const apiErrors = {
   "invalid-command": "命令参数格式无效",
@@ -39,6 +39,7 @@ const receiptLabels = {
 let statusRequest = 0;
 let latestRequest = 0;
 let statusRevision = 0;
+let sensorRevision = 0;
 let stream = null;
 let currentCommand = null;
 let linkConnected = false;
@@ -111,9 +112,10 @@ function renderLink(status) {
   syncButtons();
 }
 
-function renderStatus(status) {
+function renderStatus(status, updateReadings = true) {
   statusRevision += 1;
   renderLink(status);
+  if (updateReadings) renderSensors(linkConnected ? status.sensors : null);
   const hasStatus = status.telemetryAvailable === true;
   show("telemetry-state", hasStatus ? "已收到" : "暂无状态", hasStatus ? "good" : "");
   show("recording-state", hasStatus ? (["停止", "记录中", "暂停"][status.recordingState] ?? label(status.recordingState)) : "—");
@@ -121,17 +123,40 @@ function renderStatus(status) {
   fpgaConnected = hasStatus && Array.isArray(status.devices) &&
     status.devices.some((device) => device.device === 8 && device.state === 3);
   const devices = element("device-rows");
-  if (!hasStatus || !Array.isArray(status.devices) || status.devices.length === 0) {
+  const visibleDevices = hasStatus && Array.isArray(status.devices)
+    ? status.devices.filter((device) => Object.hasOwn(deviceNames, device.device)) : [];
+  if (visibleDevices.length === 0) {
     placeholder(devices, 5, "暂无设备状态");
     return;
   }
   devices.replaceChildren();
-  for (const device of status.devices) {
+  for (const device of visibleDevices) {
     const row = devices.insertRow();
-    appendCells(row, [deviceNames[device.device] ?? `设备 ${label(device.device)}`,
+    appendCells(row, [deviceNames[device.device],
       deviceStates[device.state] ?? `状态 ${label(device.state)}`, device.receivedCount, device.errorCount, device.errorCode]);
     row.cells[1].dataset.tone = device.state === 3 ? "good" : device.state === 4 ? "error" : "";
   }
+}
+
+function renderSensors(sensors) {
+  sensorRevision += 1;
+  const readings = [
+    ["temperature", sensors?.temperatureC, 2, "°C"],
+    ["humidity", sensors?.humidityPercent, 2, "% RH"],
+    ["pressure", sensors?.pressureHpa, 2, "hPa"],
+    ["latitude", sensors?.latitudeDeg, 6, "°", "纬度 "],
+    ["longitude", sensors?.longitudeDeg, 6, "°", "经度 "],
+    ["altitude", sensors?.heightM, 2, "m", "高度 "],
+    ["distance", sensors?.lidarDistanceM, 2, "m"],
+  ];
+  for (const [id, value, precision, unit, prefix = ""] of readings) {
+    const reading = Number.isFinite(value) ? `${value.toFixed(precision)} ${unit}` : "—";
+    show(`reading-${id}`, `${prefix}${reading}`);
+  }
+  const time = element("reading-time");
+  const stamp = utcTime(sensors?.hostTimeUs);
+  time.dateTime = stamp === "—" ? "" : stamp;
+  time.textContent = stamp !== "—" ? `采样 ${stamp}` : linkConnected ? "等待测量" : "机地数传未连接";
 }
 
 function parseMicros(value) {
@@ -307,10 +332,11 @@ function drawTrend() {
 async function refreshStatus() {
   const requestId = ++statusRequest;
   const revision = statusRevision;
+  const readingsRevision = sensorRevision;
   try {
     const status = await request("/api/v1/status");
     if (requestId !== statusRequest) return;
-    if (revision === statusRevision) renderStatus(status);
+    if (revision === statusRevision) renderStatus(status, readingsRevision === sensorRevision);
     show("api-feedback", "已查询网关状态", "good");
   } catch (error) {
     if (requestId === statusRequest) show("api-feedback", error.message, "error");
@@ -377,8 +403,9 @@ function connectStream() {
       if (stream !== active) return;
       try {
         const message = JSON.parse(event.data);
-        if (message.kind !== "status" && message.kind !== "measurement") return;
-        show("stream-event", `${message.kind === "status" ? "状态" : "测量"} #${label(message.sequence)}`);
+        const eventNames = { status: "状态", measurement: "峰值", sensors: "传感器" };
+        if (!Object.hasOwn(eventNames, message.kind)) return;
+        show("stream-event", `${eventNames[message.kind]} #${label(message.sequence)}`);
         show("stream-dropped", label(message.ingressDropped));
         if (message.kind === "status") {
           if (message.linkConnected === false && active.hasMeasurement) {
@@ -388,6 +415,10 @@ function connectStream() {
             show("latest-measurement", "HTTP 最新测量 · 暂无测量");
           }
           renderStatus(message);
+          return;
+        }
+        if (message.kind === "sensors") {
+          renderSensors(message.sensors);
           return;
         }
         if (!active.hasMeasurement) measurementRows.replaceChildren();

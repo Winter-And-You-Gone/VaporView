@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const { readFile } = require("node:fs/promises");
 const path = require("node:path");
 const { chromium } = require("playwright");
+const { checkGatewayLayout } = require("./gateway_browser_layout.cjs");
 
 const timeout = 10000;
 const measurementLimit = 5;
@@ -67,6 +68,42 @@ async function waitStream(page, connections, index) {
   assert.equal(snapshot.snapshot, true);
   assert.equal(snapshot.linkConnected, true);
   return connection;
+}
+
+function sampleUtc(micros) {
+  const time = BigInt(micros);
+  return new Date(Number(time / 1000n)).toISOString().replace("Z", `${String(time % 1000n).padStart(3, "0")}Z`);
+}
+
+async function verifySensorPanel(page, events, online) {
+  const fields = [
+    ["temperature", "temperatureC", 2, " °C"], ["humidity", "humidityPercent", 2, " % RH"],
+    ["pressure", "pressureHpa", 2, " hPa"], ["distance", "lidarDistanceM", 2, " m"],
+    ["latitude", "latitudeDeg", 6, " °", "纬度 "], ["longitude", "longitudeDeg", 6, " °", "经度 "],
+    ["altitude", "heightM", 2, " m", "高度 "],
+  ];
+  const sensors = await waitFor("sensor readings and time from the same SkyCore frame", async () => {
+    const display = await page.evaluate((ids) => ({
+      time: document.querySelector("#reading-time").dateTime,
+      values: ids.map((id) => document.getElementById(`reading-${id}`).textContent),
+    }), fields.map(([id]) => id));
+    const frame = events.find((event) => event.kind === "sensors" &&
+      event.sensors && sampleUtc(event.sensors.hostTimeUs) === display.time);
+    if (!frame || !fields.every(([, key]) => online ? Number.isFinite(frame.sensors[key]) : frame.sensors[key] === null)) return false;
+    for (const [i, [, key, decimals, unit, prefix = ""]] of fields.entries()) {
+      const value = frame.sensors[key];
+      assert.equal(display.values[i], prefix + (value === null ? "—" : value.toFixed(decimals) + unit), key);
+    }
+    return frame.sensors;
+  });
+  console.log("Browser sensor readings match SkyCore", JSON.stringify(sensors));
+}
+
+async function verifyDeviceTable(page) {
+  const names = await page.locator("#device-rows tr td:first-child").allTextContents();
+  for (const name of ["EPSILON", "PTB", "HC2A", "激光雷达", "FPGA"]) assert(names.includes(name), name);
+  const dataDevices = ["EPSILON", "PTB", "HC2A", "激光雷达", "TCP 波形", "FPGA", "BMP390", "SHT45"];
+  assert(names.every((name) => dataDevices.includes(name)), `unexpected device in ${names}`);
 }
 
 async function command(page, selector, skyCommandId) {
@@ -173,6 +210,8 @@ async function verify(rawOrigin, sessionRoot) {
       const events = second.events.filter((event) => event.kind === "measurement" && event.source === "fpga-cycle-feature" && event.valid);
       return events.length >= measurementLimit && events.slice(0, measurementLimit);
     });
+    await verifySensorPanel(page, second.events, true);
+    await verifyDeviceTable(page);
     assert(!second.invalidEvent);
     for (let i = 1; i < second.events.length; ++i) {
       assert.equal(second.events[i].streamId, second.events[0].streamId);
@@ -190,8 +229,7 @@ async function verify(rawOrigin, sessionRoot) {
         }));
         return second.events.some((event) => {
           if (event.source !== "fpga-cycle-feature" || event.channel !== channel || !event.valid) return false;
-          const micros = BigInt(event.hostTimeUs);
-          const sampled = new Date(Number(micros / 1000n)).toISOString().replace("Z", `${String(micros % 1000n).padStart(3, "0")}Z`);
+          const sampled = sampleUtc(event.hostTimeUs);
           return reading.time === sampled && reading.value === String(event.value) && reading.quality.includes(`质量位 ${event.qualityFlags}`);
         });
       });
@@ -228,6 +266,7 @@ async function verify(rawOrigin, sessionRoot) {
       await waitFor(`FPGA telemetry state ${state}`, () => second.events.slice(firstEvent).some((event) =>
         event.kind === "status" && event.devices?.some((device) => device.device === 8 && device.state === state)));
       await fpga.getByRole("cell", { name: label, exact: true }).waitFor();
+      await verifySensorPanel(page, second.events, state === 3);
     }
     const afterReconnect = second.events.length;
     await waitFor("fresh FPGA peak after reconnection", () => second.events.slice(afterReconnect).some((event) =>
@@ -241,6 +280,7 @@ async function verify(rawOrigin, sessionRoot) {
     }
     await page.locator("#disconnect-stream").click();
     await waitFor("closing second WS connection", () => second.closed);
+    await checkGatewayLayout(browser, origin.href);
   } finally {
     await browser.close();
   }

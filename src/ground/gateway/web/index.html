@@ -21,10 +21,38 @@
       <div><dt>HTTP 网关</dt><dd id="gateway-state">等待查询</dd></div>
       <div><dt>机地数传</dt><dd id="link-state">未知</dd></div>
       <div><dt>SkyCore 状态</dt><dd id="telemetry-state">未知</dd></div>
-      <div><dt>设备标识</dt><dd id="device-id" class="mono">—</dd></div>
+      <div><dt>设备标识</dt><dd id="device-id" tabindex="0" class="mono">—</dd></div>
       <div><dt>录制</dt><dd id="recording-state">—</dd></div>
-      <div><dt>Session</dt><dd id="session-name" class="mono">—</dd></div>
+      <div><dt>Session</dt><dd id="session-name" tabindex="0" class="mono">—</dd></div>
     </dl>
+
+    <section class="panel readings-panel" aria-labelledby="readings-title">
+      <div class="section-head">
+        <h2 id="readings-title">传感器读数</h2>
+        <time id="reading-time" class="reading-time mono" tabindex="0">等待测量</time>
+      </div>
+      <div class="readings-grid">
+        <section class="reading" aria-labelledby="reading-temperature-title">
+          <h3 id="reading-temperature-title">温湿度</h3>
+          <p id="reading-temperature" tabindex="0" class="reading-value mono">—</p>
+          <p id="reading-humidity" tabindex="0" class="reading-value mono">—</p>
+        </section>
+        <section class="reading" aria-labelledby="reading-pressure-title">
+          <h3 id="reading-pressure-title">气压</h3>
+          <p id="reading-pressure" tabindex="0" class="reading-value mono">—</p>
+        </section>
+        <section class="reading" aria-labelledby="reading-position-title">
+          <h3 id="reading-position-title">定位</h3>
+          <p id="reading-latitude" tabindex="0" class="reading-value mono">—</p>
+          <p id="reading-longitude" tabindex="0" class="reading-value mono">—</p>
+          <p id="reading-altitude" tabindex="0" class="reading-value mono">—</p>
+        </section>
+        <section class="reading" aria-labelledby="reading-range-title">
+          <h3 id="reading-range-title">激光测距</h3>
+          <p id="reading-distance" tabindex="0" class="reading-value mono">—</p>
+        </section>
+      </div>
+    </section>
 
     <div class="workspace-grid">
       <section class="panel stream" aria-labelledby="stream-title">
@@ -37,14 +65,14 @@
             <button id="disconnect-stream" type="button" disabled>断开</button>
           </div>
         </div>
-        <p id="stream-state" class="feedback" role="status">未连接</p>
+        <p id="stream-state" tabindex="0" class="feedback" role="status">未连接</p>
         <div class="trend-toolbar">
           <label for="trend-channel">通道</label>
           <select id="trend-channel" disabled><option>等待测量通道</option></select>
           <span id="trend-window" class="mono">最近 60 秒 · UTC</span>
         </div>
         <dl class="trend-reading" aria-label="当前通道最新测量">
-          <div><dt>最新峰值</dt><dd id="trend-latest-value" class="mono">—</dd></div>
+          <div><dt>最新峰值</dt><dd id="trend-latest-value" tabindex="0" class="mono">—</dd></div>
           <div><dt>单位</dt><dd id="trend-latest-unit" class="mono">native</dd></div>
           <div><dt>质量</dt><dd id="trend-latest-quality">等待测量</dd></div>
           <div><dt>采样时间（UTC）</dt><dd class="mono"><time id="trend-sample-time">—</time></dd></div>
@@ -56,8 +84,8 @@
           <div><dt>最近事件</dt><dd id="stream-event">—</dd></div>
           <div><dt>入口累计丢帧</dt><dd id="stream-dropped" class="mono">—</dd></div>
         </dl>
-        <p id="api-feedback" class="feedback" role="status"></p>
-        <p id="latest-measurement" class="latest" role="status">HTTP 最新测量 · 尚未查询</p>
+        <p id="api-feedback" tabindex="0" class="feedback" role="status"></p>
+        <p id="latest-measurement" tabindex="0" class="latest" role="status">HTTP 最新测量 · 尚未查询</p>
       </section>
       <aside class="operations">
         <section class="panel" aria-labelledby="command-title">
@@ -74,13 +102,13 @@
               <button id="command-fpga-disconnect" data-command="22" type="button" disabled>断开 FPGA</button>
             </div>
           </section>
-          <p id="command-feedback" class="feedback" role="status">等待下发</p>
+          <p id="command-feedback" tabindex="0" class="feedback" role="status">等待下发</p>
           <dl class="command-detail">
             <dt>操作</dt><dd id="command-operation">—</dd>
-            <dt>命令 ID</dt><dd id="command-id" class="mono">—</dd>
+            <dt>命令 ID</dt><dd id="command-id" tabindex="0" class="mono">—</dd>
             <dt>受理</dt><dd id="command-accepted">—</dd>
             <dt>最终回执</dt><dd id="command-result">—</dd>
-            <dt>Session ID</dt><dd id="command-session" class="mono">—</dd>
+            <dt>Session ID</dt><dd id="command-session" tabindex="0" class="mono">—</dd>
           </dl>
           <button id="command-check" type="button" disabled>查询当前命令回执</button>
         </section>
