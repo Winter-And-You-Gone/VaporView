@@ -45,11 +45,11 @@ void testPermissionsAndPersistence()
 {
     const auto defaults = loadGatewaySettings();
     require(!defaults.connection.enabled && !defaults.connection.allowRemoteCommands && !defaults.closeToTray,
-            "Gateway, commands and tray background mode are opt-in");
+            "Cloud forwarding, cloud commands and tray background mode are opt-in");
     require(defaults.connection.allowedCommands == QSet<quint16>{static_cast<quint16>(VaporView::CommandId::RequestStatus)},
             "default command permission is status only");
-    require(!defaults.connection.listener.enabled,
-            "inbound listener is opt-in");
+    require(defaults.connection.listener.enabled && defaults.connection.listener.address == QStringLiteral("127.0.0.1") &&
+            defaults.connection.listener.port == 8443, "ground listener defaults to loopback port 8443");
     GatewaySettings saved = defaults;
     saved.connection.deviceId = QUuid::createUuid().toString(QUuid::WithoutBraces);
     saved.connection.token = QUuid::createUuid().toString(QUuid::WithoutBraces);
@@ -95,7 +95,8 @@ void testLanListenerSettings()
     saved.connection.enabled = false;
     saved.connection.token.clear();
     GatewaySettingsDialog dialog(saved, nullptr, true);
-    field<QCheckBox>(dialog, "gatewayListenerEnabled")->setChecked(true);
+    auto *enabled = field<QCheckBox>(dialog, "gatewayListenerEnabled");
+    require(enabled->isChecked(), "LAN listener is selected by default");
     field<QLineEdit>(dialog, "gatewayListenerAddress")->setText(QStringLiteral("192.0.2.10"));
     field<QSpinBox>(dialog, "gatewayListenerPort")->setValue(8844);
     field<QDialogButtonBox>(dialog, "gatewayDialogButtons")->button(QDialogButtonBox::Save)->click();
@@ -105,6 +106,9 @@ void testLanListenerSettings()
     require(listener.enabled && listener.address == QStringLiteral("192.0.2.10") && listener.port == 8844,
             "LAN listener settings survive reopening");
     require(!stored.contains(QStringLiteral("Gateway/listener_certificate_file")), "obsolete listener setting removed");
+    enabled->setChecked(false);
+    saveGatewaySettings(dialog.settings());
+    require(!loadGatewaySettings().connection.listener.enabled, "explicitly disabling the listener survives restart");
 }
 
 void testValidation()

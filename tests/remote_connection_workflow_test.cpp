@@ -1,4 +1,5 @@
 #include "test_settings_sandbox.h"
+#include "shared/config/ApplicationConfig.h"
 #include "ground/main/MainWindow.h"
 #include "ground/main/GroundMainWindowState.h"
 #include "ground/devices/RemoteSkyController.h"
@@ -249,12 +250,6 @@ static void checkGatewayRecording(MainWindow& window, const QTemporaryDir& direc
                                   const QString& interpreter, const QString& script)
 {
     auto& state = MainWindowRtcmTestAccess::state(window);
-    auto config = state.gateway_service_->config();
-    config.deviceId = QStringLiteral("simulated-ground");
-    auto& listener = config.listener;
-    listener.enabled = true;
-    listener.port = 0;
-    state.gateway_service_->configure(config);
     require(waitUntil([&] { return state.gateway_service_->listenerPort() != 0; }), "external gateway listening");
     require(waitUntil([&] { return state.calibration_service_->view().selected.valid; }), "simulation calibration selected");
     QProcess client;
@@ -299,6 +294,14 @@ static void simulatedSkyWorkflow(const QString& gatewayInterpreter = {}, const Q
         "--telemetry-tcp-port", QString::number(port), "--ipc-port", "0"});
     require(child.process.waitForStarted(5000), "real SkyCore simulator starts");
     require(waitUntil([&] { return child.process.bytesAvailable() > 0; }), "SkyCore creates startup output");
+    if (!gatewayInterpreter.isEmpty()) {
+        require(reservation.listen(QHostAddress::LocalHost, 0), "reserve isolated ground gateway port");
+        auto settings = applicationConfigSettings();
+        settings.setValue(QStringLiteral("Gateway/device_id"), QStringLiteral("simulated-ground"));
+        settings.setValue(QStringLiteral("Gateway/listener_port"), reservation.serverPort());
+        require(!settings.contains(QStringLiteral("Gateway/listener_enabled")), "test starts with default listener setting");
+        reservation.close();
+    }
     MainWindow window(nullptr, std::make_shared<VaporView::Ground::Calibration::CalibrationService>(directory.path()));
     QMetaObject::invokeMethod(&window, "onDataSourceModeChanged", Q_ARG(int, 1));
     auto &state = MainWindowRtcmTestAccess::state(window);

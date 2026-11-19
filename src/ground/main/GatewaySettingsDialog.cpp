@@ -63,7 +63,7 @@ GatewaySettings loadGatewaySettings()
         persisted.value(QStringLiteral("max_cache_bytes"), config.maxCacheBytes).toLongLong(), 4096 * kMiB);
     config.retentionHours = qBound(1, persisted.value(QStringLiteral("retention_hours"), 24).toInt(), 720);
     auto& listener = config.listener;
-    listener.enabled = persisted.value(QStringLiteral("listener_enabled"), false).toBool();
+    listener.enabled = persisted.value(QStringLiteral("listener_enabled"), true).toBool();
     listener.address = persisted.value(QStringLiteral("listener_address"), listener.address).toString();
     listener.port = quint16(qBound(1, persisted.value(QStringLiteral("listener_port"), listener.port).toInt(), 65535));
     result.closeToTray = persisted.value(QStringLiteral("close_to_tray"), false).toBool();
@@ -128,6 +128,7 @@ GatewaySettingsDialog::GatewaySettingsDialog(const GatewaySettings& value,
     token_ = new QLineEdit(value.connection.token, content);
     token_->setObjectName(QStringLiteral("gatewayToken"));
     token_->setEchoMode(QLineEdit::Password);
+    token_->setPlaceholderText(english ? QStringLiteral("Only for cloud forwarding") : QStringLiteral("仅启用云端转发时填写"));
     form->addRow(english ? QStringLiteral("Cloud access token") : QStringLiteral("云端访问令牌"), token_);
     cache_mib_ = new QSpinBox(content);
     cache_mib_->setObjectName(QStringLiteral("gatewayCacheMiB"));
