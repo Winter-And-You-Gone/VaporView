@@ -468,7 +468,7 @@ void MainWindow::onDataSourceModeChanged(int index)
         ? state_->device_config_.sky_telemetry_row_widget->parentWidget()
         : nullptr;
     QWidget *remoteSkyConfigCard = state_->device_config_.remote_sky_config_card;
-    QWidget *motionCard = state_->motion_page_;
+    QWidget *motionCard = state_->device_config_.motion_card;
     QWidget *deviceConfigContent = deviceConfigScrollArea
         ? deviceConfigScrollArea->widget()
         : nullptr;

@@ -19,6 +19,7 @@
 #include "ground/navigation/NavigationStatusPanel.h"
 class UiTestReplayWindow;
 class FpgaControlPage;
+class QVBoxLayout;
 namespace VaporView::Ground::Calibration { class WaterCalibrationPage; class CalibrationService; class RealtimePeakBus; }
 namespace VaporView::Ground::Motion { class MotionControlPage; class HomeMotionPanel; }
 class QThread;
@@ -72,6 +73,9 @@ struct DeviceConfigPageWidgets
     QMap<quint16, QList<QWidget *>> internal_sensor_rows;
     QWidget *page = nullptr;
     QLabel *serial_title_lbl = nullptr;
+    QFrame *motion_card = nullptr;
+    QLabel *motion_title_lbl = nullptr;
+    QVBoxLayout *motion_subcards_layout = nullptr;
     QLabel *sensor_transport_path_lbl = nullptr;
     QLabel *sky_telemetry_transport_lbl = nullptr;
     QLabel *sky_telemetry_port_lbl = nullptr;

@@ -441,10 +441,10 @@ static void remotePageRouting()
         send(MsgType::DeviceOperationResponse, TelemetryCodec::serializeDeviceOperationResponse(response));
         require(waitUntil([&] { return acquisition->isEnabled(); }), "final response unlocks actions");
         {
-            auto *run=page->findChild<QAbstractButton*>("fpgaMotorRun");
-            auto *stop=page->findChild<QAbstractButton*>("fpgaMotorStop");
-            auto *steps=page->findChild<QDoubleSpinBox*>("fpgaMotorSteps");
-            auto *progress=page->findChild<QLabel*>("fpgaMotorProgress");
+            auto *run=window.findChild<QAbstractButton*>("fpgaMotorRun");
+            auto *stop=window.findChild<QAbstractButton*>("fpgaMotorStop");
+            auto *steps=window.findChild<QDoubleSpinBox*>("fpgaMotorSteps");
+            auto *progress=window.findChild<QLabel*>("fpgaMotorProgress");
             require(run&&stop&&steps&&progress,"remote motor controls expose command progress");
             QJsonObject registers;
             for(const auto pair:{qMakePair(0x6700u,0x00470200u),qMakePair(0x6704u,1u),
@@ -1363,12 +1363,12 @@ static void localSimulatorRouting()
     check(waitUntil([&]{return connectionSuccesses.contains(0x40);})&&connectionSuccesses.size()==1,
         "only the requested simulated sensor reports a connection result");
     {
-        auto *run=page->findChild<QAbstractButton*>("fpgaMotorRun");
-        auto *stop=page->findChild<QAbstractButton*>("fpgaMotorStop");
-        auto *enable=page->findChild<QAbstractButton*>("fpgaMotorEnable");
-        auto *disable=page->findChild<QAbstractButton*>("fpgaMotorDisable");
-        auto *steps=page->findChild<QDoubleSpinBox*>("fpgaMotorSteps");
-        auto *progress=page->findChild<QLabel*>("fpgaMotorProgress");
+        auto *run=window.findChild<QAbstractButton*>("fpgaMotorRun");
+        auto *stop=window.findChild<QAbstractButton*>("fpgaMotorStop");
+        auto *enable=window.findChild<QAbstractButton*>("fpgaMotorEnable");
+        auto *disable=window.findChild<QAbstractButton*>("fpgaMotorDisable");
+        auto *steps=window.findChild<QDoubleSpinBox*>("fpgaMotorSteps");
+        auto *progress=window.findChild<QLabel*>("fpgaMotorProgress");
         check(run&&stop&&enable&&disable&&steps&&progress,"local simulator exposes the motor command controls");
         check(page->configuration().backend=="simulator"&&devices->currentData().toString()=="simulation://fpga",
             "motor integration uses only the selected protocol simulator, never hardware USB");

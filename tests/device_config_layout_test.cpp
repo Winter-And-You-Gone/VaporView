@@ -477,11 +477,13 @@ int main(int argc, char **argv)
     legacySettings.setValue(QStringLiteral("sensor/pressure_source"), QStringLiteral("ptb210"));
     legacySettings.setValue(QStringLiteral("sensor/humidity_source"), QStringLiteral("hc2a"));
     legacySettings.sync();
-    QSettings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"))
-        .setValue(QStringLiteral("developer_options_enabled"), true);
+    const bool motionWidthOnly = app.arguments().contains(QStringLiteral("--motion-width-only"));
+    if (!motionWidthOnly)
+        QSettings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"))
+            .setValue(QStringLiteral("developer_options_enabled"), true);
     MainWindow window;
     VaporView::setSettingsWritesSuspended(true);
-    window.resize(1280, 760);
+    window.resize(motionWidthOnly ? 1480 : 1280, motionWidthOnly ? 920 : 760);
     window.show();
     require(VaporViewTest::waitForWindowExposed(&window),
             "main window becomes exposed for device configuration layout test");
@@ -529,36 +531,71 @@ int main(int argc, char **argv)
 
     QFrame *linkStatusCard = findLinkStatusCard(deviceConfigPage);
     QGroupBox *serialCard = deviceConfigPage->findChild<QGroupBox *>(QStringLiteral("sensorGroupBox"));
-    QWidget *motionCard = deviceConfigPage->findChild<QWidget *>(QStringLiteral("emFwc3ConnectionPanel"));
+    QWidget *motionCard = deviceConfigPage->findChild<QWidget *>(QStringLiteral("deviceMotionCard"));
     require(linkStatusCard != nullptr, "link-status card can be identified");
     require(serialCard != nullptr, "serial configuration card can be identified");
     require(motionCard != nullptr, "motion control card can be identified");
-    if (app.arguments().contains(QStringLiteral("--motion-width-only")))
+    if (motionWidthOnly)
     {
+        auto *transportSwitch = window.findChild<QWidget *>(QStringLiteral("titleSensorTransportSwitch"));
+        auto *path = deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceSensorTransportPathCombo"));
+        require(transportSwitch && transportSwitch->isHidden() && path && path->currentData() == QStringLiteral("fpga_relay"),
+                "default FPGA layout keeps developer controls hidden");
+        auto *emFwc3 = motionCard->findChild<QWidget *>(QStringLiteral("emFwc3ConnectionPanel"));
+        auto *stepper = motionCard->findChild<QWidget *>(QStringLiteral("fpgaMotorRun"));
+        auto *stepperCard = motionCard->findChild<QWidget *>(QStringLiteral("fpgaSectionCard"));
+        require(emFwc3 && stepper && stepperCard && stepperCard->isAncestorOf(stepper),
+                "motion control owns separate EM-FWC3 and FPGA stepper cards");
+        auto *fpgaPage = window.findChild<QWidget *>(QStringLiteral("fpgaControlPage"));
+        require(fpgaPage && !fpgaPage->findChild<QWidget *>(QStringLiteral("fpgaMotorRun")),
+                "the stepper controls have moved out of the advanced FPGA tab");
         const int minimumWidth = motionCard->minimumWidth();
         int previousWidth = 0;
-        for (const int width : {2000, 2400}) {
-            window.resize(width, 760);
+        for (const int width : {1480, 2000, 2400}) {
+            window.resize(width, 920);
             VaporViewTest::processEventsFor(180);
             activateLayouts(&window);
             VaporViewTest::processEventsFor(100);
             const QRect serialBounds = rectInPage(serialCard, scrollArea->widget());
             const QRect motionBounds = rectInPage(motionCard, scrollArea->widget());
             const auto margins = scrollArea->widget()->layout()->contentsMargins();
-            require(motionBounds.left() > serialBounds.right(), "wide layout places motion beside devices");
+            if (motionBounds.left() <= serialBounds.right())
+                std::cerr << "Default FPGA motion layout at " << width << ": viewport=" << scrollArea->viewport()->width()
+                          << " serial=" << serialBounds.width() << "/" << serialCard->sizeHint().width()
+                          << " motion minimum=" << motionCard->minimumSizeHint().width() << '\n';
+            require(motionBounds.left() > serialBounds.right() && motionBounds.top() == serialBounds.top(),
+                    "default FPGA motion card sits alongside serial devices at desktop widths");
+            require(scrollArea->horizontalScrollBar()->maximum() == 0, "both cards fit horizontally");
+            const QRect emBounds = rectInPage(emFwc3, motionCard);
+            const QRect stepperBounds = rectInPage(stepperCard, motionCard);
+            require(emFwc3->isVisible() && stepper->isVisible() && !stepper->isEnabled() &&
+                        emBounds.bottom() < stepperBounds.top() && emBounds.left() == stepperBounds.left() &&
+                        emBounds.width() == stepperBounds.width() && motionCard->rect().contains(stepperBounds),
+                    "both subcards fill the motion column and stack EM-FWC3 above the offline stepper");
             require(std::abs(motionBounds.right() - (scrollArea->widget()->width() - margins.right() - 1)) <= 2,
                     "motion card fills the remaining width");
             require(motionCard->minimumWidth() == minimumWidth, "motion card minimum width is unchanged");
             require(previousWidth == 0 || motionCard->width() > previousWidth, "motion card grows with the page");
             previousWidth = motionCard->width();
         }
-        window.resize(1200, 760);
+        window.resize(window.minimumWidth(), 760);
         VaporViewTest::processEventsFor(180);
         activateLayouts(&window);
         VaporViewTest::processEventsFor(100);
         require(rectInPage(motionCard, scrollArea->widget()).top() > rectInPage(serialCard, scrollArea->widget()).bottom(),
                 "narrow layout stacks motion below devices");
         require(motionCard->minimumWidth() == minimumWidth, "narrow layout preserves motion minimum width");
+        const auto contentMargins = scrollArea->widget()->layout()->contentsMargins();
+        const int summaryWidth = linkStatusCard->minimumSizeHint().width() + contentMargins.left() + contentMargins.right();
+        require(scrollArea->widget()->width() <= std::max(scrollArea->viewport()->width(), summaryWidth) + 2,
+                "stacked cards do not make the page wider than the telemetry summary requires");
+        auto *showReadbacks = stepperCard->findChild<QCheckBox *>(QStringLiteral("fpgaMotorShowReadbacks"));
+        auto *readback = stepperCard->findChild<QLabel *>(QStringLiteral("fpgaRegister6708"));
+        require(showReadbacks && readback && !readback->isVisible(), "motor readbacks start collapsed");
+        showReadbacks->click();
+        require(readback->isVisible(), "the stepper subcard can show register readbacks");
+        showReadbacks->click();
+        window.close();
         VaporView::setSettingsWritesSuspended(false);
         return 0;
     }
@@ -615,7 +652,7 @@ int main(int argc, char **argv)
                 serialCard->width() <= serialCard->sizeHint().width() + 4,
             "serial configuration card follows its content width");
 
-    for (const auto& scenario : {std::pair<int, bool>{2400, true}, {1200, false}, {2400, true}})
+    for (const auto& scenario : {std::pair<int, bool>{2400, true}, {window.minimumWidth(), false}, {2400, true}})
     {
         window.resize(scenario.first, 760);
         VaporViewTest::processEventsFor(180);
@@ -679,7 +716,8 @@ int main(int argc, char **argv)
         std::abs(scaledMotion.top() - scaledSerial.top()) <= 2 &&
         std::abs(scaledMotion.height() - scaledSerial.height()) <= 2;
     const int serialMinimumHeight = serialCard->minimumSizeHint().height();
-    const int motionMinimumHeight = motionCard->minimumSizeHint().height();
+    // The stepper status wraps. Compare against the required height at the actual column width.
+    const int motionMinimumHeight = motionCard->heightForWidth(motionCard->width());
     const bool scaledCardsFit = scaledSerial.height() >= serialMinimumHeight &&
         scaledMotion.height() >= motionMinimumHeight;
     bool scaledControlsFit = true;

@@ -94,6 +94,7 @@ int main(int argc, char **argv)
         QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
         settings.setValue(QStringLiteral("recording_directory"), recordingDirectory.path());
         settings.setValue(QStringLiteral("font_scale_percent"), 100);
+        settings.setValue(QStringLiteral("developer_options_enabled"), true);
     }
     const auto cleanup = qScopeGuard([&] {
         // rmdir deliberately rejects unexpected files and unreleased handles.
@@ -264,6 +265,7 @@ int main(int argc, char **argv)
         QApplication::processEvents(); check(page->session()->state().connected, "returning to Direct preserves USB connection");
         check(overviewMotionStatus->parentWidget() == columns.last() && overviewMotionAction->parentWidget() == columns.last(),
               "direct mode packs ten devices into two complete columns");
+        window.resize(1600, 850);
         pages->setCurrentWidget(configuration); QApplication::processEvents();
         check(configuration->isAncestorOf(panel) && pages->indexOf(page) == -1 && pages->count() == 6,
               "motion controls belong to device configuration without a separate navigation page");
@@ -506,7 +508,7 @@ int main(int argc, char **argv)
                             const auto sameRow = [&](QWidget *a, QWidget *b) {
                                 return bounds(a).top() <= bounds(b).bottom() && bounds(b).top() <= bounds(a).bottom() && !bounds(a).intersects(bounds(b));
                             };
-                            check(sameRow(position, target), "current and target angles share a row");
+                            check(bounds(position).bottom() < bounds(target).top(), "current angle is above the target controls");
                             check(sameRow(home, stop) && sameRow(stop, area), "home, stop and continuous controls share a row");
                             check(sameRow(find<QLabel>(*page, "emFwc3ConnectionState"), find<QLabel>(*page, "emFwc3MotorType")),
                                   "connection state and motor model share a row");

@@ -752,7 +752,8 @@ void MainWindow::setupFpgaControlPage()
     if (state_->virtual_fpga_port_) state_->fpga_config_.backend = QString::fromLatin1(FpgaVirtualTcpBackend);
     state_->fpga_session_.remoteConfig = FpgaControlConfig::fromJson(
         QJsonDocument::fromJson(settings.value(QStringLiteral("Fpga/remoteDesiredConfiguration")).toByteArray()).object());
-    state_->fpga_page_ = new FpgaControlPage(state_->main_page_stack_);
+    state_->fpga_page_ = new FpgaControlPage(state_->main_page_stack_,
+                                                 state_->device_config_.motion_subcards_layout);
     state_->fpga_page_->setObjectName(QStringLiteral("fpgaControlPage"));
     state_->fpga_page_->setConfiguration(isRemoteSkyMode() ? state_->fpga_session_.remoteConfig : state_->fpga_config_);
     state_->fpga_page_->setLanguage(state_->is_english_);

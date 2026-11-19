@@ -70,7 +70,7 @@ private:
             const auto margins = scroll_->widget()->layout()->contentsMargins();
             const int available = scroll_->viewport()->width() - margins.left() - margins.right();
             const int serialWidth = std::max(serial_->minimumSizeHint().width(), serial_->sizeHint().width());
-            const int motionWidth = std::max(480, motion_->minimumSizeHint().width());
+            const int motionWidth = motion_->minimumSizeHint().width();
             const bool sideBySide = available >= serialWidth + layout_->horizontalSpacing() + motionWidth;
             if (sideBySide == side_by_side_ && initialized_) return;
             initialized_ = true;
@@ -3528,6 +3528,7 @@ void MainWindow::setupDeviceConfigPage()
     formRowLayout->addWidget(formWidget, 0, Qt::AlignTop | Qt::AlignLeft);
     serialLayout->addWidget(formRowWidget, 0, Qt::AlignTop);
     serialLayout->addWidget(skyTelemetryRow);
+    serialLayout->addStretch();
 
     state_->device_config_.data_telemetry_summary_card = new QFrame(content);
     state_->device_config_.data_telemetry_summary_card->setObjectName(QStringLiteral("epsilonSectionCard"));
@@ -3841,13 +3842,40 @@ void MainWindow::setupDeviceConfigPage()
     });
 
     contentLayout->addWidget(state_->device_config_.data_telemetry_summary_card, 0);
+
+    auto *motionCard = new QFrame(content);
+    state_->device_config_.motion_card = motionCard;
+    motionCard->setObjectName(QStringLiteral("deviceMotionCard"));
+    configureTopLevelCard(motionCard);
+    auto *motionLayout = new QVBoxLayout(motionCard);
+    motionLayout->setContentsMargins(1, 0, 1, 1);
+    motionLayout->setSpacing(0);
+    auto *motionTitleBar = new QWidget(motionCard);
+    motionTitleBar->setObjectName(QStringLiteral("sectionTitleBar"));
+    motionTitleBar->setFixedHeight(kMainPageTitleBarHeight);
+    auto *motionTitleLayout = new QHBoxLayout(motionTitleBar);
+    motionTitleLayout->setContentsMargins(8, 2, 8, 2);
+    QWidget *motionTitleCluster = nullptr;
+    state_->device_config_.motion_title_lbl = createSectionTitleCluster(
+        motionTitleBar, QStringLiteral("locate-fixed"), kMainPageButtonHeight, &motionTitleCluster);
+    motionTitleLayout->addWidget(motionTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    motionTitleLayout->addStretch();
+    motionLayout->addWidget(motionTitleBar);
+    auto *motionSubcards = new QVBoxLayout;
+    state_->device_config_.motion_subcards_layout = motionSubcards;
+    motionSubcards->setContentsMargins(8, 8, 8, 8);
+    motionSubcards->setSpacing(8);
+    motionSubcards->addWidget(state_->motion_page_);
+    motionLayout->addLayout(motionSubcards);
+    motionLayout->addStretch();
+
     auto *deviceCardsLayout = new QGridLayout;
     deviceCardsLayout->setContentsMargins(0, 0, 0, 0);
     deviceCardsLayout->setSpacing(contentLayout->spacing());
     deviceCardsLayout->addWidget(serialCard, 0, 0, Qt::AlignLeft);
-    deviceCardsLayout->addWidget(state_->motion_page_, 1, 0);
+    deviceCardsLayout->addWidget(motionCard, 1, 0);
     contentLayout->addLayout(deviceCardsLayout);
-    new DeviceCardsLayoutController(scrollArea, deviceCardsLayout, serialCard, state_->motion_page_);
+    new DeviceCardsLayoutController(scrollArea, deviceCardsLayout, serialCard, motionCard);
     contentLayout->addWidget(remoteConfigCard, 0);
     contentLayout->addStretch(1);
 

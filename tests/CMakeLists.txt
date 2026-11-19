@@ -1020,6 +1020,7 @@ target_compile_definitions(device_config_layout_test PRIVATE
 target_link_libraries(device_config_layout_test PRIVATE vaporview_main_window Qt6::Network)
 add_dependencies(device_config_layout_test VaporViewRuntimeResources)
 vaporview_add_test(NAME device_config_layout_test COMMAND device_config_layout_test)
+vaporview_add_test(NAME device_config_motion_layout_test COMMAND device_config_layout_test --motion-width-only)
 
 add_executable(epsilon_config_panel_test
     ${CMAKE_CURRENT_SOURCE_DIR}/epsilon_config_panel_test.cpp
