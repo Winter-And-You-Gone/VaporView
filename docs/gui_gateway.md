@@ -12,16 +12,37 @@ Gateway 复用 `GroundTelemetryService` 已接收并通过帧校验的数据。�
 
 Session 同步仅针对已经落到地面端且结束写入的 Session（v1 `session.json`，状态为 `complete` 或 `recovered`）。手动选择目录后分块上传并记录进度，重启或断网后续传；不会自动从 SkyCore 下载历史文件。请在 Session 完整复制或记录结束后提交同步，上传期间保持源文件可用且不再修改。修改连接设置后需先保存并重新打开对话框，才能提交同步到新目的地。
 
+## 4.19 网页直连地面网关
+
+本机联调只让 SkyCore 模拟设备输入。地面端运行 `VaporView.exe`，浏览器直接访问它提供的网页。网页、HTTPS 接口和 WSS 订阅都由地面端同一端口提供，无需启动 Python 服务。
+
+1. 在地面机开两个终端，从仓库根目录分别运行下面两个命令。`39100` 是本例的机地数传端口。
+
+   ```powershell
+   .\build\Release\VaporViewSkyCore.exe --fpga-simulate-data --telemetry-transport tcp --telemetry-host 127.0.0.1 --telemetry-tcp-port 39100
+   .\build\Release\VaporView.exe --source remote --telemetry-transport tcp --telemetry-host 127.0.0.1 --telemetry-tcp-port 39100
+   ```
+
+2. 在地面端关闭“界面测试模式”，打开数传并连接设备。等首页开始更新 FPGA 数据，确认已有可用于启动记录的定标参数。
+3. 打开“数据 → Gateway 网关”，填写设备标识。在“入站 HTTPS / WSS”勾选“启用入站监听”，填写监听 IP、端口（默认 `8443`）、证书链、私钥和入站访问令牌。需要发命令时，勾选“允许入站控制命令”和本次要测的三项权限。保存后重新打开设置，确认监听已启动。
+4. 在同机浏览器打开 `https://127.0.0.1:8443/`（证书须含该 IP 且受信任）。从另一台电脑访问时，把监听 IP 改为地面机的测试网 IP，在浏览器输入与证书匹配的地面机地址。已打开旧的本地验证台时，也可以在“4.19 地面网关入站测试”填同一 HTTPS 地址，点“打开入站测试页”。
+5. 在“地面网关”页粘贴**地面端配置的入站令牌**，点“应用令牌”。核对设备标识，以及“机地数传”显示“已连接”、“SkyCore 状态”显示“已收到”。点“查询最新测量”可读当前值，点“连接 WSS”后观察实时表的序号、通道、峰值和质量位持续更新。
+6. 在“SkyCore 命令”依次点“读取状态”“启动／恢复记录”“停止记录”。每次等到“SkyCore 已应答”，记下命令 ID 和回执序号。启动时核对“记录中”和 Session 名，在记录期间采几条测量，再停止并确认状态回到“停止”。可用“断开”和“连接 WSS”复测订阅恢复。
+
+返回 `401` 时重新核对入站令牌，返回 `403` 时核对地面端入站控制开关及相应命令白名单。若网关可达但机地数传未连接，先检查地面端到 SkyCore 的 TCP 连接。原生峰值的单位为 `native`。需和机载文件逐点对账时，WSS 消息中的 `hostTimeUs`、`channel`、`cycleId` 对应 Session 的 `sensors/waveform_features.csv` 中的主机时间、通道和周期。
+
 ## 地面端入站 v1 接口
 
 在“数据 → Gateway 网关”中填写设备标识，再启用“入站 HTTPS / WSS”。监听 IP 默认是 `127.0.0.1`。独立测试机访问时填写地面机在测试网中的网卡 IP，并按部署网络放行该 TCP 端口。Qt HTTP Server 面向可信网络，应通过测试局域网或专用 VPN 提供访问。地面机需要 Qt 6.10 或更新版本及匹配的 HttpServer、WebSockets 模块与可用的 Qt TLS 后端。[Qt HTTP Server 的安全说明](https://doc.qt.io/qt-6.10/qthttpserver-security.html)
 
 选择 PEM 证书链和与之匹配的未加密 RSA 或 EC PEM 私钥。证书链先放服务器证书，再放中间证书。服务器证书的 SAN 应与客户端使用的 DNS 名或 IP 匹配，客户端须信任签发 CA。入站令牌应单独生成，使用 32 至 256 个可见 ASCII 字符，例如通过 `openssl rand -hex 32` 生成。保存后重新打开设置页查看监听状态，证书换新后停用再启用以重新加载。私钥的读取权限应限制到运行程序的账号，令牌随本地应用配置保存。
 
-所有接口使用同一个 TLS 端口和 `Authorization: Bearer <token>`。HTTPS 返回 UTF-8 JSON。WSS 在升级阶段校验同一令牌，每个文本消息包含一条 JSON 事件。
+页面静态资源可以直接打开。HTTPS 数据、命令和订阅票据接口要求 `Authorization: Bearer <token>` 并返回 UTF-8 JSON。脚本客户端可以在 WSS 升级时发送同一请求头。网页通过 HTTPS 申请 30 秒有效的一次性票据，以 `WSS /api/v1/stream?ticket=<ticket>` 在同一来源建立订阅。票据仅供订阅使用，每个 WSS 文本消息包含一条 JSON 事件。
 
 | 方法与路径 | 返回内容 |
 | --- | --- |
+| `GET /` | 地面网关测试页，浏览器现场操作入口。 |
+| `POST /api/v1/stream-ticket` | 签发一张浏览器订阅票据，返回 `ticket`。 |
 | `GET /api/v1/status` | SkyCore 链路状态，最近一次设备和录制状态（收到后可用）。 |
 | `GET /api/v1/measurements/latest` | `deviceId`、`linkConnected` 和最近一次 `measurement`。启动或断线后尚无新测量时，`measurement` 为 `null`。 |
 | `POST /api/v1/commands` | 受理白名单命令，返回 HTTP 202 和 `status: "accepted"`。 |
@@ -76,6 +97,16 @@ python tools/gateway_client.py $ground --ca $ca result $commandId
 ```
 
 命令调用会分别输出受理记录和最终结果。验收时保留命令 ID、SkyCore 序号及 Session 名，按 `hostTimeUs`、`channel` 和 `cycleId` 到机载 Session 的周期特征 CSV 核对 WSS 峰值与质量标志。
+
+### 自动复测浏览器链路
+
+`gateway_browser_workflow_test` 启动独立的 SkyCore 模拟进程，在隔离配置中打开正式地面主窗口和网关，再通过 Playwright 驱动真实 Chromium 浏览器点击同一组按钮。它会检查鉴权、命令回执、断线重连，并将浏览器收到的 5 条测量逐条与 SkyCore 的 CSV 对账。测试结束后清理本次 Session。
+
+在 MSVC Developer 环境构建 Release 后，将 `VAPORVIEW_TEST_GATEWAY_NODE` 设为能够加载 `playwright` 的 Node 可执行文件。使用本机已安装的 Chrome 或 Edge 时，把 `VAPORVIEW_TEST_CHROMIUM` 设为浏览器可执行文件的完整路径，否则使用 Playwright 安装的 Chromium。`openssl` 需在 PATH 中或通过 `VAPORVIEW_TEST_OPENSSL` 指定。手工使用网页无需这些测试工具。
+
+```powershell
+ctest --test-dir build/Release -C Release -R '^gateway_browser_workflow_test$' -V
+```
 
 ## 云端转发 v1 接口
 

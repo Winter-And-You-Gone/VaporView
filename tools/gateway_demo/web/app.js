@@ -427,6 +427,20 @@
 
   poll();
   loadConnection();
+  $("inbound-link").addEventListener("submit", event => {
+    event.preventDefault();
+    const field = $("inbound-origin");
+    try {
+      const target = new URL(field.value);
+      if (target.protocol !== "https:" || target.username || target.password ||
+          target.pathname !== "/" || target.search || target.hash) throw new Error();
+      window.location.assign(target.origin + "/");
+    } catch {
+      field.setCustomValidity("请输入地面网关的 HTTPS 根地址，例如 https://ground.example:8443");
+      field.reportValidity();
+    }
+  });
+  $("inbound-origin").addEventListener("input", event => event.target.setCustomValidity(""));
   window.setInterval(() => { if (!document.hidden) poll(); }, 1000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(); });
 })();

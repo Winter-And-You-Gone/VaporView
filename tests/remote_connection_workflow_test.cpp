@@ -248,7 +248,7 @@ static void workflow(bool fpga)
     link->trigger(); window.close(); server.close();
 }
 static void checkGatewayRecording(MainWindow& window, const QTemporaryDir& directory,
-                                  const QString& python, const QString& script)
+                                  const QString& interpreter, const QString& script)
 {
     auto& state = MainWindowRtcmTestAccess::state(window);
     auto config = state.gateway_service_->config();
@@ -263,7 +263,8 @@ static void checkGatewayRecording(MainWindow& window, const QTemporaryDir& direc
     if (!error.isEmpty()) throw std::runtime_error(error.toStdString());
     listener.token = QUuid::createUuid().toString(QUuid::WithoutBraces);
     listener.allowCommands = true;
-    listener.allowedCommands = {quint16(VaporView::CommandId::StartRecording), quint16(VaporView::CommandId::StopRecording)};
+    listener.allowedCommands = {quint16(VaporView::CommandId::RequestStatus), quint16(VaporView::CommandId::StartRecording),
+                                quint16(VaporView::CommandId::StopRecording)};
     state.gateway_service_->configure(config);
     require(waitUntil([&] { return state.gateway_service_->listenerPort() != 0; }), "external gateway listening");
     require(waitUntil([&] { return state.calibration_service_->view().selected.valid; }), "simulation calibration selected");
@@ -272,7 +273,7 @@ static void checkGatewayRecording(MainWindow& window, const QTemporaryDir& direc
     env.insert("VAPORVIEW_GATEWAY_TOKEN", listener.token);
     client.setProcessEnvironment(env);
     client.setProcessChannelMode(QProcess::MergedChannels);
-    client.start(python, {script, QStringLiteral("https://127.0.0.1:%1").arg(state.gateway_service_->listenerPort()),
+    client.start(interpreter, {script, QStringLiteral("https://127.0.0.1:%1").arg(state.gateway_service_->listenerPort()),
                           listener.certificateFile, directory.filePath("simulated_sessions")});
     require(client.waitForStarted(5000), "external gateway client started");
     bool sawRecording = false;
@@ -284,7 +285,7 @@ static void checkGatewayRecording(MainWindow& window, const QTemporaryDir& direc
     require(finished && client.exitStatus() == QProcess::NormalExit && client.exitCode() == 0, "external recording workflow");
     require(sawRecording && state.remote_status_.recording_state == 0, "ground UI observed start and stop");
 }
-static void simulatedSkyWorkflow(const QString& gatewayPython = {}, const QString& gatewayScript = {})
+static void simulatedSkyWorkflow(const QString& gatewayInterpreter = {}, const QString& gatewayScript = {})
 {
     using namespace VaporView;
     QTemporaryDir directory;
@@ -352,8 +353,8 @@ static void simulatedSkyWorkflow(const QString& gatewayPython = {}, const QStrin
     }
     require(connected, "one title click connects real SkyCore simulated sensors, summaries and waveform rate");
     require(state.fpga_session_.remoteStatus.value("simulation").toBool(), "Sky identifies simulation");
-    if (!gatewayPython.isEmpty()) {
-        checkGatewayRecording(window, directory, gatewayPython, gatewayScript);
+    if (!gatewayInterpreter.isEmpty()) {
+        checkGatewayRecording(window, directory, gatewayInterpreter, gatewayScript);
         window.testRemoteSkyController()->close();
         window.close();
         return;
@@ -435,6 +436,15 @@ int main(int argc, char **argv)
     QApplication app(argc, argv);
     try {
     const auto args = app.arguments();
+    if (args.size() == 3 && args[1] == "--gateway-browser") {
+        const auto node = qEnvironmentVariable("VAPORVIEW_TEST_GATEWAY_NODE");
+        if (node.isEmpty()) {
+            std::cout << "SKIP: set VAPORVIEW_TEST_GATEWAY_NODE to enable the Playwright browser workflow\n";
+            return 77;
+        }
+        simulatedSkyWorkflow(node, args[2]);
+        return 0;
+    }
     if (args.size() == 4 && args[1] == "--gateway") {
         const auto python = qEnvironmentVariable("VAPORVIEW_TEST_GATEWAY_PYTHON", args[2]);
         if (VaporView::Test::gatewayOpenSslExecutable().isEmpty() ||

@@ -21,6 +21,7 @@
 #include <QWebSocket>
 
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 
 using namespace VaporView;
@@ -52,6 +53,9 @@ struct Response
     QJsonObject body;
     QNetworkReply::NetworkError error;
     QString errorString;
+    QByteArray data;
+    QByteArray contentType;
+    QByteArray cacheControl;
 };
 
 QNetworkRequest request(const QUrl& base, const QString& path, const QByteArray& token,
@@ -64,13 +68,21 @@ QNetworkRequest request(const QUrl& base, const QString& path, const QByteArray&
     return result;
 }
 
-Response send(QNetworkAccessManager& network, QNetworkRequest req, const QJsonObject& body = {})
+Response send(QNetworkAccessManager& network, QNetworkRequest req,
+              std::optional<QJsonObject> body = std::nullopt)
 {
-    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-    auto *reply = body.isEmpty() ? network.get(req) : network.post(req, QJsonDocument(body).toJson());
+    QByteArray payload;
+    if (body && !body->isEmpty())
+    {
+        req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+        payload = QJsonDocument(*body).toJson(QJsonDocument::Compact);
+    }
+    auto *reply = body ? network.post(req, payload) : network.get(req);
     require(waitUntil([reply] { return reply->isFinished(); }), "HTTPS reply arrived");
+    const auto data = reply->readAll();
     Response response{reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt(),
-                      QJsonDocument::fromJson(reply->readAll()).object(), reply->error(), reply->errorString()};
+                      QJsonDocument::fromJson(data).object(), reply->error(), reply->errorString(),
+                      data, reply->rawHeader("Content-Type"), reply->rawHeader("Cache-Control")};
     reply->deleteLater();
     return response;
 }
@@ -124,7 +136,7 @@ try
     const QByteArray token = config.listener.token.toLatin1();
     QNetworkAccessManager network;
     network.setProxy(QNetworkProxy::NoProxy);
-    const auto https = [&](const QString& path, const QJsonObject& body = {}) {
+    const auto https = [&](const QString& path, std::optional<QJsonObject> body = std::nullopt) {
         return send(network, request(base, path, token, tls), body);
     };
     const auto waitForCommandStatus = [&](const QString& id, const QString& status) {
@@ -173,6 +185,60 @@ try
     stream.open(request(streamUrl, "/api/v1/stream", token, tls));
     require(waitUntil([&] { return !events.isEmpty(); }) && events.first().value("snapshot").toBool(),
         "WSS accepts verified connection and sends initial snapshot");
+
+
+    // Exercise the browser's HTTP bootstrap and WSS upgrade over verified TLS.
+    const auto page = send(network, request(base, "/", {}, tls));
+    require(page.code == 200 && page.contentType.startsWith("text/html") && page.cacheControl == "no-store" &&
+        page.data.contains("/app.js") && page.data.contains("/style.css"), "HTTPS returns the browser page");
+    const auto script = send(network, request(base, "/app.js", {}, tls));
+    require(script.code == 200 && script.contentType.startsWith("text/javascript") &&
+        script.cacheControl == "no-store" && script.data.contains("/api/v1/stream-ticket"),
+        "HTTPS returns the embedded JavaScript");
+    const auto stylesheet = send(network, request(base, "/style.css", {}, tls));
+    require(stylesheet.code == 200 && stylesheet.contentType.startsWith("text/css") &&
+        stylesheet.cacheControl == "no-store" && !stylesheet.data.isEmpty(), "HTTPS returns the embedded CSS");
+
+    const auto ticketPath = QStringLiteral("/api/v1/stream-ticket");
+    require(send(network, request(base, ticketPath, {}, tls), QJsonObject{}).code == 401,
+        "ticket issuance rejects a missing bearer token");
+    const auto issued = https(ticketPath, QJsonObject{});
+    const auto ticket = issued.body.value("ticket").toString();
+    require(issued.code == 200 && issued.cacheControl == "no-store" && !ticket.isEmpty(),
+        "ticket issuance accepts a bearer token and prevents caching");
+    require(send(network, request(base, "/api/v1/commands", ticket.toLatin1(), tls),
+        command("ticket-only", CommandId::RequestStatus)).code == 401, "stream ticket cannot authorize a command");
+
+    const auto ticketStreamPath = QStringLiteral("/api/v1/stream?ticket=") + ticket;
+    const auto verifyTicket = [&](const QString& origin, bool expectSnapshot, const char *failure) {
+        QWebSocket browser(origin);
+        browser.setProxy(QNetworkProxy::NoProxy);
+        browser.setSslConfiguration(tls);
+        bool rejected = false;
+        bool snapshot = false;
+        QObject::connect(&browser, &QWebSocket::errorOccurred, &app, [&] { rejected = true; });
+        QObject::connect(&browser, &QWebSocket::textMessageReceived, &app, [&](const QString& message) {
+            snapshot = QJsonDocument::fromJson(message.toUtf8()).object().value("snapshot").toBool();
+        });
+        browser.open(request(streamUrl, ticketStreamPath, {}, tls));
+        require(waitUntil([&] { return snapshot || rejected; }) &&
+            (expectSnapshot ? snapshot : rejected), failure);
+        if (expectSnapshot)
+        {
+            browser.close();
+            require(waitUntil([&] { return browser.state() == QAbstractSocket::UnconnectedState; }),
+                "browser subscription closes cleanly");
+        }
+    };
+    verifyTicket({}, false, "ticket upgrade rejects a missing origin");
+    QUrl foreignOrigin(base);
+    foreignOrigin.setHost(QStringLiteral("localhost"));
+    verifyTicket(foreignOrigin.toString(), false, "ticket upgrade rejects a different host in the origin");
+    foreignOrigin = base;
+    foreignOrigin.setPort(base.port() == 443 ? 444 : 443);
+    verifyTicket(foreignOrigin.toString(), false, "ticket upgrade rejects a different port in the origin");
+    verifyTicket(base.toString(), true, "same-origin ticket upgrade receives the initial snapshot");
+    verifyTicket(base.toString(), false, "a consumed ticket rejects further subscriptions");
 
     QTcpServer sky;
     require(sky.listen(QHostAddress::LocalHost), "simulated SkyCore listens");

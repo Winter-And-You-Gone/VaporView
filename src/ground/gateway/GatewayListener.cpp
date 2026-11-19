@@ -11,18 +11,30 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QNetworkProxy>
+#include <QRandomGenerator>
 #include <QRegularExpression>
+#include <QResource>
 #include <QSslCertificate>
 #include <QSslConfiguration>
 #include <QSslKey>
 #include <QSslServer>
 #include <QSslSocket>
+#include <QUrlQuery>
 #include <QUuid>
 #include <QWebSocket>
 
 #include <algorithm>
 #include <cmath>
 #include <utility>
+
+static void initializeGatewayWebResources()
+{
+    static const bool initialized = [] {
+        Q_INIT_RESOURCE(gateway_web);
+        return true;
+    }();
+    Q_UNUSED(initialized);
+}
 
 namespace VaporView::Ground::Gateway
 {
@@ -34,21 +46,48 @@ constexpr auto kStreamPath = "/api/v1/stream";
 constexpr qsizetype kQueuedBytes = 256 * 1024;
 constexpr int kMaxSubscribers = 16;
 constexpr int kMaxCommands = 4096;
+constexpr int kMaxStreamTickets = 64;
+constexpr qint64 kStreamTicketLifetimeMs = 30 * 1000;
 constexpr qint64 kRetentionMs = 24 * 60 * 60 * 1000;
 constexpr qint64 kMaxCommandLifetimeMs = 5 * 60 * 1000;
 
-QHttpServerResponse jsonResponse(const QJsonObject& body, HttpStatus status = HttpStatus::Ok)
+QHttpServerResponse withoutCaching(QHttpServerResponse response)
 {
-    QHttpServerResponse response(body, status);
     auto headers = response.headers();
     headers.append(QHttpHeaders::WellKnownHeader::CacheControl, "no-store");
     response.setHeaders(std::move(headers));
     return response;
 }
 
+QHttpServerResponse jsonResponse(const QJsonObject& body, HttpStatus status = HttpStatus::Ok)
+{
+    return withoutCaching(QHttpServerResponse(body, status));
+}
+
 QHttpServerResponse errorResponse(const QString& error, HttpStatus status)
 {
     return jsonResponse({{"error", error}}, status);
+}
+
+QHttpServerResponse webResource(const char *path, const char *mimeType)
+{
+    QFile file(QString::fromLatin1(path));
+    if (!file.open(QIODevice::ReadOnly)) return errorResponse("resource-unavailable", HttpStatus::NotFound);
+    return withoutCaching(QHttpServerResponse(mimeType, file.readAll()));
+}
+
+QByteArray requestOrigin(const QHttpServerRequest& request)
+{
+    const auto hosts = request.headers().values(QHttpHeaders::WellKnownHeader::Host);
+    if (hosts.size() != 1 || hosts.first().size() > 261) return {};
+    static const QRegularExpression authorityPattern(
+        QStringLiteral(R"(\A(?:[A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\])(?::[0-9]{1,5})?\z)"));
+    if (!authorityPattern.match(QString::fromLatin1(hosts.first())).hasMatch()) return {};
+
+    auto origin = QUrl::fromEncoded("https://" + hosts.first(), QUrl::StrictMode);
+    if (!origin.isValid() || origin.host().isEmpty()) return {};
+    if (origin.port() == 443) origin.setPort(-1);
+    return origin.toEncoded();
 }
 
 QJsonObject frameFields(const TelemetryFrame& frame)
@@ -180,11 +219,24 @@ QString GatewayListener::start()
         tlsConnections_.append(socket);
     });
 
+    initializeGatewayWebResources();
     server_ = std::make_unique<QHttpServer>();
     QHttpServerConfiguration limits;
     limits.setKeepAliveTimeout(std::chrono::seconds(15));
     limits.setRateLimitPerSecond(20);
     server_->setConfiguration(limits);
+    server_->route("/", Method::Get, [] {
+        return webResource(":/gateway-web/index.html", "text/html; charset=utf-8");
+    });
+    server_->route("/app.js", Method::Get, [] {
+        return webResource(":/gateway-web/app.js", "text/javascript; charset=utf-8");
+    });
+    server_->route("/style.css", Method::Get, [] {
+        return webResource(":/gateway-web/style.css", "text/css; charset=utf-8");
+    });
+    server_->route("/api/v1/stream-ticket", Method::Post, [this](const QHttpServerRequest& request) {
+        return issueStreamTicket(request);
+    });
     server_->route("/api/v1/status", Method::Get, [this](const QHttpServerRequest& request) {
         if (!authorized(request)) return errorResponse("unauthorized", HttpStatus::Unauthorized);
         auto status = statusMessage();
@@ -210,7 +262,7 @@ QString GatewayListener::start()
     server_->addWebSocketUpgradeVerifier(this, [this](const QHttpServerRequest& request) {
         using Upgrade = QHttpServerWebSocketUpgradeResponse;
         if (request.url().path() != QLatin1String(kStreamPath)) return Upgrade::deny(404, "Unknown path");
-        if (!authorized(request)) return Upgrade::deny(401, "Unauthorized");
+        if (!authorized(request) && !consumeStreamTicket(request)) return Upgrade::deny(401, "Unauthorized");
         if (subscribers_.size() >= kMaxSubscribers) return Upgrade::deny(503, "Subscription limit reached");
         return Upgrade::accept();
     });
@@ -233,6 +285,48 @@ bool GatewayListener::authorized(const QHttpServerRequest& request) const
     for (qsizetype i = 0; i < hash.size(); ++i)
         differences |= static_cast<unsigned char>(hash[i] ^ authorizationHash_[i]);
     return differences == 0;
+}
+
+QHttpServerResponse GatewayListener::issueStreamTicket(const QHttpServerRequest& request)
+{
+    if (!authorized(request)) return errorResponse("unauthorized", HttpStatus::Unauthorized);
+    const auto origin = requestOrigin(request);
+    if (origin.isEmpty()) return errorResponse("invalid-host", HttpStatus::BadRequest);
+
+    streamTickets_.removeIf([](QHash<QString, StreamTicket>::iterator entry) {
+        return entry->expiry.hasExpired();
+    });
+    if (streamTickets_.size() >= kMaxStreamTickets)
+        return errorResponse("ticket-limit-reached", HttpStatus::TooManyRequests);
+
+    QString ticket;
+    do
+    {
+        quint32 randomWords[8];
+        QRandomGenerator::system()->fillRange(randomWords);
+        const QByteArray bytes = QByteArray::fromRawData(reinterpret_cast<const char *>(randomWords),
+                                                         sizeof(randomWords));
+        ticket = QString::fromLatin1(bytes.toHex());
+    } while (streamTickets_.contains(ticket));
+    streamTickets_.insert(ticket, {origin, QDeadlineTimer(kStreamTicketLifetimeMs, Qt::PreciseTimer)});
+    return jsonResponse({{"ticket", ticket}});
+}
+
+bool GatewayListener::consumeStreamTicket(const QHttpServerRequest& request)
+{
+    const auto origin = requestOrigin(request);
+    const auto origins = request.headers().values(QHttpHeaders::WellKnownHeader::Origin);
+    if (origin.isEmpty() || origins.size() != 1 || origins.first().compare(origin, Qt::CaseInsensitive) != 0)
+        return false;
+
+    const auto tickets = QUrlQuery(request.url()).allQueryItemValues(QStringLiteral("ticket"));
+    if (tickets.size() != 1 || tickets.first().size() != 64) return false;
+    const auto ticket = streamTickets_.find(tickets.first());
+    if (ticket == streamTickets_.end() || ticket->origin != origin) return false;
+
+    const bool valid = !ticket->expiry.hasExpired();
+    streamTickets_.erase(ticket);
+    return valid;
 }
 
 QHttpServerResponse GatewayListener::submit(const QHttpServerRequest& request)

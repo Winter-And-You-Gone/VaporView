@@ -3,6 +3,7 @@ add_library(vaporview_ground_gateway STATIC
     GatewayService.h
     GatewayListener.cpp
     GatewayListener.h
+    gateway_web.qrc
     OfflineQueue.cpp
     OfflineQueue.h
 )

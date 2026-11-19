@@ -2,6 +2,7 @@
 
 #include "ground/gateway/GatewayService.h"
 
+#include <QDeadlineTimer>
 #include <QHash>
 #include <QJsonObject>
 #include <QList>
@@ -45,6 +46,8 @@ public:
 
 private:
     bool authorized(const QHttpServerRequest& request) const;
+    QHttpServerResponse issueStreamTicket(const QHttpServerRequest& request);
+    bool consumeStreamTicket(const QHttpServerRequest& request);
     QHttpServerResponse submit(const QHttpServerRequest& request);
     void acceptSubscriber();
     void drain();
@@ -77,6 +80,12 @@ private:
         QJsonObject result;
     };
     QHash<QString, CommandEntry> commands_;
+    struct StreamTicket
+    {
+        QByteArray origin;
+        QDeadlineTimer expiry;
+    };
+    QHash<QString, StreamTicket> streamTickets_;
 };
 
 }  // namespace VaporView::Ground::Gateway

@@ -25,6 +25,11 @@
         <div class="refresh-state"><span id="server-dot" class="status-dot pending"></span><span id="refresh-label">正在连接验证台</span></div>
       </section>
 
+      <form id="inbound-link" class="inbound-link">
+        <label for="inbound-origin">4.19 地面网关入站测试</label>
+        <input id="inbound-origin" type="url" placeholder="https://地面网关地址:8443" required aria-label="地面网关 HTTPS 地址">
+        <button class="button secondary" type="submit">打开入站测试页</button>
+      </form>
       <section class="pipeline-card" aria-labelledby="pipeline-title">
         <div class="section-top"><div><p class="eyebrow">ONE CONNECTION, SHARED DATA</p><h2 id="pipeline-title">一条连接，贯通空地与云端</h2></div><span class="subtle-badge">安全的本机模拟环境</span></div>
         <div class="pipeline">
