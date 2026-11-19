@@ -1845,7 +1845,7 @@ void requireRtkSidebarPage(
             "main page stack preserves existing indices with motion embedded in device configuration");
     pageStack->setCurrentIndex(5);
     processEventsFor(60);
-    auto *guideNode = pageStack->currentWidget()->findChild<QLabel *>(QStringLiteral("calibrationStep4"));
+    auto *guideNode = pageStack->currentWidget()->findChild<QLabel *>(QStringLiteral("calibrationStep5"));
     require(guideNode && guideNode->isVisible(), "calibration guide nodes are visible in the main window");
     const auto guideCenter = guideNode->rect().center();
     QHelpEvent guideHover(QEvent::ToolTip, guideCenter, guideNode->mapToGlobal(guideCenter));

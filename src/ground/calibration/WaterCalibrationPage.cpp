@@ -67,10 +67,13 @@ struct StepGuide
     QString title;
     QString instructions;
 };
-const std::array<StepGuide, 4> StepGuides{{
-    {QStringLiteral("创建任务与阶段"),
-     QStringLiteral("在任务与采集填写任务名称，选定统一浓度单位，再点创建新任务。\n"
-                    "按标气的已知浓度逐个添加阶段，填写目标时长和备注。至少两个不同浓度，建议三个或更多。每阶段默认采满 600 秒有效时间。")},
+const std::array<StepGuide, 5> StepGuides{{
+    {QStringLiteral("创建任务"),
+     QStringLiteral("在任务与采集填写任务名称，为全部阶段选定统一浓度单位，再点创建新任务。\n"
+                    "继续之前保存的任务时，在草稿列表中选中对应任务，再点恢复草稿。")},
+    {QStringLiteral("添加浓度阶段"),
+     QStringLiteral("填写标气的已知浓度、有效采集时长和备注，点添加阶段。按计划逐个添加，再检查浓度和顺序。\n"
+                    "至少添加两个不同浓度，建议三个或更多。每阶段默认采满 600 秒有效时间。")},
     {QStringLiteral("逐阶段采集"),
      QStringLiteral("正常连接设备，等 816 nm 和 1368 nm 的最近 R 都更新，并确认普通 Session 已停止。\n"
                     "选择对应阶段，换入标气，等气路和信号稳定后勾选确认，再点确认稳定，开始 / 继续采集。\n"
@@ -83,7 +86,7 @@ const std::array<StepGuide, 4> StepGuides{{
                     "核对当前文件和设备身份，确认两路实时初始浓度，再开始正式录制。此步骤以选用本任务当前两路拟合生成的文件为完成。")},
 }};
 
-std::array<bool, 4> completedSteps(const CalibrationView& view)
+std::array<bool, StepGuides.size()> completedSteps(const CalibrationView& view)
 {
     const auto& project = view.project;
     QSet<double> concentrations;
@@ -93,7 +96,8 @@ std::array<bool, 4> completedSteps(const CalibrationView& view)
         concentrations.insert(stage.concentration);
         allCollected &= stage.status == QStringLiteral("complete");
     }
-    const bool planned = !project.id.isEmpty() && concentrations.size() >= 2;
+    const bool taskCreated = !project.id.isEmpty();
+    const bool planned = taskCreated && concentrations.size() >= 2;
     const auto fit816 = project.fits.constFind(816);
     const auto fit1368 = project.fits.constFind(1368);
     const bool fitted = fit816 != project.fits.cend() && fit1368 != project.fits.cend() &&
@@ -103,7 +107,7 @@ std::array<bool, 4> completedSteps(const CalibrationView& view)
                            selected.revision == project.revision &&
                            selected.fits.value(816).parameters.id == fit816->parameters.id &&
                            selected.fits.value(1368).parameters.id == fit1368->parameters.id;
-    return {planned, planned && allCollected, fitted, fileInUse};
+    return {taskCreated, planned, planned && allCollected, fitted, fileInUse};
 }
 
 QPixmap stepIndicator(QWidget *widget, bool completed, bool dark)
@@ -116,11 +120,15 @@ QPixmap stepIndicator(QWidget *widget, bool completed, bool dark)
     QPainter painter(&icon);
     painter.setRenderHint(QPainter::Antialiasing);
     const auto color = appThemeColor(completed ? AppThemeColor::Success : AppThemeColor::TextMuted, dark);
-    painter.setPen(QPen(appThemeColor(completed ? AppThemeColor::Success : AppThemeColor::BorderStrong, dark), 1));
+    const qreal inset = size / 10.0;
+    const QRectF circle(inset, inset, size - 2 * inset, size - 2 * inset);
+    painter.setPen(QPen(appThemeColor(completed ? AppThemeColor::Success : AppThemeColor::BorderStrong, dark), 1.5));
     painter.setBrush(appThemeColor(completed ? AppThemeColor::SuccessBackground : AppThemeColor::SurfaceAlt, dark));
-    painter.drawEllipse(QRectF(0.5, 0.5, size - 1, size - 1));
-    painter.translate(size * 0.14, size * 0.14);
-    painter.scale(size * 0.72 / 24, size * 0.72 / 24);
+    painter.drawEllipse(circle);
+    const qreal glyphSize = size * 0.63;
+    const qreal glyphInset = (size - glyphSize) / 2.0;
+    painter.translate(glyphInset, glyphInset);
+    painter.scale(glyphSize / 24, glyphSize / 24);
     painter.setPen(QPen(color, 2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
     // Paths from the bundled Lucide check.svg and x.svg (24-unit view box).
     if (completed) {
@@ -194,8 +202,9 @@ WaterCalibrationPage::WaterCalibrationPage(QWidget *parent,const QString& root,s
     auto *cardLayout=new QVBoxLayout(card);cardLayout->setContentsMargins(1,0,1,1);cardLayout->setSpacing(0);
     auto *header=new QWidget(card);header->setObjectName("calibrationCardHeader");auto *headerLayout=new QHBoxLayout(header);headerLayout->setContentsMargins(10,2,10,2);
     auto *title=new VisualTextLabel(QStringLiteral("水汽定标"));title->setObjectName("sectionTitleLabel");
-    configureSelectableCardTitle(title);headerLayout->addWidget(title);
-    headerLayout->addStretch();
+    configureSelectableCardTitle(title);
+    headerLayout->setSpacing(10);
+    headerLayout->addWidget(title, 0, Qt::AlignLeft | Qt::AlignVCenter);
     auto *steps = new QWidget(header);
     steps->setObjectName(QStringLiteral("calibrationStepPath"));
     auto *stepsLayout = new QHBoxLayout(steps);
@@ -214,6 +223,7 @@ WaterCalibrationPage::WaterCalibrationPage(QWidget *parent,const QString& root,s
         stepsLayout->addWidget(node, 0, Qt::AlignVCenter);
     }
     headerLayout->addWidget(steps, 0, Qt::AlignVCenter);
+    headerLayout->addStretch();
     cardLayout->addWidget(header);
     auto *body=new QWidget(card);body->setObjectName("calibrationCardBody");auto *layout=new QVBoxLayout(body);cardLayout->addWidget(body,1);
     s.currentFile=new QLabel;s.currentFile->setObjectName("calibrationCurrentFile");s.currentFile->setWordWrap(true);layout->addWidget(s.currentFile);
@@ -463,8 +473,8 @@ void WaterCalibrationPage::setTheme(bool dark,int percent)
     for(auto *widget:findChildren<QWidget*>())widget->setPalette(colors);
     for(auto *combo:findChildren<QComboBox*>())configureComboBoxPopup(combo,dark);
     state_->dark = dark;
-    for (auto *node : state_->stepNodes) node->setFixedSize(pixels(24), pixels(24));
-    for (auto *link : state_->stepLinks) link->setFixedSize(pixels(16), pixels(2));
+    for (auto *node : state_->stepNodes) node->setFixedSize(pixels(28), pixels(28));
+    for (auto *link : state_->stepLinks) link->setFixedSize(pixels(44), pixels(2));
     refreshSteps(true);
     for(auto *edit:{state_->details,state_->sampleDetails}) {
         edit->viewport()->setStyleSheet(applyAppThemeTokens(QStringLiteral("background-color: @vv-surface; color: @vv-text;"),dark));
