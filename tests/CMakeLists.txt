@@ -1006,6 +1006,9 @@ vaporview_add_test(NAME input_arrow_style_test
 vaporview_add_test(NAME combination_navigation_page_test
     COMMAND main_window_layout_test --combination-navigation-only
 )
+vaporview_add_test(NAME combination_navigation_appearance_test
+    COMMAND main_window_layout_test --combination-navigation-appearance-only
+)
 
 add_executable(device_config_layout_test
     ${CMAKE_CURRENT_SOURCE_DIR}/device_config_layout_test.cpp
@@ -1546,6 +1549,7 @@ set(VAPORVIEW_SLOW_UI_TESTS
     home_motion_width_layout_test
     input_arrow_style_test
     combination_navigation_page_test
+    combination_navigation_appearance_test
     navigation_status_panel_test
     ui_test_mode_window_test
     ui_test_navigation_coverage_test
@@ -1601,7 +1605,8 @@ set_property(TEST home_maximum_value_widths_test APPEND PROPERTY LABELS main-win
 set_property(TEST home_three_column_layout_test APPEND PROPERTY LABELS main-window layout)
 set_property(TEST home_motion_width_layout_test APPEND PROPERTY LABELS main-window layout)
 set_property(TEST input_arrow_style_test APPEND PROPERTY LABELS main-window layout)
-set_property(TEST combination_navigation_page_test APPEND PROPERTY LABELS main-window layout)
+set_property(TEST combination_navigation_page_test combination_navigation_appearance_test
+    APPEND PROPERTY LABELS main-window layout)
 set_property(TEST navigation_status_panel_test APPEND PROPERTY LABELS navigation-status ui layout)
 set_property(TEST ui_test_mode_window_test APPEND PROPERTY LABELS main-window ui-test-mode)
 set_property(TEST ui_test_navigation_coverage_test APPEND PROPERTY LABELS main-window ui-test-mode navigation)

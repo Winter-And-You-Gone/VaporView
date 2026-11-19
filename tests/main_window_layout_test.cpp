@@ -5784,6 +5784,53 @@ int main(int argc, char **argv)
         return 0;
     }
 
+    if (app.arguments().contains(QStringLiteral("--combination-navigation-appearance-only")))
+    {
+        MainWindow window;
+        window.resize(1280, 800);
+        window.show();
+        require(waitForWindowExposed(&window), "navigation appearance window is exposed");
+        auto *page = window.findChild<VaporView::Ground::Navigation::CombinationNavigationPage *>();
+        auto *stack = window.findChild<QStackedWidget *>(QStringLiteral("mainPageStack"));
+        require(page && stack, "the main window exposes the combination navigation page");
+        stack->setCurrentWidget(page);
+        auto *bar = page->findChild<QFrame *>(QStringLiteral("combinationNavigationNavigationBar"));
+        auto *track = page->findChild<QFrame *>(QStringLiteral("combinationNavigationNavigationTrack"));
+        require(bar && track, "the navigation shell and track exist");
+        for (int theme = 0; theme < 2; ++theme)
+        {
+            const bool dark = VaporView::isDarkThemeEnabled();
+            for (const int scale : {100, 80, 130})
+            {
+                triggerFontScaleAction(window, scale);
+                window.resize(scale == 80 ? 1040 : 1280, 800);
+                processEventsFor(120);
+                const QImage image = page->grab(QRect(bar->mapTo(page, QPoint()), bar->size())).toImage();
+                const qreal dpr = image.devicePixelRatio();
+                const auto pixel = [&](int x, int y) {
+                    return image.pixelColor(int((x + 0.5) * dpr), int((y + 0.5) * dpr));
+                };
+                const QColor background = VaporView::appThemeColor(VaporView::AppThemeColor::Window, dark);
+                const QColor primary = VaporView::appThemeColor(VaporView::AppThemeColor::Primary, dark);
+                for (const int x : {1, bar->width() - 2})
+                    for (const int y : {1, bar->height() - 2})
+                        require(pixel(x, y) == background, "capsule corners keep the page background at every font scale");
+                const QRect trackBounds(track->mapTo(bar, QPoint()), track->size());
+                require(pixel(trackBounds.center().x(), trackBounds.top() + 2) == primary,
+                        "the capsule keeps its themed track fill");
+                for (const int x : {trackBounds.left() + 1, trackBounds.right() - 1})
+                    for (const int y : {trackBounds.top() + 1, trackBounds.bottom() - 1})
+                        require(pixel(x, y) != primary, "track corners follow the rounded shell");
+            }
+            require(QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection),
+                    "navigation appearance test switches theme and restores the original theme");
+        }
+        triggerFontScaleAction(window, 100);
+        window.resize(1280, 800);
+        window.close();
+        return 0;
+    }
+
     if (app.arguments().contains(QStringLiteral("--combination-navigation-only")))
     {
         QPointer<QWidget> firstNavigationPage;

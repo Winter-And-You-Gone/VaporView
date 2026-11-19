@@ -226,6 +226,38 @@ private:
     bool keyboard_focus_indicator_visible_ = false;
 };
 
+class CombinationNavigationCapsuleFrame final : public QFrame
+{
+public:
+    enum class Layer { Shell, Track };
+
+    CombinationNavigationCapsuleFrame(Layer layer, QWidget *parent)
+        : QFrame(parent), layer_(layer)
+    {
+        setAutoFillBackground(false);
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        const bool dark = VaporView::isDarkThemeEnabled();
+        const bool track = layer_ == Layer::Track;
+        const auto fill = track ? AppThemeColor::Primary : AppThemeColor::PrimarySubtle;
+        const auto stroke = track && !dark ? AppThemeColor::White : AppThemeColor::BorderStrong;
+        const QRectF bounds = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+        // The main window scales the frame height and its insets at runtime.
+        const qreal radius = bounds.height() / 2.0;
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setBrush(VaporView::appThemeColor(fill, dark));
+        painter.setPen(VaporView::appThemeColor(stroke, dark));
+        painter.drawRoundedRect(bounds, radius, radius);
+    }
+
+private:
+    Layer layer_;
+};
+
 class CombinationNavigationSelectionThumb final : public QFrame
 {
 public:
@@ -293,18 +325,16 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
                                             kPageVerticalInset);
     navigationRowLayout->setSpacing(0);
 
-    auto *navigationBar = new QFrame(navigationRow);
+    auto *navigationBar = new CombinationNavigationCapsuleFrame(CombinationNavigationCapsuleFrame::Layer::Shell, navigationRow);
     navigationBar->setObjectName(QStringLiteral("combinationNavigationNavigationBar"));
-    prepareStyledBackground(navigationBar);
     navigationBar->setFixedHeight(kNavigationBarHeight);
     navigationBar->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     auto *navigationBarLayout = new QHBoxLayout(navigationBar);
     navigationBarLayout->setContentsMargins(2, 2, 2, 2);
     navigationBarLayout->setSpacing(0);
 
-    auto *navigationTrack = new QFrame(navigationBar);
+    auto *navigationTrack = new CombinationNavigationCapsuleFrame(CombinationNavigationCapsuleFrame::Layer::Track, navigationBar);
     navigationTrack->setObjectName(QStringLiteral("combinationNavigationNavigationTrack"));
-    prepareStyledBackground(navigationTrack);
     navigationTrack->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     navigation_track_ = navigationTrack;
     navigationTrack->installEventFilter(this);
@@ -767,9 +797,6 @@ void CombinationNavigationPage::updateTexts()
 void CombinationNavigationPage::applyAppearance()
 {
     const bool dark = VaporView::isDarkThemeEnabled();
-    const QString trackOutline = VaporView::appThemeColorName(
-        dark ? VaporView::AppThemeColor::BorderStrong : VaporView::AppThemeColor::White,
-        dark);
     const QString style = QStringLiteral(
         "QWidget#combinationNavigationPage, QWidget#combinationNavigationStatusPage, "
         "QWidget#navigationStatusContent, "
@@ -805,8 +832,8 @@ void CombinationNavigationPage::applyAppearance()
         "QScrollArea#rtkConfigScrollArea QScrollBar::add-line:vertical, "
         "QScrollArea#rtkConfigScrollArea QScrollBar::sub-line:vertical { "
         "background-color: @vv-window; border: none; height: 0px; }"
-        "QFrame#combinationNavigationNavigationBar { background-color: @vv-primary-subtle; border: 1px solid @vv-border-strong; border-radius: 18px; }"
-        "QFrame#combinationNavigationNavigationTrack { background-color: @vv-primary; border: 1px solid %1; border-radius: 15px; }"
+        // Reserve the painted borders in the layouts without a second background.
+        "QFrame#combinationNavigationNavigationBar, QFrame#combinationNavigationNavigationTrack { background-color: transparent; border: 1px solid transparent; }"
         "QPushButton#combinationNavigationStatusButton, "
         "QPushButton#combinationNavigationDifferentialButton { background-color: transparent; border: 1px solid transparent; border-radius: 13px; color: @vv-white; font-weight: 600; margin: 0; min-height: 0; padding: 0 10px; outline: none; }"
         "QPushButton#combinationNavigationStatusButton:checked, "
@@ -821,8 +848,7 @@ void CombinationNavigationPage::applyAppearance()
         "QFrame#combinationNavigationNavigationTrack QPushButton[epsilonUnifiedNavigationButton=\"true\"]:checked { background-color: transparent; color: @vv-primary; font-weight: 600; }"
         "QFrame#combinationNavigationNavigationTrack QPushButton[epsilonUnifiedNavigationButton=\"true\"]:!checked:hover { background-color: transparent; color: @vv-white; }"
         "QFrame#combinationNavigationNavigationTrack QPushButton[epsilonUnifiedNavigationButton=\"true\"]:pressed { background-color: transparent; }"
-        "QFrame#combinationNavigationNavigationTrack QPushButton[epsilonUnifiedNavigationButton=\"true\"]:checked:pressed { background-color: transparent; }")
-            .arg(trackOutline);
+        "QFrame#combinationNavigationNavigationTrack QPushButton[epsilonUnifiedNavigationButton=\"true\"]:checked:pressed { background-color: transparent; }");
     const QString resolvedStyle =
         VaporView::applyAppThemeTokens(style, dark);
     if (styleSheet() != resolvedStyle)
