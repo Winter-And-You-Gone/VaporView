@@ -39,7 +39,24 @@ python tools/gateway_demo/server.py --port 8765 --open-browser
 
 ## 对接桌面 GUI
 
-网页的连接信息区提供服务器地址、设备 ID 和显式显示的临时访问令牌，将其填入 VaporView 的“数据 → 云端 Gateway”。仅本机回环 HTTP 用于演示；实际互联网部署应使用 HTTPS 并采用甲方的鉴权与设备管理。
+### 只模拟 SkyCore，在网页测试正式地面端与网关
+
+在地面电脑上，从仓库根目录分别执行以下三个命令。每个命令使用独立终端，测试期间保持运行。
+
+```powershell
+.\build\Release\VaporViewSkyCore.exe --fpga-simulate-data --telemetry-transport tcp --telemetry-host 127.0.0.1 --telemetry-tcp-port 39100
+.\build\Release\VaporView.exe
+python tools/gateway_demo/server.py --open-browser
+```
+
+1. 地面端关闭“界面测试模式”，选择天空-地面接收（远程），将数传 TCP 连接到 `127.0.0.1:39100`，再连接设备。先在地面端确认模拟测量持续更新。网关会复用这条数传连接。
+2. 浏览器中保持“模拟互联网 · 在线”。直接到页底“连接你的 VaporView GUI”复制服务器地址、设备标识和访问令牌。上方“运行真实 Gateway 验证”会另外启动一套测试客户端及模拟器，本次跳过该按钮。
+3. 在地面端“数据 → Gateway 网关…”填入上述三项，勾选“启用云端转发”、“允许云端下发命令”和“读取设备状态”，保存。
+4. 回到网页看“实时遥测”的新帧序号和采集时间，点击“远程命令 → 读取状态”。用本次生成的命令 ID 对应最终的 `acknowledged` 回执。帧持续更新能确认上行，状态回执能确认命令到达 SkyCore 并返回。只测状态时无需授权录制启停。
+
+这组操作测试地面网关向网页后台转发遥测、轮询命令并回传结果。按 A.19 从外部测试机主动连接地面端的 HTTPS/WSS 监听时，请使用[入站客户端说明](../../docs/gui_gateway.md#用独立客户端核验)。当前验证台的“服务器地址”是供地面端复制的只读字段。
+
+网页连接信息使用本机回环 HTTP。实际互联网部署应使用 HTTPS 并采用甲方的鉴权与设备管理。
 
 网页可下发状态查询、启动 / 恢复记录与停止记录，后两项仍需 GUI 本机白名单授权。命令有效期、去重、断线结果均由真实 Gateway 检查。不要同时运行自动验证客户端与配置为同一设备 ID 的现场 GUI，以免两者竞争处理同一命令。
 
