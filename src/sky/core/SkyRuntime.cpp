@@ -463,7 +463,13 @@ bool SkyRuntime::start()
     SkyConfig config;
     QString configError;
     const QString configPath = options_.config_path.isEmpty() ? defaultConfigPath() : options_.config_path;
-    if (!SkyConfig::loadFromFile(configPath, config, &configError))
+    if (!options_.simulate_data && !options_.simulate_fpga && !QFileInfo::exists(configPath))
+    {
+        config = SkyConfig::defaults();
+        config.sensor_transport_path = SensorTransportPath::FpgaRelay;
+        config.fpga.enabled = true;
+    }
+    else if (!SkyConfig::loadFromFile(configPath, config, &configError))
     {
         publishRuntimeLog(LogLevel::Warning,
                           QStringLiteral("config.load"),
