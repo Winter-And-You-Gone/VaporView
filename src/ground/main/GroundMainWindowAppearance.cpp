@@ -599,7 +599,7 @@ void MainWindow::updateAppSidebarButtonTexts()
                     state_->is_english_ ? QStringLiteral("Nav") : QString());
     applyButtonText(state_->device_config_nav_btn_, state_->is_english_ ? QStringLiteral("Device") : QStringLiteral("设备配置"));
     applyButtonText(state_->fpga_nav_btn_, QStringLiteral("FPGA"));
-    applyButtonText(state_->water_calibration_nav_btn_, state_->is_english_ ? QStringLiteral("Water Calibration") : QStringLiteral("水汽定标"),
+    applyButtonText(state_->water_calibration_nav_btn_, state_->is_english_ ? QStringLiteral("Calibration") : QStringLiteral("定标"),
                     state_->is_english_ ? QStringLiteral("Calib.") : QString());
     updateRtkConfigIcon();
     updateCustomTitleBarTexts();

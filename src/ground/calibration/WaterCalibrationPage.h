@@ -23,5 +23,6 @@ private:
     void refresh();
     void refreshSteps(bool force = false);
     void refreshReview();
+    void refreshCompensation();
 };
 }

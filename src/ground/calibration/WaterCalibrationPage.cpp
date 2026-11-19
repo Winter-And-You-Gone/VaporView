@@ -15,6 +15,7 @@
 #include <QFileInfo>
 #include <QFrame>
 #include <QFutureWatcher>
+#include <QGridLayout>
 #include <QHeaderView>
 #include <QInputDialog>
 #include <QJsonDocument>
@@ -30,6 +31,7 @@
 #include <QSignalBlocker>
 #include <QScopeGuard>
 #include <QSpinBox>
+#include <QStackedWidget>
 #include <QStyle>
 #include <QSplitter>
 #include <QTabWidget>
@@ -135,21 +137,42 @@ QString sampleDetails(const PeakRecord& row,const ConcentrationStage& stage)
     return QString::fromUtf8(QJsonDocument(j).toJson());
 }
 struct HistoryResult {ConcentrationSnapshot legacy;RecordedConcentrations recorded;bool isRecorded=false;};
-QString documentSummary(QJsonObject document)
+QString documentSummary(const QJsonObject& document)
 {
-    document.remove("vcal_document");
-    auto project=document["project"].toObject();auto stages=project["stages"].toArray();
-    for(int i=0;i<stages.size();++i) {
-        auto stage=stages[i].toObject();auto channels=stage["channels"].toObject();
-        for(const auto& wave:channels.keys()) {
-            if(channels[wave].isArray())channels[wave]=QJsonObject{{"raw_sample_count",channels[wave].toArray().size()}};
+    const auto project = document["project"].toObject();
+    QStringList lines{QStringLiteral("任务名称  %1\n创建时间（UTC）  %2\n浓度单位  %3\n浓度阶段  %4")
+                          .arg(project["name"].toString(), document["created_utc"].toString(), project["unit"].toString())
+                          .arg(project["stages"].toArray().size())};
+    const auto fits = project["fits"].toObject();
+    const auto legacy = project["legacy_fits"].toArray();
+    for (int wave : {816, 1368}) {
+        auto fit = fits[QString::number(wave)].toObject()["parameters"].toObject();
+        if (fit.isEmpty()) {
+            for (const auto& entry : legacy) {
+                const auto candidate = entry.toObject();
+                if (candidate["dataset"].toObject()["wavelength_nm"].toInt() == wave) {
+                    fit = candidate;
+                    break;
+                }
+            }
         }
-        if(stage.contains("exclusions"))stage["audit_operation_count"]=stage.take("exclusions").toArray().size();
-        stage["channels"]=channels;stages[i]=stage;
+        if (fit.isEmpty()) continue;
+        const auto b = fit["b"].toDouble();
+        lines << QStringLiteral("%1 nm  C = %2 × R %3 %4\nR 范围  %5 至 %6    R²  %7    RMSE  %8")
+                     .arg(wave).arg(fit["a"].toDouble(),0,'g',8).arg(b < 0 ? QStringLiteral("−") : QStringLiteral("+"))
+                     .arg(std::abs(b),0,'g',8).arg(fit["r_min"].toDouble(),0,'g',8).arg(fit["r_max"].toDouble(),0,'g',8)
+                     .arg(fit["r_squared"].isDouble() ? QString::number(fit["r_squared"].toDouble(),'g',6) : QStringLiteral("—"))
+                     .arg(fit["rmse"].toDouble(),0,'g',6);
     }
-    if(!project.isEmpty()){project["stages"]=stages;document["project"]=project;}
-    return QString::fromUtf8(QJsonDocument(document).toJson());
+    return lines.join(QStringLiteral("\n\n"));
 }
+QString historyRow(int wave, bool valid, double value, const QString& unit)
+{
+    return QStringLiteral("%1 nm    %2").arg(wave).arg(valid ? QString::number(value,'g',8) + ' ' + unit
+                                                           : QStringLiteral("无有效浓度"));
+}
+constexpr double CelsiusOffset = 273.15;
+constexpr std::array<int,2> CompensationWavelengths{816,1368};
 }
 struct WaterCalibrationPage::State
 {
@@ -169,6 +192,12 @@ struct WaterCalibrationPage::State
     QLabel *status,*progressText,*currentFile,*live,*fitSummary;
     QProgressBar *progress;
     QPlainTextEdit *details,*sampleDetails;
+    QCheckBox *useCompensationExample;
+    QWidget *compensationExampleFields;
+    QDoubleSpinBox *referenceTemperature,*referencePressure,*exampleTemperature,*examplePressure;
+    std::array<QDoubleSpinBox*,2> exampleConcentrations{};
+    QLabel *compensationEnvironment;
+    std::array<QLabel*,2> initialConcentrations{}, compensatedConcentrations{};
     CalibrationReviewPlot *review;
     CalibrationFitPlot *fitPlot;
     CalibrationReviewPlot *trend816,*trend1368;
@@ -215,10 +244,39 @@ WaterCalibrationPage::WaterCalibrationPage(QWidget *parent,const QString& root,s
     headerLayout->addWidget(steps, 0, Qt::AlignVCenter);
     headerLayout->addStretch();
     cardLayout->addWidget(header);
-    auto *body=new QWidget(card);body->setObjectName("calibrationCardBody");auto *layout=new QVBoxLayout(body);cardLayout->addWidget(body,1);
+    auto *cardBody = new QWidget(card);
+    cardBody->setObjectName("calibrationCardBody");
+    cardLayout->addWidget(cardBody, 1);
+    auto *cardBodyLayout = new QVBoxLayout(cardBody);
+    auto *sectionNavigation = new QFrame(cardBody);
+    sectionNavigation->setObjectName("calibrationSectionNavigation");
+    sectionNavigation->setProperty("calibrationNavigation", true);
+    sectionNavigation->setAttribute(Qt::WA_StyledBackground, true);
+    auto *sectionNavigationLayout = new QHBoxLayout(sectionNavigation);
+    sectionNavigationLayout->setContentsMargins(4, 3, 4, 3);
+    sectionNavigationLayout->setSpacing(4);
+    cardBodyLayout->addWidget(sectionNavigation, 0, Qt::AlignLeft);
+    auto *sections = new QStackedWidget(cardBody);
+    auto *sectionButtons = new QButtonGroup(sections);
+    const QStringList sectionNames{QStringLiteral("水汽定标"), QStringLiteral("温压补偿")};
+    for (int i = 0; i < sectionNames.size(); ++i) {
+        auto *selector = new QPushButton(sectionNames[i], sectionNavigation);
+        selector->setObjectName(QStringLiteral("calibrationSectionButton%1").arg(i + 1));
+        selector->setCheckable(true);
+        selector->setCursor(Qt::PointingHandCursor);
+        selector->setFocusPolicy(Qt::TabFocus);
+        sectionNavigationLayout->addWidget(selector);
+        sectionButtons->addButton(selector, i);
+    }
+    sectionButtons->button(0)->setChecked(true);
+    cardBodyLayout->addWidget(sections, 1);
+    auto *body = new QWidget(sections);
+    auto *layout = new QVBoxLayout(body);
+    layout->setContentsMargins(0, 0, 0, 0);
+    sections->addWidget(body);
     s.currentFile=new QLabel;s.currentFile->setObjectName("calibrationCurrentFile");s.currentFile->setWordWrap(true);layout->addWidget(s.currentFile);
     s.live=new QLabel;s.live->setObjectName("calibrationLiveConcentration");s.live->setWordWrap(true);layout->addWidget(s.live);
-    auto *navigation=new QFrame(body);navigation->setObjectName("calibrationNavigationBar");navigation->setAttribute(Qt::WA_StyledBackground,true);
+    auto *navigation=new QFrame(body);navigation->setObjectName("calibrationNavigationBar");navigation->setProperty("calibrationNavigation", true);navigation->setAttribute(Qt::WA_StyledBackground,true);
     auto *navigationLayout=new QHBoxLayout(navigation);navigationLayout->setContentsMargins(4,3,4,3);navigationLayout->setSpacing(4);
     auto *pageButtons=new QButtonGroup(this);pageButtons->setExclusive(true);
     const QStringList pageNames{QStringLiteral("任务与采集"),QStringLiteral("审核与拟合"),QStringLiteral("定标文件管理")};
@@ -264,7 +322,17 @@ WaterCalibrationPage::WaterCalibrationPage(QWidget *parent,const QString& root,s
     auto *trends=new QHBoxLayout;s.trend816=new CalibrationReviewPlot;s.trend1368=new CalibrationReviewPlot;
     s.trend816->setStage({},816);s.trend1368->setStage({},1368);
     trends->addWidget(s.trend816);trends->addWidget(s.trend1368);a->addLayout(trends);
-    const auto workspace=[&](QWidget *content,const QString& name){content->setObjectName("calibrationWorkspace");auto *scroll=new QScrollArea;scroll->setObjectName("calibrationWorkspaceScroll");scroll->viewport()->setObjectName("calibrationWorkspaceViewport");scroll->setWidgetResizable(true);scroll->setFrameShape(QFrame::NoFrame);scroll->setWidget(content);s.tabs->addTab(scroll,name);};
+    const auto workspaceScroll = [](QWidget *content) {
+        content->setObjectName("calibrationWorkspace");
+        auto *scroll = new QScrollArea;
+        scroll->setObjectName("calibrationWorkspaceScroll");
+        scroll->viewport()->setObjectName("calibrationWorkspaceViewport");
+        scroll->setWidgetResizable(true);
+        scroll->setFrameShape(QFrame::NoFrame);
+        scroll->setWidget(content);
+        return scroll;
+    };
+    const auto workspace = [&](QWidget *content, const QString& name) { s.tabs->addTab(workspaceScroll(content), name); };
     workspace(acquisition,QStringLiteral("任务与采集"));
 
     auto *review=new QWidget;auto *r=new QVBoxLayout(review);
@@ -303,17 +371,88 @@ WaterCalibrationPage::WaterCalibrationPage(QWidget *parent,const QString& root,s
     button(QStringLiteral("归档"),"calibrationArchiveFile",fileActions,[this]{state_->service->removeFile(state_->files->currentData().toString(),true);});
     button(QStringLiteral("删除"),"calibrationDeleteFile",fileActions,[this]{if(QMessageBox::question(this,QStringLiteral("删除定标文件"),QStringLiteral("确认删除当前文件？活动 Session 使用的文件不能删除。"))==QMessageBox::Yes)state_->service->removeFile(state_->files->currentData().toString(),false);});
     button(QStringLiteral("导入旧库参数"),"calibrationLegacyImport",fileActions,[this]{
-        const auto path=QFileDialog::getOpenFileName(this,QStringLiteral("选择旧 library.json"),Store::defaultFilename(),"JSON (*.json)");if(path.isEmpty())return;
+        const auto path=QFileDialog::getOpenFileName(this,QStringLiteral("选择旧 library.json"),Store::defaultFilename(),QStringLiteral("浓度快照 (*.json)"));if(path.isEmpty())return;
         bool ok=false;const auto a=QInputDialog::getText(this,QStringLiteral("旧版本导入"),QStringLiteral("816 nm 原始 Fit UUID（原库保持不变）"),QLineEdit::Normal,{},&ok);if(!ok)return;
         const auto b=QInputDialog::getText(this,QStringLiteral("旧版本导入"),QStringLiteral("1368 nm 原始 Fit UUID"),QLineEdit::Normal,{},&ok);if(ok)state_->service->importLegacy(path,a,b);
     });fileActions->addStretch();f->addLayout(fileActions);
     auto *history=new QHBoxLayout;
-    button(QStringLiteral("查看历史浓度快照"),"calibrationHistory",history,[this]{const auto path=QFileDialog::getOpenFileName(this,QStringLiteral("历史浓度快照 / Session 浓度记录"),{},"JSON / JSONL (*.json *.jsonl)");if(!path.isEmpty())loadConcentrationResults(path);});
-    button(QStringLiteral("导出已查看的历史浓度"),"calibrationExportHistory",history,[this]{const auto path=QFileDialog::getSaveFileName(this,QStringLiteral("导出自包含历史浓度"),{},"JSON (*.json)");if(!path.isEmpty())exportConcentrationResults(path);});
+    button(QStringLiteral("查看历史浓度快照"),"calibrationHistory",history,[this]{const auto path=QFileDialog::getOpenFileName(this,QStringLiteral("历史浓度快照 / Session 浓度记录"),{},QStringLiteral("浓度记录 (*.json *.jsonl)"));if(!path.isEmpty())loadConcentrationResults(path);});
+    button(QStringLiteral("导出已查看的历史浓度"),"calibrationExportHistory",history,[this]{const auto path=QFileDialog::getSaveFileName(this,QStringLiteral("导出自包含历史浓度"),{},QStringLiteral("浓度快照 (*.json)"));if(!path.isEmpty())exportConcentrationResults(path);});
     button(QStringLiteral("结束异常恢复的 Session"),"calibrationFinishRecovered",history,[this]{
         if(QMessageBox::question(this,QStringLiteral("结束异常会话"),QStringLiteral("确认此会话已经停止？将解除持久化定标锁，保留历史快照。"))==QMessageBox::Yes)state_->service->finishRecoveredSession();});history->addStretch();f->addLayout(history);
-    s.details=new QPlainTextEdit;s.details->setReadOnly(true);s.details->setObjectName("calibrationDetails");f->addWidget(s.details,1);
+    s.details=new QPlainTextEdit;s.details->setReadOnly(true);s.details->setObjectName("calibrationDetails");
+    s.details->setPlaceholderText(QStringLiteral("查看 .vcal 参数摘要或历史浓度记录"));f->addWidget(s.details,1);
     auto *boundary=new QLabel(QStringLiteral("验证用线性模型 C=aR+b；显示初始浓度，未进行温压补偿。文件长期有效，不自动过期。\n文件和草稿固定保存于程序安装目录 calibrations/，写入失败不会改存其他目录。"));boundary->setWordWrap(true);f->addWidget(boundary);workspace(files,QStringLiteral("定标文件管理"));
+    auto *compensation = new QWidget;
+    auto *compensationLayout = new QVBoxLayout(compensation);
+    auto *formula = new QLabel(QStringLiteral("预览公式  C = C₀ × (T / T参考) × (P参考 / P)\n"
+                                             "温度按开尔文计算，适用于 ppmv 和 mol/mol。补偿结果仅在本页预览。"));
+    formula->setWordWrap(true);
+    compensationLayout->addWidget(formula);
+    const auto field = [this](QGridLayout *grid, int row, const QString& label, const char *name,
+                              double minimum, double maximum, double value, const QString& suffix, int decimals = 2) {
+        auto *editor = new QDoubleSpinBox;
+        editor->setObjectName(QLatin1String(name));
+        editor->setDecimals(decimals);
+        editor->setRange(minimum, maximum);
+        editor->setValue(value);
+        editor->setSuffix(suffix);
+        auto *caption = new QLabel(label);
+        caption->setBuddy(editor);
+        grid->addWidget(caption, row, 0);
+        grid->addWidget(editor, row, 1);
+        connect(editor, &QDoubleSpinBox::valueChanged, this, &WaterCalibrationPage::refreshCompensation);
+        return editor;
+    };
+    auto *reference = new QGridLayout;
+    reference->setColumnStretch(2, 1);
+    s.referenceTemperature = field(reference,0,QStringLiteral("参考温度"),"calibrationReferenceTemperature",-273.14,1000,25,QStringLiteral(" °C"));
+    s.referencePressure = field(reference,1,QStringLiteral("参考气压"),"calibrationReferencePressure",0.01,20000,1013.25,QStringLiteral(" hPa"));
+    compensationLayout->addLayout(reference);
+    s.useCompensationExample = new QCheckBox(QStringLiteral("使用示例数据"));
+    s.useCompensationExample->setObjectName("calibrationCompensationExample");
+    compensationLayout->addWidget(s.useCompensationExample);
+    s.compensationExampleFields = new QWidget;
+    auto *examples = new QGridLayout(s.compensationExampleFields);
+    examples->setContentsMargins(0,0,0,0);
+    examples->setColumnStretch(2, 1);
+    s.exampleTemperature = field(examples,0,QStringLiteral("示例温度"),"calibrationExampleTemperature",-273.14,1000,30,QStringLiteral(" °C"));
+    s.examplePressure = field(examples,1,QStringLiteral("示例气压"),"calibrationExamplePressure",0.01,20000,950,QStringLiteral(" hPa"));
+    s.exampleConcentrations[0] = field(examples,2,QStringLiteral("816 nm 初始浓度"),"calibrationExample816",0,1e6,100,QStringLiteral(" ppmv"),6);
+    s.exampleConcentrations[1] = field(examples,3,QStringLiteral("1368 nm 初始浓度"),"calibrationExample1368",0,1e6,120,QStringLiteral(" ppmv"),6);
+    compensationLayout->addWidget(s.compensationExampleFields);
+    connect(s.useCompensationExample, &QCheckBox::toggled, this, &WaterCalibrationPage::refreshCompensation);
+    s.compensationEnvironment = new QLabel;
+    s.compensationEnvironment->setObjectName("calibrationCompensationEnvironment");
+    s.compensationEnvironment->setWordWrap(true);
+    compensationLayout->addWidget(s.compensationEnvironment);
+    auto *results = new QGridLayout;
+    results->setColumnStretch(1, 1);
+    results->setColumnStretch(2, 1);
+    results->addWidget(new QLabel(QStringLiteral("波长")), 0, 0);
+    results->addWidget(new QLabel(QStringLiteral("初始浓度")), 0, 1);
+    results->addWidget(new QLabel(QStringLiteral("补偿浓度")), 0, 2);
+    for (size_t i = 0; i < CompensationWavelengths.size(); ++i) {
+        const auto wave = QString::number(CompensationWavelengths[i]);
+        results->addWidget(new QLabel(wave + QStringLiteral(" nm")), int(i) + 1, 0);
+        s.initialConcentrations[i] = new QLabel;
+        s.initialConcentrations[i]->setObjectName(QStringLiteral("calibrationInitial%1").arg(wave));
+        results->addWidget(s.initialConcentrations[i], int(i) + 1, 1);
+        s.compensatedConcentrations[i] = new QLabel;
+        s.compensatedConcentrations[i]->setObjectName(QStringLiteral("calibrationCompensated%1").arg(wave));
+        s.compensatedConcentrations[i]->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        results->addWidget(s.compensatedConcentrations[i], int(i) + 1, 2);
+    }
+    compensationLayout->addLayout(results);
+    compensationLayout->addStretch();
+    sections->addWidget(workspaceScroll(compensation));
+    connect(sectionButtons, &QButtonGroup::idClicked, sections, &QStackedWidget::setCurrentIndex);
+    connect(sections, &QStackedWidget::currentChanged, this, [sectionButtons, sectionNames, title, steps](int index) {
+        sectionButtons->button(index)->setChecked(true);
+        title->setText(sectionNames[index]);
+        steps->setVisible(index == 0);
+    });
+    refreshCompensation();
     s.tabs->tabBar()->hide();pageButtons->button(s.tabs->currentIndex())->setChecked(true);
     s.status=new QLabel;s.status->setObjectName("calibrationStatus");s.status->setWordWrap(true);s.status->setTextInteractionFlags(Qt::TextSelectableByMouse);layout->addWidget(s.status);
     connect(s.service.get(),&CalibrationService::changed,this,[this]{refresh();},Qt::QueuedConnection);
@@ -338,7 +477,10 @@ void WaterCalibrationPage::showEvent(QShowEvent *event) {QWidget::showEvent(even
 std::shared_ptr<CalibrationService> WaterCalibrationPage::service() const {return state_->service;}
 void WaterCalibrationPage::refresh()
 {
-    auto& s=*state_;const auto oldTask=s.view.project.id;s.view=s.service->view();const auto& v=s.view;
+    auto& s=*state_;const auto oldTask=s.view.project.id;
+    const auto oldFile = s.view.selected.filename;
+    const auto oldDigest = s.view.selected.sha256;
+    s.view=s.service->view();const auto& v=s.view;
     if(oldTask!=v.project.id){++s.historyRequest;s.name->setText(v.project.name);s.unit->setCurrentIndex(v.project.unit=="mg/m3"?2:s.unit->findText(v.project.unit));s.stageIndex=-1;}
     s.status->setText(v.message);s.status->setProperty("calibrationError",v.error);
     if(v.message!=s.lastMessage && !v.message.isEmpty()) {
@@ -346,6 +488,9 @@ void WaterCalibrationPage::refresh()
         VaporView::LogService::withCurrentInstance([&](VaporView::LogService& log){log.publish(v.error?VaporView::LogLevel::Warning:VaporView::LogLevel::Info,
             QStringLiteral("water_calibration"),QStringLiteral("calibration"),v.message,{{QStringLiteral("event"),QStringLiteral("calibration_state")},{QStringLiteral("task_id"),v.project.id}});});
     }
+    if (v.selected.valid && (s.details->toPlainText().isEmpty() || oldFile != v.selected.filename || oldDigest != v.selected.sha256))
+        s.details->setPlainText(documentSummary(v.selected.summary));
+    if(s.inspection!=v.inspection){s.inspection=v.inspection;s.details->setPlainText(documentSummary(v.inspectedDocument));}
     if(!isVisible())return;
     refreshSteps();
     s.currentFile->setText(v.selected.valid?QStringLiteral("当前定标：%1 · %2 · %3%4").arg(QFileInfo(v.selected.filename).fileName(),v.selected.project.name,v.locked?QStringLiteral("Session 已锁定"):QStringLiteral("可切换"),v.identityWarning.isEmpty()?QString():" · "+v.identityWarning):QStringLiteral("尚未选择有效双波长 .vcal；正式录制前必须选择"));
@@ -366,9 +511,41 @@ void WaterCalibrationPage::refresh()
     const auto fill=[](QComboBox *combo,const QStringList& paths){const auto old=combo->currentData().toString();QSignalBlocker b(combo);combo->clear();for(const auto& path:paths)combo->addItem(QFileInfo(path).fileName(),path);const int i=combo->findData(old);if(i>=0)combo->setCurrentIndex(i);};
     fill(s.files,v.files);fill(s.drafts,v.drafts);
     {QSignalBlocker block(s.reviewStage);s.reviewStage->clear();for(const auto& stage:v.project.stages)s.reviewStage->addItem(QStringLiteral("%1 %2 · %3").arg(stage.concentration,0,'g',8).arg(v.project.unit,statusText(stage.status)));s.reviewStage->setCurrentIndex(s.stageIndex);}
-    if(v.selected.valid && s.details->toPlainText().isEmpty())s.details->setPlainText(documentSummary(v.selected.summary));
-    if(s.inspection!=v.inspection){s.inspection=v.inspection;s.details->setPlainText(documentSummary(v.inspectedDocument));}
+    refreshCompensation();
     refreshReview();
+}
+void WaterCalibrationPage::refreshCompensation()
+{
+    auto& s = *state_;
+    const bool example = s.useCompensationExample->isChecked();
+    s.compensationExampleFields->setVisible(example);
+    const auto& environment = s.view.compensationEnvironment;
+    const double temperature = example ? s.exampleTemperature->value() : environment.temperatureC;
+    const double pressure = example ? s.examplePressure->value() : environment.pressureHpa;
+    const bool hasEnvironment = std::isfinite(temperature) && std::isfinite(pressure);
+    s.compensationEnvironment->setText(hasEnvironment
+        ? QStringLiteral("%1    温度 %2 °C    气压 %3 hPa")
+              .arg(example ? QStringLiteral("示例数据") : environment.source)
+              .arg(temperature,0,'f',2).arg(pressure,0,'f',2)
+        : QStringLiteral("等待有效温度和气压。可勾选「使用示例数据」试算。"));
+    const double factor = (temperature + CelsiusOffset) / (s.referenceTemperature->value() + CelsiusOffset)
+                        * (s.referencePressure->value() / pressure);
+    for (size_t i = 0; i < CompensationWavelengths.size(); ++i) {
+        const auto live = s.view.live.value(CompensationWavelengths[i]);
+        const double initial = example ? s.exampleConcentrations[i]->value() : live.initial;
+        const auto unit = example ? QStringLiteral("ppmv") : live.unit;
+        const bool valid = (example || live.valid) && std::isfinite(initial);
+        const auto format = [&unit](double value) { return QString::number(value,'g',8) + ' ' + unit; };
+        s.initialConcentrations[i]->setText(valid ? format(initial) : QStringLiteral("—"));
+        auto result = QStringLiteral("—");
+        if (valid) {
+            if (unit != QStringLiteral("ppmv") && unit != QStringLiteral("mol/mol"))
+                result = QStringLiteral("当前单位不适用");
+            else if (hasEnvironment && std::isfinite(initial * factor))
+                result = format(initial * factor);
+        }
+        s.compensatedConcentrations[i]->setText(result);
+    }
 }
 void WaterCalibrationPage::refreshReview()
 {
@@ -457,10 +634,10 @@ void WaterCalibrationPage::setTheme(bool dark,int percent)
         "QWidget#waterCalibrationPage QLineEdit:focus, QWidget#waterCalibrationPage QComboBox:focus, QWidget#waterCalibrationPage QAbstractSpinBox:focus { border-color: @vv-primary; }"
         "QWidget#waterCalibrationPage QLineEdit:disabled, QWidget#waterCalibrationPage QComboBox:disabled, QWidget#waterCalibrationPage QAbstractSpinBox:disabled { background-color: @vv-surface-alt; color: @vv-text-disabled; }"
         "QWidget#waterCalibrationPage QAbstractSpinBox QLineEdit { background-color: transparent; border: none; border-radius: 0px; padding: 0px; min-height: 0px; max-height: 16777215px; }"
-        "QWidget#waterCalibrationPage QFrame#calibrationNavigationBar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
-        "QWidget#waterCalibrationPage QFrame#calibrationNavigationBar QPushButton { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: %2px; font-weight: 500; min-height: %8px; max-height: %8px; padding: 0px %7px; text-align: center; outline: none; }"
-        "QWidget#waterCalibrationPage QFrame#calibrationNavigationBar QPushButton:checked { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
-        "QWidget#waterCalibrationPage QFrame#calibrationNavigationBar QPushButton:!checked:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
+        "QWidget#waterCalibrationPage QFrame[calibrationNavigation=\"true\"] { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
+        "QWidget#waterCalibrationPage QFrame[calibrationNavigation=\"true\"] QPushButton { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: %2px; font-weight: 500; min-height: %8px; max-height: %8px; padding: 0px %7px; text-align: center; outline: none; }"
+        "QWidget#waterCalibrationPage QFrame[calibrationNavigation=\"true\"] QPushButton:checked { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
+        "QWidget#waterCalibrationPage QFrame[calibrationNavigation=\"true\"] QPushButton:!checked:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
         "QWidget#waterCalibrationPage QFrame#calibrationWorkspaceCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 8px; }"
         "QWidget#waterCalibrationPage QTabWidget#calibrationWorkspaces, QWidget#waterCalibrationPage QTabWidget#calibrationWorkspaces::pane { background-color: transparent; border: none; }"
         "QWidget#waterCalibrationPage QScrollArea#calibrationWorkspaceScroll { background-color: @vv-surface-raised; border: none; }"
@@ -488,12 +665,25 @@ void WaterCalibrationPage::loadConcentrationResults(const QString& filename)
     connect(watcher,&QFutureWatcher<HistoryResult>::finished,this,[this,watcher,request]{const auto loaded=watcher->result();watcher->deleteLater();if(request!=state_->historyRequest)return;
         if(loaded.isRecorded){if(!loaded.recorded.success){state_->status->setText(loaded.recorded.error);return;}
             state_->historicalRecorded=loaded.recorded;state_->historicalResults.clear();state_->historicalFits.clear();
-            auto snapshot=loaded.recorded.snapshot;snapshot.remove("vcal_document");QJsonArray preview;
-            for(int i=0;i<std::min(200,int(loaded.recorded.rows.size()));++i)preview.append(loaded.recorded.rows[i]);
-            state_->details->setPlainText(QString::fromUtf8(QJsonDocument(QJsonObject{{"snapshot",snapshot},{"record_count",loaded.recorded.rows.size()},{"first_200_records",preview}}).toJson()));
+            const auto& snapshot = loaded.recorded.snapshot;
+            const auto& rows = loaded.recorded.rows;
+            QStringList preview{QStringLiteral("定标文件  %1\n任务名称  %2\n浓度记录  %3 条（显示前 200 条）\n")
+                                    .arg(snapshot["filename"].toString(), snapshot["task_name"].toString()).arg(rows.size())};
+            for (int i = 0; i < std::min(200, int(rows.size())); ++i) {
+                const auto& row = rows[i];
+                preview << historyRow(row["wavelength_nm"].toInt(), row["valid"].toBool(),
+                                      row["initial_concentration"].toDouble(), row["unit"].toString());
+            }
+            state_->details->setPlainText(preview.join('\n'));
             state_->status->setText(QStringLiteral("已读取 Session 原始参数和浓度记录，原 .vcal 文件无需存在"));return;}
         const auto& result=loaded.legacy;if(!result.success){state_->status->setText(result.error);return;}state_->historicalRecorded={};state_->historicalResults=result.results;state_->historicalFits=result.calibrations;
-        QJsonArray rows;for(int i=0;i<std::min(200,int(result.results.size()));++i)rows.append(result.results[i].toJson());state_->details->setPlainText(QString::fromUtf8(QJsonDocument(QJsonObject{{"record_count",result.results.size()},{"first_200_records",rows}}).toJson()));state_->status->setText(QStringLiteral("已读取独立历史快照；当前定标选择不会覆盖历史结果。 ")+result.warning);});
+        QStringList preview{QStringLiteral("浓度记录  %1 条（显示前 200 条）\n").arg(result.results.size())};
+        for (int i = 0; i < std::min(200, int(result.results.size())); ++i) {
+            const auto& row = result.results[i];
+            preview << historyRow(row.wavelengthNm, row.valid, row.value, row.unit);
+        }
+        state_->details->setPlainText(preview.join('\n'));
+        state_->status->setText(QStringLiteral("已读取独立历史快照；当前定标选择不会覆盖历史结果。 ")+result.warning);});
     watcher->setFuture(QtConcurrent::run([filename]{HistoryResult r;r.recorded=readRecordedConcentrations(filename);r.isRecorded=r.recorded.success || filename.endsWith(".jsonl",Qt::CaseInsensitive) || QFileInfo(filename).fileName()=="calibration_snapshot.json";
         if(!r.isRecorded){Library l;QString e;Store().load(l,&e);r.legacy=readResults(filename,l.fits);}return r;}));
 }

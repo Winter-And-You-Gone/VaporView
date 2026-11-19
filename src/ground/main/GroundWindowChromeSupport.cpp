@@ -198,6 +198,14 @@ void drawMenuTintedAlphaImage(QPainter& painter,
     painter.drawImage(QPoint(0, 0), tinted);
 }
 
+void paintFloatingMenuShadow(QPainter& painter, const QSize& size, const QRectF& panel, qreal radius, bool dark)
+{
+    const QImage soft = menuBoxBlurredAlpha(size, panel.adjusted(-1, 7, 1, 10), radius + 2, 9, 3);
+    const QImage contact = menuBoxBlurredAlpha(size, panel.adjusted(0, 1, 0, 2), radius, 4, 2);
+    drawMenuTintedAlphaImage(painter, soft, Qt::black, dark ? 82 : 38);
+    drawMenuTintedAlphaImage(painter, contact, Qt::black, dark ? 48 : 14);
+}
+
 class FloatingTitleMenuPanel final : public QFrame
 {
 public:
@@ -255,19 +263,7 @@ protected:
         }
 
         const bool dark = qApp && qApp->property(kAppDarkThemeProperty).toBool();
-        const QColor shadowTint(0, 0, 0);
-        const QImage softShadow = menuBoxBlurredAlpha(size(),
-                                                      panel.adjusted(-1.0, 7.0, 1.0, 10.0),
-                                                      kFloatingMenuCornerRadiusPx + 2.0,
-                                                      9,
-                                                      3);
-        const QImage contactShadow = menuBoxBlurredAlpha(size(),
-                                                         panel.adjusted(0.0, 1.0, 0.0, 2.0),
-                                                         kFloatingMenuCornerRadiusPx,
-                                                         4,
-                                                         2);
-        drawMenuTintedAlphaImage(painter, softShadow, shadowTint, dark ? 82 : 38);
-        drawMenuTintedAlphaImage(painter, contactShadow, shadowTint, dark ? 48 : 14);
+        paintFloatingMenuShadow(painter, size(), panel, kFloatingMenuCornerRadiusPx, dark);
 
         QPainterPath panelPath;
         panelPath.addRoundedRect(panel, kFloatingMenuCornerRadiusPx, kFloatingMenuCornerRadiusPx);
@@ -542,8 +538,14 @@ public:
         }
         bounds.adjust(8, 8, -8, -8);
 
-        const int maxPopupWidth = std::max(160, std::min(520, bounds.width()));
-        text_label_->setMaximumWidth(std::max(90, maxPopupWidth - (shortcut.isEmpty() ? 32 : 128)));
+        dark_ = dark;
+        // The title-menu blur extends farther below the panel than to the sides.
+        constexpr int tooltipShadowMargin = kFloatingMenuShadowMarginPx + 16;
+        shadow_margin_ = target->property("_vv_tooltip_pinnable").toBool() ? tooltipShadowMargin : 0;
+        const int margin = shadow_margin_;
+        layout()->setContentsMargins(16 + margin, 8 + margin, 16 + margin, 9 + margin);
+        const int maxPanelWidth = std::max(160, std::min(520, bounds.width() - 2 * margin));
+        text_label_->setMaximumWidth(std::max(90, maxPanelWidth - (shortcut.isEmpty() ? 32 : 128)));
         text_label_->setWordWrap(QFontMetrics(text_label_->font()).horizontalAdvance(text) > text_label_->maximumWidth());
         text_label_->setText(text);
         shortcut_label_->setVisible(!shortcut.isEmpty());
@@ -559,15 +561,15 @@ public:
             .arg(foreground, shortcutBackground));
 
         adjustSize();
-        const QSize popupSize = sizeHint().boundedTo(QSize(maxPopupWidth, 1000));
+        const QSize popupSize = sizeHint().boundedTo(QSize(maxPanelWidth + 2 * margin, 1000));
         resize(popupSize);
 
         const int gap = 8;
         int x = targetRect.center().x() - width() / 2;
-        int y = targetRect.bottom() + gap;
+        int y = targetRect.bottom() + gap - margin;
         if (y + height() > bounds.bottom())
         {
-            y = targetRect.top() - height() - gap;
+            y = targetRect.top() - height() - gap + margin;
         }
 
         x = std::clamp(x, bounds.left(), std::max(bounds.left(), bounds.right() - width() + 1));
@@ -586,13 +588,21 @@ protected:
         painter.setCompositionMode(QPainter::CompositionMode_Clear);
         painter.fillRect(rect(), Qt::transparent);
         painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
-        const QRectF roundedRect = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+        constexpr qreal radius = 13.0;
+        const qreal inset = shadow_margin_ + 0.5;
+        const QRectF roundedRect = QRectF(rect()).adjusted(inset, inset, -inset, -inset);
+        if (shadow_margin_ > 0)
+        {
+            paintFloatingMenuShadow(painter, size(), roundedRect, radius, dark_);
+        }
         painter.setPen(QPen(popup_border_, 1.0));
         painter.setBrush(popup_background_);
-        painter.drawRoundedRect(roundedRect, 13.0, 13.0);
+        painter.drawRoundedRect(roundedRect, radius, radius);
     }
 
 private:
+    int shadow_margin_ = 0;
+    bool dark_ = false;
     QColor popup_background_ = QColor(253, 253, 252);
     QColor popup_border_ = QColor(QStringLiteral("#E8E8E8"));
     QLabel *text_label_;

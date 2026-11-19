@@ -1870,6 +1870,14 @@ void requireRtkSidebarPage(
     require(guideText && guideText->text().contains(QStringLiteral("生成定标文件")) &&
                 guideText->text().contains(QStringLiteral(".vcal")),
             "hover opens the shared operation guide for generating a calibration file");
+    const auto guideImage = guideText->window()->grab().toImage();
+    const int shadowX = guideImage.width() / 2;
+    const int shadowY = guideImage.height() - qRound(30 * guideImage.devicePixelRatio());
+    const auto shadowPixel = guideImage.pixelColor(shadowX, shadowY);
+    require(shadowPixel.alpha() > 0 && shadowPixel.alpha() < 255 && shadowPixel.lightness() == 0 &&
+                guideImage.pixelColor(shadowX, guideImage.height() - 1).alpha() == 0 &&
+                guideImage.pixelColor(0, 0).alpha() == 0,
+            "step guide renders a soft shadow that fades to a transparent outer edge");
     const QString generationGuide = guideText->text();
     QEvent guideLeave(QEvent::Leave);
     QApplication::sendEvent(guideNode, &guideLeave);

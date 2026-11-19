@@ -1,5 +1,6 @@
 #include "CalibrationService.h"
 #include "shared/session/CalibrationRuntime.h"
+#include "shared/session/HarmonicWaveform.h"
 #include "shared/session/SessionManifest.h"
 #include <QDateTime>
 #include <QDir>
@@ -9,6 +10,7 @@
 #include <QJsonDocument>
 #include <QSaveFile>
 #include <QScopeGuard>
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <future>
@@ -119,7 +121,47 @@ CalibrationService::~CalibrationService()
     {std::lock_guard lock(mutex_);stopping_=true;wake_.notify_all();}
     if(worker_.joinable())worker_.join();
 }
-CalibrationView CalibrationService::view() const { std::lock_guard lock(mutex_);auto v=state_;v.locked|=externalSessionOpen_;return v; }
+CalibrationView CalibrationService::view() const
+{
+    std::lock_guard lock(mutex_);
+    auto view = state_;
+    view.locked |= externalSessionOpen_;
+    if (!view.connected) return view;
+
+    const auto now = VaporView::Session::harmonicReceptionTimeUs();
+    auto useReadings = [&](const char *temperatureKey, const char *pressureKey, const char *pressureField,
+                           const char *temperatureValid, const char *pressureValid, double pressureDivisor,
+                           const QString& source) {
+        const auto temperatureReading = sensorReadings_.value(QLatin1String(temperatureKey)).toObject();
+        const auto pressureReading = sensorReadings_.value(QLatin1String(pressureKey)).toObject();
+        const auto timestamp = [](const QJsonObject& reading) {
+            return reading.value("host_received_utc_us").toString().toULongLong();
+        };
+        const auto temperatureAt = timestamp(temperatureReading), pressureAt = timestamp(pressureReading);
+        const auto fresh = [now](quint64 at) { return at && at <= now && now - at <= EnvironmentWindowUs; };
+        const auto temperature = temperatureReading.value("temperature_c").toDouble(qQNaN());
+        const auto pressure = pressureReading.value(QLatin1String(pressureField)).toDouble(qQNaN()) / pressureDivisor;
+        if (!fresh(temperatureAt) || !fresh(pressureAt) ||
+            !temperatureReading.value(QLatin1String(temperatureValid)).toBool() ||
+            !pressureReading.value(QLatin1String(pressureValid)).toBool() ||
+            !std::isfinite(temperature) || temperature <= -273.15 || !std::isfinite(pressure) || pressure <= 0)
+            return false;
+        view.compensationEnvironment = {temperature, pressure, std::max(temperatureAt, pressureAt),
+                                        std::max(temperatureAt, pressureAt) - std::min(temperatureAt, pressureAt), source};
+        return true;
+    };
+    if (device_.value("transport").toString() == QStringLiteral("remote_fpga")) {
+        if (!useReadings("remote_HC2A", "remote_PTB210", "pressure_pa", "valid", "valid", 100,
+                         QStringLiteral("远程 FPGA · HC2A / PTB210")))
+            useReadings("remote_environment", "remote_environment", "pressure_hpa", "temperature_valid",
+                        "pressure_valid", 1, QStringLiteral("天空端环境遥测"));
+    } else if (!useReadings("HC2A", "PTB210", "pressure_pa", "valid", "valid", 100,
+                            QStringLiteral("本机 FPGA · HC2A / PTB210"))) {
+        useReadings("serial_humidity", "serial_pressure", "pressure_hpa", "valid", "valid", 1,
+                    QStringLiteral("直连 HC2A / PTB210"));
+    }
+    return view;
+}
 QJsonObject CalibrationService::diagnostics() const
 {
     std::lock_guard lock(mutex_);

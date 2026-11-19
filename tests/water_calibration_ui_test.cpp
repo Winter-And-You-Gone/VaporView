@@ -4,6 +4,7 @@
 #include "ground/calibration/CalibrationReviewPlot.h"
 #include "ground/widgets/VisualTextLabel.h"
 #include "shared/theme/AppTheme.h"
+#include "shared/session/HarmonicWaveform.h"
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
@@ -156,7 +157,29 @@ int main(int argc,char **argv)
         selector->click();QApplication::processEvents();
         check(tabs->currentIndex()==i&&selector->isChecked()&&tabs->currentWidget()->isVisible(),"navigation selects its corresponding workspace");
     }
+    auto *waterSelector = control<QPushButton>(page,"calibrationSectionButton1");
+    auto *compensationSelector = control<QPushButton>(page,"calibrationSectionButton2");
+    compensationSelector->click();
+    QApplication::processEvents();
+    check(compensationSelector->text() == QStringLiteral("温压补偿") && compensationSelector->isChecked() &&
+          !tabs->isVisible() && !steps[0]->isVisible(), "compensation switches away from the water-calibration workspace");
+    auto *example = control<QCheckBox>(page,"calibrationCompensationExample");
+    auto *compensated816 = control<QLabel>(page,"calibrationCompensated816");
+    auto *compensated1368 = control<QLabel>(page,"calibrationCompensated1368");
+    check(compensated816->text() == QStringLiteral("—"), "no compensation without live data or explicitly enabled example");
+    example->click();
+    check(std::abs(compensated816->text().section(' ',0,0).toDouble() - 108.4465564) < 1e-5 &&
+          std::abs(compensated1368->text().section(' ',0,0).toDouble() - 130.1358677) < 1e-5,
+          "example computes reference-normalized concentration for both wavelengths");
+    control<QDoubleSpinBox>(page,"calibrationReferenceTemperature")->setValue(30);
+    control<QDoubleSpinBox>(page,"calibrationReferencePressure")->setValue(950);
+    check(compensated816->text() == QStringLiteral("100 ppmv") && compensated1368->text() == QStringLiteral("120 ppmv"),
+          "equal reference and measured conditions preserve both initial concentrations");
+    example->click();
+    check(compensated816->text() == QStringLiteral("—"), "disabling example cannot substitute its values into live mode");
+    waterSelector->click();
     tabs->setCurrentIndex(0);QApplication::processEvents();
+    check(waterSelector->isChecked() && steps[0]->isVisible(), "returning to water calibration restores the step path");
     check(control<QPushButton>(page,"calibrationPageSelectorButton1")->isChecked(),"programmatic tab changes update navigation selection");
     check(navigation->geometry().bottom()<workspaceCard->geometry().top(),"navigation sits above the workspace card");
     auto *name=control<QLineEdit>(page,"calibrationTaskName");auto *unit=control<QComboBox>(page,"calibrationUnit");
@@ -272,6 +295,36 @@ int main(int argc,char **argv)
     r.service->selectFile(view.files.first());
     r.service->synchronize();
     checkSteps({true, true, true, true, true, false});
+    tabs->setCurrentIndex(2);
+    control<QPushButton>(page,"calibrationInspectFile")->click();
+    r.service->synchronize();
+    QApplication::processEvents();
+    const auto summary = control<QPlainTextEdit>(page,"calibrationDetails")->toPlainText();
+    check(summary.contains(view.project.name) && summary.contains(QStringLiteral("816 nm  C =")) &&
+          summary.contains(QStringLiteral("1368 nm  C =")) && !summary.contains(QStringLiteral("\"project\"")),
+          "file inspection shows a readable dual-wavelength summary without JSON syntax");
+    compensationSelector->click();
+    const auto receipt = VaporView::Session::harmonicReceptionTimeUs();
+    r.service->noteSensor("PTB210", {{"valid", true}, {"pressure_pa",95000.0},
+                                     {"host_received_utc_us",QString::number(receipt)}});
+    r.service->noteSensor("HC2A", {{"valid", true}, {"temperature_c",30.0},
+                                   {"host_received_utc_us",QString::number(receipt)}});
+    r.now += 500;
+    r.pair(4, 8);
+    QApplication::processEvents();
+    auto *environment = control<QLabel>(page,"calibrationCompensationEnvironment");
+    auto *initial816 = control<QLabel>(page,"calibrationInitial816");
+    check(environment->text().contains(QStringLiteral("950.00 hPa")) &&
+          initial816->text().endsWith(QStringLiteral(" ppmv")) && compensated816->text() == initial816->text(),
+          "live preview uses fresh FPGA readings, converts Pa and shares the same reference as the example");
+    r.service->noteSensor("HC2A", {{"valid", true}, {"temperature_c",30.0},
+                                   {"host_received_utc_us",QString::number(receipt - 3000000)}});
+    r.now += 500;
+    r.pair(4, 8);
+    QApplication::processEvents();
+    check(compensated816->text() == QStringLiteral("—") && initial816->text().endsWith(QStringLiteral(" ppmv")),
+          "stale temperature suppresses preview without discarding the initial concentration");
+    waterSelector->click();
     r.service->addStage(300, 2000);
     r.service->synchronize();
     checkSteps({true, true, false, false, false, false});

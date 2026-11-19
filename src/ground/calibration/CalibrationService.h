@@ -17,6 +17,7 @@ struct CalibrationView
     CalibrationFile selected;
     QStringList files, drafts;
     QMap<int, ConcentrationResult> live;
+    Environment compensationEnvironment;
     QMap<int, double> recentPeaks;
     QString message, identityWarning, recoveredSession;
     QJsonObject inspectedDocument;
