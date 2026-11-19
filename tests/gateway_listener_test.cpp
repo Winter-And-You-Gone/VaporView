@@ -1,7 +1,6 @@
 #include "ground/devices/GroundTelemetryService.h"
 #include "ground/gateway/GatewayService.h"
 #include "TelemetryCodec.h"
-#include "gateway_test_certificate.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -10,12 +9,8 @@
 #include <QNetworkAccessManager>
 #include <QNetworkProxy>
 #include <QNetworkReply>
-#include <QSslCertificate>
-#include <QSslConfiguration>
-#include <QSslSocket>
 #include <QTcpServer>
 #include <QTcpSocket>
-#include <QTemporaryDir>
 #include <QThread>
 #include <QUuid>
 #include <QWebSocket>
@@ -51,19 +46,14 @@ struct Response
 {
     int code;
     QJsonObject body;
-    QNetworkReply::NetworkError error;
-    QString errorString;
     QByteArray data;
     QByteArray contentType;
     QByteArray cacheControl;
 };
 
-QNetworkRequest request(const QUrl& base, const QString& path, const QByteArray& token,
-                        const QSslConfiguration& tls)
+QNetworkRequest request(const QUrl& base, const QString& path)
 {
     QNetworkRequest result(base.resolved(QUrl(path)));
-    if (!token.isEmpty()) result.setRawHeader("Authorization", "Bearer " + token);
-    result.setSslConfiguration(tls);
     result.setTransferTimeout(4000);
     return result;
 }
@@ -78,10 +68,10 @@ Response send(QNetworkAccessManager& network, QNetworkRequest req,
         payload = QJsonDocument(*body).toJson(QJsonDocument::Compact);
     }
     auto *reply = body ? network.post(req, payload) : network.get(req);
-    require(waitUntil([reply] { return reply->isFinished(); }), "HTTPS reply arrived");
+    require(waitUntil([reply] { return reply->isFinished(); }), "HTTP reply arrived");
     const auto data = reply->readAll();
     Response response{reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt(),
-                      QJsonDocument::fromJson(data).object(), reply->error(), reply->errorString(),
+                      QJsonDocument::fromJson(data).object(),
                       data, reply->rawHeader("Content-Type"), reply->rawHeader("Cache-Control")};
     reply->deleteLater();
     return response;
@@ -98,147 +88,61 @@ int main(int argc, char **argv)
 try
 {
     QCoreApplication app(argc, argv);
-    const auto openssl = Test::gatewayOpenSslExecutable();
-    if (openssl.isEmpty())
-    {
-        std::cout << "SKIP: openssl CLI is needed for an ephemeral TLS certificate\n";
-        return 77;
-    }
-    QTemporaryDir tlsFiles;
-    require(tlsFiles.isValid(), "temporary TLS certificate directory");
     GatewayConfig config;
     config.deviceId = QStringLiteral("simulated-ground");
     config.listener.enabled = true;
     config.listener.port = 0;
-    config.listener.certificateFile = tlsFiles.filePath(QStringLiteral("certificate.pem"));
-    config.listener.privateKeyFile = tlsFiles.filePath(QStringLiteral("key.pem"));
-    config.listener.token = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    config.listener.allowCommands = true;
-    config.listener.allowedCommands.insert(static_cast<quint16>(CommandId::StartRecording));
-    config.listener.allowedCommands.insert(static_cast<quint16>(CommandId::StopRecording));
-
-    const auto certificateError = Test::generateGatewayTestCertificate(openssl,
-        tlsFiles.filePath(QStringLiteral("openssl.cnf")), config.listener.certificateFile,
-        config.listener.privateKeyFile);
-    if (!certificateError.isEmpty()) std::cerr << certificateError.toStdString() << '\n';
-    require(certificateError.isEmpty(), "OpenSSL generated the test key and certificate");
-    const auto chain = QSslCertificate::fromPath(config.listener.certificateFile);
-    require(chain.size() == 1, "test certificate is readable");
-    auto tls = QSslConfiguration::defaultConfiguration();
-    tls.addCaCertificates(chain);
 
     GroundTelemetryService telemetry;
     GatewayService gateway;
     gateway.attach(&telemetry);
     gateway.configure(config);
     require(waitUntil([&] { return gateway.listenerPort() > 0; }), "listener starts with outbound disabled");
-    const QUrl base(QStringLiteral("https://127.0.0.1:%1").arg(gateway.listenerPort()));
-    const QByteArray token = config.listener.token.toLatin1();
+    const QUrl base(QStringLiteral("http://127.0.0.1:%1").arg(gateway.listenerPort()));
     QNetworkAccessManager network;
     network.setProxy(QNetworkProxy::NoProxy);
-    const auto https = [&](const QString& path, std::optional<QJsonObject> body = std::nullopt) {
-        return send(network, request(base, path, token, tls), body);
+    const auto http = [&](const QString& path, std::optional<QJsonObject> body = std::nullopt) {
+        return send(network, request(base, path), body);
     };
     const auto waitForCommandStatus = [&](const QString& id, const QString& status) {
         QElapsedTimer timeout;
         timeout.start();
         do
         {
-            if (https("/api/v1/commands/" + id).body.value("status") == status) return true;
+            if (http("/api/v1/commands/" + id).body.value("status") == status) return true;
             QThread::msleep(100);
         } while (timeout.elapsed() < 5000);
         return false;
     };
-    QNetworkAccessManager untrustedNetwork;
-    untrustedNetwork.setProxy(QNetworkProxy::NoProxy);
-    const auto untrusted = send(untrustedNetwork,
-        request(base, "/api/v1/status", token, QSslConfiguration::defaultConfiguration()));
-    require(untrusted.error == QNetworkReply::SslHandshakeFailedError, "TLS peer verification rejects untrusted certificate");
-    const auto unauthenticated = send(network, request(base, "/api/v1/status", {}, tls));
-    if (unauthenticated.code != 401)
-        std::cerr << "Expected HTTP 401, got " << unauthenticated.code << " ("
-                  << unauthenticated.errorString.toStdString() << ")\n";
-    require(unauthenticated.code == 401, "status rejects missing bearer token");
-    auto response = https("/api/v1/status");
+    auto response = http("/api/v1/status");
     require(response.code == 200 && response.body.value("linkConnected") == QJsonValue(false),
-        "authorized status before SkyCore connects");
-    require(https("/api/v1/measurements/latest").body.value("measurement").isNull(),
+        "status is available before SkyCore connects");
+    require(http("/api/v1/measurements/latest").body.value("measurement").isNull(),
         "latest measurement is null before data");
 
     QUrl streamUrl(base);
-    streamUrl.setScheme("wss");
-    QWebSocket unauthorized;
-    unauthorized.setProxy(QNetworkProxy::NoProxy);
-    unauthorized.setSslConfiguration(tls);
-    bool refused = false;
-    QObject::connect(&unauthorized, &QWebSocket::errorOccurred, &app, [&] { refused = true; });
-    unauthorized.open(request(streamUrl, "/api/v1/stream", {}, tls));
-    require(waitUntil([&] { return refused; }), "WSS rejects unauthorized upgrade");
-
-    QWebSocket stream;
+    streamUrl.setScheme("ws");
+    QWebSocket stream(base.toString());
     stream.setProxy(QNetworkProxy::NoProxy);
-    stream.setSslConfiguration(tls);
     QList<QJsonObject> events;
     QObject::connect(&stream, &QWebSocket::textMessageReceived, &app, [&](const QString& message) {
         events.append(QJsonDocument::fromJson(message.toUtf8()).object());
     });
-    stream.open(request(streamUrl, "/api/v1/stream", token, tls));
+    stream.open(request(streamUrl, "/api/v1/stream"));
     require(waitUntil([&] { return !events.isEmpty(); }) && events.first().value("snapshot").toBool(),
-        "WSS accepts verified connection and sends initial snapshot");
+        "WS accepts same-origin connection and sends initial snapshot");
 
-
-    // Exercise the browser's HTTP bootstrap and WSS upgrade over verified TLS.
-    const auto page = send(network, request(base, "/", {}, tls));
+    // Exercise the browser bootstrap.
+    const auto page = send(network, request(base, "/"));
     require(page.code == 200 && page.contentType.startsWith("text/html") && page.cacheControl == "no-store" &&
-        page.data.contains("/app.js") && page.data.contains("/style.css"), "HTTPS returns the browser page");
-    const auto script = send(network, request(base, "/app.js", {}, tls));
+        page.data.contains("/app.js") && page.data.contains("/style.css"), "HTTP returns the browser page");
+    const auto script = send(network, request(base, "/app.js"));
     require(script.code == 200 && script.contentType.startsWith("text/javascript") &&
-        script.cacheControl == "no-store" && script.data.contains("/api/v1/stream-ticket"),
-        "HTTPS returns the embedded JavaScript");
-    const auto stylesheet = send(network, request(base, "/style.css", {}, tls));
+        script.cacheControl == "no-store" && script.data.contains("/api/v1/stream"),
+        "HTTP returns the embedded JavaScript");
+    const auto stylesheet = send(network, request(base, "/style.css"));
     require(stylesheet.code == 200 && stylesheet.contentType.startsWith("text/css") &&
-        stylesheet.cacheControl == "no-store" && !stylesheet.data.isEmpty(), "HTTPS returns the embedded CSS");
-
-    const auto ticketPath = QStringLiteral("/api/v1/stream-ticket");
-    require(send(network, request(base, ticketPath, {}, tls), QJsonObject{}).code == 401,
-        "ticket issuance rejects a missing bearer token");
-    const auto issued = https(ticketPath, QJsonObject{});
-    const auto ticket = issued.body.value("ticket").toString();
-    require(issued.code == 200 && issued.cacheControl == "no-store" && !ticket.isEmpty(),
-        "ticket issuance accepts a bearer token and prevents caching");
-    require(send(network, request(base, "/api/v1/commands", ticket.toLatin1(), tls),
-        command("ticket-only", CommandId::RequestStatus)).code == 401, "stream ticket cannot authorize a command");
-
-    const auto ticketStreamPath = QStringLiteral("/api/v1/stream?ticket=") + ticket;
-    const auto verifyTicket = [&](const QString& origin, bool expectSnapshot, const char *failure) {
-        QWebSocket browser(origin);
-        browser.setProxy(QNetworkProxy::NoProxy);
-        browser.setSslConfiguration(tls);
-        bool rejected = false;
-        bool snapshot = false;
-        QObject::connect(&browser, &QWebSocket::errorOccurred, &app, [&] { rejected = true; });
-        QObject::connect(&browser, &QWebSocket::textMessageReceived, &app, [&](const QString& message) {
-            snapshot = QJsonDocument::fromJson(message.toUtf8()).object().value("snapshot").toBool();
-        });
-        browser.open(request(streamUrl, ticketStreamPath, {}, tls));
-        require(waitUntil([&] { return snapshot || rejected; }) &&
-            (expectSnapshot ? snapshot : rejected), failure);
-        if (expectSnapshot)
-        {
-            browser.close();
-            require(waitUntil([&] { return browser.state() == QAbstractSocket::UnconnectedState; }),
-                "browser subscription closes cleanly");
-        }
-    };
-    verifyTicket({}, false, "ticket upgrade rejects a missing origin");
-    QUrl foreignOrigin(base);
-    foreignOrigin.setHost(QStringLiteral("localhost"));
-    verifyTicket(foreignOrigin.toString(), false, "ticket upgrade rejects a different host in the origin");
-    foreignOrigin = base;
-    foreignOrigin.setPort(base.port() == 443 ? 444 : 443);
-    verifyTicket(foreignOrigin.toString(), false, "ticket upgrade rejects a different port in the origin");
-    verifyTicket(base.toString(), true, "same-origin ticket upgrade receives the initial snapshot");
-    verifyTicket(base.toString(), false, "a consumed ticket rejects further subscriptions");
+        stylesheet.cacheControl == "no-store" && !stylesheet.data.isEmpty(), "HTTP returns the embedded CSS");
 
     QTcpServer sky;
     require(sky.listen(QHostAddress::LocalHost), "simulated SkyCore listens");
@@ -257,9 +161,9 @@ try
     aircraft->write(codec.encodeFrame(MsgType::WaveformFeature, TelemetryCodec::serializeWaveformFeature(wave), 5, 2000));
     require(waitUntil([&] {
         return !events.isEmpty() && events.last().value("source") == QLatin1String("waveform-feature");
-    }), "legacy waveform feature reaches WSS");
+    }), "legacy waveform feature reaches WS");
     require(events.at(events.size() - 2).value("recordingState").toInt(-1) == 1,
-        "SkyCore recording state reaches WSS");
+        "SkyCore recording state reaches WS");
 
     FpgaWave::CompletedStream cycle;
     cycle.source = 0x30;
@@ -271,11 +175,11 @@ try
     cycle.normalizedFeature->validPoints = 32;
     aircraft->write(codec.encodeFrame(MsgType::FpgaCycleFeature, FpgaRemote::encodeCycleFeature(3000, cycle), 6, 3000));
     require(waitUntil([&] { return events.last().value("source") == QLatin1String("fpga-cycle-feature"); }),
-        "full FPGA cycle feature reaches WSS");
-    const auto measurement = https("/api/v1/measurements/latest").body.value("measurement").toObject();
+        "full FPGA cycle feature reaches WS");
+    const auto measurement = http("/api/v1/measurements/latest").body.value("measurement").toObject();
     require(measurement.value("value").toDouble() == 21.25 && measurement.value("channel").toInt() == 0x30 &&
         measurement.value("unit") == QLatin1String("native") && measurement.value("frameSequence").toInt() == 6,
-        "HTTPS returns the same native-peak measurement");
+        "HTTP returns the same native-peak measurement");
 
     QList<CommandMessage> forwarded;
     TelemetryCodec uplink;
@@ -293,41 +197,48 @@ try
             aircraft->write(codec.encodeFrame(MsgType::CommandAck, TelemetryCodec::serializeCommandAck(ack), 7, 4000));
         }
     });
-    require(https("/api/v1/commands", command("forbidden", CommandId::PauseRecording)).code == 403,
+    require(http("/api/v1/commands", command("forbidden", CommandId::PauseRecording)).code == 403,
         "command outside the allowed list is forbidden");
-    require(https("/api/v1/commands", command("old", CommandId::RequestStatus, -1)).code == 400,
+    require(http("/api/v1/commands", command("old", CommandId::RequestStatus, -1)).code == 400,
         "expired command is rejected");
     const auto statusCommand = command("query", CommandId::RequestStatus);
-    require(https("/api/v1/commands", statusCommand).code == 202, "command is accepted for delivery");
+    auto browserCommand = request(base, "/api/v1/commands");
+    QUrl otherOrigin(base);
+    otherOrigin.setPort(base.port() == 80 ? 81 : 80);
+    browserCommand.setRawHeader("Origin", otherOrigin.toEncoded());
+    require(send(network, browserCommand, statusCommand).code == 403 && forwarded.isEmpty(),
+        "command requests with a different browser origin are rejected");
+    browserCommand.setRawHeader("Origin", base.toEncoded());
+    require(send(network, browserCommand, statusCommand).code == 202,
+        "same-origin browser command is accepted without credentials");
     require(waitUntil([&] { return forwarded.size() == 1; }), "command reaches SkyCore link");
     require(waitForCommandStatus("query", "acknowledged"),
         "result reports the SkyCore acknowledgment");
-    require(https("/api/v1/commands", statusCommand).code == 200 && forwarded.size() == 1,
+    require(http("/api/v1/commands", statusCommand).code == 200 && forwarded.size() == 1,
         "duplicate request returns original result without resending");
     auto conflict = statusCommand;
     conflict.insert("commandId", static_cast<int>(CommandId::StartRecording));
-    require(https("/api/v1/commands", conflict).code == 409, "different command with the same ID conflicts");
+    require(http("/api/v1/commands", conflict).code == 409, "different command with the same ID conflicts");
 
-    require(https("/api/v1/commands", command("no-ack", CommandId::StopRecording, 1)).code == 202,
+    require(http("/api/v1/commands", command("no-ack", CommandId::StopRecording, 1)).code == 202,
         "timeout case is accepted for dispatch");
     require(waitForCommandStatus("no-ack", "timeout"),
         "missing acknowledgment results in timeout");
 
-    // Complete an ordinary WSS subscription, then pause reading at the TLS transport.
-    QSslSocket slow;
+    // Complete an ordinary WS subscription, then pause reading at the TCP transport.
+    QTcpSocket slow;
     slow.setProxy(QNetworkProxy::NoProxy);
-    slow.setSslConfiguration(tls);
     slow.setReadBufferSize(4096);
-    slow.connectToHostEncrypted(base.host(), gateway.listenerPort());
-    require(waitUntil([&] { return slow.isEncrypted(); }), "slow subscriber verifies TLS");
+    slow.connectToHost(base.host(), gateway.listenerPort());
+    require(waitUntil([&] { return slow.state() == QAbstractSocket::ConnectedState; }), "slow subscriber connects over TCP");
     slow.setSocketOption(QAbstractSocket::ReceiveBufferSizeSocketOption, 4096);
     const auto websocketKey = QUuid::createUuid().toRfc4122().toBase64();
     const auto upgrade = QByteArray("GET /api/v1/stream HTTP/1.1\r\nHost: 127.0.0.1:") +
         QByteArray::number(gateway.listenerPort()) + "\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
-        "Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: " + websocketKey + "\r\nAuthorization: Bearer " + token + "\r\n\r\n";
-    require(slow.write(upgrade) == upgrade.size(), "slow subscriber sends WSS upgrade");
+        "Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: " + websocketKey + "\r\n\r\n";
+    require(slow.write(upgrade) == upgrade.size(), "slow subscriber sends WS upgrade");
     require(waitUntil([&] { return slow.peek(4096).contains("\r\n\r\n"); }) &&
-        slow.readLine().startsWith("HTTP/1.1 101"), "slow subscriber completes WSS upgrade");
+        slow.readLine().startsWith("HTTP/1.1 101"), "slow subscriber completes WS upgrade");
 
     for (int id = int(SkyDeviceId::Epsilon); id <= int(SkyDeviceId::Sht45); ++id)
     {
@@ -353,32 +264,32 @@ try
             "healthy subscriber keeps receiving while the slow subscriber pauses");
         if ((batch + 1) % 16 == 0)
         {
-            slowDisconnected = https("/api/v1/status").body.value("slowSubscribersDisconnected") == QLatin1String("1");
+            slowDisconnected = http("/api/v1/status").body.value("slowSubscribersDisconnected") == QLatin1String("1");
             if (slowDisconnected) break;
         }
     }
     require(slowDisconnected, "server disconnects the subscriber that fills its write budget");
-    require(stream.state() == QAbstractSocket::ConnectedState && https("/api/v1/status").code == 200,
-        "healthy WSS and HTTPS remain available after the slow subscriber disconnects");
+    require(stream.state() == QAbstractSocket::ConnectedState && http("/api/v1/status").code == 200,
+        "healthy WS and HTTP remain available after the slow subscriber disconnects");
 
     const auto countBeforeClose = events.size();
     aircraft->disconnectFromHost();
     require(waitUntil([&] {
         return events.size() > countBeforeClose && events.last().value("linkConnected") == QJsonValue(false);
-    }), "WSS reports the loss of the SkyCore link");
-    require(https("/api/v1/measurements/latest").body.value("measurement").isNull(),
+    }), "WS reports the loss of the SkyCore link");
+    require(http("/api/v1/measurements/latest").body.value("measurement").isNull(),
         "latest measurement clears on link disconnect");
     stream.close();
-    require(waitUntil([&] { return stream.state() == QAbstractSocket::UnconnectedState; }), "WSS disconnects");
+    require(waitUntil([&] { return stream.state() == QAbstractSocket::UnconnectedState; }), "WS disconnects");
     const auto beforeReconnect = events.size();
-    stream.open(request(streamUrl, "/api/v1/stream", token, tls));
+    stream.open(request(streamUrl, "/api/v1/stream"));
     require(waitUntil([&] { return events.size() > beforeReconnect; }) && events.last().value("snapshot").toBool(),
         "stream can reconnect and receives a snapshot");
     config.listener.enabled = false;
     gateway.configure(config);
     require(waitUntil([&] { return stream.state() == QAbstractSocket::UnconnectedState; }),
         "disabling the listener disconnects active clients");
-    std::cout << "Gateway HTTPS and WSS integration passed on loopback and simulated telemetry\n";
+    std::cout << "Gateway HTTP and WS integration passed on loopback and simulated telemetry\n";
     return 0;
 }
 catch (const std::exception& error)

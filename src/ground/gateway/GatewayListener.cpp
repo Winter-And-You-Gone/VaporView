@@ -2,7 +2,6 @@
 #include "FpgaTelemetry.h"
 #include "TelemetryCodec.h"
 
-#include <QCryptographicHash>
 #include <QDateTime>
 #include <QFile>
 #include <QHttpServer>
@@ -11,19 +10,13 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QNetworkProxy>
-#include <QRandomGenerator>
 #include <QRegularExpression>
 #include <QResource>
-#include <QSslCertificate>
-#include <QSslConfiguration>
-#include <QSslKey>
-#include <QSslServer>
-#include <QSslSocket>
-#include <QUrlQuery>
+#include <QTcpServer>
+#include <QTcpSocket>
 #include <QUuid>
 #include <QWebSocket>
 
-#include <algorithm>
 #include <cmath>
 #include <utility>
 
@@ -46,8 +39,6 @@ constexpr auto kStreamPath = "/api/v1/stream";
 constexpr qsizetype kQueuedBytes = 256 * 1024;
 constexpr int kMaxSubscribers = 16;
 constexpr int kMaxCommands = 4096;
-constexpr int kMaxStreamTickets = 64;
-constexpr qint64 kStreamTicketLifetimeMs = 30 * 1000;
 constexpr qint64 kRetentionMs = 24 * 60 * 60 * 1000;
 constexpr qint64 kMaxCommandLifetimeMs = 5 * 60 * 1000;
 
@@ -76,18 +67,22 @@ QHttpServerResponse webResource(const char *path, const char *mimeType)
     return withoutCaching(QHttpServerResponse(mimeType, file.readAll()));
 }
 
-QByteArray requestOrigin(const QHttpServerRequest& request)
+bool fromSameOrigin(const QHttpServerRequest& request)
 {
+    const auto origins = request.headers().values(QHttpHeaders::WellKnownHeader::Origin);
+    if (origins.isEmpty()) return true;
+    if (origins.size() != 1) return false;
+
     const auto hosts = request.headers().values(QHttpHeaders::WellKnownHeader::Host);
-    if (hosts.size() != 1 || hosts.first().size() > 261) return {};
+    if (hosts.size() != 1 || hosts.first().size() > 261) return false;
     static const QRegularExpression authorityPattern(
         QStringLiteral(R"(\A(?:[A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\])(?::[0-9]{1,5})?\z)"));
-    if (!authorityPattern.match(QString::fromLatin1(hosts.first())).hasMatch()) return {};
+    if (!authorityPattern.match(QString::fromLatin1(hosts.first())).hasMatch()) return false;
 
-    auto origin = QUrl::fromEncoded("https://" + hosts.first(), QUrl::StrictMode);
-    if (!origin.isValid() || origin.host().isEmpty()) return {};
-    if (origin.port() == 443) origin.setPort(-1);
-    return origin.toEncoded();
+    auto origin = QUrl::fromEncoded("http://" + hosts.first(), QUrl::StrictMode);
+    if (!origin.isValid() || origin.host().isEmpty()) return false;
+    if (origin.port() == 80) origin.setPort(-1);
+    return origins.first().compare(origin.toEncoded(), Qt::CaseInsensitive) == 0;
 }
 
 QJsonObject frameFields(const TelemetryFrame& frame)
@@ -113,32 +108,37 @@ QJsonValue finiteValue(double value)
     return std::isfinite(value) ? QJsonValue(value) : QJsonValue(QJsonValue::Null);
 }
 
-QByteArray readPem(const QString& path)
+// Bound kernel buffering before Qt hands the transport to a WebSocket.
+class GatewayTcpServer final : public QTcpServer
 {
-    constexpr auto maxPemBytes = 256 * 1024;
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly) || file.size() > maxPemBytes) return {};
-    return file.read(maxPemBytes);
-}
+    void incomingConnection(qintptr descriptor) override
+    {
+        auto *socket = new QTcpSocket(this);
+        if (!socket->setSocketDescriptor(descriptor))
+        {
+            delete socket;
+            return;
+        }
+        socket->setSocketOption(QAbstractSocket::SendBufferSizeSocketOption, kQueuedBytes);
+        addPendingConnection(socket);
+    }
+};
 }  // namespace
+
+bool isListenerCommand(int commandId)
+{
+    return commandId == int(CommandId::RequestStatus) || commandId == int(CommandId::StartRecording) ||
+        commandId == int(CommandId::StopRecording);
+}
 
 bool GatewayListenerConfig::operator==(const GatewayListenerConfig& other) const
 {
-    return enabled == other.enabled && address == other.address && port == other.port &&
-        certificateFile == other.certificateFile && privateKeyFile == other.privateKeyFile &&
-        token == other.token && allowCommands == other.allowCommands && allowedCommands == other.allowedCommands;
+    return enabled == other.enabled && address == other.address && port == other.port;
 }
 
 QString GatewayListenerConfig::validationError() const
 {
     if (QHostAddress(address).isNull()) return QStringLiteral("请输入有效的监听 IP 地址");
-    if (certificateFile.isEmpty() || privateKeyFile.isEmpty())
-        return QStringLiteral("请选择 TLS 证书链和私钥 PEM 文件");
-    if (token.size() < 32 || token.size() > 256 ||
-        std::any_of(token.cbegin(), token.cend(), [](QChar ch) {
-            return ch.unicode() < 33 || ch.unicode() > 126;
-        }))
-        return QStringLiteral("入站令牌须为 32 至 256 个可见 ASCII 字符");
     return {};
 }
 
@@ -169,7 +169,6 @@ void GatewayListenerIngress::setConnected(bool open)
 GatewayListener::GatewayListener(const GatewayListenerConfig& config, QString deviceId,
                                  std::shared_ptr<GatewayListenerIngress> ingress, Dispatch dispatch)
     : config_(config), deviceId_(std::move(deviceId)),
-      authorizationHash_(QCryptographicHash::hash("Bearer " + config.token.toLatin1(), QCryptographicHash::Sha256)),
       ingress_(std::move(ingress)), dispatch_(std::move(dispatch)),
       streamId_(QUuid::createUuid().toString(QUuid::WithoutBraces))
 {
@@ -179,7 +178,7 @@ GatewayListener::GatewayListener(const GatewayListenerConfig& config, QString de
 
 GatewayListener::~GatewayListener()
 {
-    for (auto *socket : subscribers_.keys())
+    for (auto *socket : std::as_const(subscribers_))
     {
         disconnect(socket, nullptr, this, nullptr);
         socket->abort();
@@ -192,32 +191,8 @@ QString GatewayListener::start()
     if (!invalid.isEmpty()) return invalid;
     if (deviceId_.isEmpty() || deviceId_.size() > 128)
         return QStringLiteral("请输入 1 至 128 个字符的设备标识");
-    if (!QSslSocket::supportsSsl()) return QStringLiteral("Qt TLS 后端不可用");
-    const auto certificates = QSslCertificate::fromData(readPem(config_.certificateFile), QSsl::Pem);
-    if (certificates.isEmpty()) return QStringLiteral("无法读取 TLS 证书链");
-    const auto now = QDateTime::currentDateTimeUtc();
-    if (certificates.first().effectiveDate() > now || certificates.first().expiryDate() <= now)
-        return QStringLiteral("TLS 证书不在有效期内");
-    const auto keyData = readPem(config_.privateKeyFile);
-    auto key = QSslKey(keyData, QSsl::Rsa);
-    if (key.isNull()) key = QSslKey(keyData, QSsl::Ec);
-    if (key.isNull()) return QStringLiteral("无法读取 TLS 私钥，须使用未加密 RSA 或 EC PEM");
-
-    auto tls = QSslConfiguration::defaultConfiguration();
-    tls.setLocalCertificateChain(certificates);
-    tls.setPrivateKey(key);
-    tls.setProtocol(QSsl::TlsV1_2OrLater);
-    tls.setPeerVerifyMode(QSslSocket::VerifyNone);
-    tls.setAllowedNextProtocols({});
-    auto listener = std::make_unique<QSslServer>();
-    listener->setSslConfiguration(tls);
-    listener->setHandshakeTimeout(5000);
+    auto listener = std::make_unique<GatewayTcpServer>();
     listener->setProxy(QNetworkProxy::NoProxy);
-    connect(listener.get(), &QSslServer::startedEncryptionHandshake, this, [this](QSslSocket *socket) {
-        // The HTTP-to-WebSocket handoff can disconnect signals on the socket.
-        tlsConnections_.removeIf([](const auto& connection) { return connection.isNull(); });
-        tlsConnections_.append(socket);
-    });
 
     initializeGatewayWebResources();
     server_ = std::make_unique<QHttpServer>();
@@ -234,27 +209,21 @@ QString GatewayListener::start()
     server_->route("/style.css", Method::Get, [] {
         return webResource(":/gateway-web/style.css", "text/css; charset=utf-8");
     });
-    server_->route("/api/v1/stream-ticket", Method::Post, [this](const QHttpServerRequest& request) {
-        return issueStreamTicket(request);
-    });
-    server_->route("/api/v1/status", Method::Get, [this](const QHttpServerRequest& request) {
-        if (!authorized(request)) return errorResponse("unauthorized", HttpStatus::Unauthorized);
+    server_->route("/api/v1/status", Method::Get, [this] {
         auto status = statusMessage();
         status.insert("streamId", streamId_);
         status.insert("ingressDropped", QString::number(dropped_));
         status.insert("slowSubscribersDisconnected", QString::number(slowSubscribersDisconnected_));
         return jsonResponse(status);
     });
-    server_->route("/api/v1/measurements/latest", Method::Get, [this](const QHttpServerRequest& request) {
-        if (!authorized(request)) return errorResponse("unauthorized", HttpStatus::Unauthorized);
+    server_->route("/api/v1/measurements/latest", Method::Get, [this] {
         return jsonResponse({{"deviceId", deviceId_}, {"linkConnected", connected_}, {"measurement",
             measurement_.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(measurement_)}});
     });
     server_->route("/api/v1/commands", Method::Post, [this](const QHttpServerRequest& request) {
         return submit(request);
     });
-    server_->route("/api/v1/commands/<arg>", Method::Get, [this](const QString& id, const QHttpServerRequest& request) {
-        if (!authorized(request)) return errorResponse("unauthorized", HttpStatus::Unauthorized);
+    server_->route("/api/v1/commands/<arg>", Method::Get, [this](const QString& id) {
         const auto it = commands_.constFind(id);
         if (it == commands_.cend()) return errorResponse("command-not-found", HttpStatus::NotFound);
         return jsonResponse(it->result);
@@ -262,77 +231,23 @@ QString GatewayListener::start()
     server_->addWebSocketUpgradeVerifier(this, [this](const QHttpServerRequest& request) {
         using Upgrade = QHttpServerWebSocketUpgradeResponse;
         if (request.url().path() != QLatin1String(kStreamPath)) return Upgrade::deny(404, "Unknown path");
-        if (!authorized(request) && !consumeStreamTicket(request)) return Upgrade::deny(401, "Unauthorized");
+        if (!fromSameOrigin(request)) return Upgrade::deny(403, "Forbidden origin");
         if (subscribers_.size() >= kMaxSubscribers) return Upgrade::deny(503, "Subscription limit reached");
         return Upgrade::accept();
     });
     connect(server_.get(), &QHttpServer::newWebSocketConnection, this, &GatewayListener::acceptSubscriber);
     if (!listener->listen(QHostAddress(config_.address), config_.port))
-        return QStringLiteral("TLS 监听失败：") + listener->errorString();
-    if (!server_->bind(listener.get())) return QStringLiteral("无法绑定 HTTPS 服务");
+        return QStringLiteral("HTTP 监听失败：") + listener->errorString();
+    if (!server_->bind(listener.get())) return QStringLiteral("无法绑定 HTTP 服务");
     port_ = listener.release()->serverPort();
     drain();
     timer_.start();
     return {};
 }
 
-bool GatewayListener::authorized(const QHttpServerRequest& request) const
-{
-    const auto values = request.headers().values(QHttpHeaders::WellKnownHeader::Authorization);
-    if (values.size() != 1 || values.first().size() > 263) return false;
-    const auto hash = QCryptographicHash::hash(values.first(), QCryptographicHash::Sha256);
-    unsigned char differences = 0;
-    for (qsizetype i = 0; i < hash.size(); ++i)
-        differences |= static_cast<unsigned char>(hash[i] ^ authorizationHash_[i]);
-    return differences == 0;
-}
-
-QHttpServerResponse GatewayListener::issueStreamTicket(const QHttpServerRequest& request)
-{
-    if (!authorized(request)) return errorResponse("unauthorized", HttpStatus::Unauthorized);
-    const auto origin = requestOrigin(request);
-    if (origin.isEmpty()) return errorResponse("invalid-host", HttpStatus::BadRequest);
-
-    streamTickets_.removeIf([](QHash<QString, StreamTicket>::iterator entry) {
-        return entry->expiry.hasExpired();
-    });
-    if (streamTickets_.size() >= kMaxStreamTickets)
-        return errorResponse("ticket-limit-reached", HttpStatus::TooManyRequests);
-
-    QString ticket;
-    do
-    {
-        quint32 randomWords[8];
-        QRandomGenerator::system()->fillRange(randomWords);
-        const QByteArray bytes = QByteArray::fromRawData(reinterpret_cast<const char *>(randomWords),
-                                                         sizeof(randomWords));
-        ticket = QString::fromLatin1(bytes.toHex());
-    } while (streamTickets_.contains(ticket));
-    streamTickets_.insert(ticket, {origin, QDeadlineTimer(kStreamTicketLifetimeMs, Qt::PreciseTimer)});
-    return jsonResponse({{"ticket", ticket}});
-}
-
-bool GatewayListener::consumeStreamTicket(const QHttpServerRequest& request)
-{
-    const auto origin = requestOrigin(request);
-    const auto origins = request.headers().values(QHttpHeaders::WellKnownHeader::Origin);
-    if (origin.isEmpty() || origins.size() != 1 || origins.first().compare(origin, Qt::CaseInsensitive) != 0)
-        return false;
-
-    const auto tickets = QUrlQuery(request.url()).allQueryItemValues(QStringLiteral("ticket"));
-    if (tickets.size() != 1 || tickets.first().size() != 64) return false;
-    const auto ticket = streamTickets_.find(tickets.first());
-    if (ticket == streamTickets_.end() || ticket->origin != origin) return false;
-
-    const bool valid = !ticket->expiry.hasExpired();
-    streamTickets_.erase(ticket);
-    return valid;
-}
-
 QHttpServerResponse GatewayListener::submit(const QHttpServerRequest& request)
 {
-    if (!authorized(request)) return errorResponse("unauthorized", HttpStatus::Unauthorized);
-    if (!config_.allowCommands) return errorResponse("forbidden", HttpStatus::Forbidden);
+    if (!fromSameOrigin(request)) return errorResponse("forbidden-origin", HttpStatus::Forbidden);
     if (request.body().size() > 2048) return errorResponse("body-too-large", HttpStatus::PayloadTooLarge);
     const auto body = QJsonDocument::fromJson(request.body()).object();
     const QString id = body.value("id").toString();
@@ -343,9 +258,7 @@ QHttpServerResponse GatewayListener::submit(const QHttpServerRequest& request)
     if (body.size() != 3 || !idPattern.match(id).hasMatch() || command < 0 || command > 65535 ||
         !expires.endsWith(QLatin1Char('Z')) || !expiryDate.isValid())
         return errorResponse("invalid-command", HttpStatus::BadRequest);
-    if ((command != int(CommandId::RequestStatus) && command != int(CommandId::StartRecording) &&
-         command != int(CommandId::StopRecording)) || !config_.allowedCommands.contains(quint16(command)))
-        return errorResponse("forbidden", HttpStatus::Forbidden);
+    if (!isListenerCommand(command)) return errorResponse("forbidden", HttpStatus::Forbidden);
 
     const auto expiry = expiryDate.toMSecsSinceEpoch();
     const auto now = QDateTime::currentMSecsSinceEpoch();
@@ -389,19 +302,7 @@ void GatewayListener::acceptSubscriber()
     client->setParent(this);
     client->setMaxAllowedIncomingFrameSize(1024);
     client->setMaxAllowedIncomingMessageSize(1024);
-    const auto transport = std::find_if(tlsConnections_.cbegin(), tlsConnections_.cend(), [client](const auto& tls) {
-        return tls && tls->peerPort() == client->peerPort() && tls->peerAddress() == client->peerAddress() &&
-            tls->localAddress() == client->localAddress();
-    });
-    if (transport == tlsConnections_.cend())
-    {
-        client->abort();
-        client->deleteLater();
-        return;
-    }
-    // Keep kernel buffering comparable to the application budget when a subscriber stops reading.
-    (*transport)->setSocketOption(QAbstractSocket::SendBufferSizeSocketOption, kQueuedBytes);
-    subscribers_.insert(client, *transport);
+    subscribers_.insert(client);
     connect(client, &QWebSocket::disconnected, this, [this, client] {
         subscribers_.remove(client);
         client->deleteLater();
@@ -434,22 +335,14 @@ void GatewayListener::publish(QJsonObject& message)
     message.insert("ingressDropped", QString::number(dropped_));
     if (subscribers_.isEmpty()) return;
     const auto encoded = QString::fromUtf8(QJsonDocument(message).toJson(QJsonDocument::Compact));
-    for (auto *socket : subscribers_.keys()) send(socket, encoded);
+    for (auto *socket : subscribers_.values()) send(socket, encoded);
 }
 
 void GatewayListener::send(QWebSocket *socket, const QString& message)
 {
-    const auto transport = subscribers_.value(socket);
-    // QWebSocket::bytesToWrite() counts plaintext only for a TLS socket.
-    if (transport && socket->bytesToWrite() + transport->encryptedBytesToWrite() +
-        4 * message.size() + 32 > kQueuedBytes)
+    if (socket->bytesToWrite() + 4 * message.size() + 32 > kQueuedBytes)
     {
         ++slowSubscribersDisconnected_;
-        socket->abort();
-        return;
-    }
-    if (!transport)
-    {
         socket->abort();
         return;
     }

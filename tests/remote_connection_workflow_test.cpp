@@ -1,6 +1,4 @@
 #include "test_settings_sandbox.h"
-#include "gateway_test_certificate.h"
-#include <QUuid>
 #include "ground/main/MainWindow.h"
 #include "ground/main/GroundMainWindowState.h"
 #include "ground/devices/RemoteSkyController.h"
@@ -256,25 +254,13 @@ static void checkGatewayRecording(MainWindow& window, const QTemporaryDir& direc
     auto& listener = config.listener;
     listener.enabled = true;
     listener.port = 0;
-    listener.certificateFile = directory.filePath("cert.pem");
-    listener.privateKeyFile = directory.filePath("key.pem");
-    const auto error = VaporView::Test::generateGatewayTestCertificate(VaporView::Test::gatewayOpenSslExecutable(),
-        directory.filePath("openssl.cnf"), listener.certificateFile, listener.privateKeyFile);
-    if (!error.isEmpty()) throw std::runtime_error(error.toStdString());
-    listener.token = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    listener.allowCommands = true;
-    listener.allowedCommands = {quint16(VaporView::CommandId::RequestStatus), quint16(VaporView::CommandId::StartRecording),
-                                quint16(VaporView::CommandId::StopRecording)};
     state.gateway_service_->configure(config);
     require(waitUntil([&] { return state.gateway_service_->listenerPort() != 0; }), "external gateway listening");
     require(waitUntil([&] { return state.calibration_service_->view().selected.valid; }), "simulation calibration selected");
     QProcess client;
-    auto env = QProcessEnvironment::systemEnvironment();
-    env.insert("VAPORVIEW_GATEWAY_TOKEN", listener.token);
-    client.setProcessEnvironment(env);
     client.setProcessChannelMode(QProcess::MergedChannels);
-    client.start(interpreter, {script, QStringLiteral("https://127.0.0.1:%1").arg(state.gateway_service_->listenerPort()),
-                          listener.certificateFile, directory.filePath("simulated_sessions")});
+    client.start(interpreter, {script, QStringLiteral("http://127.0.0.1:%1").arg(state.gateway_service_->listenerPort()),
+                          directory.filePath("simulated_sessions")});
     require(client.waitForStarted(5000), "external gateway client started");
     bool sawRecording = false;
     const bool finished = waitUntil([&] {
@@ -447,9 +433,8 @@ int main(int argc, char **argv)
     }
     if (args.size() == 4 && args[1] == "--gateway") {
         const auto python = qEnvironmentVariable("VAPORVIEW_TEST_GATEWAY_PYTHON", args[2]);
-        if (VaporView::Test::gatewayOpenSslExecutable().isEmpty() ||
-            QProcess::execute(python, {"-c", "import websocket"}) != 0) {
-            std::cout << "SKIP: gateway workflow requires openssl and Python with websocket-client\n";
+        if (QProcess::execute(python, {"-c", "import websocket"}) != 0) {
+            std::cout << "SKIP: gateway workflow requires Python with websocket-client\n";
             return 77;
         }
         simulatedSkyWorkflow(python, args[3]);

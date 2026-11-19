@@ -206,8 +206,8 @@ public:
             else
             {
                 port = listener_->port();
-                text = QStringLiteral("HTTPS / WSS 正在监听 %1").arg(QUrl(
-                    QStringLiteral("https://") + (config.address.contains(':')
+                text = QStringLiteral("HTTP / WS 正在监听 %1").arg(QUrl(
+                    QStringLiteral("http://") + (config.address.contains(':')
                         ? QStringLiteral("[") + config.address + QStringLiteral("]") : config.address) +
                     QStringLiteral(":") + QString::number(port)).toDisplayString());
             }
@@ -680,9 +680,9 @@ void GatewayService::receiveCommand(const QJsonObject& command, quint64 generati
         ? static_cast<int>(rawCommand) : -1;
     const qint64 expires = expiry(command);
     QString rejected;
-    const auto& allowed = listener ? config_.listener.allowedCommands : config_.allowedCommands;
-    if (!(listener ? config_.listener.allowCommands : config_.allowRemoteCommands) || commandId < 0 ||
-        !allowed.contains(static_cast<quint16>(commandId))) rejected = "forbidden";
+    const bool allowed = listener ? isListenerCommand(commandId)
+        : config_.allowRemoteCommands && commandId >= 0 && config_.allowedCommands.contains(quint16(commandId));
+    if (!allowed) rejected = "forbidden";
     else if (!listener && command.value("deviceId").toString() != config_.deviceId) rejected = "wrong-device";
     else if (expires <= now() || expires > now() + kDayMs) rejected = "expired";
     else if (!service_ || !service_->isOpen()) rejected = "disconnected";

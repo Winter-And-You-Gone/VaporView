@@ -1,9 +1,8 @@
-"""Query a VaporView ground gateway from a separate computer (HTTPS/WSS)."""
+"""Query a VaporView ground gateway from a separate computer (HTTP/WS)."""
 
 import argparse
 import json
-import os
-import ssl
+import re
 import sys
 import time
 import uuid
@@ -11,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.error import HTTPError
 from urllib.parse import urlsplit
 from urllib.request import (
-    HTTPRedirectHandler, HTTPSHandler, ProxyHandler, Request, build_opener,
+    HTTPRedirectHandler, ProxyHandler, Request, build_opener,
 )
 
 
@@ -20,14 +19,19 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 
+def command_id(value):
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", value):
+        raise argparse.ArgumentTypeError("invalid gateway command ID")
+    return value
+
+
 def display(value):
     print(json.dumps(value, ensure_ascii=False), flush=True)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("gateway", help="HTTPS origin, for example https://ground.example:8443")
-    parser.add_argument("--ca", help="PEM certificate for the issuer of the gateway certificate")
+    parser.add_argument("gateway", help="HTTP origin, for example http://ground.example:8443")
     actions = parser.add_subparsers(dest="action", required=True)
     actions.add_parser("status")
     actions.add_parser("latest")
@@ -37,22 +41,17 @@ def main():
     commands = {"request-status": 10, "start-recording": 1, "stop-recording": 3}
     control.add_argument("name", choices=commands)
     result = actions.add_parser("result")
-    result.add_argument("id", type=uuid.UUID, help="command UUID printed by this client")
+    result.add_argument("id", type=command_id, help="command ID returned by the gateway")
     args = parser.parse_args()
     origin = urlsplit(args.gateway)
-    if (origin.scheme != "https" or not origin.hostname or origin.username is not None
+    if (origin.scheme != "http" or not origin.hostname or origin.username is not None
             or origin.query or origin.fragment or origin.path not in ("", "/")):
-        parser.error("provide the HTTPS origin of the ground gateway")
-    token = os.environ.get("VAPORVIEW_GATEWAY_TOKEN")
-    if not token or not token.isascii() or not token.isprintable() or any(c.isspace() for c in token):
-        parser.error("set VAPORVIEW_GATEWAY_TOKEN to the listener token")
-    context = ssl.create_default_context(cafile=args.ca)
-    headers = {"Authorization": f"Bearer {token}"}
-    root = f"https://{origin.netloc}/api/v1"
-    opener = build_opener(ProxyHandler({}), NoRedirect(), HTTPSHandler(context=context))
+        parser.error("provide the HTTP origin of the ground gateway")
+    root = f"http://{origin.netloc}/api/v1"
+    opener = build_opener(ProxyHandler({}), NoRedirect())
 
     def request(path, body=None):
-        req = Request(root + path, headers=headers)
+        req = Request(root + path)
         if body is not None:
             req.data = json.dumps(body).encode("utf-8")
             req.add_header("Content-Type", "application/json")
@@ -67,8 +66,8 @@ def main():
         except ImportError:
             parser.error("install websocket-client for the stream command")
         connection = websocket.create_connection(
-            f"wss://{origin.netloc}/api/v1/stream", header=headers, timeout=15,
-            sslopt={"context": context}, http_no_proxy=[origin.hostname], redirect_limit=0,
+            f"ws://{origin.netloc}/api/v1/stream", timeout=15,
+            http_no_proxy=[origin.hostname], redirect_limit=0,
         )
         try:
             for _ in range(args.count):
@@ -76,17 +75,17 @@ def main():
         finally:
             connection.close()
     elif args.action == "command":
-        command_id = str(uuid.uuid4())
+        identifier = str(uuid.uuid4())
         expires = datetime.now(timezone.utc) + timedelta(seconds=30)
         # Keep the ID visible even if a response is lost after submission.
-        print(f"Command ID: {command_id}", file=sys.stderr, flush=True)
-        reply = request("/commands", {"id": command_id, "commandId": commands[args.name],
+        print(f"Command ID: {identifier}", file=sys.stderr, flush=True)
+        reply = request("/commands", {"id": identifier, "commandId": commands[args.name],
                                      "expiresAt": expires.strftime("%Y-%m-%dT%H:%M:%SZ")})
         display(reply)
         deadline = time.monotonic() + 35
         while reply.get("status") == "accepted" and time.monotonic() < deadline:
             time.sleep(0.25)
-            reply = request(f"/commands/{command_id}")
+            reply = request(f"/commands/{identifier}")
         display(reply)
         return 0 if reply.get("status") == "acknowledged" else 1
     elif args.action == "result":

@@ -1,7 +1,6 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const { createHash, randomBytes, X509Certificate } = require("node:crypto");
 const { readFile } = require("node:fs/promises");
 const path = require("node:path");
 const { chromium } = require("playwright");
@@ -32,8 +31,7 @@ function observeSockets(page, origin) {
     const address = new URL(socket.url());
     if (address.host !== origin.host || address.pathname !== `${apiRoot}/stream`) return;
     const connection = {
-      encrypted: address.protocol === "wss:",
-      usedTicket: Boolean(address.searchParams.get("ticket")),
+      plainWebSocket: address.protocol === "ws:" && address.search === "",
       events: [],
       closed: false,
     };
@@ -62,13 +60,10 @@ async function waitFor(label, condition) {
 
 async function connectStream(page, connections) {
   const previousCount = connections.length;
-  const [ticketResponse] = await Promise.all([
-    responseFor(page, "stream-ticket", "POST"), page.locator("#connect-stream").click(),
-  ]);
-  assert.equal(ticketResponse.status(), 200);
-  await waitText(page, "#stream-state", "WSS 已连接");
-  const connection = await waitFor("WSS snapshot", () => connections[previousCount]?.events.length && connections[previousCount]);
-  assert(connection.encrypted && connection.usedTicket, "browser used same-origin WSS with a ticket");
+  await page.locator("#connect-stream").click();
+  await waitText(page, "#stream-state", "WS 已连接");
+  const connection = await waitFor("WS snapshot", () => connections[previousCount]?.events.length && connections[previousCount]);
+  assert(connection.plainWebSocket, "browser used direct same-origin WS");
   const [snapshot] = connection.events;
   assert.equal(snapshot.kind, "status");
   assert.equal(snapshot.snapshot, true);
@@ -123,45 +118,41 @@ async function verifySession(sessionRoot, sessionName, observed) {
   for (const measurement of observed) {
     const key = `${measurement.hostTimeUs}/${measurement.channel}/${measurement.cycleId}`;
     const row = features.get(key);
-    assert(row, `WSS feature found by timestamp, channel, and cycle ${key}`);
+    assert(row, `WS feature found by timestamp, channel, and cycle ${key}`);
     assert.equal(Number(row.quality_flags), measurement.qualityFlags);
     const recorded = Number(row.peak);
     assert(Math.abs(recorded - measurement.value) <= Math.max(1e-7, 1e-5 * Math.abs(recorded)), `peak matches for ${key}`);
   }
-  console.log(`${sessionName} ${observed.length} WSS peaks matched SkyCore, ${manifest.counts.waveform_frames} waveform frames`);
+  console.log(`${sessionName} ${observed.length} WS peaks matched SkyCore, ${manifest.counts.waveform_frames} waveform frames`);
 }
 
-async function verify(rawOrigin, certificate, sessionRoot) {
-  const token = process.env.VAPORVIEW_GATEWAY_TOKEN;
-  assert(token, "C++ runner supplies VAPORVIEW_GATEWAY_TOKEN");
-  const origin = new URL(rawOrigin);
-  assert.equal(origin.protocol, "https:");
-  assert.equal(origin.hostname, "127.0.0.1");
-  const cert = new X509Certificate(await readFile(certificate));
-  const spki = cert.publicKey.export({ type: "spki", format: "der" });
-  const pin = createHash("sha256").update(spki).digest("base64");
+async function verify(rawOrigin, sessionRoot) {
+  const listener = new URL(rawOrigin);
+  assert.equal(listener.protocol, "http:");
+  assert.equal(listener.hostname, "127.0.0.1");
+  const origin = new URL(listener);
+  // Chromium treats loopback names as secure contexts. Resolve an ordinary
+  // test hostname to the same local listener to exercise LAN-style HTTP.
+  origin.hostname = "vaporview-gateway.test";
   const browser = await chromium.launch({
     executablePath: process.env.VAPORVIEW_TEST_CHROMIUM || undefined,
-    args: [`--ignore-certificate-errors-spki-list=${pin}`],
+    args: ["--no-proxy-server", "--host-resolver-rules=MAP vaporview-gateway.test 127.0.0.1"],
   });
   try {
     const page = await browser.newPage({ viewport: { width: 1260, height: 980 } });
     page.setDefaultTimeout(timeout);
     const connections = observeSockets(page, origin);
-    const response = await page.goto(origin.href);
+    const [response, statusResponse] = await Promise.all([
+      page.goto(origin.href), responseFor(page, "status"),
+    ]);
     assert.equal(response?.status(), 200);
-    await waitText(page, "h1", "地面网关");
-
-    await page.locator("#token").fill(randomBytes(32).toString("hex"));
-    await clickAndRead(page, "#apply-token", "status", "GET", 401);
-    await waitText(page, "#api-feedback", "入站令牌无效");
-    await waitText(page, "#gateway-state", "认证失败");
-
-    await page.locator("#token").fill(token);
-    const status = await clickAndRead(page, "#apply-token", "status", "GET", 200);
+    assert.equal(statusResponse.status(), 200);
+    assert.equal(await page.evaluate(() => window.isSecureContext), false);
+    assert.equal(await page.evaluate(() => typeof crypto.randomUUID), "undefined");
+    const status = await statusResponse.json();
     assert.equal(status.deviceId, "simulated-ground");
     assert.equal(status.linkConnected, true);
-    assert.equal(await page.locator("#token").inputValue(), "");
+    await waitText(page, "h1", "地面网关");
     await waitText(page, "#gateway-state", "可达");
     await waitText(page, "#link-state", "已连接");
 
@@ -171,7 +162,7 @@ async function verify(rawOrigin, certificate, sessionRoot) {
     await waitText(page, "#recording-state", "停止");
     await page.locator("#disconnect-stream").click();
     await waitText(page, "#stream-state", "已断开");
-    await waitFor("closing first WSS connection", () => first.closed);
+    await waitFor("closing first WS connection", () => first.closed);
 
     await command(page, "#command-start", 1);
     const second = await connectStream(page, connections);
@@ -194,7 +185,7 @@ async function verify(rawOrigin, certificate, sessionRoot) {
     );
     assert(rendered.length <= 50);
     const event = second.events.find((entry) => entry.kind === "measurement" && entry.sequence === rendered[0][0]);
-    assert(event, "rendered sequence came from the browser's WSS connection");
+    assert(event, "rendered sequence came from the browser's WS connection");
     assert.equal(rendered[0][3], String(event.channel));
     assert.equal(rendered[0][4], event.valid ? `${event.value} ${event.unit}` : "无有效峰值");
     assert.match(rendered[0][5], /\.\d{6}Z$/);
@@ -209,7 +200,7 @@ async function verify(rawOrigin, certificate, sessionRoot) {
     await clickAndRead(page, "#refresh-status", "status", "GET", 200);
     await verifySession(sessionRoot, sessionName, observed);
     await page.locator("#disconnect-stream").click();
-    await waitFor("closing second WSS connection", () => second.closed);
+    await waitFor("closing second WS connection", () => second.closed);
     if (process.env.VAPORVIEW_TEST_BROWSER_SCREENSHOT) {
       await page.screenshot({ path: process.env.VAPORVIEW_TEST_BROWSER_SCREENSHOT, fullPage: true });
     }
@@ -219,8 +210,6 @@ async function verify(rawOrigin, certificate, sessionRoot) {
 }
 
 verify(...process.argv.slice(2)).catch((error) => {
-  const token = process.env.VAPORVIEW_GATEWAY_TOKEN;
-  const safeMessage = String(error.stack ?? error).replace(/([?&]ticket=)[^\s&'"\])]+/gi, "$1[redacted]");
-  console.error(token ? safeMessage.replaceAll(token, "[redacted]") : safeMessage);
+  console.error(error.stack ?? error);
   process.exitCode = 1;
 });

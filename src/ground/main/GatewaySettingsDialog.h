@@ -48,13 +48,6 @@ private:
     QCheckBox *listener_enabled_;
     QLineEdit *listener_address_;
     QSpinBox *listener_port_;
-    QLineEdit *listener_certificate_;
-    QLineEdit *listener_key_;
-    QLineEdit *listener_token_;
-    QCheckBox *listener_commands_;
-    QCheckBox *listener_status_command_;
-    QCheckBox *listener_start_command_;
-    QCheckBox *listener_stop_command_;
     QCheckBox *close_to_tray_;
     QLabel *validation_;
 };

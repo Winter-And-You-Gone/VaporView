@@ -5,7 +5,6 @@ const commandButtons = document.querySelectorAll("[data-command]");
 const measurementRows = element("measurement-rows");
 const requestErrors = {
   400: "网关拒绝了请求参数，请核对地面机时钟",
-  401: "入站令牌无效，请重新应用令牌",
   403: "地面网关未授权此操作",
   404: "网关未找到该资源或命令",
   409: "命令 ID 与已有命令冲突",
@@ -24,9 +23,6 @@ const receiptLabels = {
   "calibration-required": "需要在地面端准备定标参数",
 };
 
-let token = "";
-let authGeneration = 0;
-let authController = new AbortController();
 let statusRequest = 0;
 let latestRequest = 0;
 let statusRevision = 0;
@@ -44,34 +40,26 @@ function label(value) {
 }
 
 function syncButtons() {
-  const authorized = token.length > 0;
-  element("refresh-status").disabled = !authorized;
-  element("refresh-latest").disabled = !authorized;
-  element("connect-stream").disabled = !authorized || stream !== null;
+  element("connect-stream").disabled = stream !== null;
   element("disconnect-stream").disabled = stream === null;
   element("command-check").disabled = !currentCommand || currentCommand.checking || currentCommand.sending;
-  for (const button of commandButtons) button.disabled = !authorized || Boolean(currentCommand?.sending || currentCommand?.pending);
+  for (const button of commandButtons) button.disabled = Boolean(currentCommand?.sending || currentCommand?.pending);
 }
 
-async function request(path, { method = "GET", body, signal } = {}) {
-  const generation = authGeneration;
-  const headers = { Authorization: `Bearer ${token}` };
-  if (body) headers["Content-Type"] = "application/json";
-  const cancellation = signal ?? authController.signal;
+async function request(path, { method = "GET", body } = {}) {
+  const headers = body ? { "Content-Type": "application/json" } : undefined;
   const deadline = AbortSignal.timeout(15000);
   let response;
   try {
     response = await fetch(path, {
       method, headers, body: body ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.any([cancellation, deadline]), cache: "no-store", redirect: "error",
+      signal: deadline, cache: "no-store", redirect: "error",
     });
   } catch {
-    if (authGeneration === generation && !cancellation.aborted) show("gateway-state", "不可达", "error");
-    throw new Error(deadline.aborted ? "HTTPS 请求超时" : "HTTPS 无响应，请检查网络和证书");
+    show("gateway-state", "不可达", "error");
+    throw new Error(deadline.aborted ? "HTTP 请求超时" : "HTTP 无响应，请检查网络和监听地址");
   }
-  if (authGeneration === generation && !cancellation.aborted) {
-    show("gateway-state", response.status === 401 ? "可达 · 认证失败" : "可达", response.status === 401 ? "error" : "good");
-  }
+  show("gateway-state", "可达", "good");
   if (!response.ok) throw new Error(`HTTP ${response.status} · ${requestErrors[response.status] ?? "请求失败"}`);
   try {
     return await response.json();
@@ -127,26 +115,24 @@ function peak(measurement) {
 }
 
 async function refreshStatus() {
-  const generation = authGeneration;
   const requestId = ++statusRequest;
   const revision = statusRevision;
   try {
     const status = await request("/api/v1/status");
-    if (generation !== authGeneration || requestId !== statusRequest) return;
+    if (requestId !== statusRequest) return;
     if (revision === statusRevision) renderStatus(status);
     show("api-feedback", "已查询网关状态", "good");
   } catch (error) {
-    if (generation === authGeneration && requestId === statusRequest) show("api-feedback", error.message, "error");
+    if (requestId === statusRequest) show("api-feedback", error.message, "error");
   }
 }
 
 async function refreshLatest() {
-  const generation = authGeneration;
   const requestId = ++latestRequest;
   const revision = statusRevision;
   try {
     const latest = await request("/api/v1/measurements/latest");
-    if (generation !== authGeneration || requestId !== latestRequest) return;
+    if (requestId !== latestRequest) return;
     if (revision === statusRevision) {
       if (latest.linkConnected === false) renderStatus(latest);
       else renderLink(latest);
@@ -155,10 +141,10 @@ async function refreshLatest() {
     const summary = measurement
       ? `通道 ${label(measurement.channel)} · ${peak(measurement)} · ${utcTime(measurement.timeUs)} · 质量位 ${label(measurement.qualityFlags)}`
       : "暂无测量";
-    show("latest-measurement", `HTTPS 最新测量 · ${summary}`);
+    show("latest-measurement", `HTTP 最新测量 · ${summary}`);
     show("api-feedback", "已查询最新测量", "good");
   } catch (error) {
-    if (generation === authGeneration && requestId === latestRequest) show("api-feedback", error.message, "error");
+    if (requestId === latestRequest) show("api-feedback", error.message, "error");
   }
 }
 
@@ -166,7 +152,6 @@ function disconnectStream(text = "已断开，可重新连接", tone = "") {
   const active = stream;
   stream = null;
   if (active) {
-    active.controller.abort();
     clearTimeout(active.timeout);
     active.socket?.close();
   }
@@ -174,34 +159,26 @@ function disconnectStream(text = "已断开，可重新连接", tone = "") {
   syncButtons();
 }
 
-async function connectStream() {
-  if (stream || !token) return;
-  const active = { controller: new AbortController(), socket: null, timeout: null, hasMeasurement: false };
+function connectStream() {
+  if (stream) return;
+  const active = { socket: null, timeout: null, hasMeasurement: false };
   stream = active;
-  show("stream-state", "正在连接 WSS");
+  show("stream-state", "正在连接 WS");
   show("stream-event", "—");
   show("stream-dropped", "—");
   placeholder(measurementRows, 7, "等待实时测量");
   syncButtons();
   active.timeout = setTimeout(() => {
-    if (stream === active) disconnectStream("WSS 连接超时，可重新连接", "error");
+    if (stream === active) disconnectStream("WS 连接超时，可重新连接", "error");
   }, 12000);
   try {
-    const { ticket } = await request("/api/v1/stream-ticket", { method: "POST", signal: active.controller.signal });
-    if (stream !== active) return;
-    if (typeof ticket !== "string" || ticket.length === 0) throw new Error("网关未发放订阅凭证");
     const endpoint = new URL("/api/v1/stream", location.origin);
-    endpoint.protocol = "wss:";
-    endpoint.searchParams.set("ticket", ticket);
-    try {
-      active.socket = new WebSocket(endpoint);
-    } catch {
-      throw new Error("无法启动 WSS 连接");
-    }
+    endpoint.protocol = "ws:";
+    active.socket = new WebSocket(endpoint);
     active.socket.addEventListener("open", () => {
       if (stream !== active) return;
       clearTimeout(active.timeout);
-      show("stream-state", "WSS 已连接", "good");
+      show("stream-state", "WS 已连接", "good");
     });
     active.socket.addEventListener("message", (event) => {
       if (stream !== active) return;
@@ -220,17 +197,17 @@ async function connectStream() {
           message.channel, peak(message), utcTime(message.hostTimeUs ?? message.timeUs), message.qualityFlags]);
         if (measurementRows.rows.length > 50) measurementRows.deleteRow(-1);
       } catch {
-        disconnectStream("WSS 事件格式无效，可重新连接", "error");
+        disconnectStream("WS 事件格式无效，可重新连接", "error");
       }
     });
     active.socket.addEventListener("error", () => {
-      if (stream === active) disconnectStream("WSS 连接失败，请检查证书、网络和网关订阅状态", "error");
+      if (stream === active) disconnectStream("WS 连接失败，请检查网络和网关订阅状态", "error");
     });
     active.socket.addEventListener("close", () => {
-      if (stream === active) disconnectStream("WSS 已关闭，可重新连接");
+      if (stream === active) disconnectStream("WS 已关闭，可重新连接");
     });
-  } catch (error) {
-    if (stream === active) disconnectStream(error.message, "error");
+  } catch {
+    if (stream === active) disconnectStream("无法启动 WS 连接", "error");
   }
 }
 
@@ -282,7 +259,9 @@ async function checkCommand() {
 }
 
 async function sendCommand(commandId) {
-  const command = { id: crypto.randomUUID(), sending: true, pending: false, checking: false, pollUntil: Date.now() + 35000 };
+  const random = crypto.getRandomValues(new Uint8Array(16));
+  const id = Array.from(random, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  const command = { id, sending: true, pending: false, checking: false, pollUntil: Date.now() + 35000 };
   clearTimeout(currentCommand?.timer);
   currentCommand = command;
   show("command-id", command.id);
@@ -314,39 +293,12 @@ async function sendCommand(commandId) {
 }
 
 show("gateway-origin", location.host);
-element("token-form").addEventListener("submit", (event) => {
-  event.preventDefault();
-  const input = element("token");
-  const value = input.value;
-  input.value = "";
-  if (!/^[!-~]{32,256}$/.test(value)) {
-    show("token-state", "请输入 32 至 256 个可见 ASCII 字符", "error");
-    return;
-  }
-  authController.abort();
-  authController = new AbortController();
-  authGeneration += 1;
-  token = value;
-  clearTimeout(currentCommand?.timer);
-  currentCommand = null;
-  disconnectStream("未连接");
-  placeholder(measurementRows, 7, "等待实时测量");
-  for (const id of ["command-id", "command-accepted", "command-result", "command-session", "stream-event", "stream-dropped"]) show(id, "—");
-  show("token-state", "已应用", "good");
-  show("api-feedback", "正在查询网关状态");
-  show("command-feedback", "等待下发");
-  show("latest-measurement", "HTTPS 最新测量 · 尚未查询");
-  show("gateway-state", "正在查询");
-  show("link-state", "未知");
-  show("telemetry-state", "未知");
-  for (const id of ["device-id", "recording-state", "session-name"]) show(id, "—");
-  placeholder(element("device-rows"), 4, "暂无设备状态");
-  void refreshStatus();
-});
-
 element("refresh-status").addEventListener("click", refreshStatus);
 element("refresh-latest").addEventListener("click", refreshLatest);
 element("connect-stream").addEventListener("click", connectStream);
 element("disconnect-stream").addEventListener("click", () => disconnectStream());
 element("command-check").addEventListener("click", checkCommand);
 for (const button of commandButtons) button.addEventListener("click", () => sendCommand(Number(button.dataset.command)));
+
+syncButtons();
+void refreshStatus();

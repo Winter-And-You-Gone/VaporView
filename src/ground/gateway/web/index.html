@@ -18,23 +18,15 @@
     </header>
 
     <section aria-label="连接与查询" class="connection">
-      <form id="token-form" autocomplete="off">
-        <label for="token">入站令牌</label>
-        <div class="actions">
-          <input id="token" type="password" autocomplete="off" spellcheck="false" maxlength="256" required>
-          <button id="apply-token" type="submit" class="primary">应用令牌</button>
-        </div>
-        <span id="token-state" class="hint" role="status">等待输入</span>
-      </form>
       <div class="actions">
-        <button id="refresh-status" type="button" disabled>查询状态</button>
-        <button id="refresh-latest" type="button" disabled>查询最新测量</button>
+        <button id="refresh-status" type="button">查询状态</button>
+        <button id="refresh-latest" type="button">查询最新测量</button>
       </div>
     </section>
     <p id="api-feedback" class="feedback" role="status"></p>
 
     <dl class="status-grid" aria-label="网关和遥测状态">
-      <div><dt>HTTPS 网关</dt><dd id="gateway-state">等待查询</dd></div>
+      <div><dt>HTTP 网关</dt><dd id="gateway-state">等待查询</dd></div>
       <div><dt>机地数传</dt><dd id="link-state">未知</dd></div>
       <div><dt>SkyCore 状态</dt><dd id="telemetry-state">未知</dd></div>
       <div><dt>设备标识</dt><dd id="device-id" class="mono">—</dd></div>
@@ -74,7 +66,7 @@
       <div class="section-head">
         <div><h2 id="stream-title">实时测量</h2><p class="hint">峰值沿用采集端单位，实时列表保留最近 50 条。</p></div>
         <div class="actions">
-          <button id="connect-stream" type="button" class="primary" disabled>连接 WSS</button>
+          <button id="connect-stream" type="button" class="primary" disabled>连接 WS</button>
           <button id="disconnect-stream" type="button" disabled>断开</button>
         </div>
       </div>
@@ -83,7 +75,7 @@
         <div><dt>最近事件</dt><dd id="stream-event">—</dd></div>
         <div><dt>入口累计丢帧</dt><dd id="stream-dropped" class="mono">—</dd></div>
       </dl>
-      <p id="latest-measurement" class="latest" role="status">HTTPS 最新测量 · 尚未查询</p>
+      <p id="latest-measurement" class="latest" role="status">HTTP 最新测量 · 尚未查询</p>
       <div class="table-wrap stream-table" tabindex="0" aria-label="实时测量表">
         <table>
           <thead><tr><th scope="col">事件序号</th><th scope="col">帧序号</th><th scope="col">来源</th><th scope="col">通道</th><th scope="col">峰值</th><th scope="col">UTC 时间</th><th scope="col">质量位</th></tr></thead>

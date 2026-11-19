@@ -2,18 +2,16 @@
 
 #include "ground/gateway/GatewayService.h"
 
-#include <QDeadlineTimer>
 #include <QHash>
 #include <QJsonObject>
 #include <QList>
 #include <QMutex>
-#include <QPointer>
+#include <QSet>
 #include <QTimer>
 
 class QHttpServer;
 class QHttpServerRequest;
 class QHttpServerResponse;
-class QSslSocket;
 class QWebSocket;
 
 namespace VaporView::Ground::Gateway
@@ -45,9 +43,6 @@ public:
     void complete(QJsonObject result);
 
 private:
-    bool authorized(const QHttpServerRequest& request) const;
-    QHttpServerResponse issueStreamTicket(const QHttpServerRequest& request);
-    bool consumeStreamTicket(const QHttpServerRequest& request);
     QHttpServerResponse submit(const QHttpServerRequest& request);
     void acceptSubscriber();
     void drain();
@@ -57,12 +52,10 @@ private:
 
     GatewayListenerConfig config_;
     QString deviceId_;
-    QByteArray authorizationHash_;
     std::shared_ptr<GatewayListenerIngress> ingress_;
     Dispatch dispatch_;
     QTimer timer_;
-    QList<QPointer<QSslSocket>> tlsConnections_;
-    QHash<QWebSocket *, QPointer<QSslSocket>> subscribers_;
+    QSet<QWebSocket *> subscribers_;
     std::unique_ptr<QHttpServer> server_;
     QJsonObject status_;
     QJsonObject measurement_;
@@ -80,12 +73,6 @@ private:
         QJsonObject result;
     };
     QHash<QString, CommandEntry> commands_;
-    struct StreamTicket
-    {
-        QByteArray origin;
-        QDeadlineTimer expiry;
-    };
-    QHash<QString, StreamTicket> streamTickets_;
 };
 
 }  // namespace VaporView::Ground::Gateway

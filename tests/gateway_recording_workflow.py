@@ -9,11 +9,11 @@ import sys
 import time
 
 
-def verify(origin, certificate, session_root):
+def verify(origin, session_root):
     client = Path(__file__).resolve().parents[1] / 'tools' / 'gateway_client.py'
 
     def call(*args):
-        proc = subprocess.run([sys.executable, client, origin, '--ca', certificate, *args],
+        proc = subprocess.run([sys.executable, client, origin, *args],
                               capture_output=True, text=True, timeout=45)
         if proc.returncode:
             raise RuntimeError(f'{args}: {proc.stderr} {proc.stdout}')
@@ -57,7 +57,7 @@ def verify(origin, certificate, session_root):
         row = features[(event['hostTimeUs'], event['channel'], event['cycleId'])]
         assert int(row['quality_flags']) == event['qualityFlags']
         assert math.isclose(float(row['peak']), event['value'], rel_tol=1e-5, abs_tol=1e-7)
-    print(session_name, 'WSS measurements matched to Session', len(observed),
+    print(session_name, 'WS measurements matched to Session', len(observed),
           'waveform frames', manifest['counts']['waveform_frames'], flush=True)
 
 

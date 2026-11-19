@@ -3,6 +3,7 @@
 #include "ground/main/GatewaySettingsDialog.h"
 #include "ground/main/MainWindow.h"
 #include "shared/config/SettingsWriteBarrier.h"
+#include "shared/config/ApplicationConfig.h"
 
 #include <QAction>
 #include <QApplication>
@@ -11,6 +12,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QSpinBox>
 #include <QStandardPaths>
 #include <QSystemTrayIcon>
 #include <QTemporaryDir>
@@ -46,8 +48,8 @@ void testPermissionsAndPersistence()
             "Gateway, commands and tray background mode are opt-in");
     require(defaults.connection.allowedCommands == QSet<quint16>{static_cast<quint16>(VaporView::CommandId::RequestStatus)},
             "default command permission is status only");
-    require(!defaults.connection.listener.enabled && !defaults.connection.listener.allowCommands,
-            "inbound TLS and control are independently opt-in");
+    require(!defaults.connection.listener.enabled,
+            "inbound listener is opt-in");
     GatewaySettings saved = defaults;
     saved.connection.deviceId = QUuid::createUuid().toString(QUuid::WithoutBraces);
     saved.connection.token = QUuid::createUuid().toString(QUuid::WithoutBraces);
@@ -55,8 +57,6 @@ void testPermissionsAndPersistence()
     GatewaySettingsDialog dialog(saved, nullptr, false);
     require(field<QLineEdit>(dialog, "gatewayToken")->echoMode() == QLineEdit::Password,
             "access token is masked");
-    require(field<QLineEdit>(dialog, "gatewayListenerToken")->echoMode() == QLineEdit::Password,
-            "inbound access token is masked");
     auto *allow = field<QCheckBox>(dialog, "gatewayRemoteCommands");
     auto *start = field<QCheckBox>(dialog, "gatewayAllowStartRecording");
     auto *stop = field<QCheckBox>(dialog, "gatewayAllowStopRecording");
@@ -64,13 +64,7 @@ void testPermissionsAndPersistence()
             "recording controls require explicit permission");
     allow->setChecked(true);
     require(start->isEnabled() && stop->isEnabled(), "command permission controls follow authorization");
-    auto *listenerStart = field<QCheckBox>(dialog, "gatewayListenerAllowStartRecording");
-    require(!listenerStart->isEnabled(), "cloud commands do not grant inbound command permission");
     start->setChecked(true);
-    field<QCheckBox>(dialog, "gatewayListenerEnabled")->setChecked(true);
-    field<QCheckBox>(dialog, "gatewayListenerCommands")->setChecked(true);
-    field<QLineEdit>(dialog, "gatewayListenerToken")->setText(QUuid::createUuid().toString(QUuid::WithoutBraces));
-    listenerStart->setChecked(true);
     const auto chosen = dialog.settings();
     require(chosen.connection.allowedCommands.contains(static_cast<quint16>(VaporView::CommandId::StartRecording)) &&
             !chosen.connection.allowedCommands.contains(static_cast<quint16>(VaporView::CommandId::StopRecording)),
@@ -91,6 +85,26 @@ void testPermissionsAndPersistence()
             "Gateway settings restore the selected identity and permissions");
     require(restored.connection.listener == chosen.connection.listener, "inbound settings restore independently");
     saveGatewaySettings(saved);
+}
+
+void testLanListenerSettings()
+{
+    auto stored = VaporView::applicationConfigSettings();
+    stored.setValue(QStringLiteral("Gateway/listener_certificate_file"), QStringLiteral("missing.pem"));
+    auto saved = loadGatewaySettings();
+    saved.connection.enabled = false;
+    saved.connection.token.clear();
+    GatewaySettingsDialog dialog(saved, nullptr, true);
+    field<QCheckBox>(dialog, "gatewayListenerEnabled")->setChecked(true);
+    field<QLineEdit>(dialog, "gatewayListenerAddress")->setText(QStringLiteral("192.0.2.10"));
+    field<QSpinBox>(dialog, "gatewayListenerPort")->setValue(8844);
+    field<QDialogButtonBox>(dialog, "gatewayDialogButtons")->button(QDialogButtonBox::Save)->click();
+    require(dialog.result() == QDialog::Accepted, "LAN listener accepts just address and port");
+    saveGatewaySettings(dialog.settings());
+    const auto listener = loadGatewaySettings().connection.listener;
+    require(listener.enabled && listener.address == QStringLiteral("192.0.2.10") && listener.port == 8844,
+            "LAN listener settings survive reopening");
+    require(!stored.contains(QStringLiteral("Gateway/listener_certificate_file")), "obsolete listener setting removed");
 }
 
 void testValidation()
@@ -185,6 +199,7 @@ int main(int argc, char **argv)
     testValidation();
     testSyncUsesAppliedConnection();
     testMenuAndUiTestIsolation();
+    testLanListenerSettings();
     std::cout << "Gateway settings tests passed\n";
     return 0;
 }

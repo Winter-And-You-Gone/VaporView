@@ -19,15 +19,12 @@ struct GatewayListenerConfig
     bool enabled = false;
     QString address = QStringLiteral("127.0.0.1");
     quint16 port = 8443;
-    QString certificateFile;
-    QString privateKeyFile;
-    QString token;
-    bool allowCommands = false;
-    QSet<quint16> allowedCommands{static_cast<quint16>(CommandId::RequestStatus)};
 
     bool operator==(const GatewayListenerConfig& other) const;
     QString validationError() const;
 };
+
+bool isListenerCommand(int commandId);
 
 struct GatewayConfig
 {

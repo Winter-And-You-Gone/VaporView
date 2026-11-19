@@ -45,7 +45,7 @@ Windows 安装包默认安装到 `C:\VaporView`，也支持选择带空格或中
 
 ### VaporViewSkyCore + VaporViewSkyTui
 
-地面 GUI 内置 Gateway 可复用现有 SkyCore 数据流向互联网转发，支持有界离线缓存、受限远程命令和地面 Session 同步。入口、服务器 v1 协议及运行边界见 [GUI Gateway 说明](docs/gui_gateway.md)。
+地面 GUI 内置 Gateway 支持两种连接方式。入站监听可向浏览器或独立测试机提供 HTTP 查询、WebSocket 实时订阅和读取状态、启动或恢复记录、停止记录三种 SkyCore 命令。同机默认地址为 `http://127.0.0.1:8443/`，局域网也可按地面机地址配置。出站转发复用现有 SkyCore 数据流，支持有界离线缓存、受限远程命令和地面 Session 同步。[GUI Gateway 操作与协议](docs/gui_gateway.md)
 
 天空端推荐拆成两个进程运行：
 

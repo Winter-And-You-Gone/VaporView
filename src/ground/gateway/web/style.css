@@ -39,11 +39,8 @@ h2 { font-size: 17px; margin: 0 0 12px; }
   padding: 14px 18px;
   background: #f9fcfd;
 }
-#token-form { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
-#token-form label { font-weight: 700; }
 .actions { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
-input, button { font: inherit; min-height: 35px; border-radius: 4px; }
-input { width: clamp(132px, 22vw, 260px); border: 1px solid #869faa; padding: 5px 9px; background: white; }
+button { font: inherit; min-height: 35px; border-radius: 4px; }
 button { border: 1px solid #92aab3; background: white; color: var(--ink); padding: 6px 12px; cursor: pointer; }
 button:not(:disabled):hover { background: #e2f1f3; }
 .primary { color: white; background: var(--accent); border-color: var(--accent); }
