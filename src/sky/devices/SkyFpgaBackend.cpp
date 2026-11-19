@@ -9,6 +9,47 @@
 
 namespace VaporView {
 namespace {
+LogRecord fpgaOperationRecord(const QJsonObject& operation, const QString& correlationId, const QString& sessionId)
+{
+    LogRecord record;
+    record.source = QStringLiteral("SkyCore");
+    record.category = QStringLiteral("device.fpga");
+    record.correlation_id = correlationId;
+    record.session_id = sessionId;
+    const auto op = operation.value("op").toString();
+    record.fields.insert(QStringLiteral("fpga_op"), op);
+    // Record selectors without logging the raw request or UART bytes.
+    for (const auto *key : {"channel", "action", "enabled", "section", "address", "count", "celsius", "value"}) {
+        if (operation.contains(key)) record.fields.insert(QString::fromLatin1(key), operation.value(key).toVariant());
+    }
+    QStringList target;
+    if (operation.contains("source")) {
+        const int source = operation.value("source").toInt();
+        record.fields.insert(QStringLiteral("fpga_source"), source);
+        if (source == 0x48) target.append(QStringLiteral("原位 TEC103 / LC0"));
+        else if (source == 0x49) target.append(QStringLiteral("遥测 TEC103 / LC1"));
+        else target.append(QStringLiteral("设备 0x%1").arg(source, 2, 16, QLatin1Char('0')));
+    }
+    if (operation.contains("channel")) {
+        const int channel = operation.value("channel").toInt();
+        target.append(op == "uart_exchange" ? QStringLiteral("TEC103 / LC%1").arg(channel - 1)
+                                           : QStringLiteral("通道 %1").arg(channel));
+    }
+    if (operation.contains("action")) target.append(QStringLiteral("动作 %1").arg(operation.value("action").toInt()));
+    if (operation.contains("address")) target.append(QStringLiteral("地址 0x%1").arg(operation.value("address").toInt(), 0, 16));
+    if (operation.contains("enabled")) target.append(operation.value("enabled").toBool() ? QStringLiteral("启用") : QStringLiteral("停用"));
+    if (operation.contains("section")) target.append(operation.value("section").toString());
+    if (operation.contains("celsius")) target.append(QStringLiteral("%1 °C").arg(operation.value("celsius").toDouble()));
+    if (operation.contains("value")) target.append(QStringLiteral("值 %1").arg(operation.value("value").toVariant().toString()));
+    const auto label = op == "refresh" ? QStringLiteral("读回 FPGA 状态")
+                     : op == "uart_exchange" ? QStringLiteral("串口事务")
+                     : op == "sensor" ? QStringLiteral("设置设备通道")
+                     : op == "temperature" || op == "device_temperature" ? QStringLiteral("设置温度")
+                     : op;
+    record.message = target.isEmpty() ? label : QStringLiteral("%1（%2）").arg(label, target.join(QStringLiteral("，")));
+    return record;
+}
+
 void dispatchWhenIdle(QPointer<Ground::Devices::FpgaDeviceController> controller,
     const std::shared_ptr<std::atomic_bool>& cancelled,qint64 deadline,bool bypassBusy,
     std::function<void()> action,std::function<void()> expired)
@@ -200,6 +241,25 @@ void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion,
         completion(CommandErrorCode::Ok, {}, {});
         return;
     }
+    LogRecord operationRecord;
+    if (!correlationId.isEmpty()) {
+        operationRecord = fpgaOperationRecord(operation, correlationId, sessionId);
+        completion = [this, record = operationRecord, callback = std::move(completion)](
+                         CommandErrorCode code, QString detail, QJsonObject document) {
+            auto result = record;
+            const bool ok = code == CommandErrorCode::Ok;
+            result.level = ok ? LogLevel::Info : LogLevel::Warning;
+            result.fields.insert(QStringLiteral("event"), QStringLiteral("fpga_operation_finished"));
+            result.fields.insert(QStringLiteral("ack_error_code"), static_cast<quint32>(code));
+            if (!detail.isEmpty()) result.fields.insert(QStringLiteral("detail"), detail);
+            result.message = ok ? QStringLiteral("FPGA 请求已完成：%1").arg(record.message)
+                                : QStringLiteral("FPGA 请求失败：%1。%2").arg(
+                                      record.message, detail.isEmpty() ? commandErrorCodeText(code) : detail);
+            LogService::addCallLocation(result, VAPORVIEW_LOG_FILE, VAPORVIEW_LOG_FUNCTION, VAPORVIEW_LOG_LINE);
+            emit logRecord(result);
+            callback(code, std::move(detail), std::move(document));
+        };
+    }
     if (activeRequest_ && motorStop) {
         if(operationCancelled_)operationCancelled_->store(true,std::memory_order_release);
         const auto observer = operationObserver_;
@@ -232,14 +292,13 @@ void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion,
     });
     QPointer<SkyFpgaBackend> self(this);
     const auto deadline=QDateTime::currentMSecsSinceEpoch()+10000;
-    auto dispatch=[self, controller = controller_, identity, operation, correlationId, sessionId, observer,cancelled] {
+    auto dispatch=[self, controller = controller_, identity, operation, correlationId, sessionId, operationRecord, observer,cancelled] {
         if(!self || cancelled->load(std::memory_order_acquire))return;
         controller->setOperationLogContext(identity, correlationId, sessionId);
         if (!correlationId.isEmpty() && self) {
-            LogRecord record;
-            record.source = QStringLiteral("SkyCore"); record.category = QStringLiteral("device.fpga");
-            record.level = LogLevel::Info; record.message = QStringLiteral("FPGA 工作线程开始执行设备操作。");
-            record.correlation_id = correlationId; record.session_id = sessionId;
+            auto record = operationRecord;
+            record.level = LogLevel::Info;
+            record.message = QStringLiteral("FPGA 工作线程开始执行 %1。").arg(operationRecord.message);
             record.thread_id = static_cast<quint64>(reinterpret_cast<quintptr>(QThread::currentThreadId()));
             record.fields.insert(QStringLiteral("event"), QStringLiteral("fpga_worker_started"));
             LogService::addCallLocation(record, VAPORVIEW_LOG_FILE, VAPORVIEW_LOG_FUNCTION, VAPORVIEW_LOG_LINE);

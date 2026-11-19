@@ -11,7 +11,8 @@
 | Ground | session.recording | calibration_start_rejected | Warning | 正式录制的定标校验未通过，显示具体原因。 |  |  |  |
 | SkyCore | session.recording | calibration_snapshot_rejected | Warning | Session 定标快照无效，显示具体原因。 |  |  |  |
 | Ground/SkyCore | device.internal | internal_serial_error | Warning | 内部环境串口桥连接失败。 | device_id, reason, reason_code |  | SERIAL_BRIDGE_CONNECT_FAILED |
-| SkyCore | device.fpga | fpga_worker_started | Info | FPGA 工作线程开始执行设备操作。 |  |  |  |
+| SkyCore | device.fpga | fpga_worker_started | Info | FPGA 工作线程开始执行 {fpga_op}。落盘保留每条开始事件。 | fpga_op | fpga_source, channel, action, enabled, section, address, count, celsius, value |  |
+| SkyCore | device.fpga | fpga_operation_finished | Info/Warning | FPGA 请求已完成 / 失败，包含具体操作和目标。控制台合并重复的成功项，失败逐条显示。 | fpga_op, ack_error_code | fpga_source, channel, action, enabled, section, address, count, celsius, value, detail |  |
 | Ground/SkyCore | device.fpga | fpga_operation_diagnostic | Info/Warning/Error | FPGA 操作诊断；具体原因保留在 message。 | operation, ready, busy | error_code | FPGA_OPERATION_FAILED |
 | SkyCore | device.fpga | fpga_async_connection_result | Info/Warning | FPGA 异步连接结果；失败时需核对设备状态。 | result_code, detail | correlation_id, session_id |  |
 | Ground/SkyCore | device.temperature.identity | tec103_gpio_identified | Info | 已通过原生应答确认一台 TEC103 的型号、固件和物理 UART 对应关系。 | logical_channel, uart_bridge, model, firmware_raw, instrument_channel, baud | correlation_id, session_id |  |

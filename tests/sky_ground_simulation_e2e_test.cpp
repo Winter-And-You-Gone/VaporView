@@ -453,7 +453,7 @@ void fpgaCorrelationE2e(QVector<VaporView::LogRecord>& groundLogs, bool longSess
             wireMatches = true;
     require(wireMatches, "cross-process device result carries the actual correlation and session on the wire");
     if (longSession) require(deviceV2Count > 0, "SkyCore sends long device result as v2");
-    LogRecord groundSend, groundAck, groundResult, skyReceived, worker, driver, skyCompleted;
+    LogRecord groundSend, groundAck, groundResult, skyReceived, worker, driver, fpgaResult, skyCompleted;
     require(waitUntil([&] {
         for (const auto& r : groundLogs) if (r.correlation_id == id) {
             const QString event = r.fields.value(QStringLiteral("event")).toString();
@@ -466,11 +466,17 @@ void fpgaCorrelationE2e(QVector<VaporView::LogRecord>& groundLogs, bool longSess
             if (event == QStringLiteral("sky_command_received")) skyReceived = r;
             if (event == QStringLiteral("fpga_worker_started")) worker = r;
             if (event == QStringLiteral("fpga_raw_acquisition_result")) driver = r;
+            if (event == QStringLiteral("fpga_operation_finished")) fpgaResult = r;
             if (event == QStringLiteral("sky_command_completed")) skyCompleted = r;
         }
         return groundSend.thread_id && groundAck.thread_id && groundResult.thread_id && skyReceived.thread_id &&
-               worker.thread_id && driver.thread_id && skyCompleted.thread_id;
+               worker.thread_id && driver.thread_id && fpgaResult.thread_id && skyCompleted.thread_id;
     }, &sky, 8000), "same generated correlation appears through ground, FPGA worker, driver, and typed response");
+    require(worker.fields.value("fpga_op").toString() == "raw" && worker.fields.value("enabled").toBool() &&
+            fpgaResult.fields.value("fpga_op").toString() == "raw" && fpgaResult.fields.value("enabled").toBool() &&
+            fpgaResult.fields.contains("ack_error_code") && fpgaResult.fields.value("ack_error_code").toUInt() == 0 &&
+            fpgaResult.session_id == sessionId && fpgaResult.level == LogLevel::Info,
+            "persisted FPGA dispatch and result identify the request and its successful outcome");
     require(skyReceived.process_id == skyPid && worker.process_id == skyPid && driver.process_id == skyPid &&
             groundSend.process_id == static_cast<quint64>(QCoreApplication::applicationPid()) &&
             worker.thread_id == driver.thread_id && worker.thread_id != skyReceived.thread_id,

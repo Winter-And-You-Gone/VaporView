@@ -12,12 +12,30 @@ class SkyConsoleDiagnostics
 public:
     QStringList accept(const LogRecord& record, qint64 nowMs)
     {
-        if (record.fields.value("event") != QStringLiteral("device_collector_output"))
-            return {record.message};
-        const QString device = record.fields.value("device_id").toString();
-        const QString raw = record.fields.value("process_output").toString();
-        auto &entry = entries_[device];
+        const auto event = record.fields.value("event").toString();
+        if (event == QStringLiteral("fpga_worker_started")) return {};
+        QString key;
+        QString raw;
         QStringList lines;
+        if (event == QStringLiteral("fpga_operation_finished")) {
+            key = QStringLiteral("fpga/%1/%2/%3").arg(record.fields.value("fpga_op").toString(),
+                    record.fields.value("fpga_source").toString(), record.fields.value("channel").toString());
+            if (record.level != LogLevel::Info) {
+                auto entry = entries_.find(key);
+                if (entry != entries_.end()) {
+                    appendRepeated(*entry, lines);
+                    entries_.erase(entry);
+                }
+                lines.append(record.message);
+                return lines;
+            }
+        } else if (event == QStringLiteral("device_collector_output")) {
+            key = QStringLiteral("collector/") + record.fields.value("device_id").toString();
+            raw = record.fields.value("process_output").toString();
+        } else {
+            return {record.message};
+        }
+        auto &entry = entries_[key];
         if (entry.message != record.message || entry.raw != raw) {
             appendRepeated(entry, lines);
             entry = {record.message, raw, nowMs, 0};

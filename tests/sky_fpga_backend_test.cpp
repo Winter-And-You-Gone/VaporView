@@ -426,10 +426,22 @@ int main(int argc,char **argv)
             log.correlation_id == QStringLiteral("fpga-operation-test") && log.session_id == QStringLiteral("test-session") && log.thread_id != 0) return true;
         return false; }, "worker driver failure preserves operation context and worker thread");
     bool started = false;
-    for (const auto& log : operationLogs)
-        if (log.fields.value(QStringLiteral("event")).toString() == QStringLiteral("fpga_worker_started") &&
-            log.correlation_id == QStringLiteral("fpga-operation-test")) started = true;
-    require(started, "queued FPGA worker starts with captured operation context");
+    bool failed = false;
+    for (const auto& log : operationLogs) {
+        if (log.correlation_id != QStringLiteral("fpga-operation-test")) continue;
+        const auto event = log.fields.value("event").toString();
+        if (event != "fpga_worker_started" && event != "fpga_operation_finished") continue;
+        require(log.fields.value("fpga_op").toString() == "temperature" && log.fields.value("celsius").toDouble() == 25.0 &&
+                log.session_id == QStringLiteral("test-session"), "dispatch and result identify the same setpoint request");
+        if (event == "fpga_worker_started") started = true;
+        else {
+            require(!failed && log.level == LogLevel::Warning && !log.fields.value("detail").toString().isEmpty() &&
+                    log.fields.value("ack_error_code").toUInt() == static_cast<quint32>(CommandErrorCode::ConfigApplyFailed),
+                    "failed request records one final result with the failure detail");
+            failed = true;
+        }
+    }
+    require(started && failed, "queued FPGA request records both dispatch and outcome");
     waitUntil([&]{return backend.statusDocument().value("sensor_rates_hz").toObject().value("69").toDouble()==1000.0;},
         "Sky status retains raw sensor frequency despite presentation coalescing");
     const auto confirmedConfiguration=backend.statusDocument().value("configuration").toObject();
