@@ -5,6 +5,7 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QElapsedTimer>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QNetworkAccessManager>
 #include <QNetworkProxy>
@@ -189,11 +190,13 @@ try
             CommandMessage message;
             if (frame.type != MsgType::Command || !TelemetryCodec::parseCommand(frame.payload, message)) continue;
             forwarded.append(message);
-            if (message.command_id != CommandId::RequestStatus) continue;
+            if (message.command_id != CommandId::RequestStatus &&
+                message.command_id != CommandId::ConnectDevice && message.command_id != CommandId::DisconnectDevice) continue;
             CommandAck ack;
             ack.command_id = message.command_id;
             ack.command_seq = message.command_seq;
-            ack.error_code = CommandErrorCode::Ok;
+            ack.error_code = message.command_id == CommandId::ConnectDevice
+                ? CommandErrorCode::ConfigInvalid : CommandErrorCode::Ok;
             aircraft->write(codec.encodeFrame(MsgType::CommandAck, TelemetryCodec::serializeCommandAck(ack), 7, 4000));
         }
     });
@@ -288,6 +291,66 @@ try
     require(slowDisconnected, "server disconnects the subscriber that fills its write budget");
     require(stream.state() == QAbstractSocket::ConnectedState && http("/api/v1/status").code == 200,
         "healthy WS and HTTP remain available after the slow subscriber disconnects");
+
+    // Start a fresh HTTP rate-limit window after polling the slow subscriber.
+    QThread::msleep(1100);
+    const auto fpgaState = [](const QJsonObject& snapshot) {
+        for (const auto& value : snapshot.value("devices").toArray())
+        {
+            const auto device = value.toObject();
+            if (device.value("device").toInt() == int(SkyDeviceId::Fpga))
+                return device.value("state").toInt(-1);
+        }
+        return -1;
+    };
+    require(fpgaState(events.last()) == int(DeviceState::Connected), "FPGA connection state is available to subscribers");
+    const auto beforeFpga = forwarded.size();
+    require(http("/api/v1/commands", command("fpga-busy", CommandId::DisconnectDevice)).code == 202,
+        "FPGA disconnect request is accepted for validation");
+    require(waitForCommandStatus("fpga-busy", "device-busy") && forwarded.size() == beforeFpga,
+        "FPGA disconnect is blocked while recording");
+
+    status.recording_state = 0;
+    status.devices.clear();
+    const auto publishStatus = [&] {
+        const auto frameSequence = sequence++;
+        aircraft->write(codec.encodeFrame(MsgType::TelemetryStatus, TelemetryCodec::serializeTelemetryStatus(status),
+                                         frameSequence, 5000 + frameSequence));
+        require(waitUntil([&] { return events.last().value("frameSequence").toInteger() == frameSequence; }),
+            "simulated FPGA state reaches the gateway");
+    };
+    publishStatus();
+    require(http("/api/v1/commands", command("fpga-unavailable", CommandId::ConnectDevice)).code == 202,
+        "FPGA connect request is accepted for validation");
+    require(waitForCommandStatus("fpga-unavailable", "fpga-unavailable") && forwarded.size() == beforeFpga,
+        "FPGA control requires an advertised FPGA");
+    DeviceStatusItem fpga;
+    fpga.device_id = SkyDeviceId::Fpga;
+    fpga.state = DeviceState::Connected;
+    status.devices.append(fpga);
+    publishStatus();
+
+    const auto disconnect = command("fpga-disconnect", CommandId::DisconnectDevice);
+    auto withPayload = disconnect;
+    withPayload.insert("payloadBase64", "AQ==");
+    require(http("/api/v1/commands", withPayload).code == 400 && forwarded.size() == beforeFpga,
+        "caller cannot supply a device payload");
+    require(http("/api/v1/commands", disconnect).code == 202 &&
+        waitForCommandStatus("fpga-disconnect", "acknowledged"), "FPGA disconnect reports SkyCore acknowledgment");
+    require(forwarded.size() == beforeFpga + 1 && forwarded.last().command_id == CommandId::DisconnectDevice &&
+        forwarded.last().payload == TelemetryCodec::serializeDeviceCommand(SkyDeviceId::Fpga),
+        "FPGA disconnect forwards the fixed FPGA selector");
+    status.devices.front().state = DeviceState::Disconnected;
+    publishStatus();
+    require(fpgaState(http("/api/v1/status").body) == int(DeviceState::Disconnected),
+        "the reported device state is visible in HTTP");
+
+    require(http("/api/v1/commands", command("fpga-connect", CommandId::ConnectDevice)).code == 202 &&
+        waitForCommandStatus("fpga-connect", "rejected"), "FPGA connect reports SkyCore failure");
+    require(forwarded.size() == beforeFpga + 2 && forwarded.last().command_id == CommandId::ConnectDevice &&
+        forwarded.last().payload == TelemetryCodec::serializeDeviceCommand(SkyDeviceId::Fpga) &&
+        http("/api/v1/commands/fpga-connect").body.value("errorCode").toInt() == int(CommandErrorCode::ConfigInvalid),
+        "FPGA connect forwards the fixed selector and retains the backend error code");
 
     const auto countBeforeClose = events.size();
     aircraft->disconnectFromHost();

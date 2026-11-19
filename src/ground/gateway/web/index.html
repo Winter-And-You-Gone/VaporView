@@ -17,14 +17,6 @@
       <span id="gateway-origin" class="mono"></span>
     </header>
 
-    <section aria-label="连接与查询" class="connection">
-      <div class="actions">
-        <button id="refresh-status" type="button">查询状态</button>
-        <button id="refresh-latest" type="button">查询最新测量</button>
-      </div>
-    </section>
-    <p id="api-feedback" class="feedback" role="status"></p>
-
     <dl class="status-grid" aria-label="网关和遥测状态">
       <div><dt>HTTP 网关</dt><dd id="gateway-state">等待查询</dd></div>
       <div><dt>机地数传</dt><dd id="link-state">未知</dd></div>
@@ -34,55 +26,87 @@
       <div><dt>Session</dt><dd id="session-name" class="mono">—</dd></div>
     </dl>
 
-    <div class="details-grid">
-      <section class="panel" aria-labelledby="command-title">
-        <h2 id="command-title">SkyCore 命令</h2>
-        <div class="actions">
-          <button id="command-status" data-command="10" type="button" disabled>读取状态</button>
-          <button id="command-start" data-command="1" type="button" disabled>启动／恢复记录</button>
-          <button id="command-stop" data-command="3" type="button" disabled>停止记录</button>
+    <div class="workspace-grid">
+      <section class="panel stream" aria-labelledby="stream-title">
+        <div class="section-head">
+          <h2 id="stream-title">实时峰值趋势</h2>
+          <div class="actions">
+            <button id="refresh-status" type="button">查询状态</button>
+            <button id="refresh-latest" type="button">查询最新测量</button>
+            <button id="connect-stream" type="button" class="primary" disabled>重新连接 WS</button>
+            <button id="disconnect-stream" type="button" disabled>断开</button>
+          </div>
         </div>
-        <p id="command-feedback" class="feedback" role="status">等待下发</p>
-        <dl class="command-detail">
-          <dt>命令 ID</dt><dd id="command-id" class="mono">—</dd>
-          <dt>受理</dt><dd id="command-accepted">—</dd>
-          <dt>最终回执</dt><dd id="command-result">—</dd>
-          <dt>Session ID</dt><dd id="command-session" class="mono">—</dd>
+        <p id="stream-state" class="feedback" role="status">未连接</p>
+        <div class="trend-toolbar">
+          <label for="trend-channel">通道</label>
+          <select id="trend-channel" disabled><option>等待测量通道</option></select>
+          <span id="trend-window" class="mono">最近 60 秒 · UTC</span>
+        </div>
+        <dl class="trend-reading" aria-label="当前通道最新测量">
+          <div><dt>最新峰值</dt><dd id="trend-latest-value" class="mono">—</dd></div>
+          <div><dt>单位</dt><dd id="trend-latest-unit" class="mono">native</dd></div>
+          <div><dt>质量</dt><dd id="trend-latest-quality">等待测量</dd></div>
+          <div><dt>采样时间（UTC）</dt><dd class="mono"><time id="trend-sample-time">—</time></dd></div>
         </dl>
-        <button id="command-check" type="button" disabled>查询当前命令回执</button>
+        <canvas id="peak-trend" role="img" aria-label="按通道显示最近 60 秒的 native 峰值，横轴为 UTC" aria-describedby="trend-summary"></canvas>
+        <p id="trend-summary" class="hint" data-points="0" data-quality-marked="0" data-invalid="0">等待有效峰值</p>
+        <ul class="trend-legend" aria-label="趋势图图例"><li>有效峰值</li><li>有质量标记的峰值</li><li>无有效峰值</li></ul>
+        <dl class="stream-meta">
+          <div><dt>最近事件</dt><dd id="stream-event">—</dd></div>
+          <div><dt>入口累计丢帧</dt><dd id="stream-dropped" class="mono">—</dd></div>
+        </dl>
+        <p id="api-feedback" class="feedback" role="status"></p>
+        <p id="latest-measurement" class="latest" role="status">HTTP 最新测量 · 尚未查询</p>
       </section>
-      <section class="panel" aria-labelledby="device-title">
-        <h2 id="device-title">设备状态</h2>
-        <div class="table-wrap device-table" tabindex="0" aria-label="设备状态表">
-          <table>
-            <thead><tr><th scope="col">设备 ID</th><th scope="col">状态码</th><th scope="col">错误码</th><th scope="col">接收计数</th></tr></thead>
-            <tbody id="device-rows"><tr><td colspan="4">暂无设备状态</td></tr></tbody>
-          </table>
-        </div>
-      </section>
+      <aside class="operations">
+        <section class="panel" aria-labelledby="command-title">
+          <h2 id="command-title">SkyCore 命令</h2>
+          <div class="actions">
+            <button id="command-status" data-command="10" type="button" disabled>读取状态</button>
+            <button id="command-start" data-command="1" type="button" disabled>启动／恢复记录</button>
+            <button id="command-stop" data-command="3" type="button" disabled>停止记录</button>
+          </div>
+          <section class="fpga-controls" aria-labelledby="fpga-controls-title">
+            <h3 id="fpga-controls-title">机载 FPGA</h3>
+            <div class="actions">
+              <button id="command-fpga-connect" data-command="21" type="button" disabled>连接 FPGA</button>
+              <button id="command-fpga-disconnect" data-command="22" type="button" disabled>断开 FPGA</button>
+            </div>
+          </section>
+          <p id="command-feedback" class="feedback" role="status">等待下发</p>
+          <dl class="command-detail">
+            <dt>操作</dt><dd id="command-operation">—</dd>
+            <dt>命令 ID</dt><dd id="command-id" class="mono">—</dd>
+            <dt>受理</dt><dd id="command-accepted">—</dd>
+            <dt>最终回执</dt><dd id="command-result">—</dd>
+            <dt>Session ID</dt><dd id="command-session" class="mono">—</dd>
+          </dl>
+          <button id="command-check" type="button" disabled>查询当前命令回执</button>
+        </section>
+        <section class="panel" aria-labelledby="device-title">
+          <h2 id="device-title">设备状态</h2>
+          <div class="table-wrap device-table" tabindex="0" aria-label="设备状态表">
+            <table>
+              <thead><tr><th scope="col">设备</th><th scope="col">状态</th><th scope="col">接收</th><th scope="col">错误</th><th scope="col">错误码</th></tr></thead>
+              <tbody id="device-rows"><tr><td colspan="5">暂无设备状态</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+      </aside>
     </div>
 
-    <section class="panel stream" aria-labelledby="stream-title">
-      <div class="section-head">
-        <div><h2 id="stream-title">实时测量</h2><p class="hint">峰值沿用采集端单位，实时列表保留最近 50 条。</p></div>
-        <div class="actions">
-          <button id="connect-stream" type="button" class="primary" disabled>连接 WS</button>
-          <button id="disconnect-stream" type="button" disabled>断开</button>
+    <div class="panel measurement-panel">
+      <details class="measurement-details" id="measurement-details">
+        <summary>实时明细 · 最近 50 条</summary>
+        <div class="table-wrap stream-table" tabindex="0" aria-label="实时测量表">
+          <table>
+            <thead><tr><th scope="col">事件序号</th><th scope="col">帧序号</th><th scope="col">来源</th><th scope="col">通道</th><th scope="col">峰值</th><th scope="col">UTC 时间</th><th scope="col">质量位</th></tr></thead>
+            <tbody id="measurement-rows"><tr><td colspan="7">等待实时测量</td></tr></tbody>
+          </table>
         </div>
-      </div>
-      <p id="stream-state" class="feedback" role="status">未连接</p>
-      <dl class="stream-meta">
-        <div><dt>最近事件</dt><dd id="stream-event">—</dd></div>
-        <div><dt>入口累计丢帧</dt><dd id="stream-dropped" class="mono">—</dd></div>
-      </dl>
-      <p id="latest-measurement" class="latest" role="status">HTTP 最新测量 · 尚未查询</p>
-      <div class="table-wrap stream-table" tabindex="0" aria-label="实时测量表">
-        <table>
-          <thead><tr><th scope="col">事件序号</th><th scope="col">帧序号</th><th scope="col">来源</th><th scope="col">通道</th><th scope="col">峰值</th><th scope="col">UTC 时间</th><th scope="col">质量位</th></tr></thead>
-          <tbody id="measurement-rows"><tr><td colspan="7">等待实时测量</td></tr></tbody>
-        </table>
-      </div>
-    </section>
+      </details>
+    </div>
   </main>
 </body>
 </html>

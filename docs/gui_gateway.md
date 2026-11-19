@@ -26,8 +26,9 @@ Session 同步仅针对已经落到地面端且结束写入的 Session（v1 `ses
 2. 在地面端关闭“界面测试模式”，打开天地链路。关闭开发者选项时，地面端默认进入远程模式，读回天空端配置前按 FPGA 显示。连接后采用 SkyCore 上报的连接方式。本例的 `--fpga-simulate-data` 让 SkyCore 启动时选择 FPGA 中转。若天空端当前为“直连”，在地面端的“开发者 → 开发者选项”显示标题栏模式开关，切换到“FPGA”，点击标题栏的“连接”。在“水汽定标”页确认“当前定标”显示与该模拟 FPGA 匹配的 `.vcal`，同时显示“设备在线”，再从网页启动记录。
 3. 地面端启动后默认监听 `127.0.0.1:8443`。同机测试可直接打开下一步的网页。需要修改监听地址或端口时，打开“数据 → Gateway 网关”修改并保存。手动关闭监听后，地面端会记住该选择。
 4. 同机测试时，在浏览器打开 `http://127.0.0.1:8443/`。局域网测试时，将监听 IP 改为**地面机**在测试局域网的网卡 IP，例如 `192.168.1.20`，在地面机防火墙为测试网放行该 TCP 端口，然后在测试机打开 `http://192.168.1.20:8443/`。如果修改了端口，浏览器地址也使用新端口。旧验证台的“4.19 地面网关入站测试”也可填这个地址，点击“打开入站测试页”。
-5. “地面网关”页打开后自动查询状态。核对设备标识，以及“机地数传”显示“已连接”、“SkyCore 状态”显示“已收到”。点“查询最新测量”可读当前值，点“连接 WS”后观察实时表的序号、通道、峰值和质量位持续更新。
-6. 在“SkyCore 命令”依次点“读取状态”“启动／恢复记录”“停止记录”。每次等到“SkyCore 已应答”，记下命令 ID 和回执序号。启动时核对“记录中”和 Session 名，在记录期间采几条测量，再停止并确认状态回到“停止”。可用“断开”和“连接 WS”复测订阅恢复。
+5. 打开首页即自动订阅。先看“机地数传”和“SkyCore 状态”，再看设备表中的 FPGA 状态。如果 SkyCore 已启用 FPGA 且设备未连接，在“机载 FPGA”点“连接 FPGA”。先核对最终回执，再确认设备表更新为“已连接”。
+6. 在“实时峰值趋势”选择 **816 nm（0x31）** 或 **1368 nm（0x30）**。最新峰值、采样时间（UTC）和质量位随实收样本更新。横轴为以最新样本为终点的 60 秒，纵轴为原生峰值（`native`）。带质量标记的峰值与无效样本单独标出。需要逐条对账时展开“实时明细”，可查看最近 50 条事件。手动断开 WS 后点“重新连接 WS”可恢复订阅。
+7. 点“启动／恢复记录”，等待“SkyCore 已应答”并核对上方“记录中”和 Session 名。采集数条测量后点“停止记录”，确认状态回到“停止”。要验证设备控制，可在停止录制后点“断开 FPGA”，观察设备表变为“未连接”，再点“连接 FPGA”，核对状态恢复且采样时间继续更新。命令 ID、最终回执序号和实际状态可一同填入 A.19。
 
 若命令提交返回 `403`，按响应中的错误类型检查。`forbidden-origin` 表示浏览器来源不匹配，请从地面网关首页操作。`forbidden` 表示接口不支持该命令编号。若网关可达但机地数传未连接，先检查地面端到 SkyCore 的 TCP 连接。原生峰值的单位为 `native`。需和机载文件逐点对账时，WebSocket 消息中的 `hostTimeUs`、`channel` 和 `cycleId` 对应 Session 的 `sensors/waveform_features.csv` 中的主机时间、通道和周期。
 
@@ -48,7 +49,7 @@ Session 同步仅针对已经落到地面端且结束写入的 Session（v1 `ses
 
 ### 入站控制
 
-开启入站监听后，接口支持请求 SkyCore 状态（10）、启动或恢复记录（1）、停止记录（3）。应用使用地面 GUI 当前的定标准备流程启动记录。命令体只接受以下三个字段，设备标识取地面端配置。
+接口支持读取 SkyCore 状态（10）、启动或恢复记录（1）、停止记录（3）、连接 FPGA（21）和断开 FPGA（22）。21、22 的目标固定为机载 FPGA，使用 SkyCore 上已配置的设备。当地面端收到的最新状态显示录制中或暂停时，这两个设备操作会收到 `device-busy` 回执。启动记录沿用地面端当前的定标选择与就绪检查。命令体只接受以下三个字段，设备标识取地面端配置。
 
 ```json
 {
@@ -70,7 +71,7 @@ Session 同步仅针对已经落到地面端且结束写入的 Session（v1 `ses
 | 413 | `body-too-large` | 命令体超过 2048 字节。 |
 | 503 | `command-capacity` | 命令记录达到容量上限。 |
 
-结果含 `id`、`deviceId`、`skyCommandId`、`status`。终态带有 `completedAt`，SkyCore 回执还包含 `sequence`、`errorCode` 和 `result`，有对应值时附带 `correlationId` 和 `sessionId`。可能的终态包括 `acknowledged`、`rejected`、`timeout`、`disconnected`、`busy`、`expired`、`not-sent`、`device-busy` 和 `calibration-required`。若地面端在准备录制时拒绝请求，回执使用 `calibration-required` 并在 `detail` 中给出具体原因，网页显示该说明。取得启动记录回执后，再通过状态及实际 Session 核实录制结果。若遇到超时或连接中断，先查询实际状态，再决定是否执行新命令。
+结果含 `id`、`deviceId`、`skyCommandId`、`status`。终态带有 `completedAt`，SkyCore 回执还包含 `sequence`、`errorCode` 和 `result`，有对应值时附带 `correlationId` 和 `sessionId`。可能的终态包括 `acknowledged`、`rejected`、`timeout`、`disconnected`、`busy`、`expired`、`not-sent`、`device-busy`、`fpga-unavailable` 和 `calibration-required`。若地面端在准备录制时拒绝请求，回执使用 `calibration-required` 并在 `detail` 中给出具体原因，网页显示该说明。取得启动记录回执后，再通过状态及实际 Session 核实录制结果。若遇到超时或连接中断，先查询实际状态，再决定是否执行新命令。
 
 ### 实时消息
 
@@ -108,7 +109,7 @@ python tools/gateway_client.py $ground result $commandId
 
 ### 自动复测浏览器链路
 
-`gateway_browser_workflow_test` 启动独立的 SkyCore 模拟进程，在隔离配置中打开正式地面主窗口和网关，再通过 Playwright 驱动真实 Chromium 浏览器点击同一组按钮。测试用临时主机名模拟浏览器访问普通 HTTP 地址，核对命令回执和订阅重连，并将浏览器收到的 5 条测量逐条与 SkyCore 的 CSV 对账。测试结束后清理本次 Session。
+`gateway_browser_workflow_test` 启动独立的 SkyCore 模拟进程，在隔离配置中打开正式地面主窗口和网关，再通过 Playwright 驱动真实 Chromium 浏览器点击同一组按钮。测试用临时主机名模拟浏览器访问普通 HTTP 地址，核对两条波长的峰值、采样时间与质量，以及订阅重连、五种命令的回执和设备状态变化。FPGA 重连后还须收到新的有效峰值。录制期间抽取的 5 条测量逐条与 SkyCore 的 CSV 对账。测试结束后清理本次 Session。
 
 在 MSVC Developer 环境构建 Release 后，将 `VAPORVIEW_TEST_GATEWAY_NODE` 设为能够加载 `playwright` 的 Node 可执行文件。使用本机已安装的 Chrome 或 Edge 时，把 `VAPORVIEW_TEST_CHROMIUM` 设为浏览器可执行文件的完整路径，否则使用 Playwright 安装的 Chromium。可将 `VAPORVIEW_TEST_BROWSER_SCREENSHOT` 设为临时 PNG 路径，留存复测完成时的页面截图。手工使用网页无需这些测试工具。
 

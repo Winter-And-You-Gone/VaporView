@@ -624,6 +624,7 @@ void GatewayService::attach(GroundTelemetryService *service)
     connections_.clear();
     for (auto sequence : pending_.keys()) completeCommand(sequence, "disconnected");
     service_ = service;
+    skyStatus_.reset();
     if (listenerIngress_) listenerIngress_->setConnected(service && service->isOpen());
     if (!service) return;
     connections_.append(connect(service, &GroundTelemetryService::frameReceived, this, [this](const TelemetryFrame& frame) {
@@ -634,6 +635,9 @@ void GatewayService::attach(GroundTelemetryService *service)
         if (size > kBatchBytes || ingress_->bytes + size > kIngressBytes) { ++ingress_->dropped; return; }
         ingress_->frames.append(frame);
         ingress_->bytes += size;
+    }));
+    connections_.append(connect(service, &GroundTelemetryService::statusUpdated, this, [this](const TelemetryStatus& status) {
+        skyStatus_ = status;
     }));
     connections_.append(connect(service, &GroundTelemetryService::commandAckReceived, this, [this](const CommandAck& ack) {
         const auto found = pending_.constFind(ack.command_seq);
@@ -647,11 +651,13 @@ void GatewayService::attach(GroundTelemetryService *service)
     connections_.append(connect(service, &GroundTelemetryService::linkOpenChanged, this, [this](bool open) {
         if (listenerIngress_) listenerIngress_->setConnected(open);
         if (open) return;
+        skyStatus_.reset();
         const auto sequences = pending_.keys();
         for (auto sequence : sequences) completeCommand(sequence, "disconnected");
     }));
     connections_.append(connect(service, &QObject::destroyed, this, [this] {
         if (listenerIngress_) listenerIngress_->setConnected(false);
+        skyStatus_.reset();
         for (auto sequence : pending_.keys()) completeCommand(sequence, "disconnected");
     }));
 }
@@ -691,6 +697,35 @@ void GatewayService::receiveCommand(const QJsonObject& command, quint64 generati
     const auto type = static_cast<CommandId>(commandId);
     auto payload = decoded.decoded;
     QString detail;
+    if (rejected.isEmpty() && listener && isListenerFpgaCommand(commandId))
+    {
+        if (!skyStatus_ || std::none_of(skyStatus_->devices.cbegin(), skyStatus_->devices.cend(), [](const auto& device) {
+            return device.device_id == SkyDeviceId::Fpga && device.state != DeviceState::Disabled;
+        }))
+        {
+            rejected = QStringLiteral("fpga-unavailable");
+            detail = QStringLiteral("SkyCore 尚未上报已启用的 FPGA 设备。");
+        }
+        else if (skyStatus_->recording_state != 0 || std::any_of(pending_.cbegin(), pending_.cend(), [](const Pending& pending) {
+            return pending.command == CommandId::StartRecording;
+        }))
+        {
+            rejected = QStringLiteral("device-busy");
+            detail = QStringLiteral("请先停止记录，再操作 FPGA 连接。");
+        }
+        else
+        {
+            payload = TelemetryCodec::serializeDeviceCommand(SkyDeviceId::Fpga);
+        }
+    }
+    if (rejected.isEmpty() && listener && type == CommandId::StartRecording &&
+        std::any_of(pending_.cbegin(), pending_.cend(), [](const Pending& pending) {
+            return pending.listener && isListenerFpgaCommand(int(pending.command));
+        }))
+    {
+        rejected = QStringLiteral("device-busy");
+        detail = QStringLiteral("请等待 FPGA 连接操作完成，再开始记录。");
+    }
     if (rejected.isEmpty() && listener && listenerPreparation_)
         rejected = listenerPreparation_(type, payload, detail);
     if (!rejected.isEmpty())

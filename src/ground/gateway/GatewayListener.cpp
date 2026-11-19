@@ -125,10 +125,15 @@ class GatewayTcpServer final : public QTcpServer
 };
 }  // namespace
 
+bool isListenerFpgaCommand(int commandId)
+{
+    return commandId == int(CommandId::ConnectDevice) || commandId == int(CommandId::DisconnectDevice);
+}
+
 bool isListenerCommand(int commandId)
 {
     return commandId == int(CommandId::RequestStatus) || commandId == int(CommandId::StartRecording) ||
-        commandId == int(CommandId::StopRecording);
+        commandId == int(CommandId::StopRecording) || isListenerFpgaCommand(commandId);
 }
 
 bool GatewayListenerConfig::operator==(const GatewayListenerConfig& other) const

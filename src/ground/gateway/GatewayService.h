@@ -8,6 +8,7 @@
 #include <QUrl>
 #include <functional>
 #include <memory>
+#include <optional>
 
 namespace VaporView { class GroundTelemetryService; }
 
@@ -25,6 +26,7 @@ struct GatewayListenerConfig
 };
 
 bool isListenerCommand(int commandId);
+bool isListenerFpgaCommand(int commandId);
 
 bool isGatewayServerUrlValid(const QUrl& url);
 
@@ -79,6 +81,7 @@ private:
     quint16 listenerPort_ = 0;
     QPointer<GroundTelemetryService> service_;
     QList<QMetaObject::Connection> connections_;
+    std::optional<TelemetryStatus> skyStatus_;
     struct Pending { QString id; CommandId command; quint64 generation; bool listener; };
     QHash<quint16, Pending> pending_;
     quint64 generation_ = 0;

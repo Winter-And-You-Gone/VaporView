@@ -58,11 +58,9 @@ async function waitFor(label, condition) {
   throw new Error(`Timed out waiting for ${label}`);
 }
 
-async function connectStream(page, connections) {
-  const previousCount = connections.length;
-  await page.locator("#connect-stream").click();
+async function waitStream(page, connections, index) {
   await waitText(page, "#stream-state", "WS 已连接");
-  const connection = await waitFor("WS snapshot", () => connections[previousCount]?.events.length && connections[previousCount]);
+  const connection = await waitFor("WS snapshot", () => connections[index]?.events.length && connections[index]);
   assert(connection.plainWebSocket, "browser used direct same-origin WS");
   const [snapshot] = connection.events;
   assert.equal(snapshot.kind, "status");
@@ -157,7 +155,7 @@ async function verify(rawOrigin, sessionRoot) {
     await waitText(page, "#link-state", "已连接");
 
     await command(page, "#command-status", 10);
-    const first = await connectStream(page, connections);
+    const first = await waitStream(page, connections, 0);
     await waitText(page, "#telemetry-state", "已收到");
     await waitText(page, "#recording-state", "停止");
     await page.locator("#disconnect-stream").click();
@@ -165,7 +163,8 @@ async function verify(rawOrigin, sessionRoot) {
     await waitFor("closing first WS connection", () => first.closed);
 
     await command(page, "#command-start", 1);
-    const second = await connectStream(page, connections);
+    await page.locator("#connect-stream").click();
+    const second = await waitStream(page, connections, 1);
     assert.equal(second.events[0].streamId, first.events[0].streamId);
     await waitText(page, "#recording-state", "记录中");
     const sessionName = await page.locator("#session-name").textContent();
@@ -179,6 +178,26 @@ async function verify(rawOrigin, sessionRoot) {
       assert.equal(second.events[i].streamId, second.events[0].streamId);
       assert(BigInt(second.events[i].sequence) > BigInt(second.events[i - 1].sequence));
     }
+    for (const [channel, wavelength] of [[48, "1368 nm"], [49, "816 nm"]]) {
+      const track = `fpga-cycle-feature/${channel}`;
+      await waitText(page, `#trend-channel option[value="${track}"]`, wavelength);
+      await page.locator("#trend-channel").selectOption(track);
+      await waitFor(`rendered peak and sample time match channel ${channel}`, async () => {
+        const reading = await page.evaluate(() => ({
+          value: document.querySelector("#trend-latest-value").textContent,
+          quality: document.querySelector("#trend-latest-quality").textContent,
+          time: document.querySelector("#trend-sample-time").dateTime,
+        }));
+        return second.events.some((event) => {
+          if (event.source !== "fpga-cycle-feature" || event.channel !== channel || !event.valid) return false;
+          const micros = BigInt(event.hostTimeUs);
+          const sampled = new Date(Number(micros / 1000n)).toISOString().replace("Z", `${String(micros % 1000n).padStart(3, "0")}Z`);
+          return reading.time === sampled && reading.value === String(event.value) && reading.quality.includes(`质量位 ${event.qualityFlags}`);
+        });
+      });
+    }
+    assert.equal(await page.locator("#measurement-details").evaluate((details) => details.open), false);
+    await page.locator("#measurement-details summary").click();
     await page.locator("#measurement-rows tr td:nth-child(7)").first().waitFor();
     const rendered = await page.locator("#measurement-rows tr").evaluateAll(
       (rows) => rows.map((row) => [...row.cells].map((cell) => cell.textContent)),
@@ -199,11 +218,29 @@ async function verify(rawOrigin, sessionRoot) {
     await waitText(page, "#recording-state", "停止");
     await clickAndRead(page, "#refresh-status", "status", "GET", 200);
     await verifySession(sessionRoot, sessionName, observed);
-    await page.locator("#disconnect-stream").click();
-    await waitFor("closing second WS connection", () => second.closed);
+    const fpga = page.locator("#device-rows tr").filter({ has: page.getByRole("cell", { name: "FPGA", exact: true }) });
+    for (const [selector, commandId, state, label] of [
+      ["#command-fpga-disconnect", 22, 1, "未连接"],
+      ["#command-fpga-connect", 21, 3, "已连接"],
+    ]) {
+      const firstEvent = second.events.length;
+      await command(page, selector, commandId);
+      await waitFor(`FPGA telemetry state ${state}`, () => second.events.slice(firstEvent).some((event) =>
+        event.kind === "status" && event.devices?.some((device) => device.device === 8 && device.state === state)));
+      await fpga.getByRole("cell", { name: label, exact: true }).waitFor();
+    }
+    const afterReconnect = second.events.length;
+    await waitFor("fresh FPGA peak after reconnection", () => second.events.slice(afterReconnect).some((event) =>
+      event.kind === "measurement" && event.source === "fpga-cycle-feature" && event.valid));
+    await page.setViewportSize({ width: 390, height: 844 });
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "phone has no page-level horizontal overflow");
+    await page.setViewportSize({ width: 1260, height: 980 });
     if (process.env.VAPORVIEW_TEST_BROWSER_SCREENSHOT) {
+      await page.locator("#measurement-details summary").click();
       await page.screenshot({ path: process.env.VAPORVIEW_TEST_BROWSER_SCREENSHOT, fullPage: true });
     }
+    await page.locator("#disconnect-stream").click();
+    await waitFor("closing second WS connection", () => second.closed);
   } finally {
     await browser.close();
   }
