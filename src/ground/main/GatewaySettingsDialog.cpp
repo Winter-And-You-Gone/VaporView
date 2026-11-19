@@ -8,7 +8,6 @@
 #include <QFormLayout>
 #include <QFont>
 #include <QGroupBox>
-#include <QHostAddress>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
@@ -55,7 +54,8 @@ GatewaySettings loadGatewaySettings()
     config.serverUrl = QUrl(persisted.value(QStringLiteral("server_url")).toString());
     config.deviceId = persisted.value(QStringLiteral("device_id"),
         QUuid::createUuid().toString(QUuid::WithoutBraces)).toString();
-    config.token = persisted.value(QStringLiteral("token")).toString();
+    if (persisted.contains(QStringLiteral("token")))
+        removePersistentSetting(persisted, QStringLiteral("token"));
     config.allowRemoteCommands = persisted.value(QStringLiteral("allow_remote_commands"), false).toBool();
     const QStringList defaultCommands{QString::number(commandValue(CommandId::RequestStatus))};
     config.allowedCommands = loadAllowedCommands(persisted.value(QStringLiteral("allowed_commands"), defaultCommands));
@@ -78,7 +78,6 @@ void saveGatewaySettings(const GatewaySettings& value)
     setPersistentSetting(persisted, QStringLiteral("enabled"), config.enabled);
     setPersistentSetting(persisted, QStringLiteral("server_url"), config.serverUrl.toString(QUrl::FullyEncoded));
     setPersistentSetting(persisted, QStringLiteral("device_id"), config.deviceId);
-    setPersistentSetting(persisted, QStringLiteral("token"), config.token);
     setPersistentSetting(persisted, QStringLiteral("allow_remote_commands"), config.allowRemoteCommands);
     setPersistentSetting(persisted, QStringLiteral("allowed_commands"), saveAllowedCommands(config.allowedCommands));
     setPersistentSetting(persisted, QStringLiteral("max_cache_bytes"), config.maxCacheBytes);
@@ -88,8 +87,8 @@ void saveGatewaySettings(const GatewaySettings& value)
     setPersistentSetting(persisted, QStringLiteral("listener_enabled"), listener.enabled);
     setPersistentSetting(persisted, QStringLiteral("listener_address"), listener.address);
     setPersistentSetting(persisted, QStringLiteral("listener_port"), listener.port);
-    // Drop settings from the former HTTPS listener when saving the LAN gateway.
-    for (const auto* key : {"listener_certificate_file", "listener_private_key_file", "listener_token",
+    // Remove obsolete gateway settings.
+    for (const auto* key : {"token", "listener_certificate_file", "listener_private_key_file", "listener_token",
                             "listener_allow_commands", "listener_allowed_commands"})
         removePersistentSetting(persisted, QString::fromLatin1(key));
 }
@@ -120,16 +119,11 @@ GatewaySettingsDialog::GatewaySettingsDialog(const GatewaySettings& value,
     form->addRow(enabled_);
     server_url_ = new QLineEdit(value.connection.serverUrl.toString(), content);
     server_url_->setObjectName(QStringLiteral("gatewayServerUrl"));
-    server_url_->setPlaceholderText(QStringLiteral("https://cloud.example.com/"));
+    server_url_->setPlaceholderText(QStringLiteral("http://192.168.1.100:8080/"));
     form->addRow(english ? QStringLiteral("Cloud server URL") : QStringLiteral("云端服务器地址"), server_url_);
     device_id_ = new QLineEdit(value.connection.deviceId, content);
     device_id_->setObjectName(QStringLiteral("gatewayDeviceId"));
     form->addRow(english ? QStringLiteral("Device ID") : QStringLiteral("设备标识"), device_id_);
-    token_ = new QLineEdit(value.connection.token, content);
-    token_->setObjectName(QStringLiteral("gatewayToken"));
-    token_->setEchoMode(QLineEdit::Password);
-    token_->setPlaceholderText(english ? QStringLiteral("Only for cloud forwarding") : QStringLiteral("仅启用云端转发时填写"));
-    form->addRow(english ? QStringLiteral("Cloud access token") : QStringLiteral("云端访问令牌"), token_);
     cache_mib_ = new QSpinBox(content);
     cache_mib_->setObjectName(QStringLiteral("gatewayCacheMiB"));
     cache_mib_->setRange(1, 4096);
@@ -222,7 +216,7 @@ GatewaySettingsDialog::GatewaySettingsDialog(const GatewaySettings& value,
         : QStringLiteral("请先保存并启用 Gateway。修改连接配置后，保存并重新打开本窗口再同步。请选择一个已结束的本地 Session 目录；SkyCore 端 Session 需先下载到本机。"), content);
     sessionHint->setWordWrap(true);
     body->addWidget(sessionHint);
-    for (auto *input : {server_url_, device_id_, token_})
+    for (auto *input : {server_url_, device_id_})
         connect(input, &QLineEdit::textChanged, sync, [sync] { sync->setEnabled(false); });
     connect(enabled_, &QCheckBox::toggled, sync, [sync] { sync->setEnabled(false); });
     validation_ = new QLabel(content);
@@ -249,7 +243,6 @@ GatewaySettings GatewaySettingsDialog::settings() const
     config.enabled = enabled_->isChecked();
     config.serverUrl = QUrl(server_url_->text().trimmed());
     config.deviceId = device_id_->text().trimmed();
-    config.token = token_->text();
     config.allowRemoteCommands = remote_commands_->isChecked();
     config.allowedCommands.clear();
     if (status_command_->isChecked()) config.allowedCommands.insert(commandValue(CommandId::RequestStatus));
@@ -268,25 +261,20 @@ GatewaySettings GatewaySettingsDialog::settings() const
 void GatewaySettingsDialog::acceptSettings()
 {
     const auto config = settings().connection;
-    const auto url = config.serverUrl;
-    const bool loopback = url.host().compare(QStringLiteral("localhost"), Qt::CaseInsensitive) == 0 ||
-        QHostAddress(url.host()).isLoopback();
-    if (config.enabled && (!url.isValid() || url.host().isEmpty() ||
-        (url.scheme() != QStringLiteral("https") && !(url.scheme() == QStringLiteral("http") && loopback)) ||
-        !url.userInfo().isEmpty() || url.hasQuery() || url.hasFragment()))
+    if (config.enabled && !Gateway::isGatewayServerUrlValid(config.serverUrl))
     {
-        validation_->setText(english_ ? QStringLiteral("Enter an HTTPS server URL without credentials, query or fragment. HTTP is allowed only for local testing.")
-            : QStringLiteral("请输入 HTTPS 服务器地址，不含账号密码、查询参数或片段。本机测试可使用 HTTP。"));
+        validation_->setText(english_ ? QStringLiteral("Enter an HTTP or HTTPS server URL without credentials, query or fragment.")
+            : QStringLiteral("请输入 HTTP 或 HTTPS 服务器地址，且不含账号密码、查询参数或片段。"));
         validation_->show();
         server_url_->setFocus();
         return;
     }
-    if (config.enabled && (config.deviceId.isEmpty() || config.token.trimmed().isEmpty()))
+    if (config.enabled && (config.deviceId.isEmpty() || config.deviceId.size() > 128))
     {
-        validation_->setText(english_ ? QStringLiteral("Device ID and access token are required.")
-            : QStringLiteral("设备标识和访问令牌不能为空。"));
+        validation_->setText(english_ ? QStringLiteral("Enter a device ID of 1 to 128 characters.")
+            : QStringLiteral("请输入 1 至 128 个字符的设备标识。"));
         validation_->show();
-        (config.deviceId.isEmpty() ? device_id_ : token_)->setFocus();
+        device_id_->setFocus();
         return;
     }
     if (config.listener.enabled)

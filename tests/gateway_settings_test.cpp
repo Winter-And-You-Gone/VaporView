@@ -52,11 +52,26 @@ void testPermissionsAndPersistence()
             defaults.connection.listener.port == 8443, "ground listener defaults to loopback port 8443");
     GatewaySettings saved = defaults;
     saved.connection.deviceId = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    saved.connection.token = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    saved.connection.enabled = true;
+    saved.connection.serverUrl = QUrl(QStringLiteral("https://cloud.example.invalid/device/"));
     saveGatewaySettings(saved);
-    GatewaySettingsDialog dialog(saved, nullptr, false);
-    require(field<QLineEdit>(dialog, "gatewayToken")->echoMode() == QLineEdit::Password,
-            "access token is masked");
+    auto persisted = VaporView::applicationConfigSettings();
+    const QString obsoleteTokenKey = QStringLiteral("Gateway/token");
+    persisted.setValue(obsoleteTokenKey, QUuid::createUuid().toString(QUuid::WithoutBraces));
+    persisted.sync();
+    VaporView::setSettingsWritesSuspended(true);
+    const auto migrated = loadGatewaySettings();
+    VaporView::setSettingsWritesSuspended(false);
+    persisted.sync();
+    require(persisted.contains(obsoleteTokenKey), "settings write barrier covers obsolete token migration");
+    require(migrated.connection.enabled && migrated.connection.deviceId == saved.connection.deviceId &&
+            migrated.connection.serverUrl == saved.connection.serverUrl, "legacy HTTPS settings load without credentials");
+    loadGatewaySettings();
+    persisted.sync();
+    require(!persisted.contains(obsoleteTokenKey), "loading old settings removes the obsolete token");
+    GatewaySettingsDialog dialog(migrated, nullptr, false);
+    require(dialog.findChild<QLineEdit *>(QStringLiteral("gatewayToken")) == nullptr,
+            "cloud forwarding has no access token field");
     auto *allow = field<QCheckBox>(dialog, "gatewayRemoteCommands");
     auto *start = field<QCheckBox>(dialog, "gatewayAllowStartRecording");
     auto *stop = field<QCheckBox>(dialog, "gatewayAllowStopRecording");
@@ -79,11 +94,11 @@ void testPermissionsAndPersistence()
     saveGatewaySettings(chosen);
     const auto restored = loadGatewaySettings();
     require(restored.connection.deviceId == saved.connection.deviceId &&
-            restored.connection.token == saved.connection.token &&
             restored.connection.allowRemoteCommands &&
             restored.connection.allowedCommands == chosen.connection.allowedCommands,
             "Gateway settings restore the selected identity and permissions");
     require(restored.connection.listener == chosen.connection.listener, "inbound settings restore independently");
+    saved.connection.enabled = defaults.connection.enabled;
     saveGatewaySettings(saved);
 }
 
@@ -93,7 +108,6 @@ void testLanListenerSettings()
     stored.setValue(QStringLiteral("Gateway/listener_certificate_file"), QStringLiteral("missing.pem"));
     auto saved = loadGatewaySettings();
     saved.connection.enabled = false;
-    saved.connection.token.clear();
     GatewaySettingsDialog dialog(saved, nullptr, true);
     auto *enabled = field<QCheckBox>(dialog, "gatewayListenerEnabled");
     require(enabled->isChecked(), "LAN listener is selected by default");
@@ -119,29 +133,28 @@ void testValidation()
     VaporViewTest::processEventsFor(40);
     field<QCheckBox>(dialog, "gatewayEnabled")->setChecked(true);
     auto *url = field<QLineEdit>(dialog, "gatewayServerUrl");
-    url->setText(QStringLiteral("http://cloud.example.invalid/"));
     auto *buttons = field<QDialogButtonBox>(dialog, "gatewayDialogButtons");
-    buttons->button(QDialogButtonBox::Save)->click();
-    require(dialog.isVisible() && field<QLabel>(dialog, "gatewayValidationError")->isVisible(),
-            "nonlocal cleartext endpoint is rejected before saving");
-    url->setText(QStringLiteral("https://cloud.example.invalid/"));
+    for (const auto* invalidUrl : {"ftp://192.0.2.20/", "http:///gateway", "http://device@192.0.2.20/",
+                                  "http://192.0.2.20/?device=1", "https://192.0.2.20/#fragment"})
+    {
+        url->setText(QString::fromLatin1(invalidUrl));
+        buttons->button(QDialogButtonBox::Save)->click();
+        require(dialog.isVisible() && field<QLabel>(dialog, "gatewayValidationError")->isVisible(),
+                "malformed outbound endpoint is rejected before saving");
+    }
+    const auto lanUrl = QStringLiteral("http://192.0.2.20:8080/gateway/");
+    url->setText(lanUrl);
     field<QLineEdit>(dialog, "gatewayDeviceId")->clear();
     buttons->button(QDialogButtonBox::Save)->click();
     require(dialog.isVisible(), "enabled Gateway requires a device identity");
     field<QLineEdit>(dialog, "gatewayDeviceId")->setText(saved.connection.deviceId);
-    field<QLineEdit>(dialog, "gatewayToken")->clear();
     buttons->button(QDialogButtonBox::Save)->click();
-    require(dialog.isVisible(), "enabled Gateway requires an access token");
-    field<QLineEdit>(dialog, "gatewayToken")->setText(saved.connection.token);
-    buttons->button(QDialogButtonBox::Save)->click();
-    require(dialog.result() == QDialog::Accepted, "valid Gateway settings can be saved");
+    require(dialog.result() == QDialog::Accepted && dialog.settings().connection.serverUrl == QUrl(lanUrl),
+            "LAN HTTP forwarding can be configured without credentials");
 }
 
 void testMenuAndUiTestIsolation()
 {
-    auto settings = loadGatewaySettings();
-    settings.connection.token.clear();
-    saveGatewaySettings(settings);
     MainWindow window;
     auto *action = field<QAction>(window, "gatewaySettingsAction");
     require(window.findChild<QSystemTrayIcon *>(QStringLiteral("gatewaySystemTray")) == nullptr,

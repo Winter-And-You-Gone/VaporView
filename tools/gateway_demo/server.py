@@ -11,7 +11,6 @@ import json
 import mimetypes
 import os
 from pathlib import Path, PurePosixPath
-import secrets
 import sqlite3
 import subprocess
 import tempfile
@@ -74,13 +73,12 @@ def safe_path(root, relative):
 
 
 class DemoState:
-    def __init__(self, directory, device_id="demo-aircraft", token=None, client=None):
+    def __init__(self, directory, device_id="demo-aircraft", client=None):
         self.directory = Path(directory).resolve()
         self.directory.mkdir(parents=True, exist_ok=True)
         self.sessions_dir = self.directory / "sessions"
         self.sessions_dir.mkdir(exist_ok=True)
         self.device_id = device_id
-        self.token = token or secrets.token_urlsafe(32)
         self.client = Path(client).resolve() if client else None
         self.url = ""
         self.lock = threading.RLock()
@@ -157,11 +155,8 @@ class DemoState:
             if status >= 400:
                 self.stats["rejectedRequests"] += 1
 
-    def connection(self, reveal=False):
-        result = {"url": self.url, "deviceId": self.device_id}
-        if reveal:
-            result["token"] = self.token
-        return result
+    def connection(self):
+        return {"url": self.url, "deviceId": self.device_id}
 
     def snapshot(self):
         with self.lock:
@@ -422,7 +417,7 @@ class DemoState:
         cancel_path = self.directory / ("verification-cancel-" + uuid.uuid4().hex)
         self.cancel_path = cancel_path
         environment = os.environ.copy()
-        environment.update(GATEWAY_DEMO_URL=self.url, GATEWAY_DEMO_TOKEN=self.token,
+        environment.update(GATEWAY_DEMO_URL=self.url,
                            GATEWAY_DEMO_DEVICE=self.device_id, GATEWAY_DEMO_REPORT=str(report_path), GATEWAY_DEMO_CANCEL=str(cancel_path))
         report, failure = {}, ""
         try:
@@ -489,7 +484,7 @@ class DemoHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def log_message(self, *_):
-        pass  # Headers, tokens and payloads never go to console logs.
+        pass  # Headers and payloads stay out of console logs.
 
     def do_GET(self):
         self._handle(False)
@@ -540,11 +535,9 @@ class DemoHandler(BaseHTTPRequestHandler):
                 if not isinstance(body, dict):
                     raise ApiError(400, "JSON object required")
             if path.startswith("/gateway/v1/"):
-                if not secrets.compare_digest(self.headers.get("Authorization", "").encode("utf-8"),
-                                              ("Bearer " + state.token).encode("utf-8")):
-                    raise ApiError(401, "bearer authentication required")
-                if self.headers.get("X-VaporView-Device-Id") != state.device_id:
-                    raise ApiError(403, "device permission denied")
+                header_device = self.headers.get("X-VaporView-Device-Id")
+                if header_device is not None and header_device != state.device_id:
+                    raise ApiError(400, "unexpected device ID")
                 endpoint = path.removeprefix("/gateway/v1/")
                 if (endpoint == "commands") == post:
                     raise ApiError(405, "method not allowed")
@@ -556,7 +549,7 @@ class DemoHandler(BaseHTTPRequestHandler):
                 self._json(200, state.snapshot())
                 return
             if path == "/demo/v1/connection" and not post:
-                self._json(200, state.connection(True))
+                self._json(200, state.connection())
                 return
             with state.lock:
                 if path == "/demo/v1/commands" and post:
@@ -608,7 +601,7 @@ def main():
     parser.add_argument("--device-id", default="demo-aircraft")
     parser.add_argument("--data-dir", type=Path)
     parser.add_argument("--client", type=Path)
-    parser.add_argument("--ready-file", type=Path, help="write the public loopback URL, without credentials")
+    parser.add_argument("--ready-file", type=Path, help="write the loopback URL after the server binds")
     parser.add_argument("--open-browser", action="store_true")
     args = parser.parse_args()
     if not 0 <= args.port <= 65535 or not args.device_id or len(args.device_id) > 128 or any(
