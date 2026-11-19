@@ -3084,8 +3084,21 @@ static void liveVirtualFpgaAcquisition(quint16 port)
     });
     recordingDialogWatch.start(100);
     emit page->recordingRequested(true);
+    check(waitUntil([&] { return recordingCalibrationDialog(window) != nullptr; }, 5000),
+          "open native recording calibration confirmation");
+    auto *confirmation = recordingCalibrationDialog(window);
+    const auto *files = confirmation->findChild<QComboBox*>(QStringLiteral("recordingCalibrationFile"));
+    check(files && files->currentData() == file.filename,
+          "recording confirmation selects the isolated calibration file");
+    confirmRecordingCalibration(window);
+    if (!waitUntil([&] { return status().active; }, 5000)) {
+        if (const auto *dialog = recordingCalibrationDialog(window)) {
+            if (const auto *message = dialog->findChild<QLabel*>(QStringLiteral("recordingCalibrationStatus")))
+                std::cerr << "XSI recording confirmation: " << message->text().toStdString() << std::endl;
+        }
+        throw std::runtime_error("start native recording");
+    }
     recordingDialogWatch.stop();
-    check(waitUntil([&] { return status().active; }, 5000), "start native recording");
     const auto directory = status().sessionDirectory;
     std::cout << "XSI recording " << directory.toStdString() << std::endl;
     auto finishRecording = qScopeGuard([&] {
@@ -3099,6 +3112,11 @@ static void liveVirtualFpgaAcquisition(quint16 port)
     check(waitUntil([&] { return !status().sessionOpen; }, operationTimeoutMs), "stop and drain native recording");
     finishRecording.dismiss();
 
+    QFile calibrationSnapshot(QDir(directory).filePath(QStringLiteral("calibration_snapshot.json")));
+    check(calibrationSnapshot.open(QIODevice::ReadOnly), "read persisted recording calibration snapshot");
+    const auto snapshotJson = QJsonDocument::fromJson(calibrationSnapshot.readAll()).object();
+    check(snapshotJson.value(QStringLiteral("file_sha256")).toString() == file.sha256,
+          "recording persists the confirmed calibration digest");
     const auto metadata = VaporView::Ground::SessionLoader::loadMetadata(directory);
     check(metadata.success && metadata.metadata.waveformFrames >= 2, "load persisted harmonic session metadata");
     const auto catalog = VaporView::Ground::SessionWaveformRepository::loadCatalog(metadata.metadata);
