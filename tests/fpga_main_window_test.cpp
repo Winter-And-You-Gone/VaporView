@@ -17,6 +17,7 @@
 #include "TelemetryCodec.h"
 #include "FpgaTelemetry.h"
 #include "FpgaDeviceController.h"
+#include "FpgaVirtualTcpTransport.h"
 #include "FpgaVlp1.h"
 #include "FpgaExtensions.h"
 #include "ground/session/SessionWaveformRepository.h"
@@ -2766,6 +2767,70 @@ static void scheduledRecordingCorrelation()
     remote->close();
 }
 
+// Opt in with --xsi-port <port> against an isolated VirtualLab instance.
+static void liveVirtualFpga(quint16 port)
+{
+    using namespace VaporView::Ground::Devices;
+    constexpr quint16 ai8 = 0x0046;
+    constexpr quint32 shadow = 0x6650;
+    {
+        bool ready = false;
+        MainWindow window(nullptr, {}, port);
+        auto *controller = window.testFpgaController();
+        auto *page = window.findChild<FpgaControlPage *>("fpgaControlPage");
+        require(controller && page, "virtual FPGA window has a live controller and page");
+        QObject::connect(controller, &FpgaDeviceController::connectionChanged, &window,
+            [&](bool isReady, bool busy, const QString &detail) {
+                ready = isReady && !busy;
+                if (ready) std::cout << "VaporView ready: " << detail.toStdString() << '\n';
+            });
+        window.show();
+        require(waitUntil([&] { return ready; }, 30000),
+                "VaporView confirms FPGA ready after protocol and module validation");
+        auto *backend = page->findChild<QComboBox *>("fpgaBackend");
+        require(backend && !backend->isEnabled() && backend->currentData().toString() == QStringLiteral("virtual-tcp"),
+                "ready window remains locked to the loopback backend");
+    }
+
+    FpgaDeviceSession session(makeFpgaVirtualTcpTransport(port));
+    require(session.open(), "reconnect using only the virtual FPGA transport");
+    quint32 completed = 0;
+    bool ok = false;
+    QByteArray response;
+    QObject::connect(&session, &FpgaDeviceSession::commandCompleted, &session,
+        [&](quint32 sequence, quint16 message, bool success, quint32 status, const QByteArray &payload) {
+            completed = sequence;
+            ok = success && status == 0;
+            response = payload;
+            std::cout << "VLP1 RX seq=" << sequence << " msg=0x" << std::hex << message << std::dec
+                      << " status=" << status << " payload=" << payload.toHex(' ').constData() << '\n';
+        });
+    const auto acknowledged = [&](quint32 sequence) {
+        return sequence && waitUntil([&] { return completed == sequence; }, 12000) && ok;
+    };
+    const auto read = [&](quint32 address, quint32 &value) {
+        if (!acknowledged(session.readRegisters(address, 1, ai8)) || response.size() != 16) return false;
+        value = qFromLittleEndian<quint32>(response.constData() + 12);
+        return true;
+    };
+    require(acknowledged(session.ping("VaporView XSI")) && response.mid(4) == "VaporView XSI",
+            "verify successful PING and exact echo");
+    require(acknowledged(session.requestCapabilities()) && session.capabilities().valid,
+            "verify capabilities response");
+    quint32 id = 0, original = 0, readback = 0, restored = 0;
+    require(read(0x6600, id) && id == 0x00460200 && read(shadow, original), "verify AI-8 identity and read original shadow");
+    require(qint32(original) >= -9990 && qint32(original) <= 32000, "verify shadow raw range");
+    const quint32 candidate = original == 400 ? 401 : 400;
+    // The shadow write uses zero flags and leaves the apply/commit register untouched.
+    const bool changed = acknowledged(session.writeRegisters(shadow, {candidate}, 0, ai8)) &&
+        read(shadow, readback) && readback == candidate;
+    const bool recovered = acknowledged(session.writeRegisters(shadow, {original}, 0, ai8)) &&
+        read(shadow, restored) && restored == original;
+    require(recovered, "verify shadow restoration even if the candidate check failed");
+    require(changed, "verify the changed shadow readback");
+    std::cout << "AI-8 0x6650: " << qint32(original) << " -> " << readback << " -> " << qint32(restored) << '\n';
+}
+
 int main(int argc,char **argv)
 {
     require(VaporViewTest::SettingsSandbox::initialized,"isolated native/INI application settings");
@@ -2786,6 +2851,15 @@ int main(int argc,char **argv)
 #endif
     app.setOrganizationName(QStringLiteral("VaporViewFpgaTest"));
     app.setApplicationName(QStringLiteral("fpga_main_window_test"));
+    const auto args = app.arguments();
+    const int xsiPortIndex = args.indexOf(QStringLiteral("--xsi-port"));
+    if (xsiPortIndex >= 0) {
+        bool valid = false;
+        const quint16 port = args.value(xsiPortIndex + 1).toUShort(&valid);
+        require(valid && port, "--xsi-port requires an isolated VirtualLab loopback port");
+        liveVirtualFpga(port);
+        return 0;
+    }
     if(app.arguments().contains("--rtcm-context")) { rtcmCompletionContext(); scheduledRecordingCorrelation(); return 0; }
     QSettings native("VaporView","MainWindow");
     native.setValue("font_scale_percent",100);
