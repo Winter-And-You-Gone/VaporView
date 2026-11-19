@@ -99,6 +99,25 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
     auto *connectionLayout = new QHBoxLayout(s.connectionControls);
     connectionLayout->setContentsMargins(0, 0, 0, 0); connectionLayout->setSpacing(6);
     connectionLayout->addStretch();
+    auto *identity = new QWidget(s.connectionControls);
+    identity->setObjectName(QStringLiteral("emFwc3ConnectionIdentity"));
+    auto *identityLayout = new QVBoxLayout(identity);
+    identityLayout->setContentsMargins(0, 0, 0, 0);
+    identityLayout->setSpacing(0);
+    s.connection = new QLabel(identity);
+    s.connection->setObjectName(QStringLiteral("emFwc3ConnectionState"));
+    identityLayout->addWidget(s.connection);
+    auto *modelRow = new QHBoxLayout;
+    modelRow->setSpacing(6);
+    auto *modelLabel = label(identity, "电机型号", "Motor type");
+    modelLabel->setWordWrap(false);
+    auto *motorType = new QLabel(QStringLiteral("CEM-FPM"), identity);
+    motorType->setObjectName(QStringLiteral("emFwc3MotorType"));
+    modelRow->addWidget(modelLabel);
+    modelRow->addWidget(motorType);
+    modelRow->addStretch();
+    identityLayout->addLayout(modelRow);
+    connectionLayout->addWidget(identity, 0, Qt::AlignVCenter);
     s.port = new QComboBox(s.connectionControls); s.port->setEditable(true); s.port->setInsertPolicy(QComboBox::NoInsert);
     s.port->setObjectName(QStringLiteral("emFwc3Port")); s.port->setFixedWidth(110);
     s.port->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
@@ -118,15 +137,6 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
     auto *content = new QWidget(this); content->setObjectName(QStringLiteral("emFwc3CardBody"));
     content->setAttribute(Qt::WA_StyledBackground, true);
     auto *layout = new QVBoxLayout(content); layout->setContentsMargins(12, 8, 12, 10); layout->setSpacing(8);
-    auto *identityRow = new QHBoxLayout;
-    identityRow->setSpacing(12);
-    s.connection = new QLabel(content); s.connection->setObjectName(QStringLiteral("emFwc3ConnectionState"));
-    identityRow->addWidget(s.connection);
-    identityRow->addWidget(label(content, "电机型号", "Motor type"));
-    auto *motorType = new QLabel(QStringLiteral("CEM-FPM"), content);
-    motorType->setObjectName(QStringLiteral("emFwc3MotorType"));
-    identityRow->addWidget(motorType); identityRow->addStretch();
-    layout->addLayout(identityRow);
     s.channel = new QComboBox(content); s.channel->setObjectName(QStringLiteral("emFwc3ChannelSelector"));
     s.channel->addItems({QString(), QString(), QString()});
     s.channel->hide(); // Keep multi-channel routing; this installation exposes channel 1 only.
@@ -139,23 +149,26 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
         auto *card = new QWidget(s.channels); card->setObjectName(QStringLiteral("emFwc3Channel") + suffix);
         auto *v = new QVBoxLayout(card); v->setContentsMargins(0, 0, 0, 0); v->setSpacing(8);
         auto *moves = new QGridLayout; moves->setHorizontalSpacing(12); moves->setVerticalSpacing(6);
-        auto *positionRow = new QHBoxLayout;
-        positionRow->setSpacing(6);
-        auto *positionLabel = label(card, "当前角度", "Current angle");
-        positionLabel->setProperty("motionFormLabel", true);
-        positionRow->addWidget(positionLabel);
-        s.positions[i] = new QLabel(QStringLiteral("—"), card);
+        auto *angleGroup = new QWidget(card);
+        auto *angleRow = new QHBoxLayout(angleGroup);
+        angleRow->setContentsMargins(0, 0, 0, 0);
+        angleRow->setSpacing(6);
+        auto *positionLabel = label(angleGroup, "当前角度", "Current angle");
+        positionLabel->setWordWrap(false);
+        angleRow->addWidget(positionLabel);
+        s.positions[i] = new QLabel(QStringLiteral("—"), angleGroup);
         s.positions[i]->setObjectName(QStringLiteral("emFwc3Position") + suffix);
-        positionRow->addWidget(s.positions[i]); positionRow->addStretch();
-        v->addLayout(positionRow);
-        auto *targetGroup = new QWidget(card); auto *targetRow = new QHBoxLayout(targetGroup);
-        targetRow->setContentsMargins(0, 0, 0, 0); targetRow->setSpacing(6);
-        auto *targetLabel = label(card, "目标角度", "Target angle");
-        targetLabel->setProperty("motionFormLabel", true);
-        targetRow->addWidget(targetLabel);
-        s.targets[i] = angle(card, QStringLiteral("emFwc3Target") + suffix, false); targetRow->addWidget(s.targets[i]);
-        auto *go = button(card, qPrintable(QStringLiteral("emFwc3Go") + suffix), "定位", "Move to target");
-        targetRow->addWidget(go); targetRow->addStretch(); s.normalActions << go << s.targets[i];
+        angleRow->addWidget(s.positions[i]);
+        angleRow->addSpacing(8);
+        auto *targetLabel = label(angleGroup, "目标角度", "Target angle");
+        targetLabel->setWordWrap(false);
+        angleRow->addWidget(targetLabel);
+        s.targets[i] = angle(angleGroup, QStringLiteral("emFwc3Target") + suffix, false);
+        angleRow->addWidget(s.targets[i]);
+        auto *go = button(angleGroup, qPrintable(QStringLiteral("emFwc3Go") + suffix), "定位", "Move to target");
+        angleRow->addWidget(go);
+        angleRow->addStretch();
+        s.normalActions << go << s.targets[i];
         connect(go, &QPushButton::clicked, this, [this, i] { run(EmFwc3Session::Command::Absolute, i, state_->targets[i]->value()); });
         auto *stepGroup = new QWidget(card); auto *stepRow = new QHBoxLayout(stepGroup);
         stepRow->setContentsMargins(0, 0, 0, 0); stepRow->setSpacing(6);
@@ -188,7 +201,7 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
         a->addWidget(continuousBody); a->addStretch();
         advanced->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
         actions->addWidget(advanced); actions->addStretch();
-        const std::array<QWidget *, 3> groups{targetGroup, stepGroup, actionGroup};
+        const std::array<QWidget *, 3> groups{angleGroup, stepGroup, actionGroup};
         for (int group = 0; group < 3; ++group) moves->addWidget(groups[group], group, 0);
         moves->setColumnStretch(0, 1);
         s.normalActions << advanced;
@@ -356,7 +369,10 @@ void MotionControlPage::refresh()
         ? (snapshot.connected ? text("界面测试 · 模拟已连接", "UI test · simulated connection") : text("界面测试 · 模拟未连接", "UI test · disconnected"))
         : snapshot.busy ? text("操作进行中…", "Operation in progress…")
         : snapshot.connected ? text("已连接 · 本机 USB 直连", "Connected · local USB") : text("未连接", "Disconnected");
-    s.connection->setText(connection);
+    if (s.connection->text() != connection) {
+        s.connection->setText(connection);
+        QTimer::singleShot(0, this, &MotionControlPage::reflow);
+    }
     for (int i = 0; i < 3; ++i) s.positions[i]->setText(snapshot.continuousMotion ? text("读取已暂停", "Reading paused") : snapshot.connected && snapshot.valid[i]
         ? QString::number(snapshot.positions[i], 'f', 3) + QStringLiteral("°") : QStringLiteral("—"));
     const QString speedReadback = text("速度读回：%1", "Speed readback: %1").arg(snapshot.connected && snapshot.speedValid ? QString::number(snapshot.speed) : QStringLiteral("—"));
@@ -416,6 +432,7 @@ void MotionControlPage::setTheme(bool dark, int fontScalePercent)
         "QFrame[emFwc3Card=true] > QWidget#sectionTitleBar { background-color: @vv-surface-raised; border: none; border-bottom: 1px solid @vv-border; border-top-left-radius: 11px; border-top-right-radius: 11px; min-height: %4px; max-height: %4px; }"
         "QWidget#emFwc3CardBody { background-color: @vv-surface-raised; border: none; border-bottom-left-radius: 11px; border-bottom-right-radius: 11px; }"
         "QLabel, QLabel#sectionTitleLabel { background-color: transparent; color: @vv-text; border: none; }"
+        "QWidget#emFwc3ConnectionIdentity QLabel { font-size: %5px; }"
         "QStackedWidget, QStackedWidget > QWidget { background-color: transparent; border: none; }"
         "QPushButton { min-width: 0px; padding: 3px 10px; min-height: %3px; max-height: %3px; }"
         "QComboBox, QSpinBox, QDoubleSpinBox { min-height: %3px; max-height: %3px; }"
@@ -423,7 +440,7 @@ void MotionControlPage::setTheme(bool dark, int fontScalePercent)
         "QLabel[emFwc3Error=true] { color: @vv-danger; }"
         "QLabel#emFwc3Position1, QLabel#emFwc3Position2, QLabel#emFwc3Position3 { font-size: %1px; font-weight: 600; }"
         "QPushButton#emFwc3StopAll:enabled, QPushButton#emFwc3Stop1:enabled, QPushButton#emFwc3Stop2:enabled, QPushButton#emFwc3Stop3:enabled { background-color: @vv-danger; color: @vv-text-inverse; }"
-    ).arg(qRound(24 * fontScalePercent / 100.0)).arg(qRound(16 * fontScalePercent / 100.0)).arg(qRound(24 * fontScalePercent / 100.0)).arg(qRound(40 * fontScalePercent / 100.0) - 1), dark);
+    ).arg(qRound(24 * fontScalePercent / 100.0)).arg(qRound(16 * fontScalePercent / 100.0)).arg(qRound(24 * fontScalePercent / 100.0)).arg(qRound(40 * fontScalePercent / 100.0) - 1).arg(qRound(12 * fontScalePercent / 100.0)), dark);
     setStyleSheet(style);
     setPalette(appThemePalette(dark));
     for (auto *position : state_->positions) {

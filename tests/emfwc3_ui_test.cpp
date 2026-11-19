@@ -481,6 +481,20 @@ int main(int argc, char **argv)
                 const auto bounds = [page](QWidget *widget) {
                     return QRect(widget->mapTo(page, QPoint(0, 0)), widget->size());
                 };
+                const auto sameRow = [&](QWidget *a, QWidget *b) {
+                    return bounds(a).top() <= bounds(b).bottom() && bounds(b).top() <= bounds(a).bottom() && !bounds(a).intersects(bounds(b));
+                };
+                auto *connection = find<QLabel>(*page, "emFwc3ConnectionState");
+                auto *model = find<QLabel>(*page, "emFwc3MotorType");
+                auto *identity = connection->parentWidget();
+                check(identity == model->parentWidget() && identity->parentWidget() == port->parentWidget() &&
+                          bounds(connection).bottom() < bounds(model).top() && bounds(identity).right() < bounds(port).left() &&
+                          sameRow(identity, port), "connection state and motor model stack just before the serial selector");
+                check(connection->height() >= connection->fontMetrics().height() && model->height() >= model->fontMetrics().height(),
+                      "both connection details fit in their rows at each font scale");
+                if (width == 1200)
+                    check(header->isAncestorOf(identity) && bounds(header).contains(bounds(identity)),
+                          "serial controls and motor identity share the title bar when space permits");
                 for (int channel = 1; channel <= 3; ++channel) {
                     find<QComboBox>(*page, "emFwc3ChannelSelector")->setCurrentIndex(channel - 1);
                     {
@@ -495,23 +509,21 @@ int main(int argc, char **argv)
                             return widget;
                         };
                         const QString suffix = QString::number(channel);
+                        auto *position = named(QStringLiteral("emFwc3Position") + suffix);
                         auto *target = named(QStringLiteral("emFwc3Target") + suffix);
+                        auto *go = named(QStringLiteral("emFwc3Go") + suffix);
                         auto *step = named(QStringLiteral("emFwc3Step") + suffix);
                         auto *home = named(QStringLiteral("emFwc3Home") + suffix);
                         auto *speed = named(QStringLiteral("emFwc3Speed"));
                         auto *save = named(QStringLiteral("emFwc3SavePosition"));
-                        for (auto *widget : {target, step, home, area, speed, save})
+                        for (auto *widget : {position, target, go, step, home, area, speed, save})
                             check(page->rect().contains(bounds(widget)), "motion controls stay within the card at wide and narrow widths");
+                        check(sameRow(position, target) && sameRow(target, go) &&
+                                  bounds(position).right() < bounds(target).left() && bounds(target).right() < bounds(go).left(),
+                              "current angle, target input and move button share one row");
                         if (width == 1200 && scale == 100 && !english) {
-                            auto *position = named(QStringLiteral("emFwc3Position") + suffix);
                             auto *stop = named(QStringLiteral("emFwc3Stop") + suffix);
-                            const auto sameRow = [&](QWidget *a, QWidget *b) {
-                                return bounds(a).top() <= bounds(b).bottom() && bounds(b).top() <= bounds(a).bottom() && !bounds(a).intersects(bounds(b));
-                            };
-                            check(bounds(position).bottom() < bounds(target).top(), "current angle is above the target controls");
                             check(sameRow(home, stop) && sameRow(stop, area), "home, stop and continuous controls share a row");
-                            check(sameRow(find<QLabel>(*page, "emFwc3ConnectionState"), find<QLabel>(*page, "emFwc3MotorType")),
-                                  "connection state and motor model share a row");
                         }
                     }
                 }
