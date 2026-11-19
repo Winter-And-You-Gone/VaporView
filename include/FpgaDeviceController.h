@@ -126,6 +126,7 @@ private:
     void configureTec103(bool enable, quint16 source);
     void publishTec103Ports();
     void pollTec103();
+    void tryRefreshBackgroundStatus();
     void submitTec103Exchange(QJsonObject request, std::function<void(const QJsonObject&)> reply,
                               quint64 generation, quint64 revision, qint64 deadline);
     void stopTec103();
@@ -186,6 +187,7 @@ private:
     QMap<quint16, qint64> pendingConnections_;
     QSet<quint16> operationConnections_;
     QTimer presentationTimer_, statusTimer_, watchdogTimer_;
+    bool backgroundStatusDue_ = false;
     QElapsedTimer waitTimer_;
     quint32 pendingSequence_ = 0;
     quint64 operationGeneration_ = 0;

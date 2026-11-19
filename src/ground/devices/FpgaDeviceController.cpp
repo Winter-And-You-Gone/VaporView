@@ -64,9 +64,9 @@ FpgaDeviceController::FpgaDeviceController(std::unique_ptr<FpgaUsbTransport> tra
     });
     connect(&presentationTimer_, &QTimer::timeout, this, &FpgaDeviceController::flushPresentation);
     connect(&statusTimer_, &QTimer::timeout, this, [this] {
-        if (ready_ && !busy_ && !tec103PollPending_[0] && !tec103PollPending_[1] && begin(QStringLiteral("读取实际状态"), true)) {
-            readAll(); steps_.push_back({Kind::CheckVersions}); advance();
-        }
+        if (backgroundRefresh_) return;
+        backgroundStatusDue_ = true;
+        tryRefreshBackgroundStatus();
     });
     if (injected_) installSession(std::move(transport));
 }
@@ -297,6 +297,7 @@ void FpgaDeviceController::disconnectDevice()
     startupWarningDeadlines_.clear();startupWarnings_.clear();startupWarningLogContexts_.clear();
     observations_.flush();
     presentationTimer_.stop(); statusTimer_.stop();watchdogTimer_.stop();
+    backgroundStatusDue_ = false;
     motorOwnerEnabled_=false;motorSafetySequences_.clear();
     if (session_ && session_->isOpen() && registers_.value(0x6700)==0x00470200)
         session_->motorSafetyAction(4);
@@ -812,6 +813,14 @@ void FpgaDeviceController::snapshotConfiguration()
         {"usb",session_?QJsonObject::fromVariantMap(session_->transport()->diagnostic().fields):QJsonObject{}}});
 }
 
+void FpgaDeviceController::tryRefreshBackgroundStatus()
+{
+    if (!backgroundStatusDue_ || !ready_ || busy_ || tec103PollPending_[0] || tec103PollPending_[1]) return;
+    if (!begin(QStringLiteral("读取实际状态"), true)) return;
+    backgroundStatusDue_ = false;
+    readAll(); steps_.push_back({Kind::CheckVersions}); advance();
+}
+
 void FpgaDeviceController::refresh()
 {
     if (!begin(QStringLiteral("读取实际状态"))) return;
@@ -1159,6 +1168,12 @@ void FpgaDeviceController::submitTec103Exchange(QJsonObject request,
 void FpgaDeviceController::pollTec103()
 {
     if (!tec103Enabled_ || !ready_ || busy_) return;
+    // Let in-flight TEC103 polls finish, then service the overdue register snapshot
+    // before starting another poll. Otherwise the timers can repeatedly collide.
+    if (backgroundStatusDue_) {
+        tryRefreshBackgroundStatus();
+        return;
+    }
     for (int i=0; i<2; ++i)
         if (tec103PortEnabled_[i] && !tec103PollPending_[i]) pollTec103Port(i);
 }

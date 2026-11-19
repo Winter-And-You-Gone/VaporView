@@ -11,6 +11,8 @@
 #include "FpgaExtensions.h"
 #include "BaudRateComboSupport.h"
 #include <QApplication>
+#include <QAbstractButton>
+#include <QDoubleSpinBox>
 #include <QAction>
 #include <QFrame>
 #include <QLabel>
@@ -349,6 +351,42 @@ static void simulatedSkyWorkflow(const QString& gatewayInterpreter = {}, const Q
         QObject::disconnect(cycleConnection);
         require(window.testRemoteSkyController()->linkGeneration() == linkGeneration,
                 "transport switches do not reopen the telemetry connection");
+        auto *enable = window.findChild<QAbstractButton*>("fpgaMotorEnable");
+        auto *run = window.findChild<QAbstractButton*>("fpgaMotorRun");
+        auto *disable = window.findChild<QAbstractButton*>("fpgaMotorDisable");
+        auto *steps = window.findChild<QDoubleSpinBox*>("fpgaMotorSteps");
+        auto *progress = window.findChild<QLabel*>("fpgaMotorProgress");
+        require(enable && run && disable && steps && progress, "remote simulator motor controls exist");
+        const auto readMotor = [&](quint32 address) {
+            return quint32(state.fpga_session_.remoteStatus.value("registers").toObject()
+                .value(QString::number(address)).toDouble());
+        };
+        require(waitUntil([&] { return enable->isEnabled() && readMotor(0x6700) == 0x00470200; }, 10000),
+                "simulated motor is ready on the real SkyCore connection");
+        enable->click();
+        require(waitUntil([&] { return run->isEnabled() && readMotor(0x6704) == 1; }, 10000),
+                "SkyCore confirms simulated drive enable");
+        for (const int displacement : {100, -100}) {
+            const auto priorId = readMotor(0x6734);
+            const auto priorPosition = readMotor(0x6724);
+            steps->setValue(displacement);
+            run->click();
+            require(!run->isEnabled(), "Run locks immediately for each move");
+            const bool completed = waitUntil([&] {
+                return run->isEnabled() && progress->text().contains(QStringLiteral("设备已确认运动结束"))
+                    && readMotor(0x6734) == priorId + 1 && readMotor(0x6724) == priorPosition + quint32(displacement);
+            }, 10000);
+            if (!completed) std::cerr << "Motor progress " << progress->text().toUtf8().constData()
+                << " enabled " << run->isEnabled() << " id " << readMotor(0x6734)
+                << " position " << readMotor(0x6724) << " remaining " << readMotor(0x6728)
+                << " status " << readMotor(0x6708) << " error " << readMotor(0x670c) << '\n';
+            require(completed, "SkyCore forwards each natural completion and position so Ground permits the next move");
+            require(readMotor(0x6704) == 1, "natural completion preserves drive enable");
+        }
+        disable->click();
+        require(waitUntil([&] { return run->isEnabled() && readMotor(0x6704) == 0; }, 10000),
+                "remote simulator workflow ends with the drive disabled");
+        std::cout << "Two successive natural relative moves passed through the real SkyCore TCP workflow\n";
         std::cout << "SkyCore simulation switched FPGA -> direct -> FPGA on one connection\n";
         return;
     }
