@@ -18,7 +18,10 @@
   };
   const signatures = new Map();
   let currentState = null;
-  let connection = null;
+  const selectedDevice = new URLSearchParams(location.search).get("deviceId");
+  const serverField = $("connection-url");
+  const deviceField = $("connection-device");
+  let connectionReady = false;
   let verifying = false;
   let sendingCommand = false;
   let changingNetwork = false;
@@ -92,7 +95,9 @@
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 12000);
     try {
-      const response = await fetch(`/demo/v1/${path}`, {
+      const endpoint = new URL(`/demo/v1/${path}`, location.origin);
+      if (selectedDevice !== null) endpoint.searchParams.set("deviceId", selectedDevice);
+      const response = await fetch(endpoint, {
         method: body === undefined ? "GET" : "POST",
         headers: body === undefined ? {Accept: "application/json"} : {Accept: "application/json", "Content-Type": "application/json"},
         body: body === undefined ? undefined : JSON.stringify(body),
@@ -304,7 +309,7 @@
   }
 
   async function poll() {
-    if (pollInProgress) return;
+    if (!connectionReady || pollInProgress) return;
     pollInProgress = true;
     const version = mutationVersion;
     try {
@@ -393,17 +398,45 @@
 
   async function loadConnection() {
     try {
-      connection = await request("connection");
-      if (!connection.url || !connection.deviceId) throw new Error("服务器未提供完整的连接配置。");
-      $("connection-url").value = connection.url;
-      $("connection-device").value = connection.deviceId;
-      $("copy-url").disabled = false;
-      $("copy-device").disabled = false;
-    } catch (error) { setMessage("connection-message", `无法读取连接配置：${error.message}。刷新页面可重试。`, true); }
+      const connection = await request("connection", selectedDevice === null ? undefined : {});
+      if (!connection.deviceId || (selectedDevice !== null && connection.deviceId !== selectedDevice))
+        throw new Error("服务器返回的设备标识与请求不符。");
+      if (!deviceField.value && !deviceEdited) deviceField.value = connection.deviceId;
+      connectionReady = true;
+      setMessage("connection-message", `当前设备：${connection.deviceId}`);
+      await poll();
+    } catch (error) {
+      setMessage("connection-message", `连接失败：${error.message}。请核对地址、设备标识和验证台服务版本。`, true);
+    }
   }
 
-  $("copy-url").addEventListener("click", () => copy(connection?.url, "connection-message"));
-  $("copy-device").addEventListener("click", () => copy(connection?.deviceId, "connection-message"));
+  serverField.value = location.origin;
+  deviceField.value = selectedDevice ?? "";
+  let deviceEdited = false;
+  deviceField.addEventListener("input", () => { deviceEdited = true; deviceField.setCustomValidity(""); });
+  serverField.addEventListener("input", () => serverField.setCustomValidity(""));
+  $("connection-form").addEventListener("submit", event => {
+    event.preventDefault();
+    let target;
+    try {
+      target = new URL(serverField.value);
+      if (!["http:", "https:"].includes(target.protocol) || target.username || target.password ||
+          target.pathname !== "/" || target.search || target.hash) throw new Error();
+    } catch {
+      serverField.setCustomValidity("请输入验证台的 HTTP 或 HTTPS 根地址，例如 http://127.0.0.1:8765");
+      serverField.reportValidity();
+      return;
+    }
+    if (!/^[\x21-\x7e]{1,128}$/.test(deviceField.value)) {
+      deviceField.setCustomValidity("设备标识须为 1 至 128 个可打印 ASCII 字符，不含空格。");
+      deviceField.reportValidity();
+      return;
+    }
+    target.searchParams.set("deviceId", deviceField.value);
+    location.assign(target.href);
+  });
+  $("copy-url").addEventListener("click", () => copy(serverField.value, "connection-message"));
+  $("copy-device").addEventListener("click", () => copy(deviceField.value, "connection-message"));
   $("close-payload").addEventListener("click", () => $("payload-dialog").close());
   $("copy-payload").addEventListener("click", () => copy(currentPayload, "payload-message"));
   $("payload-dialog").addEventListener("click", event => {
@@ -413,7 +446,6 @@
       $("payload-dialog").close();
   });
 
-  poll();
   loadConnection();
   $("inbound-link").addEventListener("submit", event => {
     event.preventDefault();

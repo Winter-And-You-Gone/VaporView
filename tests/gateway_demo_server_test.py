@@ -36,10 +36,10 @@ class DemoServerTest(unittest.TestCase):
         self.state.close()
         self.temporary.cleanup()
 
-    def request(self, method, path, body=None, headers=None):
+    def request(self, method, path, body=None, headers=None, host="127.0.0.1"):
         request_headers = {"Content-Type": "application/json"}
         request_headers.update(headers or {})
-        connection = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=5)
+        connection = http.client.HTTPConnection(host, self.server.server_port, timeout=5)
         connection.request(method, path, None if body is None else json.dumps(body), request_headers)
         response = connection.getresponse()
         payload = response.read()
@@ -76,6 +76,80 @@ class DemoServerTest(unittest.TestCase):
         expected = {"url": self.state.url, "deviceId": "demo-aircraft"}
         self.assertEqual(state["connection"], expected)
         self.assertEqual(self.request("GET", "/demo/v1/connection"), (200, expected))
+
+    def test_localhost_accepts_its_own_origin(self):
+        origin = f"http://localhost:{self.server.server_port}"
+        path = "/demo/v1/connection?deviceId=local-device"
+        self.assertEqual(self.request("GET", "/", host="localhost")[0], 200)
+        self.assertEqual(self.request("POST", path, {}, {"Origin": self.state.url}, host="localhost")[0], 403)
+        self.assertEqual(self.request("GET", path, host="localhost")[0], 404)
+        self.assertEqual(self.request("POST", path, {}, {"Origin": origin}, host="localhost")[0], 200)
+        self.assertEqual(self.request("GET", path, host="localhost")[1]["deviceId"], "local-device")
+        self.assertEqual(self.request("GET", path, headers={"Host": "localhost:1"})[0], 403)
+
+    def test_explicit_activation_routes_each_device_to_its_own_history(self):
+        device = "test+aircraft/2"
+        query = "?deviceId=test%2Baircraft%2F2"
+        connection = "/demo/v1/connection" + query
+        alternate_batch = dict(self.telemetry(), deviceId=device)
+        self.assertEqual(self.request("GET", connection)[0], 404)
+        self.assertEqual(self.request("GET", "/demo/v1/state" + query)[0], 404)
+        self.assertEqual(self.request("POST", "/gateway/v1/telemetry", alternate_batch)[0], 403)
+        self.assertEqual(self.request("GET", "/gateway/v1/commands" + query)[0], 403)
+        self.assertEqual(self.request("POST", connection, {"deviceId": device})[0], 400)
+        self.assertEqual(self.request("POST", connection + "&deviceId=", {})[0], 400)
+        self.assertEqual(self.request("POST", connection, {}, {"Origin": "http://localhost:80"})[0], 403)
+        info = (200, {"url": self.state.url, "deviceId": device})
+        self.assertEqual(self.request("POST", connection, {}), info)
+        self.assertEqual(self.request("GET", connection), info)
+
+        self.assertEqual(self.request("POST", "/gateway/v1/telemetry", self.telemetry())[0], 200)
+        self.assertEqual(self.request("POST", "/gateway/v1/telemetry", alternate_batch,
+                                      {"X-VaporView-Device-Id": device})[0], 200)
+        self.assertEqual(self.request("POST", "/gateway/v1/sessions", self.chunk())[0], 200)
+        self.assertEqual(self.request("POST", "/gateway/v1/sessions",
+                                      dict(self.chunk(data=b"xyz"), deviceId=device))[0], 200)
+        _, created = self.request("POST", "/demo/v1/commands" + query, {"commandId": 10})
+        command = created["command"]
+        self.assertEqual(command["deviceId"], device)
+        self.assertEqual(self.request("GET", "/gateway/v1/commands?deviceId=demo-aircraft")[1], {"commands": []})
+        self.assertEqual(self.request("GET", "/gateway/v1/commands" + query)[1]["commands"][0]["id"], command["id"])
+        result = {"deviceId": device, "items": [{"id": "result-one", "kind": "command-result",
+                  "commandId": command["id"], "skyCommandId": 10, "status": "acknowledged",
+                  "completedAt": "2026-11-14T00:00:00.000Z", "errorCode": 0}]}
+        self.assertEqual(self.request("POST", "/gateway/v1/command-results", result)[0], 200)
+
+        self.assertEqual(self.request("POST", connection, {}), info)
+        primary = self.request("GET", "/demo/v1/state")[1]
+        alternate = self.request("GET", "/demo/v1/state" + query)[1]
+        self.assertEqual(primary["stats"]["commandResults"], 0)
+        self.assertEqual(alternate["stats"]["commandResults"], 1)
+        self.assertEqual(alternate["commands"][0]["status"], "acknowledged")
+        for snapshot in (primary, alternate):
+            self.assertEqual(snapshot["stats"]["frames"], 1)
+        path = Path(hashlib.sha256(b"session-one").hexdigest()) / "raw/wave.dat"
+        self.assertEqual((self.state.sessions_dir / path).read_bytes(), b"abc")
+        alternate_state = self.server.find_device(device)
+        self.assertEqual((alternate_state.sessions_dir / path).read_bytes(), b"xyz")
+        self.assertEqual(self.request("POST", "/demo/v1/network" + query, {"online": False})[0], 200)
+        self.assertEqual(self.request("GET", "/gateway/v1/commands" + query)[0], 503)
+        self.assertEqual(self.request("GET", "/gateway/v1/commands?deviceId=demo-aircraft")[0], 200)
+
+    def test_reactivation_reopens_device_history_in_persistent_directory(self):
+        query = "?deviceId=after-restart"
+        self.assertEqual(self.request("POST", "/demo/v1/connection" + query, {})[0], 200)
+        self.assertEqual(self.request("POST", "/gateway/v1/telemetry",
+                                      dict(self.telemetry(), deviceId="after-restart"))[0], 200)
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join()
+        self.server = demo.DemoServer(0, self.state, self.web)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.assertEqual(self.request("GET", "/demo/v1/state" + query)[0], 404)
+        self.assertEqual(self.request("POST", "/demo/v1/connection" + query, {})[0], 200)
+        self.assertEqual(self.request("GET", "/demo/v1/state" + query)[1]["stats"]["frames"], 1)
+        self.assertEqual(self.request("GET", "/demo/v1/state")[1]["stats"]["frames"], 0)
 
     def test_telemetry_durable_idempotency_and_reused_id(self):
         body = self.telemetry()

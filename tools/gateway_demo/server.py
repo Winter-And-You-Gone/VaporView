@@ -45,6 +45,10 @@ def text(value, name, maximum=128):
     return value
 
 
+def valid_device_id(value):
+    return isinstance(value, str) and 1 <= len(value) <= 128 and all(33 <= ord(char) <= 126 for char in value)
+
+
 def number(value, name, maximum):
     if isinstance(value, str) and value.isascii() and value.isdecimal():
         value = int(value)
@@ -471,17 +475,42 @@ class DemoState:
 
 
 class DemoServer(ThreadingHTTPServer):
-    daemon_threads = True
+    # Wait for active handlers to finish before closing their databases.
+    daemon_threads = False
 
     def __init__(self, port, state, web_root=None):
         self.state = state
+        self.devices = {state.device_id: state}
+        self.devices_lock = threading.Lock()
         self.web_root = (Path(web_root) if web_root else Path(__file__).parent / "web").resolve()
         super().__init__(("127.0.0.1", port), DemoHandler)
         state.url = "http://127.0.0.1:" + str(self.server_port)
 
+    def find_device(self, device_id, activate=False):
+        with self.devices_lock:
+            state = self.devices.get(device_id)
+            if state is None and activate:
+                directory_name = hashlib.sha256(device_id.encode("ascii")).hexdigest()
+                directory = safe_path(self.state.directory, "devices/" + directory_name)
+                state = DemoState(directory, device_id, client=self.state.client)
+                state.url = self.state.url
+                self.devices[device_id] = state
+            return state
+
+    def server_close(self):
+        super().server_close()
+        for device_id, state in self.devices.items():
+            if device_id != self.state.device_id:
+                state.close()
+        self.devices = {self.state.device_id: self.state}
+
 
 class DemoHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+
+    def setup(self):
+        self.request.settimeout(10)
+        super().setup()
 
     def log_message(self, *_):
         pass  # Headers and payloads stay out of console logs.
@@ -509,46 +538,76 @@ class DemoHandler(BaseHTTPRequestHandler):
         path = unquote(parsed.path)
         state = self.server.state
         try:
-            expected_host = "127.0.0.1:" + str(self.server.server_port)
-            if self.headers.get("Host") != expected_host:
-                raise ApiError(403, "invalid local host")
-            origin = self.headers.get("Origin")
-            if origin and origin != state.url:
-                raise ApiError(403, "cross-origin request denied")
-            if self.headers.get("Sec-Fetch-Site") == "cross-site":
-                raise ApiError(403, "cross-site request denied")
-            body = None
+            payload = b""
             if post:
-                if self.headers.get("Content-Type", "").split(";")[0] != "application/json":
-                    raise ApiError(415, "JSON request required")
                 try:
                     length = int(self.headers.get("Content-Length", "-1"))
                 except ValueError:
                     raise ApiError(400, "invalid content length") from None
                 if not 0 <= length <= MAX_JSON:
                     raise ApiError(413, "request too large")
-                self.connection.settimeout(10)
+                # Read the bounded body before rejecting headers so the response can reach the client.
+                payload = self.rfile.read(length)
+
+            port = self.server.server_port
+            host = self.headers.get("Host", "").lower()
+            allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+            if port == 80:
+                allowed_hosts.update(("127.0.0.1", "localhost"))
+            if host not in allowed_hosts:
+                raise ApiError(403, "invalid local host")
+            expected_origin = "http://" + (host.removesuffix(":80") if port == 80 else host)
+            origin = self.headers.get("Origin")
+            if origin and origin != expected_origin:
+                raise ApiError(403, "cross-origin request denied")
+            if self.headers.get("Sec-Fetch-Site") == "cross-site":
+                raise ApiError(403, "cross-site request denied")
+
+            body = None
+            if post:
+                if self.headers.get("Content-Type", "").split(";")[0] != "application/json":
+                    raise ApiError(415, "JSON request required")
                 try:
-                    body = json.loads(self.rfile.read(length), parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))
+                    body = json.loads(payload, parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))
                 except (ValueError, UnicodeDecodeError):
                     raise ApiError(400, "invalid JSON") from None
                 if not isinstance(body, dict):
                     raise ApiError(400, "JSON object required")
             if path.startswith("/gateway/v1/"):
-                header_device = self.headers.get("X-VaporView-Device-Id")
-                if header_device is not None and header_device != state.device_id:
-                    raise ApiError(400, "unexpected device ID")
                 endpoint = path.removeprefix("/gateway/v1/")
                 if (endpoint == "commands") == post:
                     raise ApiError(405, "method not allowed")
-                response = state.gateway(endpoint, body, parse_qs(parsed.query))
+                query = parse_qs(parsed.query, keep_blank_values=True)
+                polled_devices = query.get("deviceId", [])
+                device_id = body.get("deviceId") if post else (
+                    polled_devices[0] if len(polled_devices) == 1 else None)
+                header_device = self.headers.get("X-VaporView-Device-Id")
+                if header_device is not None and header_device != device_id:
+                    raise ApiError(400, "unexpected device ID")
+                if not valid_device_id(device_id):
+                    raise ApiError(403, "device permission denied")
+                selected = self.server.find_device(device_id)
+                if selected is None:
+                    raise ApiError(403, "device permission denied")
+                state = selected
+                response = state.gateway(endpoint, body, query)
                 state.event(self.command, path, 200, "Gateway v1 已确认")
                 self._json(200, response)
                 return
+            if path.startswith("/demo/v1/"):
+                devices = parse_qs(parsed.query, keep_blank_values=True).get("deviceId", [state.device_id])
+                if len(devices) != 1 or not valid_device_id(devices[0]):
+                    raise ApiError(400, "invalid device ID")
+                activate = path == "/demo/v1/connection" and post
+                if activate and body:
+                    raise ApiError(400, "activation requires an empty JSON object")
+                state = self.server.find_device(devices[0], activate)
+                if state is None:
+                    raise ApiError(404, "device is not active")
             if path == "/demo/v1/state" and not post:
                 self._json(200, state.snapshot())
                 return
-            if path == "/demo/v1/connection" and not post:
+            if path == "/demo/v1/connection":
                 self._json(200, state.connection())
                 return
             with state.lock:
@@ -570,10 +629,12 @@ class DemoHandler(BaseHTTPRequestHandler):
             state.event(self.command, path, status, "本机演示操作")
             self._json(status, response)
         except ApiError as error:
-            state.event(self.command, path[:160], error.status, error.detail)
+            if state is not None:
+                state.event(self.command, path[:160], error.status, error.detail)
             self._json(error.status, {"error": error.detail})
         except (OSError, sqlite3.Error, ValueError, TypeError):
-            state.event(self.command, path[:160], 500, "本机存储或请求处理失败")
+            if state is not None:
+                state.event(self.command, path[:160], 500, "本机存储或请求处理失败")
             self._json(500, {"error": "local request processing failed"})
 
     def _static(self, path):
@@ -604,8 +665,7 @@ def main():
     parser.add_argument("--ready-file", type=Path, help="write the loopback URL after the server binds")
     parser.add_argument("--open-browser", action="store_true")
     args = parser.parse_args()
-    if not 0 <= args.port <= 65535 or not args.device_id or len(args.device_id) > 128 or any(
-            ord(character) < 33 or ord(character) > 126 for character in args.device_id):
+    if not 0 <= args.port <= 65535 or not valid_device_id(args.device_id):
         parser.error("invalid port or device ID")
     temporary = tempfile.TemporaryDirectory(prefix="vaporview-gateway-demo-") if args.data_dir is None else None
     client = args.client or Path(__file__).resolve().parents[2] / "build" / "Release" / "gateway_service_test.exe"
