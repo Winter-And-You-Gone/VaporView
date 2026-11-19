@@ -123,10 +123,11 @@ int main(int argc,char **argv)
           "card title uses shared selection behavior without a text caret");
     auto *header = control<QWidget>(page, "calibrationCardHeader");
     auto *stepPath = control<QWidget>(page, "calibrationStepPath");
-    const std::array<QLabel*, 4> steps{
+    const std::array<QLabel*, 5> steps{
         control<QLabel>(page, "calibrationStep1"), control<QLabel>(page, "calibrationStep2"),
-        control<QLabel>(page, "calibrationStep3"), control<QLabel>(page, "calibrationStep4")};
-    const auto checkSteps = [&](const std::array<bool, 4>& expected) {
+        control<QLabel>(page, "calibrationStep3"), control<QLabel>(page, "calibrationStep4"),
+        control<QLabel>(page, "calibrationStep5")};
+    const auto checkSteps = [&](const std::array<bool, 5>& expected) {
         QApplication::processEvents();
         for (size_t i = 0; i < steps.size(); ++i) {
             auto *step = steps[i];
@@ -136,9 +137,10 @@ int main(int argc,char **argv)
                   "step shows an icon and the correct tooltip state");
         }
     };
-    checkSteps({false, false, false, false});
+    checkSteps({false, false, false, false, false});
     const auto incompleteIcon = steps[0]->pixmap().toImage();
-    const std::array<QString, 4> expectedInstructions{QStringLiteral("已知浓度"), QStringLiteral("气路和信号稳定"),
+    const std::array<QString, 5> expectedInstructions{QStringLiteral("创建新任务"), QStringLiteral("已知浓度"),
+        QStringLiteral("气路和信号稳定"),
         QStringLiteral("阶段均值等权"), QStringLiteral("选择用于测量 / 校验")};
     for (size_t i = 0; i < steps.size(); ++i)
         check(steps[i]->toolTip().contains(expectedInstructions[i]), "each node carries its own detailed instructions");
@@ -163,17 +165,37 @@ int main(int argc,char **argv)
         check(viewportRect.contains(nameRect)&&viewportRect.contains(unitRect)&&viewportRect.contains(createRect),"task controls fit the visible workspace");
         const QRect pathRect(stepPath->mapTo(header, QPoint()), stepPath->size());
         const QRect titleRect(title->mapTo(header, QPoint()), title->size());
-        check(header->rect().contains(pathRect) && titleRect.right() < pathRect.left(),
-              "step path fits beside the title at both sizes and scales");
+        check(header->rect().contains(pathRect) && pathRect.left() - titleRect.right() == 11 &&
+                  qAbs(pathRect.center().y() - titleRect.center().y()) <= 1,
+              "step path sits directly after the title at both sizes and scales");
+        const auto firstCenter = steps.front()->geometry().center();
+        const auto lastCenter = steps.back()->geometry().center();
+        check(lastCenter.x() - firstCenter.x() >= 280 * scale / 100 && lastCenter.y() == firstCenter.y(),
+              "path has five evenly aligned, widely spaced nodes");
+        const auto ring = steps.front()->pixmap().toImage();
+        const auto middle = ring.rect().center();
+        QRect ink;
+        for (int y = 0; y < ring.height(); ++y) {
+            for (int x = 0; x < ring.width(); ++x) {
+                if (qAlpha(ring.pixel(x, y))) ink = ink.united(QRect(x, y, 1, 1));
+            }
+        }
+        check(ring.rect().adjusted(1, 1, -1, -1).contains(ink) && ink.width() * 4 > ring.width() * 3 &&
+                  ink.height() * 4 > ring.height() * 3 &&
+                  qAlpha(ring.pixel(ink.left() + 1, middle.y())) && qAlpha(ring.pixel(ink.right() - 1, middle.y())) &&
+                  qAlpha(ring.pixel(middle.x(), ink.top() + 1)) && qAlpha(ring.pixel(middle.x(), ink.bottom() - 1)),
+              "pending circle has a visible outline in all four directions and transparent padding");
     }
     page.setTheme(false,100);page.resize(1280,1000);QApplication::processEvents();
     control<QLineEdit>(page,"calibrationTaskName")->setText(QStringLiteral("软件测试独立任务"));
     control<QPushButton>(page,"calibrationCreateTask")->click();r.service->synchronize();QApplication::processEvents();
+    checkSteps({true, false, false, false, false});
+    check(steps[0]->pixmap().toImage() != incompleteIcon, "creating a task completes only the first indicator");
     check(control<QSpinBox>(page,"calibrationStageSeconds")->value()==600,"UI ten-minute default");
     control<QDoubleSpinBox>(page,"calibrationStageConcentration")->setValue(100);control<QSpinBox>(page,"calibrationStageSeconds")->setValue(2);
     control<QPushButton>(page,"calibrationAddStage")->click();r.service->synchronize();QApplication::processEvents();
     auto *stages=control<QTableWidget>(page,"calibrationStages");check(stages->rowCount()==1,"stage-centered UI");stages->selectRow(0);
-    checkSteps({false, false, false, false});
+    checkSteps({true, false, false, false, false});
     r.pair(2,4);control<QCheckBox>(page,"calibrationStableConfirmed")->setChecked(true);control<QPushButton>(page,"calibrationStartStage")->click();r.service->synchronize();
     control<QTabWidget>(page,"calibrationWorkspaces")->setCurrentIndex(2);page.hide();
     for(int i=0;i<4;++i){r.now+=500;r.pair(2,4);}check(r.service->view().project.stages[0].status=="complete","page changes and hiding never stop background acquisition");
@@ -183,33 +205,32 @@ int main(int argc,char **argv)
     check(r.service->view().project.stages[0].statistics(816).used==3,"UI exclusion reaches independent model");
     control<QComboBox>(page,"calibrationReviewWave")->setCurrentIndex(1);QApplication::processEvents();check(samples->rowCount()==4,"other wavelength unaffected");
     check(!page.findChild<QWidget*>("calibrationSession")&&!page.findChild<QWidget*>("calibrationImport"),"obsolete Session-import page removed");
-    checkSteps({false, false, false, false});
+    checkSteps({true, false, false, false, false});
     r.service->addStage(200, 2000);
     r.service->synchronize();
-    checkSteps({true, false, false, false});
-    check(steps[0]->pixmap().toImage() != incompleteIcon, "completion changes the rendered node icon");
+    checkSteps({true, true, false, false, false});
     r.pair(4, 8);
     r.service->startStage(1);
     r.service->synchronize();
     for (int i = 0; i < 4; ++i) { r.now += 500; r.pair(4, 8); }
-    checkSteps({true, true, false, false});
+    checkSteps({true, true, true, false, false});
     r.service->fitProject();
     r.service->synchronize();
-    checkSteps({true, true, true, false});
+    checkSteps({true, true, true, true, false});
     r.service->generateFile(QStringLiteral("步骤指示测试"));
     r.service->synchronize();
-    checkSteps({true, true, true, false});
+    checkSteps({true, true, true, true, false});
     const auto files = r.service->view().files;
     check(files.size() == 1, "test generates one calibration file");
     r.service->selectFile(files.first());
     r.service->synchronize();
-    checkSteps({true, true, true, true});
+    checkSteps({true, true, true, true, true});
     r.service->fitProject();
     r.service->synchronize();
-    checkSteps({true, true, true, false});
+    checkSteps({true, true, true, true, false});
     r.service->addStage(300, 2000);
     r.service->synchronize();
-    checkSteps({true, false, false, false});
+    checkSteps({true, true, false, false, false});
     for(int scale:{100,130}){
         page.setTheme(scale==130,scale);page.resize(1280,1000);QApplication::processEvents();check(page.grab().width()>0,"actual Qt render available");
         auto *edit=control<QPlainTextEdit>(page,"calibrationDetails");const auto image=edit->viewport()->grab().toImage();
