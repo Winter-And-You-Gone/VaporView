@@ -690,9 +690,16 @@ void GatewayService::receiveCommand(const QJsonObject& command, quint64 generati
     if (!decoded || decoded.decoded.size() > 64 * 1024) rejected = "invalid-payload";
     const auto type = static_cast<CommandId>(commandId);
     auto payload = decoded.decoded;
+    QString detail;
     if (rejected.isEmpty() && listener && listenerPreparation_)
-        rejected = listenerPreparation_(type, payload);
-    if (!rejected.isEmpty()) { postResult(resultFor(id, rejected), listener); return; }
+        rejected = listenerPreparation_(type, payload, detail);
+    if (!rejected.isEmpty())
+    {
+        auto result = resultFor(id, rejected);
+        if (!detail.isEmpty()) result.insert("detail", detail);
+        postResult(result, listener);
+        return;
+    }
     const auto linkGeneration = service_->linkGeneration();
     const quint16 sequence = service_->sendCommand(type, payload, nullptr, expires);
     if (!sequence)

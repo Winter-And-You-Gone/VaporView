@@ -11,8 +11,8 @@ void MainWindow::initializeGateway()
     state_->gateway_service_->setObjectName(QStringLiteral("gatewayService"));
     state_->gateway_service_->attach(state_->remote_sky_controller_->telemetryService());
     state_->gateway_service_->setListenerCommandPreparation(
-        [this](VaporView::CommandId command, QByteArray& payload) {
-            return prepareGatewayListenerCommand(command, payload);
+        [this](VaporView::CommandId command, QByteArray& payload, QString& detail) {
+            return prepareGatewayListenerCommand(command, payload, detail);
         });
     connect(state_->gateway_service_.get(),
         &VaporView::Ground::Gateway::GatewayService::listenerStartNotSent,

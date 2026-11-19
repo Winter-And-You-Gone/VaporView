@@ -219,7 +219,7 @@ function renderReceipt(command, receipt) {
     return;
   }
   const status = Object.hasOwn(receiptLabels, receipt.status) ? receiptLabels[receipt.status] : label(receipt.status);
-  const parts = [status];
+  const parts = [typeof receipt.detail === "string" && receipt.detail ? receipt.detail : status];
   if (receipt.sequence !== undefined) parts.push(`序号 ${label(receipt.sequence)}`);
   if (receipt.errorCode !== undefined) parts.push(`错误码 ${label(receipt.errorCode)}`);
   if (receipt.result !== undefined) parts.push(`结果 ${label(receipt.result)}`);

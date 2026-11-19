@@ -23,7 +23,7 @@ Session 同步仅针对已经落到地面端且结束写入的 Session（v1 `ses
    .\build\Release\VaporView.exe --source remote --telemetry-transport tcp --telemetry-host 127.0.0.1 --telemetry-tcp-port 39100
    ```
 
-2. 在地面端关闭“界面测试模式”，打开数传并连接设备。等首页开始更新 FPGA 数据，确认已有可用于启动记录的定标参数。
+2. 在地面端关闭“界面测试模式”，打开天地链路。本例使用 FPGA 模拟双波长定标。若天空端当前为“直连”，在地面端的“开发者 → 开发者选项”显示标题栏模式开关，切换到“FPGA”，点击标题栏的“连接”。在“水汽定标”页确认“当前定标”显示与该模拟 FPGA 匹配的 `.vcal`，同时显示“设备在线”，再从网页启动记录。
 3. 地面端启动后默认监听 `127.0.0.1:8443`。同机测试可直接打开下一步的网页。需要修改监听地址或端口时，打开“数据 → Gateway 网关”修改并保存。手动关闭监听后，地面端会记住该选择。
 4. 同机测试时，在浏览器打开 `http://127.0.0.1:8443/`。局域网测试时，将监听 IP 改为**地面机**在测试局域网的网卡 IP，例如 `192.168.1.20`，在地面机防火墙为测试网放行该 TCP 端口，然后在测试机打开 `http://192.168.1.20:8443/`。如果修改了端口，浏览器地址也使用新端口。旧验证台的“4.19 地面网关入站测试”也可填这个地址，点击“打开入站测试页”。
 5. “地面网关”页打开后自动查询状态。核对设备标识，以及“机地数传”显示“已连接”、“SkyCore 状态”显示“已收到”。点“查询最新测量”可读当前值，点“连接 WS”后观察实时表的序号、通道、峰值和质量位持续更新。
@@ -70,7 +70,7 @@ Session 同步仅针对已经落到地面端且结束写入的 Session（v1 `ses
 | 413 | `body-too-large` | 命令体超过 2048 字节。 |
 | 503 | `command-capacity` | 命令记录达到容量上限。 |
 
-结果含 `id`、`deviceId`、`skyCommandId`、`status`。终态带有 `completedAt`，SkyCore 回执还包含 `sequence`、`errorCode` 和 `result`，有对应值时附带 `correlationId` 和 `sessionId`。可能的终态包括 `acknowledged`、`rejected`、`timeout`、`disconnected`、`busy`、`expired`、`not-sent`、`device-busy` 和 `calibration-required`。取得启动记录回执后，再通过状态及实际 Session 核实录制结果。若遇到超时或连接中断，先查询实际状态，再决定是否执行新命令。
+结果含 `id`、`deviceId`、`skyCommandId`、`status`。终态带有 `completedAt`，SkyCore 回执还包含 `sequence`、`errorCode` 和 `result`，有对应值时附带 `correlationId` 和 `sessionId`。可能的终态包括 `acknowledged`、`rejected`、`timeout`、`disconnected`、`busy`、`expired`、`not-sent`、`device-busy` 和 `calibration-required`。若地面端在准备录制时拒绝请求，回执使用 `calibration-required` 并在 `detail` 中给出具体原因，网页显示该说明。取得启动记录回执后，再通过状态及实际 Session 核实录制结果。若遇到超时或连接中断，先查询实际状态，再决定是否执行新命令。
 
 ### 实时消息
 

@@ -514,8 +514,28 @@ bool CalibrationService::prepare(QJsonObject& snapshot,QString *error)
 }
 bool CalibrationService::prepareImpl(QJsonObject& snapshot,QString *error)
 {
-    if(state_.locked || externalSessionOpen_ || state_.acquiring || !state_.connected || !state_.selected.valid) {
-        *error=QStringLiteral("正式录制需要已连接设备、有效双波长 .vcal，且没有定标采集或未结束 Session");return false;}
+    if (state_.locked) {
+        *error = state_.recoveredSession.isEmpty()
+            ? QStringLiteral("已有录制会话锁定定标参数。请先停止当前录制（含暂停状态），再开始新录制。")
+            : QStringLiteral("上次录制异常中断。请确认该会话已停止，再在水汽定标页点击“结束异常恢复的 Session”。");
+        return false;
+    }
+    if (externalSessionOpen_) {
+        *error = QStringLiteral("机载录制会话尚未结束。请先停止机载记录（含暂停状态），再开始新录制。");
+        return false;
+    }
+    if (state_.acquiring) {
+        *error = QStringLiteral("水汽定标正在采集。请先在水汽定标页点击“暂停”或“停止并保留未完成阶段”，再开始正式录制。");
+        return false;
+    }
+    if (!state_.connected) {
+        *error = QStringLiteral("用于水汽测量的 FPGA 未连接。请先连接 FPGA，等水汽定标页显示“设备在线”后再开始录制。");
+        return false;
+    }
+    if (!state_.selected.valid) {
+        *error = QStringLiteral("尚未选择有效的双波长 .vcal 定标文件。请在水汽定标页的“定标文件管理”中选择文件后再开始录制。");
+        return false;
+    }
     const auto selectedFilename=state_.selected.filename;auto f=outsideStateLock([&]{return store_.read(selectedFilename,false,error);});if(!f.valid)return false;
     if(f.sha256!=state_.selected.sha256){*error=QStringLiteral("所选定标文件已变化，请重新选择并核对");return false;}
     if(isSimulationCalibration(f.project) && !isSimulationIdentity(device_)) {

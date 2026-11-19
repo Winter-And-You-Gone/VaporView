@@ -253,7 +253,7 @@ private:
     void setupToolBar();
     void initializeGateway();
     void configureGatewayRuntime();
-    QString prepareGatewayListenerCommand(VaporView::CommandId command, QByteArray& payload);
+    QString prepareGatewayListenerCommand(VaporView::CommandId command, QByteArray& payload, QString& detail);
     void updateGatewayTray();
     void showGatewaySettings();
     void exitApplication();

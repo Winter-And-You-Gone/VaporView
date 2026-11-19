@@ -43,17 +43,27 @@ int main(int argc,char **argv)
     Ground::Session::GroundRecordingService recorder;recorder.setCalibrationPolicy(r.service);
     Ground::Session::GroundRecordingOptions options;options.baseDirectory=QDir(r.root.path()).filePath("sessions");
     QString error;check(!r.service->bindSession(options.baseDirectory,&error),"unprepared policy cannot bind a Session");
-    check(!recorder.start(options,nullptr,&error),"formal Session requires selected valid vcal");
+    check(!recorder.start(options,nullptr,&error)&&error.contains(QStringLiteral("定标文件管理")),
+          "online device without calibration gets a file selection instruction");
     r.bus.setDevice(false,{});r.service->synchronize();r.service->selectFile(f.filename);r.service->synchronize();
     check(r.service->view().selected.valid,"selection allowed before connection");
-    check(!recorder.start(options,nullptr,&error),"connection required");
+    check(!recorder.start(options,nullptr,&error)&&error.contains(QStringLiteral("请先连接 FPGA"))&&
+          error.contains(QStringLiteral("设备在线"))&&!error.contains(QStringLiteral(".vcal")),
+          "offline FPGA with valid selection gets a connection instruction");
+    check(r.service->view().selected.sha256==f.sha256&&!r.service->view().locked,
+          "offline rejection preserves selected calibration and leaves the session unlocked");
     r.bus.setDevice(true,r.identity);r.service->synchronize();
+    r.service->setExternalSessionOpen(true);r.service->synchronize();
+    check(!recorder.start(options,nullptr,&error)&&error.contains(QStringLiteral("请先停止机载记录")),
+          "open external session gets a remote stop instruction");
+    r.service->setExternalSessionOpen(false);r.service->synchronize();
     check(recorder.start(options,nullptr,&error),qPrintable(error));const auto dir=recorder.status().sessionDirectory;
     check(r.service->view().locked,"formal start locks calibration in the service");
     check(!r.service->bindSession(dir+"_other",&error),"another Session cannot replace an existing lock binding");
     {
         Ground::Session::GroundRecordingService concurrent;concurrent.setCalibrationPolicy(r.service);
-        check(!concurrent.start(options,nullptr,&error) && r.service->view().locked,"a failed second recorder cannot release the first recorder's lock");
+        check(!concurrent.start(options,nullptr,&error)&&error.contains(QStringLiteral("请先停止当前录制"))&&
+              r.service->view().locked,"a second recorder gets a stop instruction and preserves the first recorder's lock");
     }
     r.service->selectFile(f.filename);r.service->synchronize();check(r.service->view().error,"selection blocked while recording");
     r.service->startStage(0);r.service->synchronize();check(!r.service->view().acquiring,"ordinary Session blocks independent acquisition");
@@ -80,7 +90,8 @@ int main(int argc,char **argv)
     {
         Rig active;active.task();active.service->addStage(100,5000);active.service->synchronize();active.pair(2,4);
         active.service->startStage(0);active.service->synchronize();Ground::Session::GroundRecordingService blocked;blocked.setCalibrationPolicy(active.service);
-        check(!blocked.start(options,nullptr,&error),"independent acquisition prevents formal Session start");
+        check(!blocked.start(options,nullptr,&error)&&error.contains(QStringLiteral("停止并保留未完成阶段")),
+              "active calibration acquisition gets an instruction to end or pause acquisition");
         check(active.service->view().acquiring,"failed formal start does not alter independent task");
     }
     QTemporaryDir crashRoot;
@@ -129,6 +140,9 @@ int main(int argc,char **argv)
     }
     {
         CalibrationService recovered(crashRoot.path());recovered.synchronize();check(recovered.view().locked&&recovered.view().selected.valid,"restart restores parameter snapshot and lock");
+        QJsonObject snapshot;
+        check(!recovered.prepare(snapshot,&error)&&error.contains(QStringLiteral("结束异常恢复的 Session")),
+              "recovered lock gets the recovery action and takes precedence over missing device connection");
         recovered.selectFile(QStringLiteral("anything"));recovered.synchronize();check(recovered.view().locked,"UI restart never unlocks Session");
         recovered.finishRecoveredSession();recovered.synchronize();check(!recovered.view().locked,"explicit recovered Session termination releases lock");
     }

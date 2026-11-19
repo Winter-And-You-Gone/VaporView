@@ -58,7 +58,7 @@ public:
     QString statusText() const { return status_; }
     QString listenerStatusText() const { return listenerStatus_; }
     quint16 listenerPort() const { return listenerPort_; }
-    using ListenerCommandPreparation = std::function<QString(CommandId, QByteArray&)>;
+    using ListenerCommandPreparation = std::function<QString(CommandId, QByteArray&, QString& detail)>;
     void setListenerCommandPreparation(ListenerCommandPreparation preparation);
     void enqueueSession(const QString& directory);
 

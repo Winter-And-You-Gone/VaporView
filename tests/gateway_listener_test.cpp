@@ -220,6 +220,23 @@ try
     conflict.insert("commandId", static_cast<int>(CommandId::StartRecording));
     require(http("/api/v1/commands", conflict).code == 409, "different command with the same ID conflicts");
 
+    const auto calibrationError = QStringLiteral("缺少原 Session 的定标锁，请先处理异常会话");
+    gateway.setListenerCommandPreparation([&](CommandId type, QByteArray&, QString& detail) -> QString {
+        if (type != CommandId::StartRecording) return {};
+        detail = calibrationError;
+        return QStringLiteral("calibration-required");
+    });
+    const auto start = command("calibration-error", CommandId::StartRecording);
+    require(http("/api/v1/commands", start).code == 202, "start request is accepted for preparation");
+    require(waitForCommandStatus("calibration-error", "calibration-required"),
+        "calibration rejection keeps the existing status");
+    const auto rejected = http("/api/v1/commands/calibration-error");
+    require(rejected.code == 200 && rejected.body.value("detail") == calibrationError && forwarded.size() == 1,
+        "recording rejection carries the original detail without forwarding to SkyCore");
+    const auto duplicate = http("/api/v1/commands", start);
+    require(duplicate.code == 200 && duplicate.body == rejected.body,
+        "duplicate start request returns the original rejection and detail");
+
     require(http("/api/v1/commands", command("no-ack", CommandId::StopRecording, 1)).code == 202,
         "timeout case is accepted for dispatch");
     require(waitForCommandStatus("no-ack", "timeout"),

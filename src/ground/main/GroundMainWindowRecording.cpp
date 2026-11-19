@@ -1846,7 +1846,7 @@ void MainWindow::onScheduledRecordingClicked()
     updateScheduledRecordingAction();
 }
 
-QString MainWindow::prepareGatewayListenerCommand(VaporView::CommandId command, QByteArray& payload)
+QString MainWindow::prepareGatewayListenerCommand(VaporView::CommandId command, QByteArray& payload, QString& detail)
 {
     if (isUiTestMode() || !isRemoteSkyMode() || !state_->remote_sky_controller_ ||
         !state_->remote_sky_controller_->isOpen())
@@ -1858,12 +1858,11 @@ QString MainWindow::prepareGatewayListenerCommand(VaporView::CommandId command, 
         (state_->epsilon_device_session_ && state_->epsilon_device_session_->operationPending()))
         return QStringLiteral("device-busy");
 
-    QString error;
     if (!prepareRemoteCalibration(state_->calibration_service_, state_->remote_recording_state_ == 2,
-                                  payload, &error))
+                                  payload, &detail))
     {
         publishGroundLog(VaporView::LogLevel::Warning, QStringLiteral("session.recording"),
-                         QStringLiteral("calibration_start_rejected"), error);
+                         QStringLiteral("calibration_start_rejected"), detail);
         return QStringLiteral("calibration-required");
     }
     return {};
