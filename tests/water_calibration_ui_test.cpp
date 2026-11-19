@@ -16,6 +16,7 @@
 #include <QTableWidget>
 #include <QTabWidget>
 #include <QMouseEvent>
+#include <array>
 #include <QElapsedTimer>
 #include <QCryptographicHash>
 #include <QThread>
@@ -120,6 +121,27 @@ int main(int argc,char **argv)
           !title->textInteractionFlags().testFlag(Qt::TextSelectableByMouse)&&
           title->textInteractionFlags().testFlag(Qt::TextSelectableByKeyboard)&&title->focusPolicy()==Qt::ClickFocus,
           "card title uses shared selection behavior without a text caret");
+    auto *header = control<QWidget>(page, "calibrationCardHeader");
+    auto *stepPath = control<QWidget>(page, "calibrationStepPath");
+    const std::array<QLabel*, 4> steps{
+        control<QLabel>(page, "calibrationStep1"), control<QLabel>(page, "calibrationStep2"),
+        control<QLabel>(page, "calibrationStep3"), control<QLabel>(page, "calibrationStep4")};
+    const auto checkSteps = [&](const std::array<bool, 4>& expected) {
+        QApplication::processEvents();
+        for (size_t i = 0; i < steps.size(); ++i) {
+            auto *step = steps[i];
+            check(step->property("completed").isValid() && step->property("completed").toBool() == expected[i],
+                  "header step follows actual calibration state");
+            check(!step->pixmap().isNull() && step->toolTip().contains(expected[i] ? QStringLiteral("已完成") : QStringLiteral("未完成")),
+                  "step shows an icon and the correct tooltip state");
+        }
+    };
+    checkSteps({false, false, false, false});
+    const auto incompleteIcon = steps[0]->pixmap().toImage();
+    const std::array<QString, 4> expectedInstructions{QStringLiteral("已知浓度"), QStringLiteral("气路和信号稳定"),
+        QStringLiteral("阶段均值等权"), QStringLiteral("选择用于测量 / 校验")};
+    for (size_t i = 0; i < steps.size(); ++i)
+        check(steps[i]->toolTip().contains(expectedInstructions[i]), "each node carries its own detailed instructions");
     auto *tabs=control<QTabWidget>(page,"calibrationWorkspaces");auto *navigation=control<QFrame>(page,"calibrationNavigationBar");
     auto *workspaceCard=control<QFrame>(page,"calibrationWorkspaceCard");
     for(int i=0;i<tabs->count();++i) {
@@ -139,6 +161,10 @@ int main(int argc,char **argv)
         check(nameRect.center().y()==unitRect.center().y()&&unitRect.center().y()==createRect.center().y(),"task controls share one row");
         check(nameRect.right()<unitRect.left()&&unitRect.right()<createRect.left(),"task controls are ordered without overlap");
         check(viewportRect.contains(nameRect)&&viewportRect.contains(unitRect)&&viewportRect.contains(createRect),"task controls fit the visible workspace");
+        const QRect pathRect(stepPath->mapTo(header, QPoint()), stepPath->size());
+        const QRect titleRect(title->mapTo(header, QPoint()), title->size());
+        check(header->rect().contains(pathRect) && titleRect.right() < pathRect.left(),
+              "step path fits beside the title at both sizes and scales");
     }
     page.setTheme(false,100);page.resize(1280,1000);QApplication::processEvents();
     control<QLineEdit>(page,"calibrationTaskName")->setText(QStringLiteral("软件测试独立任务"));
@@ -147,6 +173,7 @@ int main(int argc,char **argv)
     control<QDoubleSpinBox>(page,"calibrationStageConcentration")->setValue(100);control<QSpinBox>(page,"calibrationStageSeconds")->setValue(2);
     control<QPushButton>(page,"calibrationAddStage")->click();r.service->synchronize();QApplication::processEvents();
     auto *stages=control<QTableWidget>(page,"calibrationStages");check(stages->rowCount()==1,"stage-centered UI");stages->selectRow(0);
+    checkSteps({false, false, false, false});
     r.pair(2,4);control<QCheckBox>(page,"calibrationStableConfirmed")->setChecked(true);control<QPushButton>(page,"calibrationStartStage")->click();r.service->synchronize();
     control<QTabWidget>(page,"calibrationWorkspaces")->setCurrentIndex(2);page.hide();
     for(int i=0;i<4;++i){r.now+=500;r.pair(2,4);}check(r.service->view().project.stages[0].status=="complete","page changes and hiding never stop background acquisition");
@@ -156,6 +183,33 @@ int main(int argc,char **argv)
     check(r.service->view().project.stages[0].statistics(816).used==3,"UI exclusion reaches independent model");
     control<QComboBox>(page,"calibrationReviewWave")->setCurrentIndex(1);QApplication::processEvents();check(samples->rowCount()==4,"other wavelength unaffected");
     check(!page.findChild<QWidget*>("calibrationSession")&&!page.findChild<QWidget*>("calibrationImport"),"obsolete Session-import page removed");
+    checkSteps({false, false, false, false});
+    r.service->addStage(200, 2000);
+    r.service->synchronize();
+    checkSteps({true, false, false, false});
+    check(steps[0]->pixmap().toImage() != incompleteIcon, "completion changes the rendered node icon");
+    r.pair(4, 8);
+    r.service->startStage(1);
+    r.service->synchronize();
+    for (int i = 0; i < 4; ++i) { r.now += 500; r.pair(4, 8); }
+    checkSteps({true, true, false, false});
+    r.service->fitProject();
+    r.service->synchronize();
+    checkSteps({true, true, true, false});
+    r.service->generateFile(QStringLiteral("步骤指示测试"));
+    r.service->synchronize();
+    checkSteps({true, true, true, false});
+    const auto files = r.service->view().files;
+    check(files.size() == 1, "test generates one calibration file");
+    r.service->selectFile(files.first());
+    r.service->synchronize();
+    checkSteps({true, true, true, true});
+    r.service->fitProject();
+    r.service->synchronize();
+    checkSteps({true, true, true, false});
+    r.service->addStage(300, 2000);
+    r.service->synchronize();
+    checkSteps({true, false, false, false});
     for(int scale:{100,130}){
         page.setTheme(scale==130,scale);page.resize(1280,1000);QApplication::processEvents();check(page.grab().width()>0,"actual Qt render available");
         auto *edit=control<QPlainTextEdit>(page,"calibrationDetails");const auto image=edit->viewport()->grab().toImage();

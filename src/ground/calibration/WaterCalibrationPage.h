@@ -21,6 +21,7 @@ private:
     struct State;
     std::unique_ptr<State> state_;
     void refresh();
+    void refreshSteps(bool force = false);
     void refreshReview();
 };
 }

@@ -22,6 +22,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QPainter>
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
@@ -34,6 +35,7 @@
 #include <QTableWidget>
 #include <QVBoxLayout>
 #include <QtConcurrent>
+#include <array>
 #include <cmath>
 
 namespace VaporView::Ground::Calibration
@@ -60,6 +62,76 @@ QString statusText(const QString& s)
         {"paused",QStringLiteral("已暂停")},{"complete",QStringLiteral("完成")},{"incomplete",QStringLiteral("未完成")},{"abandoned",QStringLiteral("已废弃")}};
     return names.value(s,s);
 }
+struct StepGuide
+{
+    QString title;
+    QString instructions;
+};
+const std::array<StepGuide, 4> StepGuides{{
+    {QStringLiteral("创建任务与阶段"),
+     QStringLiteral("在任务与采集填写任务名称，选定统一浓度单位，再点创建新任务。\n"
+                    "按标气的已知浓度逐个添加阶段，填写目标时长和备注。至少两个不同浓度，建议三个或更多。每阶段默认采满 600 秒有效时间。")},
+    {QStringLiteral("逐阶段采集"),
+     QStringLiteral("正常连接设备，等 816 nm 和 1368 nm 的最近 R 都更新，并确认普通 Session 已停止。\n"
+                    "选择对应阶段，换入标气，等气路和信号稳定后勾选确认，再点确认稳定，开始 / 继续采集。\n"
+                    "等两路有效采集达到目标、阶段显示完成，再换下一档。暂停后核对数据与标气，重新确认稳定后继续。")},
+    {QStringLiteral("审核与双波长拟合"),
+     QStringLiteral("在审核与拟合逐阶段查看两路趋势与样本。有异常点时，选点、填写原因，再点排除选中点。\n"
+                    "点双波长拟合（阶段均值等权），核对两路残差、R²、RMSE 和适用范围。补采或修改审核记录后需要重新拟合。")},
+    {QStringLiteral("生成并选用定标文件"),
+     QStringLiteral("在定标文件管理填写文件名，点生成 .vcal。选取新生成的文件，点选择用于测量 / 校验。\n"
+                    "核对当前文件和设备身份，确认两路实时初始浓度，再开始正式录制。此步骤以选用本任务当前两路拟合生成的文件为完成。")},
+}};
+
+std::array<bool, 4> completedSteps(const CalibrationView& view)
+{
+    const auto& project = view.project;
+    QSet<double> concentrations;
+    bool allCollected = true;
+    for (const auto& stage : project.stages) {
+        if (stage.status == QStringLiteral("abandoned")) continue;
+        concentrations.insert(stage.concentration);
+        allCollected &= stage.status == QStringLiteral("complete");
+    }
+    const bool planned = !project.id.isEmpty() && concentrations.size() >= 2;
+    const auto fit816 = project.fits.constFind(816);
+    const auto fit1368 = project.fits.constFind(1368);
+    const bool fitted = fit816 != project.fits.cend() && fit1368 != project.fits.cend() &&
+                        fit816->revision == project.revision && fit1368->revision == project.revision;
+    const auto& selected = view.selected.project;
+    const bool fileInUse = fitted && view.selected.valid && selected.id == project.id &&
+                           selected.revision == project.revision &&
+                           selected.fits.value(816).parameters.id == fit816->parameters.id &&
+                           selected.fits.value(1368).parameters.id == fit1368->parameters.id;
+    return {planned, planned && allCollected, fitted, fileInUse};
+}
+
+QPixmap stepIndicator(QWidget *widget, bool completed, bool dark)
+{
+    const int size = widget->width();
+    const qreal dpr = widget->devicePixelRatioF();
+    QPixmap icon(qRound(size * dpr), qRound(size * dpr));
+    icon.setDevicePixelRatio(dpr);
+    icon.fill(Qt::transparent);
+    QPainter painter(&icon);
+    painter.setRenderHint(QPainter::Antialiasing);
+    const auto color = appThemeColor(completed ? AppThemeColor::Success : AppThemeColor::TextMuted, dark);
+    painter.setPen(QPen(appThemeColor(completed ? AppThemeColor::Success : AppThemeColor::BorderStrong, dark), 1));
+    painter.setBrush(appThemeColor(completed ? AppThemeColor::SuccessBackground : AppThemeColor::SurfaceAlt, dark));
+    painter.drawEllipse(QRectF(0.5, 0.5, size - 1, size - 1));
+    painter.translate(size * 0.14, size * 0.14);
+    painter.scale(size * 0.72 / 24, size * 0.72 / 24);
+    painter.setPen(QPen(color, 2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    // Paths from the bundled Lucide check.svg and x.svg (24-unit view box).
+    if (completed) {
+        painter.drawPolyline(QPolygonF{{20, 6}, {9, 17}, {4, 12}});
+    } else {
+        painter.drawLine(18, 6, 6, 18);
+        painter.drawLine(6, 6, 18, 18);
+    }
+    return icon;
+}
+
 QString sampleDetails(const PeakRecord& row,const ConcentrationStage& stage)
 {
     auto j=row.toJson();QJsonArray audit;
@@ -89,6 +161,9 @@ struct WaterCalibrationPage::State
     std::shared_ptr<CalibrationService> service;
     CalibrationView view;
     QTabWidget *tabs;
+    std::array<QLabel*, StepGuides.size()> stepNodes{};
+    std::array<QFrame*, StepGuides.size() - 1> stepLinks{};
+    bool dark = false;
     QLineEdit *name,*note,*reason,*filename;
     QComboBox *unit,*wave,*files,*drafts,*reviewStage;
     QDoubleSpinBox *concentration;
@@ -119,7 +194,27 @@ WaterCalibrationPage::WaterCalibrationPage(QWidget *parent,const QString& root,s
     auto *cardLayout=new QVBoxLayout(card);cardLayout->setContentsMargins(1,0,1,1);cardLayout->setSpacing(0);
     auto *header=new QWidget(card);header->setObjectName("calibrationCardHeader");auto *headerLayout=new QHBoxLayout(header);headerLayout->setContentsMargins(10,2,10,2);
     auto *title=new VisualTextLabel(QStringLiteral("水汽定标"));title->setObjectName("sectionTitleLabel");
-    configureSelectableCardTitle(title);headerLayout->addWidget(title);cardLayout->addWidget(header);
+    configureSelectableCardTitle(title);headerLayout->addWidget(title);
+    headerLayout->addStretch();
+    auto *steps = new QWidget(header);
+    steps->setObjectName(QStringLiteral("calibrationStepPath"));
+    auto *stepsLayout = new QHBoxLayout(steps);
+    stepsLayout->setContentsMargins(0, 0, 0, 0);
+    stepsLayout->setSpacing(0);
+    for (size_t i = 0; i < s.stepNodes.size(); ++i) {
+        if (i > 0) {
+            s.stepLinks[i - 1] = new QFrame(steps);
+            stepsLayout->addWidget(s.stepLinks[i - 1], 0, Qt::AlignVCenter);
+        }
+        auto *node = new QLabel(steps);
+        node->setObjectName(QStringLiteral("calibrationStep%1").arg(i + 1));
+        node->setAlignment(Qt::AlignCenter);
+        node->setToolTipDuration(20000);
+        s.stepNodes[i] = node;
+        stepsLayout->addWidget(node, 0, Qt::AlignVCenter);
+    }
+    headerLayout->addWidget(steps, 0, Qt::AlignVCenter);
+    cardLayout->addWidget(header);
     auto *body=new QWidget(card);body->setObjectName("calibrationCardBody");auto *layout=new QVBoxLayout(body);cardLayout->addWidget(body,1);
     s.currentFile=new QLabel;s.currentFile->setObjectName("calibrationCurrentFile");s.currentFile->setWordWrap(true);layout->addWidget(s.currentFile);
     s.live=new QLabel;s.live->setObjectName("calibrationLiveConcentration");s.live->setWordWrap(true);layout->addWidget(s.live);
@@ -249,6 +344,7 @@ void WaterCalibrationPage::refresh()
             QStringLiteral("water_calibration"),QStringLiteral("calibration"),v.message,{{QStringLiteral("event"),QStringLiteral("calibration_state")},{QStringLiteral("task_id"),v.project.id}});});
     }
     if(!isVisible())return;
+    refreshSteps();
     s.currentFile->setText(v.selected.valid?QStringLiteral("当前定标：%1 · %2 · %3%4").arg(QFileInfo(v.selected.filename).fileName(),v.selected.project.name,v.locked?QStringLiteral("Session 已锁定"):QStringLiteral("可切换"),v.identityWarning.isEmpty()?QString():" · "+v.identityWarning):QStringLiteral("尚未选择有效双波长 .vcal；正式录制前必须选择"));
     QStringList live;for(int w:{816,1368}){const auto c=v.live.value(w);live.append(QStringLiteral("%1 nm：%2").arg(w).arg(c.valid?QString::number(c.initial,'g',8)+" "+c.unit:!c.status.isEmpty()?c.status:QStringLiteral("等待有效周期和定标参数")));}
     QStringList peaks;for(int w:{816,1368})peaks.append(QStringLiteral("%1 nm 最近 R=%2").arg(w).arg(v.recentPeaks.contains(w)?QString::number(v.recentPeaks[w],'g',8):QStringLiteral("无数据")));
@@ -304,6 +400,30 @@ void WaterCalibrationPage::refreshReview()
     }
     s.fitSummary->setText(summary.join('\n'));s.fitPlot->project=p;s.fitPlot->wavelength=w;s.fitPlot->update();
 }
+void WaterCalibrationPage::refreshSteps(bool force)
+{
+    auto& s = *state_;
+    const auto completed = completedSteps(s.view);
+    for (size_t i = 0; i < completed.size(); ++i) {
+        auto *node = s.stepNodes[i];
+        const auto previous = node->property("completed");
+        if (!force && previous.isValid() && previous.toBool() == completed[i]) continue;
+        node->setProperty("completed", completed[i]);
+        node->setPixmap(stepIndicator(node, completed[i], s.dark));
+        const auto title = QStringLiteral("步骤 %1 · %2").arg(i + 1).arg(StepGuides[i].title);
+        const auto status = completed[i] ? QStringLiteral("已完成") : QStringLiteral("未完成");
+        node->setAccessibleName(QStringLiteral("%1，%2").arg(title, status));
+        node->setAccessibleDescription(QStringLiteral("查看此步骤的操作说明"));
+        const auto instructions = QStringLiteral("%1 · %2\n\n%3").arg(title, status, StepGuides[i].instructions);
+        node->setAccessibleDescription(StepGuides[i].instructions);
+        node->setToolTip(instructions);
+        if (i > 0) {
+            const auto lineColor = appThemeColor(completed[i] ? AppThemeColor::Success : AppThemeColor::BorderStrong, s.dark);
+            s.stepLinks[i - 1]->setStyleSheet(QStringLiteral("background-color: %1; border: none;").arg(lineColor.name()));
+        }
+    }
+}
+
 void WaterCalibrationPage::setTheme(bool dark,int percent)
 {
     setProperty(kAppDarkThemeProperty,dark);setPalette(appThemePalette(dark));
@@ -342,6 +462,10 @@ void WaterCalibrationPage::setTheme(bool dark,int percent)
     colors.setColor(QPalette::PlaceholderText,appThemeColor(AppThemeColor::TextMuted,dark));
     for(auto *widget:findChildren<QWidget*>())widget->setPalette(colors);
     for(auto *combo:findChildren<QComboBox*>())configureComboBoxPopup(combo,dark);
+    state_->dark = dark;
+    for (auto *node : state_->stepNodes) node->setFixedSize(pixels(24), pixels(24));
+    for (auto *link : state_->stepLinks) link->setFixedSize(pixels(16), pixels(2));
+    refreshSteps(true);
     for(auto *edit:{state_->details,state_->sampleDetails}) {
         edit->viewport()->setStyleSheet(applyAppThemeTokens(QStringLiteral("background-color: @vv-surface; color: @vv-text;"),dark));
     }

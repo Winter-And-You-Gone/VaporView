@@ -41,6 +41,7 @@
 #include <QGraphicsOpacityEffect>
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QHelpEvent>
 #include <QHoverEvent>
 #include <QIcon>
 #include <QImage>
@@ -1842,6 +1843,26 @@ void requireRtkSidebarPage(
                 pageStack->widget(4)->objectName() == QStringLiteral("fpgaControlPage") &&
                 pageStack->widget(5)->objectName() == QStringLiteral("waterCalibrationPage"),
             "main page stack preserves existing indices with motion embedded in device configuration");
+    pageStack->setCurrentIndex(5);
+    processEventsFor(60);
+    auto *guideNode = pageStack->currentWidget()->findChild<QLabel *>(QStringLiteral("calibrationStep4"));
+    require(guideNode && guideNode->isVisible(), "calibration guide nodes are visible in the main window");
+    const auto guideCenter = guideNode->rect().center();
+    QHelpEvent guideHover(QEvent::ToolTip, guideCenter, guideNode->mapToGlobal(guideCenter));
+    QApplication::sendEvent(guideNode, &guideHover);
+    QLabel *guideText = nullptr;
+    for (auto *popup : QApplication::topLevelWidgets()) {
+        if (popup->objectName() == QStringLiteral("appTooltipPopup") && popup->isVisible()) {
+            guideText = popup->findChild<QLabel *>(QStringLiteral("appTooltipText"));
+            break;
+        }
+    }
+    require(guideText && guideText->text().contains(QStringLiteral("选择用于测量 / 校验")) &&
+                guideText->text().contains(QStringLiteral("\n\n")),
+            "hover opens the shared multiline operation guide");
+    VaporView::Ground::MainSupport::hideAppTooltipPopup();
+    pageStack->setCurrentIndex(0);
+    processEventsFor(60);
     auto *preDialog = window.findChild<RtkConfigDialog *>();
     require(preDialog != nullptr, "embedded RTK dialog exists before sidebar click");
     auto *preGgaCard = findCardByTitle(preDialog,
