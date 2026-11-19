@@ -1,6 +1,7 @@
 #include "ground/main/GroundMainWindowSupport.h"
 #include "ground/widgets/VisualTextLabel.h"
 #include "ground/widgets/LabelTextSelection.h"
+#include "shared/theme/AppTheme.h"
 
 #include <QAbstractButton>
 #include <QAction>
@@ -14,12 +15,14 @@
 #include <QHelpEvent>
 #include <QHBoxLayout>
 #include <QImage>
+#include <QKeyEvent>
 #include <QKeySequence>
 #include <QLabel>
 #include <QLayout>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
+#include <QPointer>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QScreen>
@@ -442,6 +445,96 @@ public:
         layout->addWidget(shortcut_label_);
     }
 
+    void togglePinned()
+    {
+        auto *button = qobject_cast<QAbstractButton *>(sender());
+        if (!button || !button->isVisible() || button->toolTip().trimmed().isEmpty())
+        {
+            return;
+        }
+        if (pinned_target_ == button)
+        {
+            // A hover request queued before the click must not reopen the guide.
+            dismissed_target_ = button;
+            dismiss();
+            return;
+        }
+        disconnect(pinned_target_destroyed_);
+        dismissed_target_.clear();
+        pinned_target_ = button;
+        pinned_target_destroyed_ = connect(button, &QObject::destroyed, this, &AppTooltipPopup::dismiss);
+        QToolTip::hideText();
+        showFor(button, button->toolTip().trimmed(), {}, isDarkThemeEnabled());
+    }
+
+    bool suppressesHover(const QWidget *target) const
+    {
+        return pinned_target_ || (target && dismissed_target_ == target);
+    }
+
+    void dismiss()
+    {
+        pinned_target_.clear();
+        disconnect(pinned_target_destroyed_);
+        hide();
+    }
+
+    void handleInteraction(QObject *watched, QEvent *event)
+    {
+        switch (event->type())
+        {
+        case QEvent::Leave:
+            if (dismissed_target_.data() == watched)
+            {
+                dismissed_target_.clear();
+            }
+            if (!pinned_target_)
+            {
+                hide();
+            }
+            break;
+        case QEvent::MouseButtonPress:
+            if (pinned_target_.data() != watched)
+            {
+                dismiss();
+            }
+            break;
+        case QEvent::KeyPress:
+        {
+            const int key = static_cast<QKeyEvent *>(event)->key();
+            if (pinned_target_.data() != watched || (key != Qt::Key_Space && key != Qt::Key_Select))
+            {
+                dismiss();
+            }
+            break;
+        }
+        case QEvent::Hide:
+            if (dismissed_target_.data() == watched)
+            {
+                dismissed_target_.clear();
+            }
+            if (pinned_target_.data() == watched)
+            {
+                dismiss();
+            }
+            break;
+        case QEvent::Move:
+        case QEvent::Resize:
+            if (pinned_target_ && (watched == pinned_target_.data() || watched == pinned_target_->window()))
+            {
+                dismiss();
+            }
+            break;
+        case QEvent::Wheel:
+        case QEvent::ApplicationDeactivate:
+        case QEvent::WindowDeactivate:
+            dismiss();
+            break;
+        default:
+            break;
+        }
+    }
+
     void showFor(QWidget *target, const QString& text, const QString& shortcut, bool dark, const QRect& anchor = QRect())
     {
         if (!target || text.trimmed().isEmpty())
@@ -529,22 +622,48 @@ private:
     QColor popup_border_ = QColor(QStringLiteral("#E8E8E8"));
     QLabel *text_label_;
     QLabel *shortcut_label_;
+    QPointer<QWidget> pinned_target_;
+    QPointer<QWidget> dismissed_target_;
+    QMetaObject::Connection pinned_target_destroyed_;
 };
 
-AppTooltipPopup *appTooltipPopup()
+static AppTooltipPopup *appTooltipPopup(bool create = false)
 {
-    static AppTooltipPopup *popup = new AppTooltipPopup();
+    static AppTooltipPopup *popup = nullptr;
+    if (!popup && create)
+    {
+        popup = new AppTooltipPopup();
+    }
     return popup;
 }
 
-void hideAppTooltipPopup()
+bool handleAppTooltipEvent(QObject *watched, QEvent *event, bool dark)
 {
-    appTooltipPopup()->hide();
-}
+    if (event->type() == QEvent::Show)
+    {
+        if (auto *button = qobject_cast<QAbstractButton *>(watched);
+            button && button->property("_vv_tooltip_pinnable").toBool())
+        {
+            QObject::connect(button, &QAbstractButton::clicked,
+                             appTooltipPopup(true), &AppTooltipPopup::togglePinned, Qt::UniqueConnection);
+        }
+    }
+    auto *popup = appTooltipPopup();
+    if (event->type() != QEvent::ToolTip)
+    {
+        if (popup)
+        {
+            popup->handleInteraction(watched, event);
+        }
+        return false;
+    }
 
-bool showAppTooltip(QObject *watched, QEvent *event, bool dark)
-{
     auto *widget = qobject_cast<QWidget *>(watched);
+    if (popup && popup->suppressesHover(widget))
+    {
+        event->accept();
+        return true;
+    }
     if (!widget || !widget->isVisible())
     {
         return false;
@@ -556,6 +675,7 @@ bool showAppTooltip(QObject *watched, QEvent *event, bool dark)
         return false;
     }
 
+    popup = appTooltipPopup(true);
     QRect anchor;
     const QVariant anchorValue = widget->property("_vv_tooltip_anchor_rect");
     if (anchorValue.isValid() && anchorValue.canConvert<QRect>())
@@ -565,7 +685,7 @@ bool showAppTooltip(QObject *watched, QEvent *event, bool dark)
             anchor.isValid() && helpEvent && !anchor.contains(helpEvent->pos()))
         {
             QToolTip::hideText();
-            hideAppTooltipPopup();
+            popup->dismiss();
             event->accept();
             return true;
         }
@@ -579,7 +699,7 @@ bool showAppTooltip(QObject *watched, QEvent *event, bool dark)
     }
 
     QToolTip::hideText();
-    appTooltipPopup()->showFor(widget, text, shortcut, dark, anchor);
+    popup->showFor(widget, text, shortcut, dark, anchor);
     event->accept();
     return true;
 }

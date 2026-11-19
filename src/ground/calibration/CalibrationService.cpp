@@ -425,6 +425,24 @@ bool CalibrationService::persist(bool acquisitionProgress)
 }
 void CalibrationService::exclude(const QString& stage,int w,const QSet<QString>& ids,bool excluded,const QString& reason)
 {submit([this,stage,w,ids,excluded,reason]{if(!editable())return;QString e;if(!state_.project.exclude(stage,w,ids,excluded,reason,&e)){message(e,true);return;}dirty_=true;if(persist())message(QStringLiteral("审核记录已保存，统计已更新；请重新拟合"));});}
+void CalibrationService::confirmReview()
+{
+    submit([this] {
+        if (!editable()) return;
+        if (!state_.project.allStagesCollected()) {
+            message(QStringLiteral("请先完成各浓度阶段的采集"), true);
+            return;
+        }
+        if (state_.project.reviewComplete) return;
+        state_.project.reviewComplete = true;
+        dirty_ = true;
+        if (persist()) {
+            message(QStringLiteral("已确认当前数据审核完成"));
+        } else {
+            state_.project.reviewComplete = false;
+        }
+    });
+}
 void CalibrationService::fitProject()
 {submit([this]{if(!editable())return;auto project=state_.project;const auto errors=outsideStateLock([&]{return project.fit();});state_.project=project;QStringList result;
     for(int w:{816,1368})result.append(QString::number(w)+" nm: "+(errors.contains(w)?errors[w]:QStringLiteral("拟合成功 ")+state_.project.fits[w].warning));
@@ -435,7 +453,29 @@ void CalibrationService::inspectFile(const QString& filename)
 {submit([this,filename]{QString error;const auto f=outsideStateLock([&]{return store_.read(filename,false,&error);});
     if(!f.valid){message(error,true);return;}state_.inspectedDocument=f.summary;++state_.inspection;message(QStringLiteral("文件完整性及双波长参数已校验：%1").arg(filename));});}
 void CalibrationService::generateFile(const QString& name)
-{submit([this,name]{if(!editable())return;QString e;CalibrationFile f;const auto project=state_.project;if(!persist() || !outsideStateLock([&]{return store_.generate(project,name,f,&e);})){if(!e.isEmpty())message(e,true);return;}listFiles();message(QStringLiteral("定标文件已生成：%1").arg(f.filename));});}
+{
+    submit([this, name] {
+        if (!editable() || (dirty_ && !persist())) return;
+        QString error;
+        CalibrationFile file;
+        const auto project = state_.project;
+        if (!outsideStateLock([&] { return store_.generate(project, name, file, &error); })) {
+            message(error, true);
+            return;
+        }
+        listFiles();
+        const auto generated = QStringLiteral("定标文件已生成：%1").arg(file.filename);
+        if (!state_.project.fileGenerated) {
+            state_.project.fileGenerated = true;
+            dirty_ = true;
+            if (!persist()) {
+                message(generated + QStringLiteral("\n生成进度未保存到草稿：") + state_.message, true);
+                return;
+            }
+        }
+        message(generated);
+    });
+}
 void CalibrationService::openProject(const QString& filename,bool draft)
 {
     submit([this,filename,draft]{if(!editable())return;if(dirty_ && !persist())return;QString e;auto f=outsideStateLock([&]{return store_.read(filename,draft,&e);});
@@ -451,17 +491,64 @@ void CalibrationService::openProject(const QString& filename,bool draft)
         dirty_=true;if(persist())message(QStringLiteral("草稿/修订任务已加载；恢复前请核对设备及标气稳定状态"));
     });
 }
-void CalibrationService::selectFile(const QString& filename,bool confirmed)
+void CalibrationService::selectFile(const QString& filename, bool confirmed)
 {
-    submit([this,filename,confirmed]{if(state_.acquiring || state_.locked || externalSessionOpen_){message(QStringLiteral("定标采集或活动 Session 期间禁止切换定标文件"),true);return;}
-        if(QFileInfo(filename).absolutePath()!=QFileInfo(store_.directory()).absoluteFilePath()){message(QStringLiteral("请先将外部 .vcal 导入安装目录 calibrations，再选择用于测量"),true);return;}
-        QString e;auto f=outsideStateLock([&]{return store_.read(filename,false,&e);});if(!f.valid){message(e,true);return;}
-        const bool mismatch=state_.connected && !f.project.deviceIdentity.isEmpty() && f.project.deviceIdentity!=device_;
-        if(mismatch && !confirmed){message(QStringLiteral("定标文件设备身份不一致，请核对详情后明确确认使用"),true);return;}
-        if(!atomicJson(QDir(store_.directory()).filePath("selection.json"),{{"filename",f.filename},{"sha256",f.sha256}},&e)){message(e,true);return;}
-        state_.selected=f;state_.identityWarning=mismatch?QStringLiteral("设备身份不一致，用户已核对并确认使用"):QString();state_.live.clear();
-        message(QStringLiteral("已选择 %1；验证用线性模型，初始浓度未进行温压补偿").arg(QFileInfo(filename).fileName())+(mismatch?"\n"+state_.identityWarning:QString()));
+    submit([this, filename, confirmed] {
+        const QString error = selectFileImpl(filename, confirmed, {}, false);
+        if (!error.isEmpty()) message(error, true);
     });
+}
+
+void CalibrationService::selectFileForRecording(const QString& filename, bool confirmed, const QString& expectedSha256,
+                                                std::function<void(const QString&)> completion)
+{
+    {
+        std::lock_guard lock(mutex_);
+        if (!stopping_ && commands_.size() < 32) {
+            commands_.push_back({[this, filename, confirmed, expectedSha256, completion = std::move(completion)] {
+                completion(selectFileImpl(filename, confirmed, expectedSha256, true));
+            }, admittedSerial_});
+            wake_.notify_all();
+            return;
+        }
+    }
+    completion(QStringLiteral("定标服务当前不可用或操作队列繁忙，请稍后重试"));
+}
+
+QString CalibrationService::selectFileImpl(const QString& filename, bool confirmed, const QString& expectedSha256,
+                                           bool forRecording)
+{
+    if (state_.acquiring || state_.locked || externalSessionOpen_)
+        return QStringLiteral("定标采集或活动 Session 期间禁止切换定标文件");
+    if (QFileInfo(filename).absolutePath() != QFileInfo(store_.directory()).absoluteFilePath())
+        return QStringLiteral("请先将外部 .vcal 导入安装目录 calibrations，再选择用于测量");
+
+    QString error;
+    const auto file = outsideStateLock([&] { return store_.read(filename, false, &error); });
+    if (!file.valid) return error.isEmpty() ? QStringLiteral("无法验证定标文件") : error;
+    if (!expectedSha256.isEmpty() && file.sha256 != expectedSha256)
+        return QStringLiteral("当前定标文件已变化，请重新选用并核对文件后再开始记录");
+    if (forRecording) {
+        if (!state_.connected)
+            return QStringLiteral("用于水汽测量的 FPGA 未连接。请先连接 FPGA，再开始正式记录。");
+        if (isSimulationCalibration(file.project) && !isSimulationIdentity(device_))
+            return QStringLiteral("FPGA 模拟定标文件仅可用于 FPGA 模拟器，真实设备请先选择实机定标文件");
+        error = VaporView::Session::validateRuntimeCalibration(runtimeParameters(file));
+        if (!error.isEmpty()) return error;
+    }
+    const bool mismatch = state_.connected && !file.project.deviceIdentity.isEmpty() && file.project.deviceIdentity != device_;
+    if (mismatch && !confirmed)
+        return QStringLiteral("定标文件设备身份不一致，请核对详情后明确确认使用");
+    if (!atomicJson(QDir(store_.directory()).filePath("selection.json"),
+                    {{"filename", file.filename}, {"sha256", file.sha256}}, &error))
+        return error;
+
+    state_.selected = file;
+    state_.identityWarning = mismatch ? QStringLiteral("设备身份不一致，用户已核对并确认使用") : QString();
+    state_.live.clear();
+    message(QStringLiteral("已选择 %1；验证用线性模型，初始浓度未进行温压补偿").arg(QFileInfo(filename).fileName()) +
+            (mismatch ? "\n" + state_.identityWarning : QString()));
+    return {};
 }
 void CalibrationService::copyFile(const QString& filename,const QString& name)
 {submit([this,filename,name]{QString e;CalibrationFile f;if(!outsideStateLock([&]{return store_.copy(filename,name,f,&e);}))message(e,true);else{listFiles();message(QStringLiteral("已另存为：%1").arg(f.filename));}});}

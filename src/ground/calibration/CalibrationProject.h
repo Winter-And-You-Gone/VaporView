@@ -63,6 +63,7 @@ struct CalibrationProject
     QJsonObject deviceIdentity;
     QJsonObject hardwareMapping{{"816", 0x31}, {"1368", 0x30}};
     int revision = 1;
+    bool reviewComplete = false, fileGenerated = false; // Current draft revision and fits only.
     QVector<ConcentrationStage> stages;
     QMap<int, StageFit> fits;
     QVector<Fit> legacyFits;
@@ -70,6 +71,7 @@ struct CalibrationProject
     QString validate(bool requireFits = false) const;
     bool exclude(const QString& stageId, int wavelength, const QSet<QString>& records,
                  bool excluded, const QString& reason, QString *error);
+    bool allStagesCollected() const;
     void invalidateFits();
     QMap<int, QString> fit();
     Fit calculationFit(int wavelength) const;

@@ -1845,24 +1845,65 @@ void requireRtkSidebarPage(
             "main page stack preserves existing indices with motion embedded in device configuration");
     pageStack->setCurrentIndex(5);
     processEventsFor(60);
-    auto *guideNode = pageStack->currentWidget()->findChild<QLabel *>(QStringLiteral("calibrationStep5"));
-    require(guideNode && guideNode->isVisible(), "calibration guide nodes are visible in the main window");
+    auto *guideNode = pageStack->currentWidget()->findChild<QToolButton *>(QStringLiteral("calibrationStep6"));
+    auto *otherGuideNode = pageStack->currentWidget()->findChild<QToolButton *>(QStringLiteral("calibrationStep1"));
+    require(guideNode && guideNode->isVisible() && otherGuideNode && otherGuideNode->isVisible(),
+            "calibration guide nodes are visible in the main window");
     const auto guideCenter = guideNode->rect().center();
-    QHelpEvent guideHover(QEvent::ToolTip, guideCenter, guideNode->mapToGlobal(guideCenter));
-    QApplication::sendEvent(guideNode, &guideHover);
-    QLabel *guideText = nullptr;
-    for (auto *popup : QApplication::topLevelWidgets()) {
-        if (popup->objectName() == QStringLiteral("appTooltipPopup") && popup->isVisible()) {
-            guideText = popup->findChild<QLabel *>(QStringLiteral("appTooltipText"));
-            break;
+    const auto hoverGuide = [](QWidget *node) {
+        const QPoint center = node->rect().center();
+        QHelpEvent hover(QEvent::ToolTip, center, node->mapToGlobal(center));
+        QApplication::sendEvent(node, &hover);
+    };
+    const auto visibleGuide = []() -> QLabel * {
+        for (auto *popup : QApplication::topLevelWidgets())
+        {
+            if (popup->objectName() == QStringLiteral("appTooltipPopup") && popup->isVisible())
+            {
+                return popup->findChild<QLabel *>(QStringLiteral("appTooltipText"));
+            }
         }
-    }
-    require(guideText && guideText->text().contains(QStringLiteral("选择用于测量 / 校验")) &&
-                guideText->text().contains(QStringLiteral("\n\n")),
-            "hover opens the shared multiline operation guide");
-    VaporView::Ground::MainSupport::hideAppTooltipPopup();
+        return nullptr;
+    };
+    hoverGuide(guideNode);
+    auto *guideText = visibleGuide();
+    require(guideText && guideText->text().contains(QStringLiteral("生成定标文件")) &&
+                guideText->text().contains(QStringLiteral(".vcal")),
+            "hover opens the shared operation guide for generating a calibration file");
+    const QString generationGuide = guideText->text();
+    QEvent guideLeave(QEvent::Leave);
+    QApplication::sendEvent(guideNode, &guideLeave);
+    require(!visibleGuide(), "leaving an unpinned guide closes it");
+
+    clickWidgetAt(guideNode, guideCenter, 0);
+    QApplication::sendEvent(guideNode, &guideLeave);
+    hoverGuide(otherGuideNode);
+    guideText = visibleGuide();
+    require(guideText && guideText->text() == generationGuide,
+            "click pins the guide across pointer leave and hover on a different node");
+    clickWidgetAt(guideNode, guideCenter, 0);
+    hoverGuide(guideNode);
+    require(!visibleGuide(), "second click closes the pinned guide without immediate hover reopening");
+
+    guideNode->setFocus(Qt::TabFocusReason);
+    QKeyEvent guideSpacePress(QEvent::KeyPress, Qt::Key_Space, Qt::NoModifier);
+    QKeyEvent guideSpaceRelease(QEvent::KeyRelease, Qt::Key_Space, Qt::NoModifier);
+    QApplication::sendEvent(guideNode, &guideSpacePress);
+    QApplication::sendEvent(guideNode, &guideSpaceRelease);
+    require(visibleGuide() && visibleGuide()->text() == generationGuide, "Space pins the focused guide");
+    QApplication::sendEvent(guideNode, &guideSpacePress);
+    QApplication::sendEvent(guideNode, &guideSpaceRelease);
+    require(!visibleGuide(), "Space also closes the pinned guide");
+
+    clickWidgetAt(guideNode, guideCenter, 0);
+    clickWidgetAt(pageStack, pageStack->rect().center(), 0);
+    require(!visibleGuide(), "clicking outside the path node closes the pinned guide");
+
+    clickWidgetAt(guideNode, guideCenter, 0);
+    require(visibleGuide(), "calibration guide can be pinned again");
     pageStack->setCurrentIndex(0);
     processEventsFor(60);
+    require(!visibleGuide(), "leaving the calibration page closes the pinned guide");
     auto *preDialog = window.findChild<RtkConfigDialog *>();
     require(preDialog != nullptr, "embedded RTK dialog exists before sidebar click");
     auto *preGgaCard = findCardByTitle(preDialog,

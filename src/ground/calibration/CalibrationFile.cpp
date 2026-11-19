@@ -20,6 +20,10 @@ QJsonObject document(const CalibrationProject& p,const QString& kind)
 {
     QJsonObject j{{"kind",kind},{"schema_version",1},{"file_id",calibrationUuid()},
         {"created_utc",calibrationUtcNow()},{"project",p.toJson()}};
+    if (kind == QStringLiteral("vaporview_calibration_draft")) {
+        if (p.reviewComplete) j["review_complete"] = true;
+        if (p.fileGenerated) j["file_generated"] = true;
+    }
     j["sha256"]=QString::fromLatin1(calibrationDigest(j));return j;
 }
 QString ioError(const QString& name,const QString& detail)
@@ -185,8 +189,12 @@ CalibrationFile CalibrationFileStore::decode(QByteArray bytes,bool draft,QString
     if(observer)observer("canonical_sha");
     f.id=j["file_id"].toString();f.createdUtc=j["created_utc"].toString();
     f.summary=documentSummary(doc.object());
+    const bool reviewComplete = draft && j["review_complete"].toBool();
+    const bool fileGenerated = draft && j["file_generated"].toBool();
     auto project=j["project"].toObject();doc={};j={};
     f.project=CalibrationProject::fromJson(std::move(project),error,observer);if(!error->isEmpty())return f;
+    f.project.reviewComplete = reviewComplete;
+    f.project.fileGenerated = fileGenerated;
     *error=f.project.validate(!draft);if(!error->isEmpty())return f;
     f.valid=true;
     if(observer)observer("validated");

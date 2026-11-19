@@ -251,8 +251,7 @@ QString shortcutTextFromWidget(QWidget *widget);
 void fitButtonMinimumWidth(QAbstractButton *button, int floorWidth = 0);
 void fitButtonFixedWidth(QAbstractButton *button, int floorWidth = 0, int padding = 24);
 QString shortcutTextFromTooltipSuffix(QString& text);
-void hideAppTooltipPopup();
-bool showAppTooltip(QObject *watched, QEvent *event, bool dark);
+bool handleAppTooltipEvent(QObject *watched, QEvent *event, bool dark);
 
 void configureTemperatureControllerTwoRowGrid(QGridLayout *layout, int horizontalSpacing);
 QFont numericFontFrom(const QFont& base);

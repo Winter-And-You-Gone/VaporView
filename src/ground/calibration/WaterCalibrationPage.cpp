@@ -33,8 +33,10 @@
 #include <QSplitter>
 #include <QTabWidget>
 #include <QTableWidget>
+#include <QToolButton>
 #include <QVBoxLayout>
 #include <QtConcurrent>
+#include <algorithm>
 #include <array>
 #include <cmath>
 
@@ -67,47 +69,39 @@ struct StepGuide
     QString title;
     QString instructions;
 };
-const std::array<StepGuide, 5> StepGuides{{
+const std::array<StepGuide, 6> StepGuides{{
     {QStringLiteral("创建任务"),
      QStringLiteral("在任务与采集填写任务名称，为全部阶段选定统一浓度单位，再点创建新任务。\n"
                     "继续之前保存的任务时，在草稿列表中选中对应任务，再点恢复草稿。")},
     {QStringLiteral("添加浓度阶段"),
      QStringLiteral("填写标气的已知浓度、有效采集时长和备注，点添加阶段。按计划逐个添加，再检查浓度和顺序。\n"
-                    "至少添加两个不同浓度，建议三个或更多。每阶段默认采满 600 秒有效时间。")},
+                    "添加任一阶段后，此点即完成。拟合需要至少两个不同浓度，建议三个或更多；每阶段默认采满 600 秒有效时间。")},
     {QStringLiteral("逐阶段采集"),
      QStringLiteral("正常连接设备，等 816 nm 和 1368 nm 的最近 R 都更新，并确认普通 Session 已停止。\n"
                     "选择对应阶段，换入标气，等气路和信号稳定后勾选确认，再点确认稳定，开始 / 继续采集。\n"
                     "等两路有效采集达到目标、阶段显示完成，再换下一档。暂停后核对数据与标气，重新确认稳定后继续。")},
-    {QStringLiteral("审核与双波长拟合"),
-     QStringLiteral("在审核与拟合逐阶段查看两路趋势与样本。有异常点时，选点、填写原因，再点排除选中点。\n"
-                    "点双波长拟合（阶段均值等权），核对两路残差、R²、RMSE 和适用范围。补采或修改审核记录后需要重新拟合。")},
-    {QStringLiteral("生成并选用定标文件"),
-     QStringLiteral("在定标文件管理填写文件名，点生成 .vcal。选取新生成的文件，点选择用于测量 / 校验。\n"
-                    "核对当前文件和设备身份，确认两路实时初始浓度，再开始正式录制。此步骤以选用本任务当前两路拟合生成的文件为完成。")},
+    {QStringLiteral("审核采集数据"),
+     QStringLiteral("在审核与拟合页逐阶段查看两路趋势与样本。有异常点时，选点、填写原因，再点排除选中点。\n"
+                    "核对两个波长及各个阶段后，点确认审核完成。采集或排除记录变更后，重新核对数据。")},
+    {QStringLiteral("双波长拟合"),
+     QStringLiteral("点双波长拟合（阶段均值等权），核对 816 nm 和 1368 nm 的公式、残差、R²、RMSE 和适用范围。\n"
+                    "至少需要两个不同的已完成浓度水平，并且每路都要有可用样本。补采或修改审核记录后需要重新拟合。")},
+    {QStringLiteral("生成定标文件"),
+     QStringLiteral("在定标文件管理填写文件名，点击生成 .vcal。确认页面提示文件已生成。\n"
+                    "正式测量时可在开始记录前核对或切换所用定标文件。")},
 }};
 
-std::array<bool, StepGuides.size()> completedSteps(const CalibrationView& view)
+std::array<bool, StepGuides.size()> completedSteps(const CalibrationProject& project)
 {
-    const auto& project = view.project;
-    QSet<double> concentrations;
-    bool allCollected = true;
-    for (const auto& stage : project.stages) {
-        if (stage.status == QStringLiteral("abandoned")) continue;
-        concentrations.insert(stage.concentration);
-        allCollected &= stage.status == QStringLiteral("complete");
-    }
-    const bool taskCreated = !project.id.isEmpty();
-    const bool planned = taskCreated && concentrations.size() >= 2;
+    const bool hasStage = std::any_of(project.stages.cbegin(), project.stages.cend(), [](const auto& stage) {
+        return stage.status != QStringLiteral("abandoned");
+    });
     const auto fit816 = project.fits.constFind(816);
     const auto fit1368 = project.fits.constFind(1368);
     const bool fitted = fit816 != project.fits.cend() && fit1368 != project.fits.cend() &&
                         fit816->revision == project.revision && fit1368->revision == project.revision;
-    const auto& selected = view.selected.project;
-    const bool fileInUse = fitted && view.selected.valid && selected.id == project.id &&
-                           selected.revision == project.revision &&
-                           selected.fits.value(816).parameters.id == fit816->parameters.id &&
-                           selected.fits.value(1368).parameters.id == fit1368->parameters.id;
-    return {taskCreated, planned, planned && allCollected, fitted, fileInUse};
+    return {!project.id.isEmpty(), hasStage, project.allStagesCollected(), project.reviewComplete,
+            fitted, fitted && project.fileGenerated};
 }
 
 QPixmap stepIndicator(QWidget *widget, bool completed, bool dark)
@@ -119,11 +113,12 @@ QPixmap stepIndicator(QWidget *widget, bool completed, bool dark)
     icon.fill(Qt::transparent);
     QPainter painter(&icon);
     painter.setRenderHint(QPainter::Antialiasing);
-    const auto color = appThemeColor(completed ? AppThemeColor::Success : AppThemeColor::TextMuted, dark);
+    const auto color = appThemeColor(completed ? AppThemeColor::HomeDeviceSuccess : AppThemeColor::HomeDeviceDanger, dark);
     const qreal inset = size / 10.0;
     const QRectF circle(inset, inset, size - 2 * inset, size - 2 * inset);
-    painter.setPen(QPen(appThemeColor(completed ? AppThemeColor::Success : AppThemeColor::BorderStrong, dark), 1.5));
-    painter.setBrush(appThemeColor(completed ? AppThemeColor::SuccessBackground : AppThemeColor::SurfaceAlt, dark));
+    painter.setPen(QPen(color, 1.5));
+    painter.setBrush(appThemeColor(completed ? AppThemeColor::HomeDeviceSuccessBackground
+                                             : AppThemeColor::HomeDeviceDangerBackground, dark));
     painter.drawEllipse(circle);
     const qreal glyphSize = size * 0.63;
     const qreal glyphInset = (size - glyphSize) / 2.0;
@@ -169,7 +164,8 @@ struct WaterCalibrationPage::State
     std::shared_ptr<CalibrationService> service;
     CalibrationView view;
     QTabWidget *tabs;
-    std::array<QLabel*, StepGuides.size()> stepNodes{};
+    std::array<QToolButton*, StepGuides.size()> stepNodes{};
+    QPushButton *confirmReview;
     std::array<QFrame*, StepGuides.size() - 1> stepLinks{};
     bool dark = false;
     QLineEdit *name,*note,*reason,*filename;
@@ -215,9 +211,11 @@ WaterCalibrationPage::WaterCalibrationPage(QWidget *parent,const QString& root,s
             s.stepLinks[i - 1] = new QFrame(steps);
             stepsLayout->addWidget(s.stepLinks[i - 1], 0, Qt::AlignVCenter);
         }
-        auto *node = new QLabel(steps);
+        auto *node = new QToolButton(steps);
         node->setObjectName(QStringLiteral("calibrationStep%1").arg(i + 1));
-        node->setAlignment(Qt::AlignCenter);
+        node->setProperty("_vv_tooltip_pinnable", true);
+        node->setFocusPolicy(Qt::StrongFocus);
+        node->setCursor(Qt::PointingHandCursor);
         node->setToolTipDuration(20000);
         s.stepNodes[i] = node;
         stepsLayout->addWidget(node, 0, Qt::AlignVCenter);
@@ -263,9 +261,10 @@ WaterCalibrationPage::WaterCalibrationPage(QWidget *parent,const QString& root,s
     button(QStringLiteral("下移"),"calibrationStageDown",editRow,[this]{state_->service->moveStage(state_->stageIndex,1);});editRow->addStretch();a->addLayout(editRow);
     s.stable=new QCheckBox(QStringLiteral("已切换至此阶段标气，并确认气路和测量信号稳定"));s.stable->setObjectName("calibrationStableConfirmed");a->addWidget(s.stable);
     auto *runRow=new QHBoxLayout;
-    button(QStringLiteral("确认稳定，开始 / 继续采集"),"calibrationStartStage",runRow,[this]{
-        if(!state_->stable->isChecked()){state_->status->setText(QStringLiteral("请先人工确认标气稳定"));return;}
+    auto *startStage=button(QStringLiteral("确认稳定，开始 / 继续采集"),"calibrationStartStage",runRow,[this]{
         state_->service->startStage(state_->stageIndex);state_->stable->setChecked(false);});
+    startStage->setEnabled(false);
+    connect(s.stable,&QCheckBox::toggled,startStage,&QPushButton::setEnabled);
     button(QStringLiteral("暂停"),"calibrationPauseStage",runRow,[this]{state_->service->pauseStage();});
     button(QStringLiteral("停止并保留未完成阶段"),"calibrationStopStage",runRow,[this]{state_->service->pauseStage(true);});runRow->addStretch();a->addLayout(runRow);
     s.progress=new QProgressBar;s.progress->setRange(0,1000);s.progress->setObjectName("calibrationProgress");a->addWidget(s.progress);
@@ -290,7 +289,9 @@ WaterCalibrationPage::WaterCalibrationPage(QWidget *parent,const QString& root,s
     button(QStringLiteral("排除选中点"),"calibrationExclude",excludeRow,[exclude]{exclude(true);});
     button(QStringLiteral("恢复选中点"),"calibrationRestore",excludeRow,[exclude]{exclude(false);});r->addLayout(excludeRow);
     s.statistics=table({QStringLiteral("波长"),QStringLiteral("原始 / 有效 / 质量无效 / 人工排除 / 参与统计"),QStringLiteral("均值"),QStringLiteral("标准差"),QStringLiteral("最小 / 最大")},review);s.statistics->setMaximumHeight(120);r->addWidget(s.statistics);
-    auto *fitRow=new QHBoxLayout;button(QStringLiteral("双波长拟合（阶段均值等权）"),"calibrationFit",fitRow,[this]{state_->service->fitProject();});fitRow->addStretch();r->addLayout(fitRow);
+    auto *fitRow=new QHBoxLayout;
+    s.confirmReview=button(QStringLiteral("确认审核完成"),"calibrationConfirmReview",fitRow,[this]{state_->service->confirmReview();});
+    button(QStringLiteral("双波长拟合（阶段均值等权）"),"calibrationFit",fitRow,[this]{state_->service->fitProject();});fitRow->addStretch();r->addLayout(fitRow);
     s.fitSummary=new QLabel;s.fitSummary->setWordWrap(true);s.fitSummary->setTextInteractionFlags(Qt::TextSelectableByMouse);r->addWidget(s.fitSummary);
     s.fitPlot=new CalibrationFitPlot;s.fitPlot->setMinimumHeight(210);r->addWidget(s.fitPlot,1);workspace(review,QStringLiteral("审核与拟合"));
 
@@ -413,22 +414,22 @@ void WaterCalibrationPage::refreshReview()
 void WaterCalibrationPage::refreshSteps(bool force)
 {
     auto& s = *state_;
-    const auto completed = completedSteps(s.view);
+    const auto completed = completedSteps(s.view.project);
+    s.confirmReview->setEnabled(completed[2] && !completed[3] && !s.view.acquiring && !s.view.locked);
     for (size_t i = 0; i < completed.size(); ++i) {
         auto *node = s.stepNodes[i];
         const auto previous = node->property("completed");
         if (!force && previous.isValid() && previous.toBool() == completed[i]) continue;
         node->setProperty("completed", completed[i]);
-        node->setPixmap(stepIndicator(node, completed[i], s.dark));
+        node->setIcon(QIcon(stepIndicator(node, completed[i], s.dark)));
         const auto title = QStringLiteral("步骤 %1 · %2").arg(i + 1).arg(StepGuides[i].title);
         const auto status = completed[i] ? QStringLiteral("已完成") : QStringLiteral("未完成");
         node->setAccessibleName(QStringLiteral("%1，%2").arg(title, status));
-        node->setAccessibleDescription(QStringLiteral("查看此步骤的操作说明"));
         const auto instructions = QStringLiteral("%1 · %2\n\n%3").arg(title, status, StepGuides[i].instructions);
         node->setAccessibleDescription(StepGuides[i].instructions);
         node->setToolTip(instructions);
         if (i > 0) {
-            const auto lineColor = appThemeColor(completed[i] ? AppThemeColor::Success : AppThemeColor::BorderStrong, s.dark);
+            const auto lineColor = appThemeColor(completed[i] ? AppThemeColor::HomeDeviceSuccess : AppThemeColor::BorderStrong, s.dark);
             s.stepLinks[i - 1]->setStyleSheet(QStringLiteral("background-color: %1; border: none;").arg(lineColor.name()));
         }
     }
@@ -451,6 +452,8 @@ void WaterCalibrationPage::setTheme(bool dark,int percent)
         "QWidget#waterCalibrationPage QPushButton:pressed { background-color: @vv-primary-pressed; }"
         "QWidget#waterCalibrationPage QPushButton:disabled { background-color: @vv-border-strong; color: @vv-white; }"
         "QWidget#waterCalibrationPage QPushButton:focus { border: 1px solid @vv-focus; }"
+        "QWidget#calibrationStepPath QToolButton { background: transparent; border: none; border-radius: 4px; margin: 0; padding: 0; }"
+        "QWidget#calibrationStepPath QToolButton:focus { background: @vv-primary-subtle; }"
         "QWidget#waterCalibrationPage QTableWidget, QWidget#waterCalibrationPage QPlainTextEdit { background: @vv-surface; alternate-background-color: @vv-surface-alt; color: @vv-text; gridline-color: @vv-border; }"
         "QWidget#waterCalibrationPage QHeaderView::section { background: @vv-surface-alt; color: @vv-text; padding: 4px; }"
         "QWidget#waterCalibrationPage QLineEdit, QWidget#waterCalibrationPage QComboBox, QWidget#waterCalibrationPage QAbstractSpinBox { background-color: @vv-field-bg; border: 1px solid @vv-border; border-radius: 6px; padding: 4px 10px; min-height: %6px; max-height: %6px; color: @vv-text; font-size: %2px; }"
@@ -473,7 +476,11 @@ void WaterCalibrationPage::setTheme(bool dark,int percent)
     for(auto *widget:findChildren<QWidget*>())widget->setPalette(colors);
     for(auto *combo:findChildren<QComboBox*>())configureComboBoxPopup(combo,dark);
     state_->dark = dark;
-    for (auto *node : state_->stepNodes) node->setFixedSize(pixels(28), pixels(28));
+    for (auto *node : state_->stepNodes) {
+        const QSize size(pixels(28), pixels(28));
+        node->setFixedSize(size);
+        node->setIconSize(size);
+    }
     for (auto *link : state_->stepLinks) link->setFixedSize(pixels(44), pixels(2));
     refreshSteps(true);
     for(auto *edit:{state_->details,state_->sampleDetails}) {

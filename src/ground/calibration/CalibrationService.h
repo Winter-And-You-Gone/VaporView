@@ -50,10 +50,14 @@ public:
     void startStage(int index, bool identityConfirmed = false);
     void pauseStage(bool stopped = false);
     void exclude(const QString& stage, int wavelength, const QSet<QString>& ids, bool excluded, const QString& reason);
+    void confirmReview();
     void fitProject();
     void generateFile(const QString& name);
     void openProject(const QString& filename, bool draft);
     void selectFile(const QString& filename, bool identityConfirmed = false);
+    // A nonempty completion result describes the failure. Callback may run on the service worker.
+    void selectFileForRecording(const QString& filename, bool identityConfirmed, const QString& expectedSha256,
+                                std::function<void(const QString&)> completion);
     void copyFile(const QString& filename, const QString& name);
     void removeFile(const QString& filename, bool archive);
     void importLegacy(const QString& libraryFilename, const QString& fit816, const QString& fit1368);
@@ -111,6 +115,7 @@ private:
     bool saveLock(QString *error);
     void restoreLock();
     void listFiles();
+    QString selectFileImpl(const QString& filename, bool identityConfirmed, const QString& expectedSha256, bool forRecording);
     bool prepareImpl(QJsonObject&,QString *error);
     template<class Work> auto outsideStateLock(Work work)
     {

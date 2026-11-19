@@ -1,7 +1,9 @@
 #include "ground/calibration/CalibrationService.h"
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "LogContext.h"
+#include "shared/theme/SingleLevelPopupComboBox.h"
 
+#include <QPointer>
 #include <QProgressBar>
 #include <QUuid>
 #include <algorithm>
@@ -10,6 +12,137 @@
 
 namespace
 {
+constexpr auto kRecordingCalibrationDialog = "recordingCalibrationDialog";
+using CalibrationService = VaporView::Ground::Calibration::CalibrationService;
+
+// Once the user confirms, commit the selection and wait for its result before
+// dismissing the dialog. No Session lock is taken until the start callback runs.
+class RecordingCalibrationDialog final : public QDialog
+{
+public:
+    using QDialog::QDialog;
+    void reject() override
+    {
+        if (!applying) QDialog::reject();
+    }
+    bool applying = false;
+    QString startError;
+};
+
+RecordingCalibrationDialog *activeRecordingConfirmation(const QWidget *window)
+{
+    for (auto *dialog : window->findChildren<QDialog*>(QString::fromLatin1(kRecordingCalibrationDialog)))
+        if (dialog->isVisible()) return static_cast<RecordingCalibrationDialog*>(dialog);
+    return nullptr;
+}
+
+QDialog *showRecordingCalibrationDialog(QWidget *parent,
+                                         const std::shared_ptr<CalibrationService>& service,
+                                         bool english, bool dark, std::function<QString()> start)
+{
+    auto *dialog = new RecordingCalibrationDialog(parent);
+    dialog->setObjectName(QString::fromLatin1(kRecordingCalibrationDialog));
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setWindowTitle(english ? QStringLiteral("Confirm recording calibration")
+                                   : QStringLiteral("确认记录定标文件"));
+    dialog->setMinimumWidth(420);
+    auto *layout = new QVBoxLayout(dialog);
+    layout->setContentsMargins(16, 14, 16, 14);
+    layout->setSpacing(10);
+    auto makeLabel = [dialog, layout](const QString& text = QString()) {
+        auto *label = new QLabel(text, dialog);
+        label->setWordWrap(true);
+        label->setTextFormat(Qt::PlainText);
+        layout->addWidget(label);
+        return label;
+    };
+    makeLabel(english ? QStringLiteral("Check the water vapor calibration file before starting. You can select another .vcal below.")
+                      : QStringLiteral("开始记录前请核对水汽定标文件。需要更换时，可以在下方选择另一份 .vcal。"));
+    auto *current = makeLabel();
+    current->setObjectName(QStringLiteral("recordingCalibrationCurrentFile"));
+    auto *files = new VaporView::SingleLevelPopupComboBox(dialog);
+    files->setObjectName(QStringLiteral("recordingCalibrationFile"));
+    files->setAccessibleName(english ? QStringLiteral("Calibration file for this recording") : QStringLiteral("本次记录的定标文件"));
+    files->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    files->setMinimumContentsLength(26);
+    layout->addWidget(files);
+    auto *identity = new QCheckBox(english ? QStringLiteral("I checked the device identity and accept a mismatch")
+                                           : QStringLiteral("我已核对设备身份，确认可使用不匹配的文件"), dialog);
+    identity->setObjectName(QStringLiteral("recordingCalibrationIdentityConfirmed"));
+    layout->addWidget(identity);
+    auto *status = makeLabel();
+    status->setObjectName(QStringLiteral("recordingCalibrationStatus"));
+    status->setStyleSheet(QStringLiteral("color: %1;").arg(appThemeColorName(AppThemeColor::Warning, dark)));
+    status->hide();
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, dialog);
+    auto *confirm = buttons->button(QDialogButtonBox::Ok);
+    auto *cancel = buttons->button(QDialogButtonBox::Cancel);
+    confirm->setObjectName(QStringLiteral("recordingCalibrationConfirm"));
+    confirm->setText(english ? QStringLiteral("Confirm and start") : QStringLiteral("确认并开始记录"));
+    cancel->setObjectName(QStringLiteral("recordingCalibrationCancel"));
+    cancel->setText(english ? QStringLiteral("Cancel") : QStringLiteral("取消"));
+    cancel->setAutoDefault(false);
+    layout->addWidget(buttons);
+
+    const auto shown = service->view();
+    current->setText(shown.selected.valid
+        ? (english ? QStringLiteral("Current calibration: %1 · %2") : QStringLiteral("当前定标：%1 · %2"))
+              .arg(QFileInfo(shown.selected.filename).fileName(), shown.selected.project.name)
+        : (english ? QStringLiteral("No valid calibration file is currently selected.")
+                   : QStringLiteral("当前未选用有效定标文件。")));
+    QStringList filenames = shown.files;
+    if (shown.selected.valid && !filenames.contains(shown.selected.filename))
+        filenames.prepend(shown.selected.filename);
+    files->addItem(english ? QStringLiteral("Select a calibration file") : QStringLiteral("请选择定标文件"));
+    for (const QString& path : filenames) files->addItem(QFileInfo(path).fileName(), path);
+    if (shown.selected.valid) files->setCurrentIndex(files->findData(shown.selected.filename));
+    const QString selectedPath = shown.selected.filename;
+    const QString selectedSha256 = shown.selected.sha256;
+    const QString identityWarning = shown.identityWarning;
+    const auto updateChoice = [=]() {
+        identity->setChecked(false);
+        status->setText(files->currentData().toString() == selectedPath ? identityWarning : QString());
+        status->setVisible(!status->text().isEmpty());
+        confirm->setEnabled(!files->currentData().toString().isEmpty());
+    };
+    updateChoice();
+    QObject::connect(files, &QComboBox::currentIndexChanged, dialog, updateChoice);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, dialog, [=]() {
+        const QString path = files->currentData().toString();
+        if (dialog->applying || path.isEmpty()) return;
+        dialog->applying = true;
+        confirm->setEnabled(false);
+        cancel->setEnabled(false);
+        files->setEnabled(false);
+        identity->setEnabled(false);
+        status->setText(english ? QStringLiteral("Checking calibration file…") : QStringLiteral("正在校验定标文件…"));
+        status->show();
+        const QString expectedSha256 = path == selectedPath ? selectedSha256 : QString();
+        service->selectFileForRecording(path, identity->isChecked(), expectedSha256,
+            [serviceContext = service.get(), guard = QPointer<RecordingCalibrationDialog>(dialog),
+             confirm, cancel, files, identity, status, start](const QString& error) {
+                QMetaObject::invokeMethod(serviceContext, [guard, confirm, cancel, files, identity, status, start, error]() {
+                    if (!guard) return;
+                    const QString failure = error.isEmpty() ? start() : error;
+                    if (!guard) return;
+                    guard->applying = false;
+                    if (failure.isEmpty()) {
+                        guard->accept();
+                        return;
+                    }
+                    confirm->setEnabled(true);
+                    cancel->setEnabled(true);
+                    files->setEnabled(true);
+                    identity->setEnabled(true);
+                    status->setText(failure);
+                }, Qt::QueuedConnection);
+            });
+    });
+    dialog->open();
+    return dialog;
+}
+
 bool prepareRemoteCalibration(const std::shared_ptr<VaporView::Ground::Calibration::CalibrationService>& service,
                               bool resuming,QByteArray& payload,QString *error)
 {
@@ -1147,9 +1280,11 @@ bool MainWindow::startRecordingSession()
                              QStringLiteral("启动记录会话失败。"),
                              fields);
         }
-        QMessageBox::warning(this,
-                             state_->is_english_ ? QStringLiteral("Error") : QStringLiteral("错误"),
-                             message+(errorMessage.isEmpty()?QString():"\n"+errorMessage));
+        const QString detail = errorMessage.isEmpty() ? message : message + QLatin1Char('\n') + errorMessage;
+        if (auto *dialog = activeRecordingConfirmation(this); dialog && dialog->applying)
+            dialog->startError = detail;
+        else
+            QMessageBox::warning(this, state_->is_english_ ? QStringLiteral("Error") : QStringLiteral("错误"), detail);
         return false;
     }
 
@@ -1334,6 +1469,13 @@ bool MainWindow::scheduledRecordingSessionOpen() const
 
 bool MainWindow::tryStartScheduledRecording(QString *failureReason)
 {
+    if (activeRecordingConfirmation(this))
+    {
+        if (failureReason) *failureReason = state_->is_english_
+            ? QStringLiteral("A manual recording start is in progress.")
+            : QStringLiteral("正在确认或开始手动记录。");
+        return false;
+    }
     const QString blockReason = scheduledRecordingStartBlockReason();
     if (!blockReason.isEmpty())
     {
@@ -1854,7 +1996,8 @@ QString MainWindow::prepareGatewayListenerCommand(VaporView::CommandId command, 
 
     if (command != VaporView::CommandId::StartRecording)
         return {};
-    if (state_->remote_recording_state_ == 1 || state_->epsilon_reconfigure_in_progress_ ||
+    if (activeRecordingConfirmation(this) ||
+        state_->remote_recording_state_ == 1 || state_->epsilon_reconfigure_in_progress_ ||
         (state_->epsilon_device_session_ && state_->epsilon_device_session_->operationPending()))
         return QStringLiteral("device-busy");
 
@@ -1875,7 +2018,12 @@ void MainWindow::onStartRecordingClicked()
         startRecordingSession();
         return;
     }
-    if (isRemoteSkyMode())
+    if (activeRecordingConfirmation(this)) return;
+
+    const bool remote = isRemoteSkyMode();
+    bool resuming = false;
+    quint64 remoteGeneration = 0;
+    if (remote)
     {
         if (state_->epsilon_reconfigure_in_progress_ ||
             (state_->epsilon_device_session_ && state_->epsilon_device_session_->operationPending()))
@@ -1899,30 +2047,98 @@ void MainWindow::onStartRecordingClicked()
                               {QStringLiteral("ui_dedupe_key"), QStringLiteral("recording:remote_sky:not_connected")}});
             return;
         }
-        QByteArray calibrationPayload;QString calibrationError;
-        if(!prepareRemoteCalibration(state_->calibration_service_,state_->remote_recording_state_==2,calibrationPayload,&calibrationError)) {
-            publishGroundLog(VaporView::LogLevel::Warning,QStringLiteral("session.recording"),QStringLiteral("calibration_start_rejected"),calibrationError);return;
-        }
-        if(!state_->remote_sky_controller_->sendCommand(VaporView::CommandId::StartRecording,calibrationPayload) && state_->remote_recording_state_!=2)state_->calibration_service_->finish();
-        return;
+        if (state_->remote_recording_state_ == 1) return;
+        remoteGeneration = state_->remote_sky_controller_->linkGeneration();
+        resuming = state_->remote_recording_state_ == 2;
     }
-
-    const bool tcpConnected = state_->tcp_wave_panel_ && state_->tcp_wave_panel_->isConnected();
-    if (!state_->is_connected_ && !state_->fpga_ready_ && !tcpConnected)
+    else
     {
-        publishGroundLog(VaporView::LogLevel::Warning,
-                         QStringLiteral("session.recording"),
-                         QStringLiteral("session_recording_rejected_no_source"),
-                         QStringLiteral("开始记录前，至少需要一个串口设备在线或 TCP 波形链路已连接。"),
-                         {{QStringLiteral("reason_code"), QStringLiteral("NO_RECORDING_SOURCE_CONNECTED")},
-                          {QStringLiteral("mode"), QStringLiteral("local")},
-                          {QStringLiteral("serial_connected"), state_->is_connected_},
-                          {QStringLiteral("tcp_wave_connected"), tcpConnected},
-                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("recording:local:no_source")}});
-        return;
+        const bool tcpConnected = state_->tcp_wave_panel_ && state_->tcp_wave_panel_->isConnected();
+        if (!state_->is_connected_ && !state_->fpga_ready_ && !tcpConnected)
+        {
+            publishGroundLog(VaporView::LogLevel::Warning,
+                             QStringLiteral("session.recording"),
+                             QStringLiteral("session_recording_rejected_no_source"),
+                             QStringLiteral("开始记录前，至少需要一个串口设备在线或 TCP 波形链路已连接。"),
+                             {{QStringLiteral("reason_code"), QStringLiteral("NO_RECORDING_SOURCE_CONNECTED")},
+                              {QStringLiteral("mode"), QStringLiteral("local")},
+                              {QStringLiteral("serial_connected"), state_->is_connected_},
+                              {QStringLiteral("tcp_wave_connected"), tcpConnected},
+                              {QStringLiteral("ui_dedupe_key"), QStringLiteral("recording:local:no_source")}});
+            return;
+        }
+        if (state_->recording_service_->isSessionOpen() && !state_->recording_service_->isPaused()) return;
+        resuming = state_->recording_service_->isSessionOpen();
     }
 
-    startRecordingSession();
+    auto start = [this, remote, remoteGeneration, resuming]() -> QString {
+        const QString stateChanged = state_->is_english_
+            ? QStringLiteral("The recording source or session state changed. Check the connection and try again.")
+            : QStringLiteral("记录数据源或会话状态已变化，请检查连接后重试。");
+        if (remote != isRemoteSkyMode()) return stateChanged;
+        if (!remote)
+        {
+            if (state_->recording_service_->isSessionOpen() != resuming ||
+                state_->recording_service_->isPaused() != resuming ||
+                !(state_->is_connected_ || state_->fpga_ready_ ||
+                  (state_->tcp_wave_panel_ && state_->tcp_wave_panel_->isConnected())) ||
+                state_->fpga_busy_ || state_->connection_attempt_in_progress_ ||
+                state_->port_detection_in_progress_ || state_->epsilon_reconfigure_in_progress_)
+                return stateChanged;
+            if (startRecordingSession()) return {};
+            if (const auto *dialog = activeRecordingConfirmation(this); dialog && !dialog->startError.isEmpty())
+                return dialog->startError;
+            return state_->is_english_ ? QStringLiteral("Local recording could not start. See the recording log.")
+                                       : QStringLiteral("无法启动本地记录，请查看记录日志。");
+        }
+
+        auto *controller = state_->remote_sky_controller_.get();
+        if (!controller || !controller->isOpen() ||
+            controller->linkGeneration() != remoteGeneration ||
+            state_->remote_recording_state_ != (resuming ? 2 : 0) ||
+            state_->epsilon_reconfigure_in_progress_ ||
+            (state_->epsilon_device_session_ && state_->epsilon_device_session_->operationPending()))
+            return stateChanged;
+
+        QByteArray calibrationPayload;
+        QString calibrationError;
+        if (!prepareRemoteCalibration(state_->calibration_service_, resuming, calibrationPayload, &calibrationError))
+        {
+            publishGroundLog(VaporView::LogLevel::Warning, QStringLiteral("session.recording"),
+                             QStringLiteral("calibration_start_rejected"), calibrationError);
+            return calibrationError;
+        }
+        const quint16 sequence = controller->sendCommand(VaporView::CommandId::StartRecording, calibrationPayload);
+        if (!sequence)
+        {
+            if (!resuming) state_->calibration_service_->finish();
+            return state_->is_english_ ? QStringLiteral("Failed to send the remote start command.")
+                                       : QStringLiteral("远程开始记录命令发送失败。");
+        }
+
+        return {};
+    };
+
+    if (resuming)
+    {
+        const QString error = start();
+        if (!error.isEmpty())
+            publishGroundLog(VaporView::LogLevel::Warning, QStringLiteral("session.recording"),
+                             QStringLiteral("calibration_start_rejected"), error);
+        return;
+    }
+    const auto calibration = state_->calibration_service_->view();
+    if (calibration.locked || calibration.acquiring)
+    {
+        publishGroundLog(VaporView::LogLevel::Warning, QStringLiteral("session.recording"),
+                         QStringLiteral("calibration_start_rejected"),
+                         QStringLiteral("录制前请先结束定标采集或未结束的 Session。"));
+        return;
+    }
+    auto *dialog = showRecordingCalibrationDialog(this, state_->calibration_service_, state_->is_english_,
+                                                   state_->dark_theme_enabled_, std::move(start));
+    connect(dialog, &QDialog::finished, this, [this] { updateRecordingActionStates(); });
+    updateRecordingActionStates();
 }
 
 void MainWindow::onPauseRecordingClicked()
@@ -2052,6 +2268,7 @@ void MainWindow::updateRecordingActionStates()
         updateScheduledRecordingAction();
         return;
     }
+    const bool starting = activeRecordingConfirmation(this);
     if (isRemoteSkyMode())
     {
         const bool linkOpen = state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen();
@@ -2059,7 +2276,7 @@ void MainWindow::updateRecordingActionStates()
         const bool recordingPaused = state_->remote_recording_state_ == 2;
         const bool epsilonBusy = state_->epsilon_reconfigure_in_progress_ ||
             (state_->epsilon_device_session_ && state_->epsilon_device_session_->operationPending());
-        if (state_->start_recording_btn_) state_->start_recording_btn_->setEnabled(linkOpen && !recordingActive && !epsilonBusy);
+        if (state_->start_recording_btn_) state_->start_recording_btn_->setEnabled(linkOpen && !recordingActive && !epsilonBusy && !starting);
         if (state_->pause_recording_btn_) state_->pause_recording_btn_->setEnabled(linkOpen && recordingActive);
         if (state_->stop_recording_btn_) state_->stop_recording_btn_->setEnabled(linkOpen && (recordingActive || recordingPaused));
         updateScheduledRecordingAction();
@@ -2072,7 +2289,7 @@ void MainWindow::updateRecordingActionStates()
     const bool recordingPaused = state_->recording_service_->isPaused();
     const bool recordingActive = state_->recording_service_->isActive();
     const bool uiBusy = state_->fpga_busy_ || state_->connection_attempt_in_progress_ || state_->port_detection_in_progress_ || state_->epsilon_reconfigure_in_progress_;
-    const bool canStart = recordingSourceAvailable && !uiBusy && (!sessionOpen || recordingPaused);
+    const bool canStart = recordingSourceAvailable && !uiBusy && !starting && (!sessionOpen || recordingPaused);
     const bool canPause = !uiBusy && recordingActive;
     const bool canStop = sessionOpen && !uiBusy;
 

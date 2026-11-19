@@ -153,7 +153,23 @@ CalibrationProject CalibrationProject::create(const QString& n, const QString& u
     CalibrationProject p; p.id=calibrationUuid(); p.name=n; p.unit=u; p.createdUtc=calibrationUtcNow();
     p.softwareVersion=QCoreApplication::applicationVersion(); return p;
 }
-void CalibrationProject::invalidateFits() { ++revision; fits.clear(); }
+bool CalibrationProject::allStagesCollected() const
+{
+    bool hasStage = false;
+    for (const auto& stage : stages) {
+        if (stage.status == QStringLiteral("abandoned")) continue;
+        if (stage.status != QStringLiteral("complete")) return false;
+        hasStage = true;
+    }
+    return hasStage;
+}
+void CalibrationProject::invalidateFits()
+{
+    ++revision;
+    fits.clear();
+    reviewComplete = false;
+    fileGenerated = false;
+}
 bool CalibrationProject::exclude(const QString& sid,int w,const QSet<QString>& ids,bool excluded,const QString& reason,QString *error)
 {
     if (excluded && reason.trimmed().isEmpty()) { *error=QStringLiteral("请填写排除原因"); return false; }
@@ -168,6 +184,7 @@ bool CalibrationProject::exclude(const QString& sid,int w,const QSet<QString>& i
 }
 QMap<int,QString> CalibrationProject::fit()
 {
+    fileGenerated = false;
     QMap<int,QString> errors;
     for(int w:{816,1368}) {
         QVector<QPair<double,double>> points; StageFit f;

@@ -834,7 +834,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
             state_->home_sensor_column_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
         }
     }
-    if (event->type() == QEvent::ToolTip && showAppTooltip(watched, event, state_->dark_theme_enabled_))
+    if (handleAppTooltipEvent(watched, event, state_->dark_theme_enabled_))
     {
         return true;
     }
@@ -1039,16 +1039,6 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         {
             QTimer::singleShot(0, this, &MainWindow::syncMainHoverStateFromCursor);
         }
-    }
-
-    if (eventType == QEvent::Leave ||
-        eventType == QEvent::MouseButtonPress ||
-        eventType == QEvent::Wheel ||
-        eventType == QEvent::KeyPress ||
-        eventType == QEvent::ApplicationDeactivate ||
-        eventType == QEvent::WindowDeactivate)
-    {
-        hideAppTooltipPopup();
     }
 
     const bool titleMenuVisible =

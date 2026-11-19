@@ -39,6 +39,7 @@
 #include <QGridLayout>
 #include <QElapsedTimer>
 #include <QDateTime>
+#include <QDialog>
 #include <QEventLoop>
 #include <QEvent>
 #include <QJsonDocument>
@@ -1263,6 +1264,22 @@ static void simulatorRefreshBudget()
     }
 }
 
+static QDialog *recordingCalibrationDialog(MainWindow& window)
+{
+    for (auto *dialog : window.findChildren<QDialog*>(QStringLiteral("recordingCalibrationDialog")))
+        if (dialog->isVisible()) return dialog;
+    return nullptr;
+}
+
+static void confirmRecordingCalibration(MainWindow& window)
+{
+    auto *dialog = recordingCalibrationDialog(window);
+    require(dialog, "formal recording presents the calibration confirmation");
+    auto *confirm = dialog->findChild<QAbstractButton*>(QStringLiteral("recordingCalibrationConfirm"));
+    require(confirm && confirm->isEnabled(), "valid current calibration can be confirmed");
+    confirm->click();
+}
+
 static void localSimulatorRouting()
 {
     const auto check=[](bool ok,const char *message){if(!ok)throw std::runtime_error(message);};
@@ -1760,8 +1777,20 @@ static void localSimulatorRouting()
     check(harmonic->text().contains(QStringLiteral("停止")),"local RAW stop preserves DLIA acquisition");
     raw->click();check(waitUntil([&]{return raw->isEnabled()&&raw->text().contains(QStringLiteral("停止"));}),"local RAW restarts without resetting running acquisition");
     calibration.service->selectFile(calibrationFile.filename,true);calibration.service->synchronize();
-    auto *record=page->findChild<QAbstractButton*>("fpgaRecord");record->click();
-    check(waitUntil([&]{return record->text().contains("停止");}),"local record action starts recording");
+    auto *record = page->findChild<QAbstractButton*>("fpgaRecord");
+    record->click();
+    auto *confirmation = recordingCalibrationDialog(window);
+    check(confirmation, "local recording asks which calibration to use");
+    auto *identity = confirmation->findChild<QCheckBox*>(QStringLiteral("recordingCalibrationIdentityConfirmed"));
+    check(identity, "local confirmation provides an explicit device identity override");
+    identity->setChecked(true); // The synthetic fixture and the local FPGA simulator report different identities.
+    confirmRecordingCalibration(window);
+    if (!waitUntil([&] { return record->text().contains(QStringLiteral("停止")); })) {
+        const auto *dialog = recordingCalibrationDialog(window);
+        const auto *status = dialog ? dialog->findChild<QLabel*>(QStringLiteral("recordingCalibrationStatus")) : nullptr;
+        throw std::runtime_error(QStringLiteral("Local recording failed to start: %1")
+                                     .arg(status ? status->text() : calibration.service->view().message).toStdString());
+    }
     processFor(500);record->click();check(waitUntil([&]{return record->text().contains("开始");}),"local record action stops and drains");
     const QDir recordings(output.filePath("simulated_sessions"));
     const auto sessions=recordings.entryList(QDir::Dirs|QDir::NoDotAndDotDot);
@@ -2693,8 +2722,40 @@ static void harmonicRecordingUi()
     check(waitUntil([&]{return acquisition->isEnabled()&&page->findChild<QWidget*>("fpgaWavePlot48")->property("sampleCount").toInt()>0;}),"DLIA acquisition reaches the page");
     page->findChild<QAbstractButton*>("fpgaRawStart")->click();
     check(waitUntil([&]{return page->findChild<QWidget*>("fpgaWavePlot32")->property("sampleCount").toInt()>0;}),"RAW upload is active during recording verification");
-    auto *record=page->findChild<QAbstractButton*>("fpgaRecord");record->click();
+    const auto originalFile = calibration->view().selected.filename;
+    calibration->copyFile(originalFile, QStringLiteral("switched-for-recording"));
+    calibration->synchronize();
+    const auto available = calibration->view().files;
+    check(available.size() == 2 && available.contains(originalFile), "alternate calibration is installed");
+    const auto alternateFile = available[0] == originalFile ? available[1] : available[0];
+    auto *record = page->findChild<QAbstractButton*>("fpgaRecord");
+    record->click();
+    auto *confirmation = recordingCalibrationDialog(window);
+    check(confirmation, "new formal recording shows a calibration confirmation");
+    auto *files = confirmation->findChild<QComboBox*>(QStringLiteral("recordingCalibrationFile"));
+    auto *cancel = confirmation->findChild<QAbstractButton*>(QStringLiteral("recordingCalibrationCancel"));
+    check(files && cancel, "confirmation has file selection and cancel controls");
+    check(files->currentData().toString() == originalFile, "current calibration is selected in the dialog");
+    const int alternateIndex = files->findData(alternateFile);
+    check(alternateIndex >= 0, "confirmation lists alternate calibration");
+    files->setCurrentIndex(alternateIndex);
+    check(calibration->view().selected.filename == originalFile && !calibration->view().locked,
+          "choosing an alternate file does not immediately select it or lock calibration");
+    cancel->click();
+    check(!recordingCalibrationDialog(window) && !calibration->view().locked &&
+          calibration->view().selected.filename == originalFile &&
+          !QDir(output.filePath("simulated_sessions")).exists(),
+          "cancel leaves recording stopped, calibration unlocked and the original file selected");
+    record->click();
+    confirmation = recordingCalibrationDialog(window);
+    check(confirmation, "the recording confirmation can be reopened after cancel");
+    files = confirmation->findChild<QComboBox*>(QStringLiteral("recordingCalibrationFile"));
+    check(files && files->findData(alternateFile) >= 0, "reopened confirmation lists alternate calibration");
+    files->setCurrentIndex(files->findData(alternateFile));
+    confirmRecordingCalibration(window);
     check(waitUntil([&]{return record->text().contains(QStringLiteral("停止"));}),"UI starts common session recording");
+    check(calibration->view().selected.filename == alternateFile && calibration->view().locked,
+          "recording locks the calibration file selected in the dialog");
     processFor(600);record->click();
     check(waitUntil([&]{return record->text().contains(QStringLiteral("开始"));}),"UI stops and drains recording");
     QDir recordings(output.filePath("simulated_sessions"));const auto sessions=recordings.entryList(QDir::Dirs|QDir::NoDotAndDotDot);
@@ -2716,6 +2777,75 @@ static void harmonicRecordingUi()
         homeRecording->statusText().contains(QStringLiteral("H1/H2 周期：%1").arg(metadata.metadata.waveformFrames)) &&
         !homeRecording->statusText().contains(QStringLiteral("仅远程有效")), "Home recording summary exposes real harmonic and normalized feature counts");
     window.close();
+}
+
+static void remoteRecordingCalibrationUi()
+{
+    using namespace VaporView;
+    IndependentCalibrationTest::Rig calibration;
+    const auto file = calibration.complete();
+    TcpTelemetryLink server;
+    require(server.listen(QStringLiteral("127.0.0.1"), 0), "manual recording fake Sky listens");
+    MainWindow window(nullptr, calibration.service);
+    require(QMetaObject::invokeMethod(&window, "onDataSourceModeChanged", Q_ARG(int, 1)), "manual recording remote mode");
+    window.show();
+    auto *remote = window.testRemoteSkyController();
+    require(remote && remote->openTcp(QStringLiteral("127.0.0.1"), server.localPort()) &&
+            waitUntil([&] { return remote->isOpen(); }), "manual recording fake Sky connection");
+    auto differentDevice = calibration.identity;
+    differentDevice.insert(QStringLiteral("serial"), QStringLiteral("OTHER_TEST_DEVICE"));
+    calibration.bus.setDevice(true, differentDevice);
+    calibration.service->synchronize();
+    QVector<CommandMessage> starts;
+    TelemetryCodec codec;
+    QObject::connect(&server, &TelemetryLink::bytesReceived, &window, [&](const QByteArray& bytes) {
+        for (const auto& frame : codec.feedBytes(bytes)) {
+            CommandMessage command;
+            if (frame.type == MsgType::Command && TelemetryCodec::parseCommand(frame.payload, command) &&
+                command.command_id == CommandId::StartRecording)
+                starts.push_back(command);
+        }
+    });
+    auto requestStart = [&] {
+        require(QMetaObject::invokeMethod(&window, "onStartRecordingClicked", Qt::DirectConnection),
+                "manual recording start is available");
+    };
+    requestStart();
+    auto *dialog = recordingCalibrationDialog(window);
+    require(dialog, "remote recording asks for confirmation");
+    requestStart();
+    require(window.findChildren<QDialog*>(QStringLiteral("recordingCalibrationDialog")).size() == 1,
+            "repeated start does not open a second confirmation");
+    auto *files = dialog->findChild<QComboBox*>(QStringLiteral("recordingCalibrationFile"));
+    require(files && files->findData(file.filename) >= 0, "remote recording lists installed calibration");
+    files->setCurrentIndex(files->findData(file.filename));
+    processFor(30);
+    require(starts.isEmpty() && !calibration.service->view().locked,
+            "remote confirmation does not send or lock before acceptance");
+    confirmRecordingCalibration(window);
+    auto *status = dialog->findChild<QLabel*>(QStringLiteral("recordingCalibrationStatus"));
+    auto *identity = dialog->findChild<QCheckBox*>(QStringLiteral("recordingCalibrationIdentityConfirmed"));
+    require(status && identity && waitUntil([&] { return status->text().contains(QStringLiteral("身份不一致")); }) &&
+            starts.isEmpty() && !calibration.service->view().selected.valid && !calibration.service->view().locked,
+            "unconfirmed device mismatch keeps the popup open and recording stopped");
+    identity->setChecked(true);
+    confirmRecordingCalibration(window);
+    require(waitUntil([&] { return starts.size() == 1; }), "remote start is sent once after confirmation");
+    requestStart();
+    require(!recordingCalibrationDialog(window), "remote start in flight cannot open another confirmation");
+    const auto command = starts.front();
+    const auto payload = QJsonDocument::fromJson(command.payload).object();
+    require(payload.value("file_sha256").toString() == file.sha256 && calibration.service->view().locked,
+            "remote StartRecording carries and locks the selected calibration snapshot");
+    CommandAck ack;
+    ack.command_id = command.command_id;
+    ack.command_seq = command.command_seq;
+    ack.correlation_id = command.correlation_id;
+    ack.error_code = CommandErrorCode::InvalidPayload;
+    server.writeBytes(codec.encodeFrame(MsgType::CommandAck, TelemetryCodec::serializeCommandAck(ack), 1, 1));
+    require(waitUntil([&] { return !calibration.service->view().locked; }) && starts.size() == 1,
+            "rejected remote start releases its calibration lock without a second command");
+    remote->close();
 }
 
 static void scheduledRecordingCorrelation()
@@ -3057,7 +3187,7 @@ int main(int argc,char **argv)
         simulatedMonitorActions();std::cout<<"Simulated FPGA monitor actions test passed\n";return 0;
     }
     if(app.arguments().contains("--harmonic-recording")) {
-        try { harmonicRecordingUi();std::cout<<"Harmonic recording UI test passed\n";return 0; }
+        try { harmonicRecordingUi();remoteRecordingCalibrationUi();std::cout<<"Harmonic recording UI test passed\n";return 0; }
         catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}
     }
     if(app.arguments().contains("--harmonic-home")) {
