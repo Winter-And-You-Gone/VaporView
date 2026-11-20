@@ -218,8 +218,9 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout) : Q
         auto *body=new QWidget(scroll); scroll->setWidget(body); scroll->setProperty("fpgaZh",zh); scroll->setProperty("fpgaEn",en);
         tabs_->addTab(scroll,zh); return body;
     };
-    auto *parameters=tab(QStringLiteral("参数与采集"),QStringLiteral("Parameters & acquisition")); auto *pl=new QVBoxLayout(parameters);
-    auto *capture=card(parameters,pl,QStringLiteral("采集控制"),QStringLiteral("Acquisition control"),QStringLiteral("activity"));
+    auto *waves=tab(QStringLiteral("采样"),QStringLiteral("Sampling"));
+    auto *waveLayout=new QVBoxLayout(waves);
+    auto *capture=card(waves,waveLayout,QStringLiteral("采集控制"),QStringLiteral("Acquisition control"),QStringLiteral("activity"));
     auto *captureLayout=new QVBoxLayout(capture);
     auto *actions=new QGridLayout; captureLayout->addLayout(actions);
     auto action=[this](QGridLayout *layout,int row,int col,const char *zh,const char *en,const QString &name,std::function<void()> fn) {
@@ -230,11 +231,11 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout) : Q
     action(actions,0,1,"停止 H1/H2","Stop H1/H2","fpgaAcquisitionStop",[this]{emit acquisitionRequested(false);});
     action(actions,0,2,"开始原始波形","Start raw waveform","fpgaRawStart",[this]{emit rawRequested(true);});
     action(actions,0,3,"停止原始波形","Stop raw waveform","fpgaRawStop",[this]{emit rawRequested(false);});
-    action(actions,1,0,"应用采样与 AI8 参数","Apply sampling & AI8","fpgaApply",[this]{emit applyRequested(configuration());});
-    refresh_=action(actions,1,1,"刷新读回","Refresh readback","fpgaRefresh",[this]{emit refreshRequested();});
     captureStatus_=new QLabel(capture); captureStatus_->setObjectName(QStringLiteral("fpgaCaptureStatus")); captureStatus_->setProperty("fpgaSecondaryText",true); captureStatus_->setWordWrap(true); captureLayout->addWidget(captureStatus_);
-    auto *hint=new QLabel(capture); label(hint,QStringLiteral("开始 H1/H2 会启动公共 ADC/DLIA 采集；原始波形按需单独上传。参数应用后需要重新开始 H1/H2。"),QStringLiteral("Start H1/H2 enables shared ADC/DLIA acquisition; raw waveform upload is optional. Restart H1/H2 after applying parameters.")); hint->setWordWrap(true); captureLayout->addWidget(hint);
-    auto *shared=card(parameters,pl,QStringLiteral("共同采样时序"),QStringLiteral("Shared sampling"),QStringLiteral("timer")); auto *sl=new QGridLayout(shared);
+    auto *hint=new QLabel(capture); label(hint,QStringLiteral("先开始 H1/H2。需要查看原始波形时，再开始原始波形上传。"),QStringLiteral("Start H1/H2 first. To view raw waveforms, start raw waveform upload as well.")); hint->setWordWrap(true); captureLayout->addWidget(hint);
+    auto *common=tab(QStringLiteral("公共参数"),QStringLiteral("Common settings"));
+    auto *commonLayout=new QVBoxLayout(common);
+    auto *shared=card(common,commonLayout,QStringLiteral("双路 ADC 采样设置"),QStringLiteral("Dual ADC sampling settings"),QStringLiteral("timer")); auto *sl=new QGridLayout(shared);
     auto field=[this](QGridLayout *layout,int row,const char *zh,const char *en,const QString &name,quint32 address,double min,double max,int decimals,
                       std::function<double(const FpgaControlConfig&)> read,std::function<void(FpgaControlConfig&,double)> write,int column=0) {
         auto *input=new QDoubleSpinBox(this); input->setObjectName(name); input->setRange(min,max); input->setDecimals(decimals); input->setKeyboardTracking(false);
@@ -252,6 +253,13 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout) : Q
     field(sl,1,"CNV 脉宽 / 10 ns","CNV width / 10 ns","fpgaAdcCnvTicks",0x4030,2,20,0,[](const auto& c){return c.adcCnvTicks;},[](auto& c,double v){c.adcCnvTicks=quint32(v);});
     field(sl,2,"BUSY 超时 / 10 ns","BUSY timeout / 10 ns","fpgaAdcBusyTimeout",0x4034,40,1000000,0,[](const auto& c){return c.adcBusyTimeoutTicks;},[](auto& c,double v){c.adcBusyTimeoutTicks=quint32(v);});
     for(int ch=0;ch<2;++ch)field(sl,3+ch,ch?"ADC1 周期点数 (0 关闭校验)":"ADC0 周期点数 (0 关闭校验)",ch?"ADC1 points (0 disables check)":"ADC0 points (0 disables check)",QString("fpgaAdcExpected%1").arg(ch),0x401c+ch*0x100,0,4294967295.0,0,[ch](const auto& c){return c.adcExpectedPoints[ch];},[ch](auto& c,double v){c.adcExpectedPoints[ch]=quint32(v);});
+    auto *timingHint=new QLabel(shared);
+    label(timingHint,QStringLiteral("两路 ADC 共用采样率、转换脉宽和超时。周期点数按通道校验。应用后需重新开始采集。"),
+          QStringLiteral("Both ADCs share the sampling rate, conversion pulse width and timeout. Points per cycle are checked per channel. Restart acquisition after applying."));
+    timingHint->setWordWrap(true);timingHint->setProperty("fpgaSecondaryText",true);sl->addWidget(timingHint,5,0,1,3);
+    action(sl,6,0,"应用 ADC 参数","Apply ADC settings","fpgaApply",[this]{emit applyRequested(configuration(),"adc");});
+    refresh_=action(sl,6,1,"刷新读回","Refresh readback","fpgaRefresh",[this]{emit refreshRequested();});
+    auto *parameters=tab(QStringLiteral("通道参数"),QStringLiteral("Channel settings"));auto *pl=new QVBoxLayout(parameters);
     auto *parameterTabs=new QTabWidget(parameters);parameterTabs->setObjectName("fpgaParameterTabs");pl->addWidget(parameterTabs);
     auto *wmsPage=new QWidget(parameterTabs),*dliaPage=new QWidget(parameterTabs);
     parameterTabs->addTab(wmsPage,"WMS / DAC");parameterTabs->addTab(dliaPage,"DLIA");
@@ -381,6 +389,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout) : Q
     auto *ai8buttons=new QGridLayout;ai8controls->addLayout(ai8buttons);
     action(ai8buttons,0,0,"启用","Enable","",[this]{emit sensorEnableRequested(0x46,true);});
     action(ai8buttons,0,1,"停用","Disable","",[this]{emit sensorEnableRequested(0x46,false);});
+    action(ai8buttons,1,0,"应用 AI8 参数","Apply AI8 settings","fpgaApplyAi8",[this]{emit applyRequested(configuration(),"ai8");});
     auto *tempGrid=new QGridLayout;ai8controls->addLayout(tempGrid);auto *temperature=new QDoubleSpinBox(ai8config);temperature->setRange(-999.0,2147.4);temperature->setDecimals(1);temperature->setSingleStep(0.1);temperature->setSuffix(" °C");tempGrid->addWidget(temperature,0,0,1,2);
     field(ai8grid,0,"仪表地址","Instrument address","fpgaAi8Address",0x6614,1,80,0,[](const auto &c){return c.ai8.slaveAddress;},[](auto &c,double v){c.ai8.slaveAddress=quint32(v);});
     field(ai8grid,1,"仪表通道","Instrument channel","fpgaAi8Channel",0x661c,1,8,0,[](const auto &c){return c.ai8.channel;},[](auto &c,double v){c.ai8.channel=quint32(v);});
@@ -403,7 +412,6 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout) : Q
     readback(ai8grid,9,1,2,0x66a8,QStringLiteral("缓存 OP / SV 原码"),QStringLiteral("Cached OP / SV raw"));
     readback(ai8grid,10,1,2,0x66ac,QStringLiteral("缓存设备状态"),QStringLiteral("Cached device status"));
     ai8controls->addStretch();sensorLayout->addStretch();
-    auto *waves=tab(QStringLiteral("波形"),QStringLiteral("Waveforms")); auto *waveLayout=new QVBoxLayout(waves);
     auto *waveHint=new QLabel(waves); label(waveHint,QStringLiteral("ADC 未确认前端校准时显示原码；解调显示数字幅值，不代表气体浓度。"),QStringLiteral("ADC displays raw codes until frontend calibration is confirmed. Demodulation displays digital amplitude, not concentration.")); waveHint->setWordWrap(true); waveLayout->addWidget(waveHint);
     auto *faults=new QHBoxLayout;waveLayout->addLayout(faults);
     for(const auto &fault:QList<QPair<QString,QString>>{{"missing_cycle",QStringLiteral("模拟单周期丢片")},{"latch_dlia",QStringLiteral("模拟 DLIA 异常锁存")}}) {
@@ -520,7 +528,8 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout) : Q
         auto *pps=new QLabel(featureCard);pps->setObjectName(name("PpsStatus"));pps->setWordWrap(true);grid->addWidget(pps,8,0,1,3);
     }
     for(int ch=0;ch<2;++ch)for(int enable=0;enable<2;++enable)operation(laneGrid,ch,enable,ch?(enable?"通道 1 开始":"通道 1 停止"):(enable?"通道 0 开始":"通道 0 停止"),enable?"Start channel":"Stop channel",qPrintable(QString("fpgaChannel%1%2").arg(ch).arg(enable)),[ch,enable]{return QJsonObject{{"op","channel_acquisition"},{"channel",ch},{"enabled",bool(enable)}};});
-    auto *time=card(advanced,advancedLayout,QStringLiteral("时间同步"),QStringLiteral("Time synchronization"),QStringLiteral("timer"));auto *tg=new QGridLayout(time);
+    auto *time=card(common,commonLayout,QStringLiteral("时间同步"),QStringLiteral("Time synchronization"),QStringLiteral("timer"));auto *tg=new QGridLayout(time);
+    commonLayout->addStretch();
     auto *edge=number(tg,0,"同步沿 (0 上升 / 1 下降)","fpgaTimeEdge",0,1,0);auto *timeout=number(tg,1,"同步超时 / ms","fpgaTimeTimeout",1,3600000,2000);
     operation(tg,0,2,"设置同步沿","Set edge","fpgaTimeSetEdge",[edge]{return QJsonObject{{"op","time"},{"action",3},{"value",edge->value()}};});
     operation(tg,1,2,"设置同步超时","Set timeout","fpgaTimeSetTimeout",[timeout]{return QJsonObject{{"op","time"},{"action",4},{"value",timeout->value()}};});
@@ -629,7 +638,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout) : Q
     for (auto *body : findChildren<QWidget*>(QStringLiteral("fpgaCardBody"))) {
         body->layout()->setContentsMargins(12,10,12,12); body->layout()->setSpacing(8);
     }
-    for (auto *body : {parameters,sensors,waves,advanced,recordingTab}) {
+    for (auto *body : {waves,common,parameters,sensors,advanced,recordingTab}) {
         body->layout()->setProperty("fpgaCardOuterMargins",true);
         body->layout()->setContentsMargins(18,12,5,8); body->layout()->setSpacing(12);
     }
@@ -779,6 +788,8 @@ void FpgaControlPage::updateActions(){
         for(const char *name:{"fpgaModuleReset","fpgaModuleClearErrors","fpgaSensorClearFifo"})
             if(auto *button=findChild<QPushButton*>(QString::fromLatin1(name)))button->setEnabled(false);
     if(ai8Scan_)ai8Scan_->setEnabled(ready_&&!busy_&&(extensions_&VaporView::FpgaExtensions::Ai8Scan)&&!(hardwareValues_.value(0x6604)&1));
+    if(auto *applyAi8=findChild<QPushButton*>("fpgaApplyAi8"))
+        applyAi8->setEnabled(ready_ && !busy_ && hardwareValues_.contains(0x6604) && !(hardwareValues_.value(0x6604)&1));
 }
 void FpgaControlPage::updateCaptureStatus(){
     if(!captureStatus_)return;

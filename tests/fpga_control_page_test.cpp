@@ -290,14 +290,19 @@ int main(int argc,char **argv) {
     page.findChild<QPushButton*>("fpgaMotorDisable")->click();const int disabledHeartbeats=heartbeats;
     leaseTime.restart();while(leaseTime.elapsed()<250){QCoreApplication::processEvents();QThread::msleep(1);}
     require(heartbeats==disabledHeartbeats,"Disable ends host heartbeat ownership immediately");page.setConnectionState(true,false);
-    int submitted=0;FpgaControlConfig requested;
-    QObject::connect(&page,&FpgaControlPage::applyRequested,&page,[&](const FpgaControlConfig &v){++submitted;requested=v;});
+    int submitted=0;FpgaControlConfig requested;QString requestedSection;
+    QObject::connect(&page,&FpgaControlPage::applyRequested,&page,[&](const FpgaControlConfig &v,const QString &section){++submitted;requested=v;requestedSection=section;});
     page.setConnectionState(true,false,"GP01");
     auto *rate=page.findChild<QDoubleSpinBox*>("fpgaAdcRate");rate->setValue(500000);
     page.setHardwareValues({{0x4014,1000000}});
     require(rate->value()==500000,"readback must not overwrite user edits");
     require(page.findChild<QLabel*>("fpgaAdcRateActual")->text().contains("1000000"),"actual rate independently displayed");
-    apply->click();apply->click();require(submitted==1 && requested.adcRateHz==500000,"busy state blocks duplicate submission");
+    apply->click();apply->click();require(submitted==1 && requestedSection=="adc" && requested.adcRateHz==500000,"busy state blocks duplicate ADC submission");
+    auto *applyAi8=page.findChild<QPushButton*>("fpgaApplyAi8");
+    page.setConnectionState(true,false);page.setHardwareValues({{0x6604,1}});
+    require(apply->isEnabled()&&!applyAi8->isEnabled(),"active AI8 locks only its own apply button");
+    page.setHardwareValues({{0x6604,0}});applyAi8->click();
+    require(submitted==2 && requestedSection=="ai8","AI8 submits its own section");
     page.setConnectionState(true,false);
     int wmsApplied=0,dliaApplied=0;
     FpgaControlConfig requestedWms;
@@ -339,12 +344,12 @@ int main(int argc,char **argv) {
     bias->setValue(-0.250);
     modulation2->setValue(0.100);
     page.findChild<QPushButton*>("fpgaApplyWms")->click();
-    require(wmsApplied==1&&dliaApplied==0&&submitted==1,"WMS has independent apply signal");
+    require(wmsApplied==1&&dliaApplied==0&&submitted==2,"WMS has independent apply signal");
     require(requestedWms.wms[0].scanAmplitude==215311728&&requestedWms.wms[1].scanAmplitude==215746451
         &&requestedWms.wms[0].bias==-107655864&&requestedWms.wms[1].sineAmplitude==43149290,
         "applying board volts emits the calibrated signed Q1.31 codes for each channel");
     page.setConnectionState(true,false);page.findChild<QPushButton*>("fpgaApplyDlia")->click();
-    require(wmsApplied==1&&dliaApplied==1&&submitted==1,"DLIA has independent apply signal");
+    require(wmsApplied==1&&dliaApplied==1&&submitted==2,"DLIA has independent apply signal");
     page.setConnectionState(true,false);
     int acquisitions=0,dacs=0;
     QObject::connect(&page,&FpgaControlPage::acquisitionRequested,&page,[&](bool){++acquisitions;});
@@ -477,7 +482,12 @@ int main(int argc,char **argv) {
     page.setConnectionState(true,false);
     page.resize(720,540);page.show();app.processEvents();
     auto *sensorChoice=page.findChild<QComboBox*>("fpgaAdvancedSensor");auto *sensorForms=page.findChild<QWidget*>("fpgaAdvancedSensorStack");
-    auto *advancedTabs=page.findChild<QTabWidget*>("fpgaTabs");const int previousTab=advancedTabs->currentIndex();advancedTabs->setCurrentIndex(3);
+    auto *advancedTabs=page.findChild<QTabWidget*>("fpgaTabs");const int previousTab=advancedTabs->currentIndex();advancedTabs->setCurrentIndex(4);
+    require(advancedTabs->widget(0)->isAncestorOf(page.findChild<QWidget*>("fpgaRawStart"))
+        && advancedTabs->widget(0)->isAncestorOf(page.findChild<QWidget*>("fpgaWavePlot32"))
+        && advancedTabs->widget(1)->isAncestorOf(rate) && advancedTabs->widget(1)->isAncestorOf(apply)
+        && advancedTabs->widget(1)->isAncestorOf(page.findChild<QWidget*>("fpgaTimeSetEdge"))
+        && advancedTabs->widget(3)->isAncestorOf(applyAi8),"sampling, shared settings and AI8 have dedicated locations");
     sensorChoice->setCurrentIndex(0);app.processEvents();app.processEvents();const int shortForm=sensorForms->parentWidget()->height();
     sensorChoice->setCurrentIndex(3);app.processEvents();app.processEvents();
     require(sensorForms->parentWidget()->height()>shortForm,"advanced sensor card height follows the visible form rather than the longest hidden form");
@@ -490,8 +500,9 @@ int main(int argc,char **argv) {
         auto *tabs=page.findChild<QTabWidget*>();
         for(int i=0;i<tabs->count();++i) {
             tabs->setCurrentIndex(i);
-            for(int subtab=0;subtab<(i==0?parameterTabs->count():1);++subtab) {
-                if(i==0)parameterTabs->setCurrentIndex(subtab);
+            const bool channelSettings=tabs->widget(i)->isAncestorOf(parameterTabs);
+            for(int subtab=0;subtab<(channelSettings?parameterTabs->count():1);++subtab) {
+                if(channelSettings)parameterTabs->setCurrentIndex(subtab);
                 app.processEvents();
                 auto *scroll=qobject_cast<QScrollArea*>(tabs->widget(i));
                 require(scroll&&scroll->widgetResizable(),"all tabs remain scrollable at large fonts");require(scroll->viewport()->width()>0,"tab viewport remains visible");
@@ -526,7 +537,7 @@ int main(int argc,char **argv) {
                         page.setManagementState({});diagnostics->clear();app.processEvents();
                     }
                 }
-                if(i==2)for(int channel=0;channel<2;++channel) {
+                if(i==0)for(int channel=0;channel<2;++channel) {
                     auto *adc=page.findChild<QWidget*>(QString("fpgaWavePlot%1").arg(32+channel));
                     auto *h1=page.findChild<QWidget*>(QString("fpgaWavePlot%1").arg(48+channel));
                     auto *h2=page.findChild<QWidget*>(QString("fpgaWaveSecondPlot%1").arg(48+channel));
@@ -534,7 +545,7 @@ int main(int argc,char **argv) {
                     require(h1->geometry().left()==h2->geometry().left()&&h1->width()==h2->width()
                         &&h1->geometry().bottom()<h2->geometry().top(),"harmonic plots fill the same column in vertical order");
                 }
-                if(i==1) {
+                if(i==3) {
                     require(!page.findChild<QComboBox*>("fpgaPressureSource") && !page.findChild<QComboBox*>("fpgaHumiditySource"),
                         "independent sensor card has no source selectors");
                     auto *grid=page.findChild<QGridLayout*>("fpgaSensorGrid");
@@ -621,7 +632,7 @@ int main(int argc,char **argv) {
         }
     }
     page.setFont(app.font());page.setTheme(false);page.setLanguage(false);
-    page.findChild<QTabWidget*>()->setCurrentIndex(2);
+    page.findChild<QTabWidget*>("fpgaTabs")->setCurrentIndex(0);
     auto pair=wave;pair.format=0;pair.bytesPerPoint=8;pair.pointBytes.clear();
     for(qint32 value:{10,20,30,40})appendWord(pair.pointBytes,value);
     page.updateWaveform(pair);app.processEvents();

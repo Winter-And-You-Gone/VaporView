@@ -76,7 +76,7 @@ signals:
     void discoverDevicesRequested();
     void connectRequested(const QString &locator, const QString &backend);
     void disconnectRequested();
-    void applyRequested(const FpgaControlConfig &config);
+    void applyRequested(const FpgaControlConfig &config, const QString &section);
     void applyWmsRequested(const FpgaControlConfig &config);
     void applyDliaRequested(const FpgaControlConfig &config);
     void configurationChanged(const FpgaControlConfig &config);

@@ -311,8 +311,9 @@ static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale
     const int originalTab=tabs->currentIndex(),originalParameterTab=parameterTabs->currentIndex();
     for(int tab=0;tab<tabs->count();++tab) {
         tabs->setCurrentIndex(tab);
-        for(int parameterTab=0;parameterTab<(tab==0?parameterTabs->count():1);++parameterTab) {
-            if(tab==0)parameterTabs->setCurrentIndex(parameterTab);
+        const bool channelSettings=tabs->widget(tab)->isAncestorOf(parameterTabs);
+        for(int parameterTab=0;parameterTab<(channelSettings?parameterTabs->count():1);++parameterTab) {
+            if(channelSettings)parameterTabs->setCurrentIndex(parameterTab);
             processFor(50);
             QList<QWidget*> channelCards;
             for(const auto *name : {"fpgaDliaChannels","fpgaWaveChannels","fpgaRecordingCards"}) {
@@ -335,20 +336,22 @@ static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale
                     require(button->fontMetrics().horizontalAdvance(button->text())<=button->contentsRect().width(),"half-width recording buttons retain their full text at large fonts");
                 }
             }
-            if(tab==0&&parameterTab==0) {
+            if(tab==0) {
                 auto *capture=page->findChild<QLabel*>("fpgaCaptureStatus")->parentWidget();
-                for(const auto *name:{"fpgaAcquisitionStart","fpgaAcquisitionStop","fpgaRawStart","fpgaRawStop","fpgaApply","fpgaRefresh"}) {
+                for(const auto *name:{"fpgaAcquisitionStart","fpgaAcquisitionStop","fpgaRawStart","fpgaRawStop"}) {
                     auto *button=page->findChild<QAbstractButton*>(name);const QRect rect(button->mapTo(capture,QPoint()),button->size());
                     require(capture->rect().contains(rect),"primary acquisition controls stay together");
                     require(button->fontMetrics().horizontalAdvance(button->text())<=button->contentsRect().width(),"primary acquisition labels fit");
                 }
+            }
+            if(channelSettings&&parameterTab==0) {
                 auto *first=page->findChild<QWidget*>("fpga0Scan"),*second=page->findChild<QWidget*>("fpga1Scan");
                 require(first->parentWidget()==second->parentWidget()&&first->geometry().top()==second->geometry().top(),"merged WMS card aligns independent channel inputs on the same row");
                 require(page->findChild<QLabel*>("fpga0ScanLabel")&&!page->findChild<QLabel*>("fpga1ScanLabel"),"main window shares WMS field labels across channels");
                 require(page->findChild<QLabel*>("fpgaRegister3028")->text()!=QStringLiteral("—")
                     &&page->findChild<QLabel*>("fpgaRegister3128")->text()!=QStringLiteral("—"),"UI test mode populates both channel diagnostic counters");
             }
-            if(tab==2)for(int channel=0;channel<2;++channel) {
+            if(tab==0)for(int channel=0;channel<2;++channel) {
                 auto *adc=page->findChild<QWidget*>(QString("fpgaWavePlot%1").arg(32+channel));
                 auto *h1=page->findChild<QWidget*>(QString("fpgaWavePlot%1").arg(48+channel));
                 auto *h2=page->findChild<QWidget*>(QString("fpgaWaveSecondPlot%1").arg(48+channel));
@@ -358,7 +361,7 @@ static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale
             }
             auto *sensorGrid=page->findChild<QGridLayout*>("fpgaSensorGrid");
             require(sensorGrid&&sensorGrid->rowCount()==7&&sensorGrid->columnCount()==4,"sensor card includes independent RD105 and HC2A rows");
-            if(tab==1) {
+            if(tab==3) {
                 require(!page->findChild<QComboBox*>("fpgaPressureSource") && !page->findChild<QComboBox*>("fpgaHumiditySource"),
                     "independent sensors have no interchangeable source selectors");
             }
@@ -1718,7 +1721,7 @@ static void localSimulatorRouting()
     auto *ai8Action=homeAction(window,"AI-8288");
     auto *ai8Channel=page->findChild<QDoubleSpinBox*>("fpgaAi8Channel");
     auto *ai8Scan=page->findChild<QCheckBox*>("fpgaAi8Scan");
-    auto *apply=page->findChild<QAbstractButton*>("fpgaApply");
+    auto *apply=page->findChild<QAbstractButton*>("fpgaApplyAi8");
     QLabel *channel8=nullptr;
     for(auto *label:window.findChildren<QLabel*>("ai8TemperatureOverviewValueLabel"))
         if(label->property("channelIndex").toInt()==7)channel8=label;
@@ -3246,7 +3249,7 @@ int main(int argc,char **argv)
         require(!page->findChild<QComboBox*>(QStringLiteral("fpgaPressureSource")),"source selection removed from FPGA page");
         stack->setCurrentIndex(4); stack->setCurrentIndex(0); stack->setCurrentIndex(4);
         require(stack->widget(4)==page,"switching pages preserves the FPGA editor");
-        window.show();page->findChild<QTabWidget*>("fpgaTabs")->setCurrentIndex(2);processFor(100);
+        window.show();page->findChild<QTabWidget*>("fpgaTabs")->setCurrentIndex(0);processFor(100);
         verifyConnectionCard(page,100);
         verifyCardMargins(window,page,100);
         auto handler=qInstallMessageHandler(captureFont);

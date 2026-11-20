@@ -169,7 +169,7 @@ bool validateControl(const QJsonObject& control, QString *error)
         keys << "configuration";
         if (control.contains("section")) {
             keys << "section";
-            if (!control.value("section").isString() || !QStringList{"all","wms","dlia","acquisition"}.contains(control.value("section").toString())) return fail();
+            if (!control.value("section").isString() || !QStringList{"all","wms","dlia","acquisition","adc","ai8"}.contains(control.value("section").toString())) return fail();
         }
         if (!control.value("configuration").isObject() || !(control.value("section").toString("all")=="all" ? configurationValid(control.value("configuration").toObject()) : configurationShapeValid(control.value("configuration").toObject()))) return fail();
     } else if (op == "acquisition" || op == "wms" || op == "dac" || op == "sensor" || op == "raw") {

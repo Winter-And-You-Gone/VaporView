@@ -878,8 +878,8 @@ void MainWindow::setupFpgaControlPage()
         state_->fpga_home_raw_start_pending_=false;
         dispatch({{"op", "disconnect"}}, [controller] { controller->disconnectDevice(); });
     });
-    connect(page, &FpgaControlPage::applyRequested, this, [dispatch, controller](const FpgaControlConfig& config) {
-        dispatch({{"op", "configure"}, {"section", "acquisition"}, {"configuration", config.toJson()}}, [controller, config] { controller->applyConfiguration(config,"acquisition"); });
+    connect(page, &FpgaControlPage::applyRequested, this, [dispatch, controller](const FpgaControlConfig& config, const QString& section) {
+        dispatch({{"op", "configure"}, {"section", section}, {"configuration", config.toJson()}}, [controller, config, section] { controller->applyConfiguration(config,section); });
     });
     connect(page, &FpgaControlPage::applyWmsRequested, this, [dispatch, controller](const FpgaControlConfig& config) {
         dispatch({{"op", "configure"}, {"section", "wms"}, {"configuration", config.toJson()}}, [controller, config] { controller->applyConfiguration(config,"wms"); });

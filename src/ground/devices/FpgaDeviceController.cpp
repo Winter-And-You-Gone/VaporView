@@ -902,8 +902,11 @@ void FpgaDeviceController::applyConfiguration(const FpgaControlConfig& config, c
     if (!ready_) { report(QStringLiteral("请先连接并通过模块版本核验。")); return; }
     const bool wms=section=="all" || section=="wms";
     const bool dlia=section=="all" || section=="dlia";
-    const bool acquisition=section=="all" || section=="acquisition";
-    if (!wms && !dlia && !acquisition) { fail(QStringLiteral("未知参数分区。")); return; }
+    // Older clients use "acquisition" to submit ADC and AI8 together.
+    const bool combined=section=="all" || section=="acquisition";
+    const bool acquisition=combined || section=="adc";
+    const bool ai8=combined || section=="ai8";
+    if (!wms && !dlia && !acquisition && !ai8) { fail(QStringLiteral("未知参数分区。")); return; }
     const quint32 adcRate=acquisition?config.adcRateHz:registers_.value(0x4014);
     for(int ch=0;ch<2;++ch) {
         const quint32 base=0x5000+ch*0x100;
@@ -926,7 +929,7 @@ void FpgaDeviceController::applyConfiguration(const FpgaControlConfig& config, c
     if (acquisition && !dlia && (registers_.value(0x504c)>adcRate/8 || registers_.value(0x514c)>adcRate/8)) {
         fail(QStringLiteral("请先降低 DLIA 输出率，再降低 ADC 采样率。")); return;
     }
-    if (acquisition && (config.ai8.slaveAddress<1 || config.ai8.slaveAddress>80 || config.ai8.channel<1 || config.ai8.channel>8
+    if (ai8 && (config.ai8.slaveAddress<1 || config.ai8.slaveAddress>80 || config.ai8.channel<1 || config.ai8.channel>8
         || config.ai8.pollIntervalMs<1 || config.ai8.pollIntervalMs>3600000
         || config.ai8.timeoutMs<1 || config.ai8.timeoutMs>65535 || config.ai8.retryLimit>3)) {
         fail(QStringLiteral("AI8 地址、通道、轮询、超时或重试参数超出协议范围。")); return;
@@ -945,14 +948,27 @@ void FpgaDeviceController::applyConfiguration(const FpgaControlConfig& config, c
     if(acquisition && (config.adcCnvTicks<2 || config.adcCnvTicks>20 || config.adcBusyTimeoutTicks<40 || config.adcBusyTimeoutTicks>1000000)) {
         fail(QStringLiteral("ADC CNV 脉宽或 BUSY 超时超出范围。"));return;
     }
-    if (!begin(QStringLiteral("提交并核对配置"))) return;
-    configuration_=config; stopAndDrain();
-    const bool ai8Changed=acquisition && (registers_.value(0x6614)!=config.ai8.slaveAddress ||
+    const bool ai8Changed=ai8 && (registers_.value(0x6614)!=config.ai8.slaveAddress ||
         registers_.value(0x661c)!=config.ai8.channel || registers_.value(0x662c)!=config.ai8.pollIntervalMs
         || registers_.value(0x6660)!=config.ai8.timeoutMs || registers_.value(0x6664)!=config.ai8.retryLimit
         || ((extensions()&FpgaExtensions::Ai8Scan) && bool(registers_.value(0x6668))!=config.ai8.scan));
     if (ai8Changed && (registers_.value(0x6604)&1)) {
         fail(QStringLiteral("AI8 地址、通道或轮询配置只能在禁用时修改；请先禁用 AI8。")); return;
+    }
+    if (!begin(QStringLiteral("提交并核对配置"))) return;
+    if (section=="ai8") {
+        configuration_.ai8=config.ai8;
+    } else {
+        if (section=="adc") {
+            configuration_.adcRateHz=config.adcRateHz;
+            configuration_.adcCnvTicks=config.adcCnvTicks;
+            configuration_.adcBusyTimeoutTicks=config.adcBusyTimeoutTicks;
+            configuration_.adcExpectedPoints=config.adcExpectedPoints;
+            configuration_.frontend=config.frontend;
+        } else {
+            configuration_=config;
+        }
+        stopAndDrain();
     }
     if (wms) for (int ch=0; ch<2; ++ch) {
         const auto &dac=config.dac[ch]; const quint32 db=0x3000+quint32(ch)*0x100;

@@ -915,6 +915,22 @@ void scopedConfiguration(){
     require(f.transport->writes().isEmpty(),"ADC reduction cannot invalidate existing DLIA output rate");
     f.transport->clear();f.controller.applyConfiguration(config,"invalid");f.finish();
     require(f.transport->writes().isEmpty(),"unknown section cannot write hardware");
+
+    // AI8-only apply must leave a live ADC/DLIA/RAW acquisition running.
+    f.controller.setAcquisition(true);f.finish();f.controller.setRawEnabled(true);f.finish();
+    config.ai8.channel=2;f.transport->clear();f.diagnostics.clear();
+    f.controller.applyConfiguration(config,"ai8");f.finish();
+    require(f.diagnostics.isEmpty() && f.transport->regs.value(0x661c)==2,"AI8 accepts polling changes with an unrelated low draft ADC rate");
+    for(const auto &command:f.transport->writes())
+        require(command.address>=0x6600 && command.address<0x6700,"AI8 only writes its polling registers");
+    require((f.transport->regs.value(0x4004)&1) && (f.transport->regs.value(0x5104)&1) && f.transport->regs.value(0x50)==3,"AI8 apply preserves live sampling and raw upload");
+    f.controller.setSensorEnabled(0x46,true);f.finish();
+    config.adcRateHz=500000;config.ai8.channel=3;f.transport->clear();f.diagnostics.clear();
+    f.controller.applyConfiguration(config,"adc");f.finish();
+    require(f.diagnostics.isEmpty() && f.transport->regs.value(0x4014)==500000 && f.transport->regs.value(0x661c)==2,
+        "ADC apply succeeds while AI8 is active and preserves its channel");
+    for(const auto &command:f.transport->writes())
+        require(command.address<0x6600 || command.address>=0x6700,"ADC never writes AI8 polling registers");
 }
 void rawAndBusy(){
     Fixture f;f.connect();f.controller.setConfiguration(FpgaControlConfig::fromJson({{"rawWindowSeconds",1}}));f.transport->clear();

@@ -38,7 +38,7 @@ int main(int argc, char **argv)
     legacyConfigure.insert("section","wms");require(validateControl(legacyConfigure),"scoped legacy configuration remains compatible");
     legacyConfig.insert("rawWindowSeconds",1.5);legacyConfigure.insert("configuration",legacyConfig);
     require(!validateControl(legacyConfigure),"malformed legacy duration still fails remote validation");
-    for(const QString section:{QString("wms"),QString("dlia"),QString("acquisition"),QString("all")}) {
+    for(const QString section:{QString("wms"),QString("dlia"),QString("adc"),QString("ai8"),QString("acquisition"),QString("all")}) {
         auto scoped=configure;scoped["section"]=section;
         require(parseControl(encodeControl(scoped),parsed)&&parsed.value("section")==section,"configuration scope survives remote codec");
     }
