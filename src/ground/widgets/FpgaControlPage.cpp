@@ -219,16 +219,21 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout) : Q
         tabs_->addTab(scroll,zh); return body;
     };
     auto *parameters=tab(QStringLiteral("参数与采集"),QStringLiteral("Parameters & acquisition")); auto *pl=new QVBoxLayout(parameters);
-    auto *actions=new QGridLayout; pl->addLayout(actions);
+    auto *capture=card(parameters,pl,QStringLiteral("采集控制"),QStringLiteral("Acquisition control"),QStringLiteral("activity"));
+    auto *captureLayout=new QVBoxLayout(capture);
+    auto *actions=new QGridLayout; captureLayout->addLayout(actions);
     auto action=[this](QGridLayout *layout,int row,int col,const char *zh,const char *en,const QString &name,std::function<void()> fn) {
         auto *b=new QPushButton(this); label(b,QString::fromUtf8(zh),QString::fromUtf8(en)); b->setObjectName(name);
         layout->addWidget(b,row,col); onlineControls_.append(b); connect(b,&QPushButton::clicked,this,[this,fn]{ lockOperation(); fn(); }); return b;
     };
-    action(actions,0,0,"应用采样与 AI8 参数","Apply sampling & AI8","fpgaApply",[this]{emit applyRequested(configuration());});
-    refresh_=action(actions,0,1,"刷新读回","Refresh readback","fpgaRefresh",[this]{emit refreshRequested();});
-    action(actions,0,2,"开始采集","Start acquisition","fpgaAcquisitionStart",[this]{emit acquisitionRequested(true);});
-    action(actions,0,3,"停止采集","Stop acquisition","fpgaAcquisitionStop",[this]{emit acquisitionRequested(false);});
-    auto *hint=new QLabel(parameters); label(hint,QStringLiteral("采集与模拟输出独立控制。停止 DAC 可能保留最后码，不保证归零。"),QStringLiteral("Acquisition and analog output are independent. Stopping DAC may hold its last code.")); hint->setWordWrap(true); pl->addWidget(hint);
+    action(actions,0,0,"开始 H1/H2","Start H1/H2","fpgaAcquisitionStart",[this]{emit acquisitionRequested(true);});
+    action(actions,0,1,"停止 H1/H2","Stop H1/H2","fpgaAcquisitionStop",[this]{emit acquisitionRequested(false);});
+    action(actions,0,2,"开始原始波形","Start raw waveform","fpgaRawStart",[this]{emit rawRequested(true);});
+    action(actions,0,3,"停止原始波形","Stop raw waveform","fpgaRawStop",[this]{emit rawRequested(false);});
+    action(actions,1,0,"应用采样与 AI8 参数","Apply sampling & AI8","fpgaApply",[this]{emit applyRequested(configuration());});
+    refresh_=action(actions,1,1,"刷新读回","Refresh readback","fpgaRefresh",[this]{emit refreshRequested();});
+    captureStatus_=new QLabel(capture); captureStatus_->setObjectName(QStringLiteral("fpgaCaptureStatus")); captureStatus_->setProperty("fpgaSecondaryText",true); captureStatus_->setWordWrap(true); captureLayout->addWidget(captureStatus_);
+    auto *hint=new QLabel(capture); label(hint,QStringLiteral("开始 H1/H2 会启动公共 ADC/DLIA 采集；原始波形按需单独上传。参数应用后需要重新开始 H1/H2。"),QStringLiteral("Start H1/H2 enables shared ADC/DLIA acquisition; raw waveform upload is optional. Restart H1/H2 after applying parameters.")); hint->setWordWrap(true); captureLayout->addWidget(hint);
     auto *shared=card(parameters,pl,QStringLiteral("共同采样时序"),QStringLiteral("Shared sampling"),QStringLiteral("timer")); auto *sl=new QGridLayout(shared);
     auto field=[this](QGridLayout *layout,int row,const char *zh,const char *en,const QString &name,quint32 address,double min,double max,int decimals,
                       std::function<double(const FpgaControlConfig&)> read,std::function<void(FpgaControlConfig&,double)> write,int column=0) {
@@ -601,10 +606,11 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout) : Q
     label(recordDlia_,QStringLiteral("保存 H1/H2（必选）"),QStringLiteral("Save H1/H2 (required)"));
     recordDlia_->setChecked(true); recordDlia_->setEnabled(false);
     recordDlia_->setToolTip(text("完整 H1/H2 和归一化峰值写入 Session；归一化波形在查看时计算。", "Full H1/H2 and normalized peaks are recorded in the session; normalized waveforms are calculated when viewed."));
-    rl->addWidget(recordSensors_); rl->addWidget(recordDlia_);
+    recordDlia_->setVisible(false);
+    rl->addWidget(recordSensors_);
+    auto *recordingHint=new QLabel(recording); recordingHint->setObjectName(QStringLiteral("fpgaRecordingHint")); recordingHint->setProperty("fpgaSecondaryText",true); recordingHint->setWordWrap(true);
+    label(recordingHint,QStringLiteral("H1/H2 会随 FPGA Session 自动保存。此处只控制 Session 记录。"),QStringLiteral("H1/H2 is saved automatically with the FPGA Session. This section controls the Session only.")); rl->addWidget(recordingHint);
     for(auto *c : {recordSensors_}) connect(c,&QCheckBox::toggled,this,[this]{emit configurationChanged(configuration());});
-    auto *rawGrid=new QGridLayout; rl->addLayout(rawGrid);
-    action(rawGrid,0,0,"开始 RAW","Start RAW","fpgaRawStart",[this]{emit rawRequested(true);}); action(rawGrid,0,1,"停止 RAW","Stop RAW","fpgaRawStop",[this]{emit rawRequested(false);});
     record_=new QPushButton(recording); record_->setObjectName("fpgaRecord"); rl->addWidget(record_); connect(record_,&QAbstractButton::clicked,this,[this]{emit recordingRequested(!recording_);});
     recordStatus_=new QLabel(recording); recordStatus_->setObjectName("fpgaRecordingStatus"); recordStatus_->setWordWrap(true); rl->addWidget(recordStatus_);
     auto *files=new QHBoxLayout; rl->addLayout(files);
@@ -774,6 +780,21 @@ void FpgaControlPage::updateActions(){
             if(auto *button=findChild<QPushButton*>(QString::fromLatin1(name)))button->setEnabled(false);
     if(ai8Scan_)ai8Scan_->setEnabled(ready_&&!busy_&&(extensions_&VaporView::FpgaExtensions::Ai8Scan)&&!(hardwareValues_.value(0x6604)&1));
 }
+void FpgaControlPage::updateCaptureStatus(){
+    if(!captureStatus_)return;
+    if(!connected_) {
+        captureStatus_->setText(text("采集状态：未连接","Capture: offline"));
+        return;
+    }
+    bool acquiring=true;
+    for(quint32 control:{0x4004u,0x4104u,0x5004u,0x5104u})
+        acquiring &= hardwareValues_.contains(control) && (hardwareValues_.value(control)&1);
+    const bool raw=rawEnabled_.value(0x20,false)||rawEnabled_.value(0x21,false);
+    captureStatus_->setText(text("H1/H2：%1 · 原始波形：%2","H1/H2: %1 · Raw waveform: %2")
+        .arg(acquiring?text("运行中","running"):text("已停止","stopped"))
+        .arg(raw?text("上传中","uploading"):text("已停止","stopped")));
+    captureStatus_->setToolTip(captureStatus_->text());
+}
 void FpgaControlPage::setExtensions(quint32 bits) {
     extensions_=bits;
     if(ai8Scan_) {const QSignalBlocker block(ai8Scan_);ai8Scan_->setChecked(config_.ai8.scan && (bits&VaporView::FpgaExtensions::Ai8Scan));}
@@ -872,6 +893,7 @@ void FpgaControlPage::setConnectionState(bool ready,bool busy,const QString &det
         status_->setText(text("协议模拟 · ","Protocol simulation · ")+status_->text());
     status_->setText(status_->text()+(busy?text(" · 正在处理"," · Working"):QString())+(detail.isEmpty()?QString():" · "+detail));
     status_->setToolTip(status_->text());
+    updateCaptureStatus();
     if(lost){for(auto it=latestReadings_.cbegin();it!=latestReadings_.cend();++it)historicalReadings_.insert(it.key());for(auto it=latestWaves_.cbegin();it!=latestWaves_.cend();++it)historicalWaves_.insert(it.key());refreshMeasurements();}
     updateActions();
 }
@@ -921,6 +943,7 @@ void FpgaControlPage::setHardwareValues(const QMap<quint32,quint32> &v){
         rawEnabled_[source]=enabled;
     }
     if(rawChanged)refreshMeasurements();
+    updateCaptureStatus();
     for(auto it=v.cbegin();it!=v.cend();++it)if(auto *l=hardwareLabels_.value(it.key())) {
         const auto module=l->property("fpgaModule").toString();
         const quint32 base=it.key()&~0xffu,offset=it.key()&0xff;

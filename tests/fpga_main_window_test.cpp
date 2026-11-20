@@ -329,13 +329,19 @@ static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale
             }
             if(tab==tabs->count()-1) {
                 auto *row=page->findChild<QHBoxLayout*>("fpgaRecordingCards");auto *recording=row->itemAt(0)->widget();
-                for(const auto *name:{"fpgaRawStart","fpgaRawStop","fpgaRecord","fpgaReplay","fpgaExport"}) {
+                for(const auto *name:{"fpgaRecord","fpgaReplay","fpgaExport"}) {
                     auto *button=page->findChild<QAbstractButton*>(name);const QRect rect(button->mapTo(recording,QPoint()),button->size());
                     require(recording->rect().contains(rect)&&button->width()<recording->width(),"recording buttons fit inside the half-width card");
                     require(button->fontMetrics().horizontalAdvance(button->text())<=button->contentsRect().width(),"half-width recording buttons retain their full text at large fonts");
                 }
             }
             if(tab==0&&parameterTab==0) {
+                auto *capture=page->findChild<QLabel*>("fpgaCaptureStatus")->parentWidget();
+                for(const auto *name:{"fpgaAcquisitionStart","fpgaAcquisitionStop","fpgaRawStart","fpgaRawStop","fpgaApply","fpgaRefresh"}) {
+                    auto *button=page->findChild<QAbstractButton*>(name);const QRect rect(button->mapTo(capture,QPoint()),button->size());
+                    require(capture->rect().contains(rect),"primary acquisition controls stay together");
+                    require(button->fontMetrics().horizontalAdvance(button->text())<=button->contentsRect().width(),"primary acquisition labels fit");
+                }
                 auto *first=page->findChild<QWidget*>("fpga0Scan"),*second=page->findChild<QWidget*>("fpga1Scan");
                 require(first->parentWidget()==second->parentWidget()&&first->geometry().top()==second->geometry().top(),"merged WMS card aligns independent channel inputs on the same row");
                 require(page->findChild<QLabel*>("fpga0ScanLabel")&&!page->findChild<QLabel*>("fpga1ScanLabel"),"main window shares WMS field labels across channels");

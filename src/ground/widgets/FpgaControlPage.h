@@ -107,6 +107,7 @@ private:
     };
     QString text(const char *zh, const char *en) const;
     void updateActions();
+    void updateCaptureStatus();
     void lockOperation();
     void refreshMeasurements();
     void clearMeasurements();
@@ -160,7 +161,7 @@ private:
     QAbstractButton *connect_ = nullptr, *disconnect_ = nullptr;
     QAbstractButton *refresh_ = nullptr;
     QAbstractButton *record_ = nullptr;
-    QLabel *status_ = nullptr, *recordStatus_ = nullptr, *managementStatus_ = nullptr;
+    QLabel *status_ = nullptr, *captureStatus_ = nullptr, *recordStatus_ = nullptr, *managementStatus_ = nullptr;
     QLabel *calibrationStatus_ = nullptr, *motorStatus_ = nullptr, *motorProgress_ = nullptr, *lcStatus_ = nullptr;
     QTimer motorHeartbeatTimer_;
     bool motorLeaseRequested_ = false;

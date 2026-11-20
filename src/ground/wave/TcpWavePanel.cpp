@@ -2370,17 +2370,17 @@ void TcpWavePanel::setFpgaAcquisitionState(bool available, bool busy, bool acqui
     fpga_acquiring_ = acquiring;
     fpga_raw_enabled_ = rawEnabled;
     fpga_raw_button_->setText(is_english_
-        ? (rawEnabled ? "Raw: Stop" : "Raw: Start")
-        : (rawEnabled ? "原始信号：停止采集" : "原始信号：开始采集"));
+        ? (rawEnabled ? "Raw waveform: Stop" : "Raw waveform: Start")
+        : (rawEnabled ? "原始波形：停止" : "原始波形：开始"));
     fpga_harmonic_button_->setText(is_english_
-        ? (acquiring ? "2nd Harmonic: Stop" : "2nd Harmonic: Start")
-        : (acquiring ? "二次谐波：停止采集" : "二次谐波：开始采集"));
+        ? (acquiring ? "H1/H2: Stop" : "H1/H2: Start")
+        : (acquiring ? "H1/H2：停止" : "H1/H2：开始"));
     fpga_raw_button_->setToolTip(is_english_
         ? "Start acquisition if needed, then enable RAW upload. Stop only disables RAW upload."
-        : "需要时先启动 FPGA 采集，再开启 RAW 上传；停止只关闭 RAW 上传，保留二次谐波采集。");
+        : "需要原始波形时开启 RAW 上传；停止只关闭原始波形上传，保留 H1/H2 采集。");
     fpga_harmonic_button_->setToolTip(is_english_
         ? "Uses FPGA Start/Stop acquisition. Stopping also stops raw signal acquisition."
-        : "对应 FPGA 页面的开始/停止采集；停止会同时停止原始信号采集。");
+        : "对应 FPGA 页面的 H1/H2 采集；停止会同时停止原始波形上传。");
     for (auto *button : {fpga_raw_button_, fpga_harmonic_button_})
         button->setEnabled(fpga_mode_ && available && !busy);
 }
