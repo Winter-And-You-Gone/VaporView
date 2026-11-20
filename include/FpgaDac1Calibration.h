@@ -5,14 +5,18 @@
 
 namespace VaporView::FpgaDac1Calibration {
 
-// Driver input (Keysight CH1, DC, 1 MΩ), 100 Hz sawtooth, 500 kS/s DAC updates.
+// Driver input (Keysight CH2, DC, 1 MΩ), 100 Hz saw + 20 kHz sine,
+// 500 kS/s DAC updates. Fit separate waveform components, excluding reset edges.
 constexpr double Q31Scale = 2147483648.0;
-constexpr double BiasAtZero = 3.58121;
-constexpr double BiasGain = 4.65836;
-constexpr double SawGain = 4.70943;
-constexpr double SawPeakIntercept = 0.03312;
+constexpr double BiasAtZero = 3.578914;
+constexpr double BiasGain = 4.740717;
+constexpr double SawGain = 4.749054;
+constexpr double ModulationGain = 4.717095;
 
-// Guarded interval from the widest measured sweep (3.62 to 4.62 V).
+constexpr double MinInputV = 0.0;
+constexpr double MaxInputV = 5.0;
+
+// Fixed hardware clamp inside the measured loaded sweep (3.62 to 4.62 V).
 constexpr qint32 MinSample = 30143642;
 constexpr qint32 MaxSample = 460767098;
 constexpr qint32 DefaultBias = 245455370;
@@ -25,24 +29,32 @@ constexpr quint32 UnityGain = 0x40000000;
 inline double biasVolts(qint32 code) { return BiasAtZero + code * BiasGain / Q31Scale; }
 inline qint32 biasCode(double volts) { return qint32(std::llround((volts - BiasAtZero) * Q31Scale / BiasGain)); }
 
-inline double scanVolts(qint32 code)
-{
-    return code == 0 ? 0 : code * SawGain / Q31Scale + std::copysign(SawPeakIntercept, double(code));
-}
+inline double scanVolts(qint32 code) { return code * SawGain / Q31Scale; }
+inline qint32 scanCode(double volts) { return qint32(std::llround(volts * Q31Scale / SawGain)); }
 
-inline qint32 scanCode(double volts)
-{
-    const double peak = std::abs(volts) - SawPeakIntercept;
-    return peak > 0 ? qint32(std::llround(std::copysign(peak, volts) * Q31Scale / SawGain)) : 0;
-}
+inline double modulationVolts(qint32 code) { return code * ModulationGain / Q31Scale; }
+inline qint32 modulationCode(double volts) { return qint32(std::llround(volts * Q31Scale / ModulationGain)); }
 
-inline double modulationVolts(qint32 code) { return code * BiasGain / Q31Scale; }
-inline qint32 modulationCode(double volts) { return qint32(std::llround(volts * Q31Scale / BiasGain)); }
+// Signed Vpp keeps the polarity of previously saved waveforms.
+inline double scanVpp(qint32 code) { return 2 * scanVolts(code); }
+inline qint32 scanCodeFromVpp(double vpp) { return scanCode(vpp / 2); }
+inline double modulationVpp(qint32 code) { return 2 * modulationVolts(code); }
+inline qint32 modulationCodeFromVpp(double vpp) { return modulationCode(vpp / 2); }
 
-inline bool withinLimits(qint32 bias, qint32 scan, qint32 modulation)
+enum class Limit { WithinGuard, OutsideHardwareGuard, OutsideInputRange };
+struct TargetRange { double lowV, highV; Limit limit; };
+
+inline TargetRange targetRange(qint32 bias, qint32 scan, qint32 modulation)
 {
+    const double peakV = std::abs(scanVolts(scan)) + std::abs(modulationVolts(modulation));
+    const double lowV = biasVolts(bias) - peakV, highV = biasVolts(bias) + peakV;
+    // Each of the three target values rounds to the nearest Q1.31 code.
+    constexpr double roundingV = (BiasGain + SawGain + ModulationGain) / (2 * Q31Scale);
+    if (lowV < MinInputV - roundingV || highV > MaxInputV + roundingV)
+        return {lowV, highV, Limit::OutsideInputRange};
     const qint64 peak = std::abs(qint64(scan)) + std::abs(qint64(modulation));
-    return qint64(bias) - peak >= MinSample && qint64(bias) + peak <= MaxSample;
+    const bool inside = qint64(bias) - peak >= MinSample && qint64(bias) + peak <= MaxSample;
+    return {lowV, highV, inside ? Limit::WithinGuard : Limit::OutsideHardwareGuard};
 }
 
 } // namespace VaporView::FpgaDac1Calibration

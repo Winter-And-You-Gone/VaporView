@@ -108,6 +108,7 @@ private:
     QString text(const char *zh, const char *en) const;
     void updateActions();
     void updateCaptureStatus();
+    void updateDac1Target(const FpgaControlConfig &config);
     void lockOperation();
     void refreshMeasurements();
     void clearMeasurements();
@@ -155,6 +156,7 @@ private:
     QComboBox *locator_ = nullptr;
     QAbstractButton *discover_ = nullptr;
     QLabel *discoveryStatus_ = nullptr;
+    QLabel *dac1Target_ = nullptr;
     QJsonObject usbDiscovery_;
     quint64 usbDiscoveryGeneration_ = 0;
     bool usbRemote_ = false, usbHostAvailable_ = true, usbDiscovering_ = false;

@@ -248,6 +248,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout) : Q
         layout->setColumnStretch(column+2,1);
         fields_.append({input,read,write}); if (address) hardwareLabels_[address]=actual;
         connect(input,&QDoubleSpinBox::valueChanged,this,[this]{emit configurationChanged(configuration());});
+        return input;
     };
     field(sl,0,"请求采样率 / Hz","Requested sampling / Hz","fpgaAdcRate",0x4014,1,1000000,0,[](const auto &c){return c.adcRateHz;},[](auto &c,double v){c.adcRateHz=quint32(v);});
     field(sl,1,"CNV 脉宽 / 10 ns","CNV width / 10 ns","fpgaAdcCnvTicks",0x4030,2,20,0,[](const auto& c){return c.adcCnvTicks;},[](auto& c,double v){c.adcCnvTicks=quint32(v);});
@@ -269,9 +270,9 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout) : Q
     action(wmsActions,0,0,"应用 WMS / DAC 参数","Apply WMS / DAC","fpgaApplyWms",[this] {
         const auto config = configuration();
         const auto &wave = config.wms[0];
-        if (!Dac1::withinLimits(wave.bias, wave.scanAmplitude, wave.sineAmplitude)) {
-            setConnectionState(ready_, false, text("通道 1 超出激光驱动板标定区间。请减小幅度或调整偏置。",
-                "Channel 1 exceeds the calibrated laser input range. Reduce the amplitude or adjust the bias."));
+        if (Dac1::targetRange(wave.bias, wave.scanAmplitude, wave.sineAmplitude).limit != Dac1::Limit::WithinGuard) {
+            updateDac1Target(config);
+            setConnectionState(ready_, false, dac1Target_->text());
             return;
         }
         emit applyWmsRequested(config);
@@ -279,8 +280,11 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout) : Q
     auto *dliaActions=new QGridLayout;dliaLayout->addLayout(dliaActions);
     action(dliaActions,0,0,"应用 DLIA 参数","Apply DLIA","fpgaApplyDlia",[this]{emit applyDliaRequested(configuration());});
     auto *voltageHint=new QLabel(wmsPage);voltageHint->setWordWrap(true);
-    label(voltageHint,QStringLiteral("通道 1 按激光驱动板输入标定，实测保护区间约 3.62–4.62 V。偏置与扫描、调制峰值须合并校验。通道 2 按板端高阻负载标定。幅度为峰峰值的一半。应用后需重新开始采集。"),
-        QStringLiteral("Channel 1 is calibrated at the laser driver's input, with a measured guard band of about 3.62–4.62 V. Bias and both peak amplitudes are checked together. Channel 2 uses the high-impedance connector calibration. Amplitudes are half of peak-to-peak. Restart acquisition after applying."));wmsLayout->addWidget(voltageHint);
+    label(voltageHint,QStringLiteral("通道 1 填驱动板输入端的目标电压，通道 2 填 DAC 高阻输出端的目标电压。锯齿和正弦均填峰峰值，负号表示反相。应用后需重新开始采集。"),
+        QStringLiteral("Enter target voltages at the driver input for channel 1 and the high-impedance DAC output for channel 2. Enter peak-to-peak amplitudes. A negative sign inverts the component. Restart acquisition after applying."));wmsLayout->addWidget(voltageHint);
+    dac1Target_=new QLabel(wmsPage);dac1Target_->setObjectName("fpgaDac1TargetRange");
+    dac1Target_->setWordWrap(true);wmsLayout->addWidget(dac1Target_);
+    connect(this,&FpgaControlPage::configurationChanged,this,&FpgaControlPage::updateDac1Target);
     auto *dliaHint=new QLabel(dliaPage);dliaHint->setWordWrap(true);label(dliaHint,QStringLiteral("仅提交解调参数，保留 WMS / DAC 设置。应用后需重新开始采集。"),QStringLiteral("Apply demodulation settings only; preserve WMS / DAC. Restart acquisition after applying."));dliaLayout->addWidget(dliaHint);
     auto *wmsGroup=card(wmsPage,wmsLayout,QStringLiteral("WMS / DAC"),QStringLiteral("WMS / DAC"),QStringLiteral("audio-waveform"));
     auto *wmsGrid=new QGridLayout(wmsGroup);wmsGrid->setObjectName("fpgaWmsGrid");
@@ -323,25 +327,21 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout) : Q
                     [member,toVolts](const FpgaControlConfig &c){ return toVolts(c.wms[0].*member); },
                     [member,toVolts,toCode](FpgaControlConfig &c,double value) {
                         auto &code = c.wms[0].*member;
-                        if (std::round(toVolts(code)*1000)/1000 != value) code = toCode(value);
-                    });
+                        const double displayed = std::round(toVolts(code)*1000)/1000;
+                        if (std::abs(displayed - value) > 1e-9) code = toCode(value);
+                    })->setSingleStep(0.010);
             };
-            constexpr qint32 maxPeak = (Dac1::MaxSample - Dac1::MinSample)/2;
-            const double scanPeak = std::floor(Dac1::scanVolts(maxPeak)*1000)/1000;
-            const double modulationPeak = std::floor(Dac1::modulationVolts(maxPeak)*1000)/1000;
-            voltage("扫描峰值 / V","Scan peak / V","ScanAmplitude",0x14,-scanPeak,scanPeak,
-                    &FpgaControlConfig::Wms::scanAmplitude,Dac1::scanVolts,Dac1::scanCode);
-            voltage("调制峰值 / V","Modulation peak / V","SineAmplitude",0x20,-modulationPeak,modulationPeak,
-                    &FpgaControlConfig::Wms::sineAmplitude,Dac1::modulationVolts,Dac1::modulationCode);
-            voltage("直流偏置 / V","DC bias / V","Bias",0x18,
-                    std::ceil(Dac1::biasVolts(Dac1::MinSample)*1000)/1000,
-                    std::floor(Dac1::biasVolts(Dac1::MaxSample)*1000)/1000,
+            voltage("锯齿峰峰值 / Vpp","Sawtooth / Vpp","ScanAmplitude",0x14,-Dac1::MaxInputV,Dac1::MaxInputV,
+                    &FpgaControlConfig::Wms::scanAmplitude,Dac1::scanVpp,Dac1::scanCodeFromVpp);
+            voltage("正弦峰峰值 / Vpp","Sine / Vpp","SineAmplitude",0x20,-Dac1::MaxInputV,Dac1::MaxInputV,
+                    &FpgaControlConfig::Wms::sineAmplitude,Dac1::modulationVpp,Dac1::modulationCodeFromVpp);
+            voltage("直流偏置 / V","DC bias / V","Bias",0x18,Dac1::MinInputV,Dac1::MaxInputV,
                     &FpgaControlConfig::Wms::bias,Dac1::biasVolts,Dac1::biasCode);
         } else {
             const double codesPerVolt = WmsQ31Scale / Wms2OutputFullScaleV;
             const double maxV = std::numeric_limits<qint32>::max() / codesPerVolt;
-            wf("扫描峰值 / V","Scan peak / V","ScanAmplitude",0x14,-Wms2OutputFullScaleV,maxV,&FpgaControlConfig::Wms::scanAmplitude,codesPerVolt);
-            wf("调制峰值 / V","Modulation peak / V","SineAmplitude",0x20,-Wms2OutputFullScaleV,maxV,&FpgaControlConfig::Wms::sineAmplitude,codesPerVolt);
+            wf("锯齿峰峰值 / Vpp","Sawtooth / Vpp","ScanAmplitude",0x14,-2*Wms2OutputFullScaleV,2*maxV,&FpgaControlConfig::Wms::scanAmplitude,codesPerVolt/2);
+            wf("正弦峰峰值 / Vpp","Sine / Vpp","SineAmplitude",0x20,-2*Wms2OutputFullScaleV,2*maxV,&FpgaControlConfig::Wms::sineAmplitude,codesPerVolt/2);
             wf("直流偏置 / V","DC bias / V","Bias",0x18,-Wms2OutputFullScaleV,maxV,&FpgaControlConfig::Wms::bias,codesPerVolt);
         }
         wf("扫描相位 / 整圈码","Scan phase / turn code","Phase",0x24,0,4294967295.0,&FpgaControlConfig::Wms::phase);
@@ -704,6 +704,22 @@ FpgaControlConfig FpgaControlPage::configuration() const {
     auto c=config_; for(const auto &f:fields_)f.write(c,f.input->value());
     c.backend=backend_->currentData().toString();c.pressureSource=0x40; c.recordSensors=recordSensors_->isChecked();c.recordDlia=true;c.recordRaw=false;return c;
 }
+void FpgaControlPage::updateDac1Target(const FpgaControlConfig &config) {
+    const auto &wave = config.wms[0];
+    const auto range = Dac1::targetRange(wave.bias,wave.scanAmplitude,wave.sineAmplitude);
+    // Avoid displaying a negative zero from the Q1.31 rounding at the lower rail.
+    const auto format = [](double v){return QString::number(std::round(v*1000) == 0 ? 0.0 : v,'f',3);};
+    QString message = text("DAC1 目标波形范围 %1 至 %2 V。","DAC1 target waveform range %1 to %2 V.")
+        .arg(format(range.lowV),format(range.highV));
+    if (range.limit == Dac1::Limit::OutsideInputRange)
+        message += text(" 超出驱动板 0–5 V 输入范围，请调整偏置或峰峰值。"," Outside the 0–5 V driver input range. Adjust the bias or amplitudes.");
+    else if (range.limit == Dac1::Limit::OutsideHardwareGuard)
+        message += text(" 超出当前带载标定的硬件限幅。纯直流可下发 %1–%2 V，叠加波形时需给峰峰值留出余量。",
+            " Outside the load-verified hardware clamp. The DC-only range is %1–%2 V. Waveforms need additional headroom.")
+            .arg(format(std::ceil(Dac1::biasVolts(Dac1::MinSample)*1000)/1000),
+                 format(std::floor(Dac1::biasVolts(Dac1::MaxSample)*1000)/1000));
+    dac1Target_->setText(message);
+}
 void FpgaControlPage::setConfiguration(const FpgaControlConfig &c) {
     config_=c;
     for(int i=0;i<2;++i)if(cutoff_[i]) {const QSignalBlocker block(cutoff_[i]);cutoff_[i]->setCurrentIndex(cutoff_[i]->findData(c.dlia[i].cutoffHz));}
@@ -718,6 +734,7 @@ void FpgaControlPage::setConfiguration(const FpgaControlConfig &c) {
     const QSignalBlocker bs(recordSensors_),bd(recordDlia_);
     recordSensors_->setChecked(c.recordSensors);recordDlia_->setChecked(true);
     for(int i=0;i<2;++i){auto *cal=findChild<QCheckBox*>(QString("fpga%1Calibrated").arg(i));const QSignalBlocker b(cal);cal->setChecked(c.frontend[i].calibrated);}
+    updateDac1Target(configuration());
     updateActions();
 }
 void FpgaControlPage::lockOperation(){busy_=true;updateActions();}
@@ -1002,13 +1019,16 @@ void FpgaControlPage::setHardwareValues(const QMap<quint32,quint32> &v){
         }
         if ((base==0x2000||base==0x2100) && (offset==0x14||offset==0x18||offset==0x20)) {
             const qint32 code = qint32(it.value());
-            double volts = code * Wms2OutputFullScaleV / WmsQ31Scale;
+            const bool bias = offset == 0x18;
+            double volts = (bias ? 1 : 2) * double(code) * Wms2OutputFullScaleV / WmsQ31Scale;
             if (base == 0x2000) {
-                if (offset == 0x14) volts = Dac1::scanVolts(code);
-                else if (offset == 0x18) volts = Dac1::biasVolts(code);
-                else volts = Dac1::modulationVolts(code);
+                if (bias) volts = Dac1::biasVolts(code);
+                else if (offset == 0x14) volts = Dac1::scanVpp(code);
+                else volts = Dac1::modulationVpp(code);
             }
-            l->setText(text("换算读回 %1 V","Readback %1 V").arg(volts,0,'f',3));
+            l->setText(text("寄存器估算 %1 %2","Register estimate %1 %2").arg(volts,0,'f',3).arg(bias ? "V" : "Vpp"));
+            l->setToolTip(text("按标定公式将 FPGA 的 WMS 参数寄存器码换算为电压。实际模拟电压请在对应输出端用示波器测量。",
+                "Voltage calculated from the FPGA WMS parameter register using the calibration. Measure the analog voltage at the corresponding output with an oscilloscope."));
         } else if((it.key()&0xff)==8 && !module.isEmpty()) {
             l->setText(QString("%1 · %2 %3 · %4 %5 · %6 %7 · %8 %9").arg(module)
                 .arg(text("启用","Enabled")).arg(bool(it.value()&1)).arg(text("就绪","Ready")).arg(bool(it.value()&(module=="ADC"?0x10:2)))
@@ -1177,6 +1197,7 @@ void FpgaControlPage::setLanguage(bool en){
                 label(widget, widget->property("fpgaZh").toString(), widget->property("fpgaEn").toString());
     };
     retranslate(this);
+    updateDac1Target(configuration());
     if (!isAncestorOf(motorCard_)) retranslate(motorCard_);
     const bool rendering=rerendering_;rerendering_=true;setHardwareValues(hardwareValues_);rerendering_=rendering;updateMotorProgress();
     backend_->setItemText(backend_->findData(QStringLiteral("simulator")),text("模拟器","Simulator"));

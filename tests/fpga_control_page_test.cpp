@@ -17,6 +17,8 @@
 #include <QGridLayout>
 #include <QJsonArray>
 #include <QLabel>
+#include <QKeyEvent>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScrollBar>
@@ -318,41 +320,77 @@ int main(int argc,char **argv) {
     auto *modulation2=page.findChild<QDoubleSpinBox*>("fpga1SineAmplitude");
     require(parameterTabs&&parameterTabs->count()==2&&parameterTabs->widget(0)->isAncestorOf(amplitude)
         &&parameterTabs->widget(1)->isAncestorOf(page.findChild<QDoubleSpinBox*>("fpga0Reference")),"WMS and DLIA fields occupy separate pages");
-    require(amplitude->value()==0.269&&amplitude2->value()==0.249&&bias->value()==4.114,"scan and bias defaults use each channel calibration");
+    require(amplitude->value()==0.475&&amplitude2->value()==0.498&&bias->value()==4.121,"scan and bias defaults use each channel calibration");
     auto precise=page.configuration();
     precise.wms[0].bias=123456789;
+    precise.wms[0].scanAmplitude=-13579111;
+    precise.wms[0].sineAmplitude=3456789;
     precise.wms[1].bias=-123456789;
     page.setConfiguration(FpgaControlConfig::fromJson(precise.toJson()));
-    require(page.configuration().wms[0].bias==123456789&&page.configuration().wms[1].bias==-123456789,
-        "loading existing presets and displaying rounded volts preserves exact signed codes");
+    bias->stepUp(); bias->stepDown();
+    require(page.configuration().wms[0].bias==123456789 && page.configuration().wms[1].bias==-123456789
+        && page.configuration().wms[0].scanAmplitude==-13579111 && page.configuration().wms[0].sineAmplitude==3456789,
+        "loading a preset and returning to the same displayed volts preserves its exact signed codes");
     page.setHardwareValues({{0x2014,215311728},{0x2114,215746451},{0x2018,245455370},
         {0x2118,quint32(-536870912)},{0x2120,43149290}});
-    require(page.findChild<QLabel*>("fpga0ScanAmplitudeActual")->text().contains("0.505 V")
-        &&page.findChild<QLabel*>("fpga1ScanAmplitudeActual")->text().contains("0.500 V")
-        &&page.findChild<QLabel*>("fpga0BiasActual")->text().contains("4.114 V")
+    require(page.findChild<QLabel*>("fpga0ScanAmplitudeActual")->text().contains("0.952 Vpp")
+        &&page.findChild<QLabel*>("fpga1ScanAmplitudeActual")->text().contains("1.000 Vpp")
+        &&page.findChild<QLabel*>("fpga0BiasActual")->text().contains("4.121 V")
         &&page.findChild<QLabel*>("fpga1BiasActual")->text().contains("-1.244 V")
-        &&page.findChild<QLabel*>("fpga1SineAmplitudeActual")->text().contains("0.100 V"),
+        &&page.findChild<QLabel*>("fpga1SineAmplitudeActual")->text().contains("0.200 Vpp"),
         "device readback applies the corresponding channel calibration to all voltage fields");
-    require(amplitude->maximum()==0.505&&amplitude2->minimum()==-4.977,"scan limits use each channel's measured range");
-    bias->setValue(-5.0);
-    require(bias->value()==3.647,"laser driver bias lower limit");
-    bias->setValue(5.0);
-    require(bias->value()==4.580,"laser driver bias upper limit");
+    auto *estimate=page.findChild<QLabel*>("fpga0BiasActual");
+    auto *target=page.findChild<QLabel*>("fpgaDac1TargetRange");
+    auto *modulation=page.findChild<QDoubleSpinBox*>("fpga0SineAmplitude");
+    require(estimate->text().contains(QStringLiteral("寄存器估算")) && estimate->toolTip().contains(QStringLiteral("示波器")),
+        "the estimate identifies its register source and how to measure the physical output");
+    require(amplitude->maximum()==5.0&&amplitude2->minimum()==-9.954,"scan inputs use calibrated signed peak-to-peak volts");
+    require(bias->minimum()==0 && bias->maximum()==5 && bias->singleStep()==0.01,"entire rated DC range is editable in small steps");
+    auto *editor=bias->findChild<QLineEdit*>();
+    require(editor,"bias has a keyboard editor");
+    bias->selectAll();
+    for (const auto ch : QStringLiteral("2.000")) {
+        QKeyEvent key(QEvent::KeyPress,ch.unicode(),Qt::NoModifier,QString(ch));
+        QApplication::sendEvent(bias,&key);
+    }
+    QKeyEvent enter(QEvent::KeyPress,Qt::Key_Return,Qt::NoModifier);
+    QApplication::sendEvent(bias,&enter);
+    require(bias->value()==2.0,"typing and committing 2.000 V works");
+    bias->stepUp(); require(bias->value()==2.01,"arrow steps by 10 mV"); bias->stepDown();
+    amplitude->setValue(2.0); modulation->setValue(0.2);
+    const auto mixed=page.configuration();
+    require(mixed.wms[0].scanAmplitude==VaporView::FpgaDac1Calibration::scanCode(1.0)
+        &&mixed.wms[0].sineAmplitude==VaporView::FpgaDac1Calibration::modulationCode(0.1)
+        &&target->text().contains("0.900") && target->text().contains("3.100") && target->text().contains(QStringLiteral("硬件限幅")),
+        "entered driver volts give the requested mixed waveform and flag an unqualified physical range");
+    page.setHardwareValues({{0x2018,245455370}});
+    require(std::abs(bias->value()-2.0)<1e-9,"register readings never replace the editable target");
+    require(estimate->text().contains("4.121 V"),"refreshed register estimate shows the independently read bias");
+    page.setLanguage(true);
+    require(estimate->text().contains("Register estimate") && target->text().contains("hardware clamp"),"English gives equivalent feedback");
+    page.setLanguage(false);
+    for (double rail : {0.0,5.0}) {
+        bias->setValue(rail); amplitude->setValue(0.0); modulation->setValue(0.0);
+        require(bias->value()==rail && !target->text().contains(QStringLiteral("超出驱动板")),"pure DC can be entered and saved at either rail");
+        modulation->setValue(-0.2);
+        require(target->text().contains(QStringLiteral("超出驱动板")),"negative component polarity still consumes headroom at both rails");
+        page.findChild<QPushButton*>("fpgaApplyWms")->click();
+        require(wmsApplied==0,"rail violation cannot reach the controller");
+    }
     auto *laserMin = page.findChild<QDoubleSpinBox*>("fpga0DacMin");
     require(laserMin&&laserMin->minimum()==VaporView::FpgaDac1Calibration::MinDacCode&&laserMin->maximum()==laserMin->minimum(),
         "laser driver DAC minimum code is fixed");
     amplitude2->setValue(amplitude2->minimum());
     require(page.configuration().wms[1].scanAmplitude==std::numeric_limits<qint32>::min(),
         "channel 2 rounded voltage endpoint clamps at signed Q1.31 limit");
-    auto *modulation = page.findChild<QDoubleSpinBox*>("fpga0SineAmplitude");
-    amplitude->setValue(0.280);
+    amplitude->setValue(0.560);
     bias->setValue(4.050);
-    modulation->setValue(0.300);
+    modulation->setValue(0.600);
     page.findChild<QPushButton*>("fpgaApplyWms")->click();
     require(wmsApplied==0,"invalid combined extrema cannot be submitted from the page");
     modulation->setValue(0);
-    amplitude2->setValue(0.500);
-    modulation2->setValue(0.100);
+    amplitude2->setValue(1.000);
+    modulation2->setValue(0.200);
     page.findChild<QPushButton*>("fpgaApplyWms")->click();
     require(wmsApplied==1&&dliaApplied==0&&submitted==2,"WMS has independent apply signal");
     require(requestedWms.wms[0].scanAmplitude==VaporView::FpgaDac1Calibration::scanCode(0.280)

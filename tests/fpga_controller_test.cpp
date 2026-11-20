@@ -934,6 +934,19 @@ void scopedConfiguration(){
 }
 void laserDriverProtection(){
     namespace Dac1 = FpgaDac1Calibration;
+    // Independent mixed-wave holdout: 4.140 V DC, 0.800 Vpp saw, 0.100 Vpp sine.
+    // Reject the old peak-to-peak noise pedestal and DC-based sine gain.
+    require(std::abs(Dac1::biasVolts(254164582)-4.140291)<0.002,
+        "bias conversion agrees with an independent loaded measurement");
+    require(std::abs(Dac1::scanVolts(180876751)-0.400420)<0.001,
+        "saw calibration represents the fitted component rather than noisy extrema");
+    require(std::abs(Dac1::modulationVolts(22762776)-0.049976)<0.0001,
+        "20 kHz modulation uses its independently measured gain");
+    require(Dac1::scanCode(0.010)>0&&Dac1::scanCode(-0.010)<0
+        &&Dac1::scanCode(0)==0&&Dac1::scanVolts(0)==0,
+        "small signed scan amplitudes remain continuous through zero");
+    require(std::abs(Dac1::scanVolts(Dac1::scanCode(-0.010))+0.010)<1e-8,
+        "small scan amplitude roundtrip has no noise-derived dead zone");
     Fixture f;
     f.connect();
     f.transport->clear();
@@ -966,8 +979,21 @@ void laserDriverProtection(){
         f.finish();
         require(f.transport->writes().isEmpty()&&!f.diagnostics.isEmpty(),"combined extrema outside the guard reject application before writes");
     }
-    require(Dac1::withinLimits(Dac1::MinSample+3000,-1000,2000)
-        &&Dac1::withinLimits(Dac1::MaxSample-3000,1000,-2000),"both guarded endpoints are inclusive");
+    require(Dac1::targetRange(Dac1::MinSample+3000,-1000,2000).limit==Dac1::Limit::WithinGuard
+        &&Dac1::targetRange(Dac1::MaxSample-3000,1000,-2000).limit==Dac1::Limit::WithinGuard,"both guarded endpoints are inclusive");
+    for (double dc : {0.0, 2.0, 5.0}) {
+        require(Dac1::targetRange(Dac1::biasCode(dc),0,0).limit==Dac1::Limit::OutsideHardwareGuard,
+            "valid pure DC setpoints include both rails without expanding the qualified hardware clamp");
+    }
+    config.wms[0]={100000,20000000,500000,Dac1::scanCodeFromVpp(-2.0),Dac1::modulationCodeFromVpp(0.2),Dac1::biasCode(2.0)};
+    config.backend="simulator"; // An untrusted preset must never widen the installed output clamp.
+    for (double dc : {2.0, 0.5, 4.5}) {
+        config.wms[0].bias=Dac1::biasCode(dc);
+        f.transport->clear(); f.diagnostics.clear(); f.controller.applyConfiguration(config,"wms"); f.finish();
+        const auto reason=dc==2.0 ? QStringLiteral("硬件限幅") : QStringLiteral("额定输入");
+        require(f.transport->writes().isEmpty() && !f.diagnostics.isEmpty() && f.diagnostics.back().contains(reason),
+            "controller distinguishes extrapolation from either rail violation before any write");
+    }
     config.wms[0]=nominal;
     f.transport->clear();
     f.diagnostics.clear();
