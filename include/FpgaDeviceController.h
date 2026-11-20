@@ -119,6 +119,7 @@ private:
     void waitFor(quint32 address, quint32 mask, quint32 expected);
     void commit(quint16 source, quint32 base);
     void readAll();
+    void checkDac1Protection(bool enablingDac = false);
     void readExtensions();
     void callback(std::function<void()> action);
     void executeExtension(const QJsonObject& request, bool polling = false);
@@ -198,6 +199,7 @@ private:
     qint16 temperatureTarget_ = 0;
     const quint16 virtualTcpPort_;
     bool injected_ = false, ready_ = false, busy_ = false, replaying_ = false;
+    bool dac1ProtectionApplied_ = false;
     bool drainWaveforms_ = false, backgroundRefresh_ = false, recoveringConnection_ = false, connectionRecoveryFailed_ = false;
     QString operation_, detail_, installedBackend_;
     std::optional<bool> rawOperation_;

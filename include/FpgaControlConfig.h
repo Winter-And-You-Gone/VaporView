@@ -1,5 +1,7 @@
 #pragma once
 
+#include "FpgaDac1Calibration.h"
+
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QMetaType>
@@ -31,7 +33,11 @@ struct FpgaControlConfig
     std::array<quint32,2> adcExpectedPoints{{0,0}};
     QMap<quint16,QJsonObject> sensorParameters;
     QString backend = QStringLiteral("auto");
-    std::array<Wms, 2> wms;
+    std::array<Wms, 2> wms{{[] {
+        Wms value;
+        value.bias = VaporView::FpgaDac1Calibration::DefaultBias;
+        return value;
+    }(), Wms{}}};
     std::array<Dlia, 2> dlia;
     std::array<Frontend, 2> frontend;
     std::array<Dac, 2> dac;

@@ -266,7 +266,7 @@ void controls()
     QObject::connect(&controller,&FpgaDeviceController::measurementUpdated,&observer,[&](const auto& r){if(r.reading.validity.measurement)sensors.insert(r.reading.source);});
     QObject::connect(&controller,&FpgaDeviceController::waveformUpdated,&observer,[&](const auto& w){if(w.complete){waves.insert(w.source);++waveCount[w.source];
         if(w.source==0x20)configuredRaw=w.totalPoints==8000&&w.signed32Samples.size()==8000&&
-            std::all_of(w.signed32Samples.cbegin(),w.signed32Samples.cend(),[](qint32 v){return v==83886;});}});
+            std::all_of(w.signed32Samples.cbegin(),w.signed32Samples.cend(),[](qint32 v){return v==std::lround(FpgaDac1Calibration::DefaultBias/256.0);});}});
     controller.connectDevice("simulation://fpga","simulator");
     const auto idle=[&]{check(failure.isEmpty(),qPrintable(failure));return controller.ready()&&!controller.busy();};
     wait(idle,"real controller handshake and connection recovery complete");
@@ -277,6 +277,7 @@ void controls()
           connectionLog.fields.value("function").toString().contains("Connection") &&
           connectionLog.fields.value("line").toInt()>0,
           "FPGA connection result keeps the business call location before signal forwarding");
+    controller.applyConfiguration(desired,"wms");wait(idle,"apply channel 1 DAC guard before output");
     for(int ch=0;ch<2;++ch){controller.setDac(ch,true);wait(idle,"explicit DAC startup");}
     controller.setAcquisition(true);wait(idle,"explicit acquisition startup");
     wait([&]{return sensors.size()==7&&waves.size()==2;},"controller receives six sensors and both DLIA channels");
@@ -285,7 +286,7 @@ void controls()
           "AI8 setpoint confirmation and readback are observable");
     auto config=FpgaControlConfig{};config.wms[0].scanMilliHz=125000;config.dlia[0].outputRateHz=5000;
     config.backend="simulator";
-    config.wms[0].scanAmplitude=0;config.wms[0].sineAmplitude=0;config.wms[0].bias=21474836;
+    config.wms[0].scanAmplitude=0;config.wms[0].sineAmplitude=0;config.wms[0].bias=FpgaDac1Calibration::DefaultBias;
     controller.applyConfiguration(config);wait(idle,"WMS, DAC, shared ADC and DLIA configuration commits pass");
     check(controller.hardwareValues().value(0x2010)==125000&&controller.hardwareValues().value(0x504c)==5000,
           "actual register readbacks reflect applied configuration");

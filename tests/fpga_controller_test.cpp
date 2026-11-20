@@ -932,6 +932,63 @@ void scopedConfiguration(){
     for(const auto &command:f.transport->writes())
         require(command.address<0x6600 || command.address>=0x6700,"ADC never writes AI8 polling registers");
 }
+void laserDriverProtection(){
+    namespace Dac1 = FpgaDac1Calibration;
+    Fixture f;
+    f.connect();
+    f.transport->clear();
+    f.controller.setDac(0,true);
+    f.finish();
+    require(f.transport->writes().isEmpty()&&!f.diagnostics.isEmpty(),"channel 1 cannot enable before limits are committed");
+    f.transport->regs[0x3004]=1; // Already enabled outside this session.
+    f.transport->clear();
+    f.controller.setWaveform(0,true);
+    f.finish();
+    require(f.transport->writes().isEmpty(),"WMS checks live DAC enable before starting an unprotected output");
+    f.controller.setAcquisition(true);
+    f.finish();
+    require(f.transport->writes().isEmpty(),"acquisition cannot start an unprotected analog output");
+    f.transport->regs[0x3004]=0;
+
+    FpgaControlConfig config;
+    config.dac[0].gain=0x80000000u;
+    config.dac[0].offset=120;
+    config.dac[1].offset=-42;
+    const auto nominal = config.wms[0];
+    for (const auto invalid : {
+            FpgaControlConfig::Wms{100000,20000000,500000,-1000,2000,Dac1::MinSample+2999},
+            FpgaControlConfig::Wms{100000,20000000,500000,1000,-2000,Dac1::MaxSample-2999},
+            FpgaControlConfig::Wms{100000,20000000,500000,std::numeric_limits<qint32>::min(),0,Dac1::DefaultBias}}) {
+        config.wms[0]=invalid;
+        f.transport->clear();
+        f.diagnostics.clear();
+        f.controller.applyConfiguration(config,"wms");
+        f.finish();
+        require(f.transport->writes().isEmpty()&&!f.diagnostics.isEmpty(),"combined extrema outside the guard reject application before writes");
+    }
+    require(Dac1::withinLimits(Dac1::MinSample+3000,-1000,2000)
+        &&Dac1::withinLimits(Dac1::MaxSample-3000,1000,-2000),"both guarded endpoints are inclusive");
+    config.wms[0]=nominal;
+    f.transport->clear();
+    f.diagnostics.clear();
+    f.controller.applyConfiguration(config,"wms");
+    f.finish();
+    const auto &regs=f.transport->regs;
+    require(f.diagnostics.isEmpty()&&regs.value(0x3010)==Dac1::DeviceControl&&regs.value(0x3014)==Dac1::ClearCode
+        &&regs.value(0x3018)==Dac1::MinDacCode&&regs.value(0x301c)==Dac1::MaxDacCode
+        &&regs.value(0x3034)==Dac1::UnityGain&&regs.value(0x3038)==0,"linked commit installs calibrated DAC settings and bounds");
+    require(regs.value(0x3138)==quint32(-42),"channel 2 DAC settings remain selectable");
+    f.transport->clear();
+    f.controller.setDac(0,true);
+    f.finish();
+    require(indexOfWrite(f.transport->writes(),0x3004,1)>=0,"confirmed protection allows channel 1 output");
+    f.transport->regs[0x301c]=0xfffffu;
+    f.transport->clear();
+    f.diagnostics.clear();
+    f.controller.setWaveform(0,true);
+    f.finish();
+    require(f.transport->writes().isEmpty()&&!f.diagnostics.isEmpty(),"a changed DAC bound invalidates protection");
+}
 void rawAndBusy(){
     Fixture f;f.connect();f.controller.setConfiguration(FpgaControlConfig::fromJson({{"rawWindowSeconds",1}}));f.transport->clear();
     f.transport->holdResponses=true;f.controller.setRawEnabled(true);const auto commands=f.transport->commands.size();f.controller.setWaveform(1,true);require(f.transport->commands.size()==commands,"busy controller rejects overlapping operation");
@@ -958,7 +1015,8 @@ void sensorUploadAndFailure(){
     require(f.transport->regs.value(0x50)==3,"sensor enable does not turn off existing RAW upload");
     for(const auto &c:f.transport->writes())require(c.address!=0x6104&&c.address!=0x6704&&c.address!=0x1004&&c.address!=0x50,"upload preparation never starts HC2A, motor, time or modifies RAW mask");
     f.transport->clear();f.transport->failWriteAddress=0x2c;f.controller.setAcquisition(true);f.finish();
-    require(f.transport->commands.size()==1&&f.transport->commands.front().address==0x2c,"upload mask failure aborts before acquisition side effects");
+    const auto attemptedWrites=f.transport->writes();
+    require(attemptedWrites.size()==1&&attemptedWrites.front().address==0x2c,"upload mask failure aborts before acquisition side effects");
     f.transport->failWriteAddress=0xffffffff;f.transport->regs[0x8004]=0;f.controller.refresh();f.finish();f.transport->clear();f.controller.setAcquisition(true);
     require(!f.controller.ready()&&f.transport->commands.isEmpty(),"observed disabled USB path removes readiness and forbids blind write recovery");
 }
@@ -1150,5 +1208,5 @@ int main(int argc,char **argv){
         }
         std::puts("hardware controller connect/idle/reconnect probe passed");return 0;
     }
-    connectionEventTimeFilter();currentFirmwareSafety();motorRejectionOwnership();advancedDataPaths();connectionResultLogs();sensorRates();ai8ScanPresentation();connectionAndVersions();connectionRecovery();backgroundRefresh();commandTimeoutAttribution();independentAndAcquisition();restartClearsDliaState();configurationAndFailure();scopedConfiguration();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();ptbHistoricalErrorRecovery();threadCleanup();std::puts("FPGA controller tests passed");return 0;
+    connectionEventTimeFilter();currentFirmwareSafety();motorRejectionOwnership();advancedDataPaths();connectionResultLogs();sensorRates();ai8ScanPresentation();connectionAndVersions();connectionRecovery();backgroundRefresh();commandTimeoutAttribution();independentAndAcquisition();restartClearsDliaState();configurationAndFailure();scopedConfiguration();laserDriverProtection();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();ptbHistoricalErrorRecovery();threadCleanup();std::puts("FPGA controller tests passed");return 0;
 }
