@@ -48,6 +48,11 @@
 #include <type_traits>
 
 namespace {
+constexpr double WmsQ31Scale = 2147483648.0;
+// Connector calibration from the 100 Hz, 1 MΩ sweeps with CON27/28
+// on pins 3–4 and R537/R544 unpopulated (DAC digital gain 1, offset 0).
+constexpr double WmsOutputFullScaleV[] = {4.9869175, 4.9768690};
+
 void dispatchSimulationWhenIdle(QPointer<VaporView::Ground::Devices::FpgaDeviceController> controller,
     const std::shared_ptr<std::atomic<quint64>>& generation,quint64 expected,qint64 deadline,
     std::function<void()> action,std::function<void()> expired)
@@ -252,7 +257,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout) : Q
     auto *dliaActions=new QGridLayout;dliaLayout->addLayout(dliaActions);
     action(dliaActions,0,0,"应用 DLIA 参数","Apply DLIA","fpgaApplyDlia",[this]{emit applyDliaRequested(configuration());});
     auto *voltageHint=new QLabel(wmsPage);voltageHint->setWordWrap(true);
-    label(voltageHint,QStringLiteral("幅度为峰值，偏置为直流电压；按 DAC ±10 V 标称量程、增益 1 / 偏移 0 换算，非实测值。应用参数后需重新开始采集。"),QStringLiteral("Amplitudes are peak voltages; bias is DC. Nominal DAC ±10 V, unity gain / zero offset; not measured voltage. Restart acquisition after applying."));wmsLayout->addWidget(voltageHint);
+    label(voltageHint,QStringLiteral("电压按板端标定换算，适用于高阻负载、DAC 数字增益 1 和偏移 0。幅度为峰值（峰峰值为两倍），偏置为直流电压。应用后需重新开始采集。"),QStringLiteral("Voltages use the calibrated board output scale for a high-impedance load, unity digital DAC gain and zero offset. Amplitudes are peak values (half of peak-to-peak), and bias is DC. Restart acquisition after applying."));wmsLayout->addWidget(voltageHint);
     auto *dliaHint=new QLabel(dliaPage);dliaHint->setWordWrap(true);label(dliaHint,QStringLiteral("仅提交解调参数，保留 WMS / DAC 设置。应用后需重新开始采集。"),QStringLiteral("Apply demodulation settings only; preserve WMS / DAC. Restart acquisition after applying."));dliaLayout->addWidget(dliaHint);
     auto *wmsGroup=card(wmsPage,wmsLayout,QStringLiteral("WMS / DAC"),QStringLiteral("WMS / DAC"),QStringLiteral("audio-waveform"));
     auto *wmsGrid=new QGridLayout(wmsGroup);wmsGrid->setObjectName("fpgaWmsGrid");
@@ -287,9 +292,12 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout) : Q
         wf("扫描频率 / Hz","Scan / Hz","Scan",0x10,0.001,1000,&FpgaControlConfig::Wms::scanMilliHz,1000);
         wf("调制频率 / Hz","Modulation / Hz","Sine",0x1c,0.001,100000,&FpgaControlConfig::Wms::sineMilliHz,1000);
         wf("请求更新率 / Hz","Requested update / Hz","Update",0x2c,1,1000000,&FpgaControlConfig::Wms::updateRateHz);
-        wf("扫描峰值 / V","Scan peak / V","ScanAmplitude",0x14,-10.0,10.0-10.0/2147483648.0,&FpgaControlConfig::Wms::scanAmplitude,2147483648.0/10.0);
-        wf("调制峰值 / V","Modulation peak / V","SineAmplitude",0x20,-10.0,10.0-10.0/2147483648.0,&FpgaControlConfig::Wms::sineAmplitude,2147483648.0/10.0);
-        wf("直流偏置 / V","DC bias / V","Bias",0x18,-10.0,10.0-10.0/2147483648.0,&FpgaControlConfig::Wms::bias,2147483648.0/10.0);
+        const double fullScaleV = WmsOutputFullScaleV[channel];
+        const double codesPerVolt = WmsQ31Scale / fullScaleV;
+        const double maxV = std::numeric_limits<qint32>::max() / codesPerVolt;
+        wf("扫描峰值 / V","Scan peak / V","ScanAmplitude",0x14,-fullScaleV,maxV,&FpgaControlConfig::Wms::scanAmplitude,codesPerVolt);
+        wf("调制峰值 / V","Modulation peak / V","SineAmplitude",0x20,-fullScaleV,maxV,&FpgaControlConfig::Wms::sineAmplitude,codesPerVolt);
+        wf("直流偏置 / V","DC bias / V","Bias",0x18,-fullScaleV,maxV,&FpgaControlConfig::Wms::bias,codesPerVolt);
         wf("扫描相位 / 整圈码","Scan phase / turn code","Phase",0x24,0,4294967295.0,&FpgaControlConfig::Wms::phase);
         wf("相位模式","Phase mode","PhaseMode",0x40,0,2,&FpgaControlConfig::Wms::phaseMode);
         auto *dliaGroup=card(dliaPage,dliaChannels,QStringLiteral("DLIA · 通道 %1").arg(channel+1),QStringLiteral("DLIA · Channel %1").arg(channel+1),QStringLiteral("activity"));
@@ -922,7 +930,9 @@ void FpgaControlPage::setHardwareValues(const QMap<quint32,quint32> &v){
                 .arg(v.value(base+0x64)).arg(v.value(base+0xec)));continue;
         }
         if ((base==0x2000||base==0x2100) && (offset==0x14||offset==0x18||offset==0x20)) {
-            l->setText(text("设备读回：","Readback: ")+QString::number(double(qint32(it.value()))*10.0/2147483648.0,'f',3)+" V");
+            const double fullScaleV = WmsOutputFullScaleV[(base - 0x2000) / 0x100];
+            const double volts = double(qint32(it.value())) * fullScaleV / WmsQ31Scale;
+            l->setText(text("换算读回 %1 V","Readback %1 V").arg(volts,0,'f',3));
         } else if((it.key()&0xff)==8 && !module.isEmpty()) {
             l->setText(QString("%1 · %2 %3 · %4 %5 · %6 %7 · %8 %9").arg(module)
                 .arg(text("启用","Enabled")).arg(bool(it.value()&1)).arg(text("就绪","Ready")).arg(bool(it.value()&(module=="ADC"?0x10:2)))

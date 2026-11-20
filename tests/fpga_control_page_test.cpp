@@ -300,22 +300,49 @@ int main(int argc,char **argv) {
     apply->click();apply->click();require(submitted==1 && requested.adcRateHz==500000,"busy state blocks duplicate submission");
     page.setConnectionState(true,false);
     int wmsApplied=0,dliaApplied=0;
-    QObject::connect(&page,&FpgaControlPage::applyWmsRequested,&page,[&](const FpgaControlConfig &){++wmsApplied;});
+    FpgaControlConfig requestedWms;
+    QObject::connect(&page,&FpgaControlPage::applyWmsRequested,&page,[&](const FpgaControlConfig &config){
+        ++wmsApplied;
+        requestedWms=config;
+    });
     QObject::connect(&page,&FpgaControlPage::applyDliaRequested,&page,[&](const FpgaControlConfig &){++dliaApplied;});
     auto *parameterTabs=page.findChild<QTabWidget*>("fpgaParameterTabs");
     auto *amplitude=page.findChild<QDoubleSpinBox*>("fpga0ScanAmplitude");
+    auto *amplitude2=page.findChild<QDoubleSpinBox*>("fpga1ScanAmplitude");
     auto *bias=page.findChild<QDoubleSpinBox*>("fpga0Bias");
+    auto *modulation2=page.findChild<QDoubleSpinBox*>("fpga1SineAmplitude");
     require(parameterTabs&&parameterTabs->count()==2&&parameterTabs->widget(0)->isAncestorOf(amplitude)
         &&parameterTabs->widget(1)->isAncestorOf(page.findChild<QDoubleSpinBox*>("fpga0Reference")),"WMS and DLIA fields occupy separate pages");
-    require(amplitude->value()==0.5,"default scan amplitude displayed in volts");
-    auto precise=page.configuration();precise.wms[0].bias=123456789;page.setConfiguration(precise);
-    require(page.configuration().wms[0].bias==123456789,"unchanged voltage display preserves exact stored code");
-    page.setHardwareValues({{0x2018,quint32(-536870912)}});
-    require(page.findChild<QLabel*>("fpga0BiasActual")->text().contains("-2.500 V"),"device readback displays signed voltage");
-    bias->setValue(-2.5);require(page.configuration().wms[0].bias==-536870912,"negative voltage converts to signed Q1.31");
-    amplitude->setValue(10);require(page.configuration().wms[0].scanAmplitude==2147483647,"positive full scale clamps without signed overflow");
+    require(amplitude->value()==0.249&&amplitude2->value()==0.249,"existing scan defaults display calibrated board volts");
+    auto precise=page.configuration();
+    precise.wms[0].bias=123456789;
+    precise.wms[1].bias=-123456789;
+    page.setConfiguration(FpgaControlConfig::fromJson(precise.toJson()));
+    require(page.configuration().wms[0].bias==123456789&&page.configuration().wms[1].bias==-123456789,
+        "loading existing presets and displaying rounded volts preserves exact signed codes");
+    page.setHardwareValues({{0x2014,215311728},{0x2114,215746451},{0x2018,quint32(-536870912)},
+        {0x2118,quint32(-536870912)},{0x2120,43149290}});
+    require(page.findChild<QLabel*>("fpga0ScanAmplitudeActual")->text().contains("0.500 V")
+        &&page.findChild<QLabel*>("fpga1ScanAmplitudeActual")->text().contains("0.500 V")
+        &&page.findChild<QLabel*>("fpga0BiasActual")->text().contains("-1.247 V")
+        &&page.findChild<QLabel*>("fpga1BiasActual")->text().contains("-1.244 V")
+        &&page.findChild<QLabel*>("fpga1SineAmplitudeActual")->text().contains("0.100 V"),
+        "device readback applies the corresponding channel calibration to all voltage fields");
+    require(amplitude->maximum()==4.987&&amplitude2->minimum()==-4.977,"edit limits use the calibrated output range");
+    amplitude->setValue(amplitude->maximum());
+    amplitude2->setValue(amplitude2->minimum());
+    require(page.configuration().wms[0].scanAmplitude==std::numeric_limits<qint32>::max()
+        &&page.configuration().wms[1].scanAmplitude==std::numeric_limits<qint32>::min(),
+        "rounded voltage endpoints clamp at signed Q1.31 limits");
+    amplitude->setValue(0.500);
+    amplitude2->setValue(0.500);
+    bias->setValue(-0.250);
+    modulation2->setValue(0.100);
     page.findChild<QPushButton*>("fpgaApplyWms")->click();
     require(wmsApplied==1&&dliaApplied==0&&submitted==1,"WMS has independent apply signal");
+    require(requestedWms.wms[0].scanAmplitude==215311728&&requestedWms.wms[1].scanAmplitude==215746451
+        &&requestedWms.wms[0].bias==-107655864&&requestedWms.wms[1].sineAmplitude==43149290,
+        "applying board volts emits the calibrated signed Q1.31 codes for each channel");
     page.setConnectionState(true,false);page.findChild<QPushButton*>("fpgaApplyDlia")->click();
     require(wmsApplied==1&&dliaApplied==1&&submitted==1,"DLIA has independent apply signal");
     page.setConnectionState(true,false);
