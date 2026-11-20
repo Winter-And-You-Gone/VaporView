@@ -361,44 +361,56 @@ int main(int argc,char **argv) {
     const auto mixed=page.configuration();
     require(mixed.wms[0].scanAmplitude==VaporView::FpgaDac1Calibration::scanCode(1.0)
         &&mixed.wms[0].sineAmplitude==VaporView::FpgaDac1Calibration::modulationCode(0.1)
-        &&target->text().contains("0.900") && target->text().contains("3.100") && target->text().contains(QStringLiteral("硬件限幅")),
-        "entered driver volts give the requested mixed waveform and flag an unqualified physical range");
+        &&target->text().contains("0.900") && target->text().contains("3.100"),
+        "entered driver volts give the requested mixed waveform");
+    auto *applyWms=page.findChild<QPushButton*>("fpgaApplyWms");
+    applyWms->click();
+    require(wmsApplied==1 && requestedWms.wms[0].bias==mixed.wms[0].bias,"the 0.900 to 3.100 V example can be submitted");
+    page.setConnectionState(true,false);
     page.setHardwareValues({{0x2018,245455370}});
     require(std::abs(bias->value()-2.0)<1e-9,"register readings never replace the editable target");
     require(estimate->text().contains("4.121 V"),"refreshed register estimate shows the independently read bias");
     page.setLanguage(true);
-    require(estimate->text().contains("Register estimate") && target->text().contains("hardware clamp"),"English gives equivalent feedback");
+    require(estimate->text().contains("Register estimate") && target->text().contains("target waveform range"),"English gives equivalent feedback");
     page.setLanguage(false);
     for (double rail : {0.0,5.0}) {
+        const int before=wmsApplied;
         bias->setValue(rail); amplitude->setValue(0.0); modulation->setValue(0.0);
-        require(bias->value()==rail && !target->text().contains(QStringLiteral("超出驱动板")),"pure DC can be entered and saved at either rail");
-        modulation->setValue(-0.2);
-        require(target->text().contains(QStringLiteral("超出驱动板")),"negative component polarity still consumes headroom at both rails");
-        page.findChild<QPushButton*>("fpgaApplyWms")->click();
-        require(wmsApplied==0,"rail violation cannot reach the controller");
+        applyWms->click();
+        require(wmsApplied==before+1 && requestedWms.wms[0].bias==VaporView::FpgaDac1Calibration::biasCode(rail),
+            "pure DC can be submitted at either rail");
+        page.setConnectionState(true,false);
+        modulation->setValue(-0.001);
+        require(target->text().contains(QStringLiteral("超出驱动板")) && target->text().contains(rail==0?"-0.0005":"5.0005"),
+            "a half-millivolt violation remains visible for either rail and either polarity");
+        applyWms->click();
+        require(wmsApplied==before+1,"rail violation cannot reach the controller");
     }
     auto *laserMin = page.findChild<QDoubleSpinBox*>("fpga0DacMin");
-    require(laserMin&&laserMin->minimum()==VaporView::FpgaDac1Calibration::MinDacCode&&laserMin->maximum()==laserMin->minimum(),
-        "laser driver DAC minimum code is fixed");
+    auto *laserMax = page.findChild<QDoubleSpinBox*>("fpga0DacMax");
+    require(laserMin&&laserMin->minimum()==VaporView::FpgaDac1Calibration::MinDacCode&&laserMin->maximum()==laserMin->minimum()
+        &&laserMax&&laserMax->maximum()==VaporView::FpgaDac1Calibration::MaxDacCode&&laserMax->maximum()==laserMax->minimum(),
+        "the page uses the same fixed 20-bit driver limits as the controller");
     amplitude2->setValue(amplitude2->minimum());
     require(page.configuration().wms[1].scanAmplitude==std::numeric_limits<qint32>::min(),
         "channel 2 rounded voltage endpoint clamps at signed Q1.31 limit");
+    const int accepted=wmsApplied;
     amplitude->setValue(0.560);
     bias->setValue(4.050);
-    modulation->setValue(0.600);
-    page.findChild<QPushButton*>("fpgaApplyWms")->click();
-    require(wmsApplied==0,"invalid combined extrema cannot be submitted from the page");
+    modulation->setValue(2.000);
+    applyWms->click();
+    require(wmsApplied==accepted,"invalid combined extrema cannot be submitted from the page");
     modulation->setValue(0);
     amplitude2->setValue(1.000);
     modulation2->setValue(0.200);
-    page.findChild<QPushButton*>("fpgaApplyWms")->click();
-    require(wmsApplied==1&&dliaApplied==0&&submitted==2,"WMS has independent apply signal");
+    applyWms->click();
+    require(wmsApplied==accepted+1&&dliaApplied==0&&submitted==2,"WMS has independent apply signal");
     require(requestedWms.wms[0].scanAmplitude==VaporView::FpgaDac1Calibration::scanCode(0.280)
         &&requestedWms.wms[0].bias==VaporView::FpgaDac1Calibration::biasCode(4.050)&&requestedWms.wms[0].sineAmplitude==0
         &&requestedWms.wms[1].scanAmplitude==215746451&&requestedWms.wms[1].sineAmplitude==43149290,
         "applying volts emits the calibrated pure sawtooth for channel 1 and preserves channel 2 scaling");
     page.setConnectionState(true,false);page.findChild<QPushButton*>("fpgaApplyDlia")->click();
-    require(wmsApplied==1&&dliaApplied==1&&submitted==2,"DLIA has independent apply signal");
+    require(wmsApplied==accepted+1&&dliaApplied==1&&submitted==2,"DLIA has independent apply signal");
     page.setConnectionState(true,false);
     int acquisitions=0,dacs=0;
     QObject::connect(&page,&FpgaControlPage::acquisitionRequested,&page,[&](bool){++acquisitions;});

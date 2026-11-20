@@ -270,7 +270,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout) : Q
     action(wmsActions,0,0,"应用 WMS / DAC 参数","Apply WMS / DAC","fpgaApplyWms",[this] {
         const auto config = configuration();
         const auto &wave = config.wms[0];
-        if (Dac1::targetRange(wave.bias, wave.scanAmplitude, wave.sineAmplitude).limit != Dac1::Limit::WithinGuard) {
+        if (!Dac1::targetRange(wave.bias, wave.scanAmplitude, wave.sineAmplitude).withinInputRange()) {
             updateDac1Target(config);
             setConnectionState(ready_, false, dac1Target_->text());
             return;
@@ -707,17 +707,16 @@ FpgaControlConfig FpgaControlPage::configuration() const {
 void FpgaControlPage::updateDac1Target(const FpgaControlConfig &config) {
     const auto &wave = config.wms[0];
     const auto range = Dac1::targetRange(wave.bias,wave.scanAmplitude,wave.sineAmplitude);
-    // Avoid displaying a negative zero from the Q1.31 rounding at the lower rail.
-    const auto format = [](double v){return QString::number(std::round(v*1000) == 0 ? 0.0 : v,'f',3);};
+    const bool allowed = range.withinInputRange();
+    // A millivolt Vpp step can move an extremum by half a millivolt.
+    const auto format = [allowed](double v) {
+        if (allowed && std::abs(v) < 0.0005) v = 0;
+        return QString::number(v, 'f', allowed ? 3 : 4);
+    };
     QString message = text("DAC1 目标波形范围 %1 至 %2 V。","DAC1 target waveform range %1 to %2 V.")
         .arg(format(range.lowV),format(range.highV));
-    if (range.limit == Dac1::Limit::OutsideInputRange)
+    if (!allowed)
         message += text(" 超出驱动板 0–5 V 输入范围，请调整偏置或峰峰值。"," Outside the 0–5 V driver input range. Adjust the bias or amplitudes.");
-    else if (range.limit == Dac1::Limit::OutsideHardwareGuard)
-        message += text(" 超出当前带载标定的硬件限幅。纯直流可下发 %1–%2 V，叠加波形时需给峰峰值留出余量。",
-            " Outside the load-verified hardware clamp. The DC-only range is %1–%2 V. Waveforms need additional headroom.")
-            .arg(format(std::ceil(Dac1::biasVolts(Dac1::MinSample)*1000)/1000),
-                 format(std::floor(Dac1::biasVolts(Dac1::MaxSample)*1000)/1000));
     dac1Target_->setText(message);
 }
 void FpgaControlPage::setConfiguration(const FpgaControlConfig &c) {

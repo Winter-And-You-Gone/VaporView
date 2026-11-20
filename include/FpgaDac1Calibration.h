@@ -16,12 +16,15 @@ constexpr double ModulationGain = 4.717095;
 constexpr double MinInputV = 0.0;
 constexpr double MaxInputV = 5.0;
 
-// Fixed hardware clamp inside the measured loaded sweep (3.62 to 4.62 V).
-constexpr qint32 MinSample = 30143642;
-constexpr qint32 MaxSample = 460767098;
 constexpr qint32 DefaultBias = 245455370;
-constexpr quint32 MinDacCode = 0x81cbf;
-constexpr quint32 MaxDacCode = 0x9b76b;
+// The RTL maps normalized signed samples to 20-bit offset binary at unity gain.
+constexpr double dacCodeAtBias(double volts)
+{
+    return (1.0 + (volts - BiasAtZero) / BiasGain) * (0xfffff / 2.0);
+}
+// Round inwards so both output codes are inside the calibrated DC rails.
+inline const quint32 MinDacCode = quint32(std::ceil(dacCodeAtBias(MinInputV)));
+inline const quint32 MaxDacCode = quint32(std::floor(dacCodeAtBias(MaxInputV)));
 constexpr quint32 ClearCode = 0x8ea15;
 constexpr quint32 DeviceControl = 0x312;
 constexpr quint32 UnityGain = 0x40000000;
@@ -41,20 +44,21 @@ inline qint32 scanCodeFromVpp(double vpp) { return scanCode(vpp / 2); }
 inline double modulationVpp(qint32 code) { return 2 * modulationVolts(code); }
 inline qint32 modulationCodeFromVpp(double vpp) { return modulationCode(vpp / 2); }
 
-enum class Limit { WithinGuard, OutsideHardwareGuard, OutsideInputRange };
-struct TargetRange { double lowV, highV; Limit limit; };
+struct TargetRange {
+    double lowV, highV;
+
+    bool withinInputRange() const
+    {
+        // Each of the three requested components rounds to the nearest Q1.31 code.
+        constexpr double roundingV = (BiasGain + SawGain + ModulationGain) / (2 * Q31Scale);
+        return lowV >= MinInputV - roundingV && highV <= MaxInputV + roundingV;
+    }
+};
 
 inline TargetRange targetRange(qint32 bias, qint32 scan, qint32 modulation)
 {
     const double peakV = std::abs(scanVolts(scan)) + std::abs(modulationVolts(modulation));
-    const double lowV = biasVolts(bias) - peakV, highV = biasVolts(bias) + peakV;
-    // Each of the three target values rounds to the nearest Q1.31 code.
-    constexpr double roundingV = (BiasGain + SawGain + ModulationGain) / (2 * Q31Scale);
-    if (lowV < MinInputV - roundingV || highV > MaxInputV + roundingV)
-        return {lowV, highV, Limit::OutsideInputRange};
-    const qint64 peak = std::abs(qint64(scan)) + std::abs(qint64(modulation));
-    const bool inside = qint64(bias) - peak >= MinSample && qint64(bias) + peak <= MaxSample;
-    return {lowV, highV, inside ? Limit::WithinGuard : Limit::OutsideHardwareGuard};
+    return {biasVolts(bias) - peakV, biasVolts(bias) + peakV};
 }
 
 } // namespace VaporView::FpgaDac1Calibration

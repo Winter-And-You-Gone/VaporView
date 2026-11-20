@@ -919,12 +919,9 @@ void FpgaDeviceController::applyConfiguration(const FpgaControlConfig& config, c
     if (wms) {
         const auto &wave = config.wms[0];
         const auto range = Dac1::targetRange(wave.bias, wave.scanAmplitude, wave.sineAmplitude);
-        if (range.limit != Dac1::Limit::WithinGuard) {
-            const auto reason = range.limit == Dac1::Limit::OutsideInputRange
-                ? QStringLiteral("超出驱动板额定输入 0–5 V")
-                : QStringLiteral("超出当前带载标定的硬件限幅");
-            fail(QStringLiteral("DAC1 目标波形 %1 至 %2 V，%3。本次参数未下发。")
-                .arg(range.lowV, 0, 'f', 3).arg(range.highV, 0, 'f', 3).arg(reason), true, true);
+        if (!range.withinInputRange()) {
+            fail(QStringLiteral("DAC1 目标波形 %1 至 %2 V，超出驱动板额定输入 0–5 V。本次参数未下发。")
+                .arg(range.lowV, 0, 'f', 4).arg(range.highV, 0, 'f', 4), true, true);
             return;
         }
     }

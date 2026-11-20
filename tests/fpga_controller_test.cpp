@@ -967,38 +967,33 @@ void laserDriverProtection(){
     config.dac[0].gain=0x80000000u;
     config.dac[0].offset=120;
     config.dac[1].offset=-42;
-    const auto nominal = config.wms[0];
-    for (const auto invalid : {
-            FpgaControlConfig::Wms{100000,20000000,500000,-1000,2000,Dac1::MinSample+2999},
-            FpgaControlConfig::Wms{100000,20000000,500000,1000,-2000,Dac1::MaxSample-2999},
+    config.dac[0].minCode=0x81cbf; // A saved preset may contain the former narrow clamp.
+    config.dac[0].maxCode=0x9b76b;
+    const auto wave = [](double dc, double sawVpp, double sineVpp) {
+        return FpgaControlConfig::Wms{100000,20000000,500000,Dac1::scanCodeFromVpp(sawVpp),
+            Dac1::modulationCodeFromVpp(sineVpp),Dac1::biasCode(dc)};
+    };
+    for (const auto invalid : {wave(0,0,-0.001), wave(5,-0.001,0), wave(-0.001,0,0), wave(5.001,0,0),
             FpgaControlConfig::Wms{100000,20000000,500000,std::numeric_limits<qint32>::min(),0,Dac1::DefaultBias}}) {
         config.wms[0]=invalid;
-        f.transport->clear();
-        f.diagnostics.clear();
-        f.controller.applyConfiguration(config,"wms");
-        f.finish();
-        require(f.transport->writes().isEmpty()&&!f.diagnostics.isEmpty(),"combined extrema outside the guard reject application before writes");
+        f.transport->clear(); f.diagnostics.clear();
+        f.controller.applyConfiguration(config,"wms"); f.finish();
+        require(f.transport->writes().isEmpty() && !f.diagnostics.isEmpty() && f.diagnostics.back().contains(QStringLiteral("额定输入")),
+            "a rated input violation rejects the transaction before any write, including a half-millivolt excursion");
     }
-    require(Dac1::targetRange(Dac1::MinSample+3000,-1000,2000).limit==Dac1::Limit::WithinGuard
-        &&Dac1::targetRange(Dac1::MaxSample-3000,1000,-2000).limit==Dac1::Limit::WithinGuard,"both guarded endpoints are inclusive");
-    for (double dc : {0.0, 2.0, 5.0}) {
-        require(Dac1::targetRange(Dac1::biasCode(dc),0,0).limit==Dac1::Limit::OutsideHardwareGuard,
-            "valid pure DC setpoints include both rails without expanding the qualified hardware clamp");
+    for (const auto valid : {wave(0,0,0), wave(5,0,0), wave(2.5,-4.8,0.2), wave(2,2,0.2)}) {
+        config.wms[0]=valid;
+        f.transport->clear(); f.diagnostics.clear();
+        f.controller.applyConfiguration(config,"wms"); f.finish();
+        require(f.diagnostics.isEmpty() && indexOfWrite(f.transport->writes(),0x2018,quint32(valid.bias))>=0
+            && f.transport->regs.value(0x2014)==quint32(valid.scanAmplitude) && f.transport->regs.value(0x2020)==quint32(valid.sineAmplitude),
+            "pure DC rails, a rail-to-rail mixed signal and the 2 V offset example reach the WMS registers");
     }
-    config.wms[0]={100000,20000000,500000,Dac1::scanCodeFromVpp(-2.0),Dac1::modulationCodeFromVpp(0.2),Dac1::biasCode(2.0)};
-    config.backend="simulator"; // An untrusted preset must never widen the installed output clamp.
-    for (double dc : {2.0, 0.5, 4.5}) {
-        config.wms[0].bias=Dac1::biasCode(dc);
-        f.transport->clear(); f.diagnostics.clear(); f.controller.applyConfiguration(config,"wms"); f.finish();
-        const auto reason=dc==2.0 ? QStringLiteral("硬件限幅") : QStringLiteral("额定输入");
-        require(f.transport->writes().isEmpty() && !f.diagnostics.isEmpty() && f.diagnostics.back().contains(reason),
-            "controller distinguishes extrapolation from either rail violation before any write");
-    }
-    config.wms[0]=nominal;
-    f.transport->clear();
-    f.diagnostics.clear();
-    f.controller.applyConfiguration(config,"wms");
-    f.finish();
+    const auto voltsAtDac = [](quint32 code) { return Dac1::BiasAtZero + Dac1::BiasGain * (2.0*code/0xfffff-1.0); };
+    require(voltsAtDac(Dac1::MinDacCode)>=0 && voltsAtDac(Dac1::MinDacCode-1)<0
+        && voltsAtDac(Dac1::MaxDacCode)<=5 && voltsAtDac(Dac1::MaxDacCode+1)>5
+        && Dac1::MinDacCode<=Dac1::ClearCode && Dac1::ClearCode<=Dac1::MaxDacCode,
+        "hardware uses the widest 20-bit code interval inside the modeled 0 to 5 V rails, including clear");
     const auto &regs=f.transport->regs;
     require(f.diagnostics.isEmpty()&&regs.value(0x3010)==Dac1::DeviceControl&&regs.value(0x3014)==Dac1::ClearCode
         &&regs.value(0x3018)==Dac1::MinDacCode&&regs.value(0x301c)==Dac1::MaxDacCode
