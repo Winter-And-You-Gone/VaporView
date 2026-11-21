@@ -693,8 +693,13 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout) : Q
         const auto now = measurementClock_.elapsed();
         for (auto it = readingTimes_.cbegin(); it != readingTimes_.cend(); ++it)
             if (now-it.value() >= 4000 && !historicalReadings_.contains(it.key())) { historicalReadings_.insert(it.key()); changed = true; }
+        QVector<quint16> staleWaves;
         for (auto it = waveTimes_.cbegin(); it != waveTimes_.cend(); ++it)
-            if (now-it.value() >= 4000 && !historicalWaves_.contains(it.key())) { historicalWaves_.insert(it.key()); changed = true; }
+            if (now-it.value() >= 4000) staleWaves.append(it.key());
+        for (const quint16 source : staleWaves) {
+            clearWaveformDisplay(source, "无实时波形 · 数据停止更新", "No live waveform · data stopped");
+            changed = true;
+        }
         if (changed) refreshMeasurements();
     });
     freshnessTimer->start();
@@ -941,7 +946,11 @@ void FpgaControlPage::setTransportConnected(bool connected){
         if(motorPhase_!=MotorPhase::Idle || !motorPendingOperation_.isEmpty())
             endMotorEstimate("连接已断开，运动状态未确认。","Disconnected; motion state is unconfirmed.");
         for(auto it=latestReadings_.cbegin();it!=latestReadings_.cend();++it)historicalReadings_.insert(it.key());
-        for(auto it=latestWaves_.cbegin();it!=latestWaves_.cend();++it)historicalWaves_.insert(it.key());
+        rawEnabled_.clear();
+        const auto sources = plots_.keys();
+        for(const quint16 source : sources) {
+            clearWaveformDisplay(source, "无实时波形 · FPGA 连接已断开", "No live waveform · FPGA disconnected");
+        }
         for(auto *l:hardwareLabels_)l->setText(text("历史值 · ","Historical · ")+l->text());
     }
     refreshMeasurements();setConnectionState(ready_,busy_,connectionDetail_);
@@ -958,7 +967,14 @@ void FpgaControlPage::setConnectionState(bool ready,bool busy,const QString &det
     status_->setText(status_->text()+(busy?text(" · 正在处理"," · Working"):QString())+(detail.isEmpty()?QString():" · "+detail));
     status_->setToolTip(status_->text());
     updateCaptureStatus();
-    if(lost){for(auto it=latestReadings_.cbegin();it!=latestReadings_.cend();++it)historicalReadings_.insert(it.key());for(auto it=latestWaves_.cbegin();it!=latestWaves_.cend();++it)historicalWaves_.insert(it.key());refreshMeasurements();}
+    if(lost){
+        for(auto it=latestReadings_.cbegin();it!=latestReadings_.cend();++it)historicalReadings_.insert(it.key());
+        const auto sources = plots_.keys();
+        for(const quint16 source : sources) {
+            clearWaveformDisplay(source, "无实时波形 · FPGA 未就绪", "No live waveform · FPGA not ready");
+        }
+        refreshMeasurements();
+    }
     updateActions();
 }
 void FpgaControlPage::setHardwareValues(const QMap<quint32,quint32> &v){
@@ -999,14 +1015,17 @@ void FpgaControlPage::setHardwareValues(const QMap<quint32,quint32> &v){
         .arg(v.value(0x6800)==0x00480100).arg(v.value(0x6900)==0x00490100));
     for(const auto& spec:VaporView::FpgaRemote::sensorParameters())if(!config_.sensorParameters.value(spec.source).contains(spec.key) && v.contains(spec.address))if(auto *input=sensorParameterInputs_.value(spec.address)){const QSignalBlocker block(input);input->setValue(v.value(spec.address));}
     updateActions();
-    bool rawChanged=false;
     for(int ch=0;ch<2;++ch)if(v.contains(0x403c+ch*0x100)&&v.contains(0x50)) {
         const quint16 source=0x20+ch;
         const bool enabled=(v.value(0x403c+ch*0x100)&1)&&(v.value(0x50)&(1u<<ch));
-        rawChanged|=!rawEnabled_.contains(source)||rawEnabled_.value(source)!=enabled;
+        if (rawEnabled_.contains(source) && rawEnabled_.value(source) == enabled) continue;
+        const bool restarting = enabled && rawEnabled_.contains(source);
         rawEnabled_[source]=enabled;
+        if (restarting)
+            clearWaveformDisplay(source, "等待新的原始波形", "Waiting for new raw waveform");
+        else if (!enabled)
+            clearWaveformDisplay(source, "无实时波形 · 原始波形上传已停止", "No live waveform · raw upload stopped");
     }
-    if(rawChanged)refreshMeasurements();
     updateCaptureStatus();
     for(auto it=v.cbegin();it!=v.cend();++it)if(auto *l=hardwareLabels_.value(it.key())) {
         const auto module=l->property("fpgaModule").toString();
@@ -1057,11 +1076,32 @@ void FpgaControlPage::updateSensor(const VaporView::FpgaSensor::Reading &r){
     if(!connected_||historicalReadings_.contains(r.source))parts.prepend(text("离线记录 / 历史值","Offline / historical"));l->setText(parts.join(" · "));
     if(r.source!=0x46)l->setToolTip(l->text());
 }
-void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream &s){
+void FpgaControlPage::clearWaveformDisplay(quint16 source, const QString &zh, const QString &en)
+{
+    latestWaves_.remove(source);
+    waveTimes_.remove(source);
+    QVector<SamplePlot*> plots;
+    if (auto *plot = static_cast<SamplePlot*>(plots_.value(source))) plots.append(plot);
+    if (auto *plot = static_cast<SamplePlot*>(secondPlots_.value(source))) plots.append(plot);
+    for (auto *plot : iqPlots_.value(source)) plots.append(static_cast<SamplePlot*>(plot));
+    for (auto *plot : plots) {
+        plot->samples.clear();
+        plot->setProperty("sampleCount", 0);
+        plot->setProperty("sampleMinimum", QVariant());
+        plot->setProperty("sampleMaximum", QVariant());
+        plot->setProperty("previewStride", 1);
+        plot->update();
+    }
+    if (auto *panel = iqPanels_.value(source)) panel->setVisible(false);
+    auto *summary = waveLabels_.value(source);
+    label(summary, zh, en);
+    summary->setToolTip(summary->text());
+    emit waveformDisplayUpdated(source, {}, {}, summary->text(), 0, false);
+}
+
+void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream &s, bool replay){
     auto *plot=static_cast<SamplePlot*>(plots_.value(s.source));auto *l=waveLabels_.value(s.source);if(!plot||!l)return;
-    latestWaves_[s.source]=s;if(!rerendering_&&connected_)historicalWaves_.remove(s.source);
-    if (!rerendering_) waveTimes_[s.source] = measurementClock_.elapsed();
-    const auto historyPrefix=!connected_||historicalWaves_.contains(s.source)?text("离线记录 / 历史值 · ","Offline / historical · "):QString();
+    if (!replay && (!ready_ || !rawEnabled_.value(s.source, true))) return;
     const bool adc=s.source<0x30;const int channel=adc?s.source-0x20:s.source-0x30;const auto c=configuration();const bool volts=adc&&c.frontend[channel].calibrated;
     auto *second=static_cast<SamplePlot*>(secondPlots_.value(s.source));
     const int component=!adc&&s.format==2?4:0;
@@ -1076,7 +1116,7 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
     double maxH2 = std::numeric_limits<double>::quiet_NaN();
     double maxNormalizedH2 = std::numeric_limits<double>::quiet_NaN();
     QVector<double> normalizedH2;
-    const auto publishDisplay = [&](quint32 totalPoints = 0) {
+    const auto publishDisplay = [&]() {
         QVector<QVector<double>> samples;
         QStringList components = adc ? QStringList{QStringLiteral("ADC")}
             : s.format == 1 ? QStringList{QStringLiteral("I1"), QStringLiteral("Q1"), QStringLiteral("I2"), QStringLiteral("Q2")}
@@ -1086,37 +1126,32 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
             samples.append(normalizedH2);
             components.append(QStringLiteral("H2/H1"));
         }
-        emit waveformDisplayUpdated(s.source, samples, components, l->text(), totalPoints ? totalPoints : s.totalPoints, s.preview);
+        emit waveformDisplayUpdated(s.source, samples, components, l->text(), s.totalPoints, s.preview);
         if (!adc && !rerendering_)
             emit secondHarmonicPeakReady(s.source, s.cycleId, s.timestamp,
                 s.hasFullCyclePeak ? s.fullCyclePeak : maxNormalizedH2, s.preview && !s.hasFullCyclePeak);
     };
-    auto retainRaw=[&](const QString &reason){
-        if(!adc||!lastCompleteRaw_.contains(s.source))return false;
-        const bool wasRerendering=rerendering_;rerendering_=true;
-        const auto savedLatest=latestWaves_.value(s.source);
-        updateWaveform(lastCompleteRaw_.value(s.source));
-        latestWaves_[s.source]=savedLatest;rerendering_=wasRerendering;
-        l->setText(reason+text(" · 显示上一完整 RAW 周期（历史值，非当前测量） · "," · Showing previous complete RAW cycle (historical, not current) · ")+l->text());
-        publishDisplay(lastCompleteRaw_.value(s.source).totalPoints);
-        return true;
-    };
-    auto clearPlots=[&]{for(auto *p:activePlots){p->samples.clear();p->setProperty("sampleCount",0);p->update();}};
-    const quint32 expectedBytes=adc?4u:s.format==0?8u:s.format==1?16u:s.format==2?24u:0u;
-    if(!s.complete||s.partial||s.overflow||s.continuityError) {
-        if(retainRaw(text("最近 RAW 周期不完整或质量异常","Latest RAW cycle incomplete or faulty")))return;
-        clearPlots();
-        l->setText(historyPrefix+text("周期缺片或质量异常；不连接缺失区间。可用原始点保留在记录中。","Cycle has missing fragments or quality faults; gaps are not joined. Available raw points remain in the recording."));publishDisplay();return;
-    }
+    const quint32 expectedBytes=adc?(s.format<=1?4u:0u):s.format==0?8u:s.format==1?16u:s.format==2?24u:0u;
     const quint32 availablePoints = expectedBytes ? quint32(s.pointBytes.size() / expectedBytes) : 0;
     const quint32 displayPoints = s.preview ? availablePoints : s.totalPoints;
-    if(!expectedBytes||s.bytesPerPoint!=expectedBytes||!displayPoints
-        || s.pointBytes.size() % expectedBytes != 0 || displayPoints > availablePoints
+    const bool incomplete = !s.complete || s.partial || s.overflow || s.continuityError;
+    if (incomplete || !expectedBytes || s.bytesPerPoint != expectedBytes || !displayPoints
+        || s.pointBytes.size() % expectedBytes != 0 || displayPoints != availablePoints
         || (s.preview && (!s.previewStride || displayPoints > 64 || quint64(displayPoints-1)*s.previewStride >= s.totalPoints))) {
-        if(retainRaw(text("最近 RAW 格式或长度无效","Latest RAW format or length invalid")))return;
-        clearPlots();l->setText(historyPrefix+text("波形格式或长度无效；本周期特征标记为无效","Invalid waveform format or length; cycle feature is marked invalid"));publishDisplay();return;
+        const QString zh = replay ? QStringLiteral("历史回放 · ") : QStringLiteral("无实时波形 · ");
+        const QString en = replay ? QStringLiteral("Historical replay · ") : QStringLiteral("No live waveform · ");
+        clearWaveformDisplay(s.source, zh + (incomplete ? "当前周期缺片或质量异常" : "当前波形格式或长度无效"),
+            en + (incomplete ? "current cycle incomplete or faulty" : "current waveform format or length invalid"));
+        if (!adc && !rerendering_)
+            emit secondHarmonicPeakReady(s.source, s.cycleId, s.timestamp,
+                std::numeric_limits<double>::quiet_NaN(), false);
+        return;
     }
-    if(adc)lastCompleteRaw_[s.source]=s;
+    if (!rerendering_) {
+        latestWaves_[s.source] = s;
+        if (replay) waveTimes_.remove(s.source);
+        else waveTimes_[s.source] = measurementClock_.elapsed();
+    }
     for(auto *p:activePlots)p->samples.clear();const int stride=qMax(1,int(displayPoints)/1000);const int components=adc?1:int(s.bytesPerPoint/4);
     bool normalizationGap = false;
     for(int point=0;point<int(displayPoints);++point){const int offset=point*components*4;if(offset+components*4>s.pointBytes.size())break;
@@ -1151,9 +1186,8 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
         .arg(displayPoints).arg(s.totalPoints).arg(text("点","points")).arg(text("抽稀间隔","stride")).arg(s.previewStride).arg(s.rate)
         .arg(volts?"V":text("原码 / 数字幅值","raw / digital amplitude")));
     if(!adc)l->setText(l->text()+" · "+(s.format==1?QStringLiteral("I1 / Q1 / I2 / Q2"):pairName));
-    l->setText(historyPrefix+l->text());
-    if(adc&&rawEnabled_.contains(s.source)&&!rawEnabled_.value(s.source))
-        l->setText(text("RAW 上传已停止 · 最后完整周期（历史值） · ","RAW upload stopped · Last complete cycle (historical) · ")+l->text());
+    if (replay) l->setText(text("历史回放 · ", "Historical replay · ") + l->text());
+    l->setToolTip(l->text());
     for(auto *p:activePlots){p->setProperty("sampleCount",p->samples.size());p->setProperty("previewStride",s.preview?s.previewStride:1);if(!p->samples.isEmpty()){const auto mm=std::minmax_element(p->samples.cbegin(),p->samples.cend());p->setProperty("sampleMinimum",*mm.first);p->setProperty("sampleMaximum",*mm.second);}p->update();}
     publishDisplay();
 }
@@ -1202,11 +1236,18 @@ void FpgaControlPage::setLanguage(bool en){
     backend_->setItemText(backend_->findData(QStringLiteral("simulator")),text("模拟器","Simulator"));
     for(int i=0;i<tabs_->count();++i)tabs_->setTabText(i,tabs_->widget(i)->property(en?"fpgaEn":"fpgaZh").toString());
     for(auto it=sensorLabels_.cbegin();it!=sensorLabels_.cend();++it)if(!latestReadings_.contains(it.key()))it.value()->setText(text("等待有效样本","Waiting for valid sample"));
-    for(auto it=waveLabels_.cbegin();it!=waveLabels_.cend();++it)if(!latestWaves_.contains(it.key()))it.value()->setText(text("等待波形 · ADC 原码 / 解调数字幅值","Waiting for waveform · ADC raw / demodulation digital amplitude"));
+    for(auto it=waveLabels_.cbegin();it!=waveLabels_.cend();++it) {
+        if (latestWaves_.contains(it.key())) continue;
+        auto *summary = it.value();
+        if (!summary->property("fpgaZh").isValid())
+            label(summary, "等待波形", "Waiting for waveform");
+        summary->setToolTip(summary->text());
+        emit waveformDisplayUpdated(it.key(), {}, {}, summary->text(), 0, false);
+    }
     refreshMeasurements();
     if(!usbDiscovering_)rebuildUsbDevices();setConnectionState(ready_,busy_,connectionDetail_);setRecordingState(recording_,recordingDetail_);
 }
-void FpgaControlPage::refreshMeasurements(){rerendering_=true;const auto readings=latestReadings_;for(const auto &reading:readings)updateSensor(reading);const auto waves=latestWaves_;for(const auto &wave:waves)updateWaveform(wave);rerendering_=false;}
+void FpgaControlPage::refreshMeasurements(){rerendering_=true;const auto readings=latestReadings_;for(const auto &reading:readings)updateSensor(reading);const auto waves=latestWaves_;for(const auto &wave:waves)updateWaveform(wave,!waveTimes_.contains(wave.source));rerendering_=false;}
 void FpgaControlPage::setTheme(bool dark,int fontScalePercent){
     using namespace VaporView;setProperty(kAppDarkThemeProperty,dark);setPalette(appThemePalette(dark,palette()));
     const qreal scale=qBound(60,fontScalePercent,180)/100.0;
@@ -1498,26 +1539,14 @@ void FpgaControlPage::clearMeasurements()
     latestReadings_.clear();
     latestWaves_.clear();
     historicalReadings_.clear();
-    historicalWaves_.clear();
     readingTimes_.clear();
-    waveTimes_.clear();lastCompleteRaw_.clear();rawEnabled_.clear();
+    waveTimes_.clear();rawEnabled_.clear();
     for (auto *label : sensorLabels_)
         label->setText(text("等待有效样本", "Waiting for valid sample"));
-    for (auto *label : waveLabels_)
-        label->setText(text("等待波形 · ADC 原码 / 解调数字幅值",
-                            "Waiting for waveform · ADC raw / demodulation digital amplitude"));
-    auto plotWidgets=plots_.values()+secondPlots_.values();
-    for(const auto &pair:iqPlots_)plotWidgets.append(pair);
-    for(auto *panel:iqPanels_)panel->hide();
+    for (const quint16 source : plots_.keys())
+        clearWaveformDisplay(source, "等待波形", "Waiting for waveform");
     for(auto *title:firstPlotTitles_)title->setText("H1");
     for(auto *title:secondPlotTitles_)title->setText("H2");
-    for (auto *plotWidget : plotWidgets)
-    {
-        auto *plot = static_cast<SamplePlot *>(plotWidget);
-        plot->samples.clear();
-        plot->setProperty("sampleCount", 0);
-        plot->update();
-    }
     for (auto *label : hardwareLabels_)
         label->setText(QStringLiteral("—"));
     if (diagnostics_)

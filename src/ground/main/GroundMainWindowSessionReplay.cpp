@@ -281,7 +281,7 @@ void MainWindow::openUiTestSourceWindow()
             VaporView::FpgaWave::CompletedStream wave;
             if (VaporView::FpgaRemote::parseWaveformPreview(s.bytes, wave)) {
                 state_->tcp_wave_panel_->setFpgaMode(true);
-                state_->fpga_page_->updateWaveform(wave);
+                state_->fpga_page_->updateWaveform(wave, true);
             }
         } else if (s.stream == Stream::FpgaSensor) {
             VaporView::FpgaSensor::Reading reading;

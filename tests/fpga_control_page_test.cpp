@@ -448,7 +448,7 @@ int main(int argc,char **argv) {
     VaporView::FpgaSensor::Reading bmp;bmp.source=0x43;bmp.kind=VaporView::FpgaSensor::SensorKind::Bmp390;page.updateSensor(bmp);
     require(!page.findChild<QLabel*>("fpgaSensor0043")->text().contains(" Pa"),"BMP raw data without calibration never becomes pressure");
     page.setLanguage(true);require(page.findChild<QLabel*>("fpgaSensor0040")->text()=="Waiting for valid sample","unreceived sensor placeholder follows language changes");
-    require(page.findChild<QLabel*>("fpgaWaveSummary32")->text().startsWith("Waiting for waveform"),"unreceived waveform placeholder follows language changes");
+    require(page.findChild<QLabel*>("fpgaWaveSummary32")->text().contains("FPGA not ready"),"waveform unavailable reason follows language changes");
     require(page.findChild<QLabel*>("fpgaSensor0043")->text().contains("Waiting for session calibration"),"cached sensor metadata rerenders in English");
     VaporView::FpgaWave::CompletedStream wave;wave.source=0x30;wave.message=0x1001;wave.format=2;wave.bytesPerPoint=24;wave.totalPoints=2;wave.rate=10000;wave.complete=true;
     double cyclePeak=0;bool peakPreview=false;int peakEvents=0;
@@ -456,6 +456,7 @@ int main(int argc,char **argv) {
         [&](quint16,quint32,quint64,double peak,bool preview){cyclePeak=peak;peakPreview=preview;++peakEvents;});
     auto appendWord=[](QByteArray &bytes,qint32 value){for(int i=0;i<4;++i)bytes.append(char(quint32(value)>>(8*i)));};
     for(qint32 value:{1,2,3,4,100,200,11,12,13,14,110,210})appendWord(wave.pointBytes,value);
+    page.setConnectionState(true,false);
     page.updateWaveform(wave);auto *plot=page.findChild<QWidget*>("fpgaWavePlot48");
     auto *secondPlot=page.findChild<QWidget*>("fpgaWaveSecondPlot48");
     require(!page.findChild<QComboBox*>("fpgaWaveComponent48")&&!page.findChild<QComboBox*>("fpgaWaveComponent49")&&secondPlot,"both DLIA channels display their data without component selectors");
@@ -476,7 +477,7 @@ int main(int argc,char **argv) {
     require(i2->parentWidget()->isHidden()&&i2->property("sampleCount").toInt()==0,"harmonic format hides and clears the IQ-only pair");
     auto partial=wave;partial.complete=false;partial.partial=true;partial.pointBytes.truncate(24);page.updateWaveform(partial);
     require(std::isnan(cyclePeak),"invalid DLIA publishes a trend gap instead of a peak");
-    require(plot->property("sampleCount").toInt()==0&&secondPlot->property("sampleCount").toInt()==0&&page.findChild<QLabel*>("fpgaWaveSummary48")->text().contains("missing fragments"),"partial cycle does not draw a fabricated connected trace");
+    require(plot->property("sampleCount").toInt()==0&&secondPlot->property("sampleCount").toInt()==0&&page.findChild<QLabel*>("fpgaWaveSummary48")->text().contains("No live waveform"),"partial cycle does not draw a fabricated connected trace");
     page.updateWaveform(wave);
     auto preview=wave;preview.preview=true;preview.previewStride=1024;preview.totalPoints=2048;
     page.updateWaveform(preview);
@@ -513,25 +514,40 @@ int main(int argc,char **argv) {
     page.setHardwareValues({{0x50,3},{0x403c,1},{0x413c,1}});
     auto rawTail=adc;rawTail.complete=false;rawTail.partial=true;rawTail.pointBytes.truncate(4);
     page.updateWaveform(rawTail);
-    require(adcPlot->property("sampleCount").toInt()==3&&adcPlot->property("sampleMaximum").toDouble()==0.2,"incomplete RAW preserves previous complete samples");
-    require(page.findChild<QLabel*>("fpgaWaveSummary32")->text().contains("historical, not current"),"retained RAW never claims current measurement");
+    require(adcPlot->property("sampleCount").toInt()==0,"incomplete RAW clears the live plot instead of reusing an older cycle");
+    require(page.findChild<QLabel*>("fpgaWaveSummary32")->text().contains("No live waveform"),"incomplete RAW is explicitly shown as unavailable");
     page.setHardwareValues({{0x50,0},{0x403c,0},{0x413c,0}});
-    require(page.findChild<QLabel*>("fpgaWaveSummary32")->text().contains("RAW upload stopped"),"readback explicitly labels stopped RAW");
+    require(page.findChild<QLabel*>("fpgaWaveSummary32")->text().contains("No live waveform"),"stopped RAW is explicitly shown as unavailable");
     page.setLanguage(false);page.setLanguage(true);
-    require(adcPlot->property("sampleCount").toInt()==3,"historical RAW survives rerender");
+    require(adcPlot->property("sampleCount").toInt()==0,"stopped RAW stays cleared after rerender");
     page.updateWaveform(adc);
+    require(adcPlot->property("sampleCount").toInt()==0,"late RAW after stop stays hidden");
+    page.updateWaveform(adc, true);
+    require(adcPlot->property("sampleCount").toInt()==3 && page.findChild<QLabel*>("fpgaWaveSummary32")->text().contains("Historical replay"),"explicit replay displays recorded ADC with its origin");
+    page.setHardwareValues({{0x50,3},{0x403c,1},{0x413c,1}});
+    require(adcPlot->property("sampleCount").toInt()==0,"enabling RAW waits for the next frame");
+    auto flat=adc;flat.pointBytes.fill(0);page.updateWaveform(flat);
+    require(adcPlot->property("sampleCount").toInt()==3 && adcPlot->property("sampleMaximum").toDouble()==0,"a complete flat signal is displayed");
+    auto invalid=adc;invalid.pointBytes.append(4,char(0));page.updateWaveform(invalid);
+    require(adcPlot->property("sampleCount").toInt()==0,"a malformed length clears the previous frame");
     page.setTheme(true);
     page.setTransportConnected(true);page.setConnectionState(true,false);
     VaporView::FpgaSensor::Reading live;live.source=0x40;live.pressurePa=101325;live.validity.measurement=true;page.updateSensor(live);page.updateWaveform(adc);
     require(!sensor->text().contains("historical"),"fresh connected measurement is live");
+    require(adcPlot->property("sampleCount").toInt()==3,"live ADC frame received before disconnect");
     page.setTransportConnected(false);page.setConnectionState(false,false,"Disconnected");
-    require(sensor->text().contains("historical")&&page.findChild<QLabel*>("fpgaWaveSummary32")->text().contains("historical"),"transport-first disconnect marks cached sensor and waveform as historical");
+    page.updateWaveform(adc);
+    require(adcPlot->property("sampleCount").toInt()==0,"disconnected late frame cannot repaint the waveform");
+    require(sensor->text().contains("historical")&&page.findChild<QLabel*>("fpgaWaveSummary32")->text().contains("No live waveform"),"transport-first disconnect clears the live waveform while retaining sensor history status");
     page.setTransportConnected(true);page.setConnectionState(false,false,"Version mismatch");
     require(page.findChild<QLabel*>("fpgaConnectionStatus")->text().contains("Writes disabled"),"opened incompatible USB is connected but explicitly forbids writes");
     page.setLanguage(false);page.setLanguage(true);
     require(sensor->text().contains("historical"),"language changes and reconnect cannot promote old cached measurement to live");
     page.setConnectionState(true,false);page.updateSensor(live);
-    require(!sensor->text().contains("historical")&&page.findChild<QLabel*>("fpgaWaveSummary32")->text().contains("historical"),"new sensor sample refreshes only its source while old waveform remains historical");
+    const auto waveformStatusAfterSensor = page.findChild<QLabel*>("fpgaWaveSummary32")->text();
+    require(!sensor->text().contains("historical") &&
+        (waveformStatusAfterSensor.contains("No live waveform") || waveformStatusAfterSensor.contains("Waiting for waveform")),
+        "new sensor sample refreshes only its source while the waveform waits for a new frame");
     quint16 requestedSensor=0;bool requestedEnabled=false;
     QObject::connect(&page,&FpgaControlPage::sensorEnableRequested,&page,[&](quint16 source,bool enabled){requestedSensor=source;requestedEnabled=enabled;});
     for(quint16 source:{0x40,0x42,0x43,0x44,0x45})for(bool enabled:{true,false}) {
@@ -785,7 +801,7 @@ int main(int argc,char **argv) {
     operation({{"op","raw"},{"enabled",true}});
     wait([&]{return adcPlot->property("sampleCount").toInt()>0;},"RAW restarts through normal control");
     operation({{"op","raw"},{"enabled",false}});
-    require(adcPlot->property("sampleCount").toInt()>0&&page.findChild<QLabel*>("fpgaWaveSummary32")->text().contains("RAW upload stopped"),"RAW stop keeps previous cycle as history");
+    require(adcPlot->property("sampleCount").toInt()==0&&page.findChild<QLabel*>("fpgaWaveSummary32")->text().contains("No live waveform"),"RAW stop clears the live plot");
     page.setUiTestState(true,false,true,75000);
     wait([&]{return sensor->text().contains("Invalid measurement");},"partial fault enters through wire validity flags");
     page.setUiTestState(true,false,false,75100);

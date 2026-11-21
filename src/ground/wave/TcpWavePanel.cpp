@@ -2442,6 +2442,11 @@ void TcpWavePanel::refreshFpgaWaveform()
     if (normalizedH2 >= 0) wave4_history_ = convert(dlia.samples.value(normalizedH2));
     const QString waiting = is_english_ ? QStringLiteral("Waiting for FPGA waveform") : QStringLiteral("等待 FPGA 波形");
     const auto present = [this, &waiting](QLabel *label, const FpgaWaveDisplay &wave, bool empty) {
+        if (wave.samples.isEmpty() && !wave.detail.isEmpty()) {
+            label->setText(wave.detail);
+            label->setToolTip(wave.detail);
+            return;
+        }
         const bool historical = wave.detail.contains(QStringLiteral("历史")) || wave.detail.contains(QStringLiteral("historical"), Qt::CaseInsensitive);
         const QString quality = historical ? (is_english_ ? QStringLiteral("Historical") : QStringLiteral("历史值"))
             : empty ? (is_english_ ? QStringLiteral("Unavailable") : QStringLiteral("无有效波形"))
@@ -2470,7 +2475,7 @@ void TcpWavePanel::refreshFpgaWaveform()
     peak_history_ = trend.values;
     peak_wall_msecs_ = trend.wallMsecs;
     peak_plot_->setPeakValues(peak_history_, peak_wall_msecs_);
-    const QString peakText = trend.values.isEmpty() || !std::isfinite(trend.values.last())
+    const QString peakText = (dlia.samples.isEmpty() && !dlia.detail.isEmpty()) || trend.values.isEmpty() || !std::isfinite(trend.values.last())
         ? QStringLiteral("—") : QString::number(trend.values.last(), 'g', 7);
     fpga_peak_info_label_->setText(trend.values.isEmpty() ? waiting
         : QString(is_english_ ? "%1 · Latest:" : "%1 · 最新：")

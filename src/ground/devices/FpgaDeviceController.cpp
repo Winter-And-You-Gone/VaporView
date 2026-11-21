@@ -508,7 +508,7 @@ void FpgaDeviceController::advance()
     }
     if (s.kind==Kind::FinishRawStop) {
         session_->flushWaveforms(0x20);session_->flushWaveforms(0x21);flushPresentation();
-        report(QStringLiteral("RAW 已停止上传；保留最后完整波形作为历史值，ADC/DLIA 采集状态未改变。"),LogLevel::Info);
+        report(QStringLiteral("RAW 已停止上传；实时波形显示已清空，ADC/DLIA 采集状态未改变。"),LogLevel::Info);
         current_.reset();advance();return;
     }
     if(s.kind==Kind::FinishWatchdog) {

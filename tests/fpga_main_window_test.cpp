@@ -522,8 +522,8 @@ static void remotePageRouting()
         statusOnly.setInterval(1000);
         QObject::connect(&statusOnly, &QTimer::timeout, &window, [&] { send(MsgType::FpgaStatus, FpgaRemote::encodeStatus(status)); });
         statusOnly.start();
-        require(waitUntil([&] { return summary->text().contains(QStringLiteral("历史")) || summary->text().contains("historical"); }, 5500),
-            "an unrefreshed source becomes historical while live USB status continues");
+        require(waitUntil([&] { return summary->text().contains(QStringLiteral("无实时波形")) || summary->text().contains("No live waveform"); }, 5500),
+            "an unrefreshed source is cleared while live USB status continues");
         require(acquisition->isEnabled(), "fresh USB status does not refresh old waveform arrival time");
         statusOnly.stop();
         require(waitUntil([&] { return !acquisition->isEnabled(); }, 5500), "four-second status expires write controls");
@@ -531,8 +531,8 @@ static void remotePageRouting()
         emit page->acquisitionRequested(true); // A queued/forced request must also be gated, beyond disabled buttons.
         processFor(100);
         require(commands == beforeExpired, "expired status refuses writes at dispatch boundary");
-        require(summary->text().contains(QStringLiteral("历史")) || summary->text().contains("historical"),
-            "expired preview marked historical");
+        require(summary->text().contains(QStringLiteral("无实时波形")) || summary->text().contains("No live waveform"),
+            "expired preview is marked unavailable");
         send(MsgType::FpgaStatus, FpgaRemote::encodeStatus(status));
         require(waitUntil([&] { return acquisition->isEnabled(); }), "fresh status restores controls");
         remote->close();
@@ -2156,6 +2156,7 @@ static void harmonicHomeGraphs()
             qToLittleEndian<qint32>(100+point, reinterpret_cast<uchar*>(word)); wave.pointBytes.append(word,4);
             qToLittleEndian<qint32>(20+qRound(10*std::sin(point*0.1)), reinterpret_cast<uchar*>(word)); wave.pointBytes.append(word,4);
         }
+        page->setConnectionState(true,false);
         page->updateWaveform(wave);
         for (const QSize size : {QSize(1600,1000), QSize(1150,850)}) {
             window.resize(size);
@@ -3254,6 +3255,7 @@ int main(int argc,char **argv)
         verifyCardMargins(window,page,100);
         auto handler=qInstallMessageHandler(captureFont);
         VaporView::FpgaWave::CompletedStream wave;wave.source=0x30;wave.message=0x1001;wave.format=0;wave.bytesPerPoint=8;wave.totalPoints=2;wave.rate=10000;wave.complete=true;wave.pointBytes=QByteArray(16,0);
+        page->setConnectionState(true,false);
         page->updateWaveform(wave);
         auto *first=page->findChild<QWidget*>("fpgaWavePlot48");
         auto *second=page->findChild<QWidget*>("fpgaWaveSecondPlot48");

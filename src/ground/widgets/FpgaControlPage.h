@@ -55,7 +55,7 @@ public:
     void setManagementState(const QJsonObject& state);
     void finishMotorOperation(const QJsonObject& request, bool success);
     void updateSensor(const VaporView::FpgaSensor::Reading &reading);
-    void updateWaveform(const VaporView::FpgaWave::CompletedStream &stream);
+    void updateWaveform(const VaporView::FpgaWave::CompletedStream &stream, bool replay = false);
     void appendDiagnostic(const QString &text);
     void setLanguage(bool english);
     void setTheme(bool dark, int fontScalePercent = 100);
@@ -111,6 +111,7 @@ private:
     void updateDac1Target(const FpgaControlConfig &config);
     void lockOperation();
     void refreshMeasurements();
+    void clearWaveformDisplay(quint16 source, const QString &zh, const QString &en);
     void clearMeasurements();
     void stopUiTestController();
     bool motorBusy() const;
@@ -146,10 +147,10 @@ private:
     QMap<quint16, QLabel*> waveLabels_;
     QMap<quint16, QWidget*> iqPanels_;
     QMap<quint16, QVector<QWidget*>> iqPlots_;
-    QMap<quint16, VaporView::FpgaWave::CompletedStream> latestWaves_, lastCompleteRaw_;
+    QMap<quint16, VaporView::FpgaWave::CompletedStream> latestWaves_;
     QMap<quint16, bool> rawEnabled_;
     QMap<quint16, VaporView::FpgaSensor::Reading> latestReadings_;
-    QSet<quint16> historicalReadings_, historicalWaves_;
+    QSet<quint16> historicalReadings_;
     QElapsedTimer measurementClock_;
     QMap<quint16, qint64> readingTimes_, waveTimes_;
     bool rerendering_ = false;
