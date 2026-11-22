@@ -230,7 +230,9 @@ QString formatMap3DDiagnostics(const Map3DDiagnosticsContext& context)
     lines << mapText(QStringLiteral("  OSM 矢量数据： %1 (已找到 %2/4 个文件)"))
                  .arg(diagnostics.osmVectorAvailable ? mapText(QStringLiteral("可用")) : mapText(QStringLiteral("缺失")))
                  .arg(diagnostics.osmLayerCount);
-    lines << mapText(QStringLiteral("  已选 OSM： %1")).arg(selectedOsmLabel(diagnostics));
+    lines << mapText(QStringLiteral("  已选 OSM： %1")).arg(context.earthLoad.onlineOsmAvailable
+        ? mapText(QStringLiteral("在线 OpenStreetMap 道路和水系，按视口加载"))
+        : selectedOsmLabel(diagnostics));
     lines << mapText(QStringLiteral("  已选完整本地地图场景： %1"))
                  .arg(diagnostics.selectedFullLocalEarthPath.isEmpty() ? mapText(QStringLiteral("<未选择>")) : diagnostics.selectedFullLocalEarthPath);
     lines << mapText(QStringLiteral("  可选本地影像 VRT： 已找到 %1/3")).arg(diagnostics.localImageryLayerCount);

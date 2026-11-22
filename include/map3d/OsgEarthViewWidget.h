@@ -85,6 +85,7 @@ struct EarthLoadDiagnostics {
     bool loaded = false;
     bool usedTexturedFallback = false;
     bool foundMapNode = false;
+    bool onlineOsmAvailable = false;
     int layerCount = 0;
     int openLayerCount = 0;
     QString openElevationLayerName;
@@ -140,6 +141,7 @@ public:
         int sampleIndex);
     void clearTrack();
     bool loadEarthFile(const QString& earthPath);
+    bool loadOnlineGlobe();
     void loadEarthFileAsync(const QString& earthPath, std::function<void(bool)> finished);
     void loadEarthFilePreservingViewAsync(const QString& earthPath, std::function<void(bool)> finished);
     bool applyTiandituSatelliteImagery(const QString& key);

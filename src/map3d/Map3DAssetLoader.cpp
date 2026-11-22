@@ -222,7 +222,9 @@ EarthAssetLoadResult loadEarthAsset(const QString& earthPath)
     // Local imagery templates only contain imagery. Restore the best available
     // DEM before opening the scene so switching imagery cannot flatten terrain.
     MapDataManager mapDataManager;
-    if (result.mapNode->getMap() && mapDataManager.isLocalImageryEarthFile(earthPath))
+    const bool localImageryScene = mapDataManager.isLocalImageryEarthFile(earthPath);
+    result.diagnostics.onlineOsmAvailable = mapDataManager.isBuiltInEarthFile(earthPath) || localImageryScene;
+    if (result.mapNode->getMap() && localImageryScene)
     {
         osgEarth::LayerVector layers;
         result.mapNode->getMap()->getLayers(layers);

@@ -696,9 +696,7 @@ MapDataSelection selectionForCustomEarth(const MapDataSelection& discovered,
 
 MapDataSelection selectionForLightweightStartup(const MapDataSelection& discovered)
 {
-    // When the complete local OSM set is present, keep the full Earth scene.
-    // The lightweight/DEM-only templates do not declare the OGR water and road
-    // layers, so their menu entries would appear selectable but render nothing.
+    // Keep the full scene's offline OSM fallback and its local imagery and buildings.
     if (discovered.mode == MapDataMode::FullLocalMap
         && discovered.diagnostics.selectedOsmLayersAvailable
         && QFileInfo(discovered.earthFile).isFile())
@@ -1350,6 +1348,11 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     updateMapModeUi();
 
     statusBar()->addPermanentWidget(status_label_, 1);
+    osm_attribution_ = new QLabel(QStringLiteral("<a href=\"https://www.openstreetmap.org/copyright\">© OpenStreetMap contributors</a>"), this);
+    osm_attribution_->setObjectName(QStringLiteral("map3DOsmAttribution"));
+    osm_attribution_->setOpenExternalLinks(true);
+    statusBar()->addPermanentWidget(osm_attribution_);
+    osm_attribution_->hide();
     updateReplayUi();
     updateHeatLegend();
     if (isMap3DHeadlessTest())
@@ -1684,6 +1687,13 @@ void Map3DWindow::setLayerVisible(Map3DLayer layer, bool visible, bool announce)
     if (view_)
     {
         view_->setLayerVisible(layer, visible);
+        if (visible && (layer == Map3DLayer::RoadNetwork || layer == Map3DLayer::Hydrography)
+            && map_selection_.mode == MapDataMode::LocalGridOnly && !view_->hasEarthMap()
+            && view_->isRenderingStarted() && !VaporView::settingsWritesSuspended() && view_->loadOnlineGlobe())
+        {
+            latest_earth_load_ = view_->earthLoadDiagnostics();
+            applySelectedSatelliteImagery(false);
+        }
     }
 
     QSettings layerSettings = map3DSettings();
@@ -1715,6 +1725,7 @@ void Map3DWindow::setLayerVisible(Map3DLayer layer, bool visible, bool announce)
     }
 
     refreshLayerMenuAvailability();
+    updateStatus(nullptr, true);
     if (announce)
     {
         const bool available = view_ ? view_->layerAvailable(layer) : false;
@@ -1849,7 +1860,8 @@ void Map3DWindow::refreshLayerMenuAvailability()
                 break;
             case Map3DLayer::Hydrography:
             case Map3DLayer::RoadNetwork:
-                available = map_selection_.diagnostics.selectedOsmLayersAvailable;
+                available = map_selection_.mode == MapDataMode::LocalGridOnly
+                    || map_selection_.diagnostics.selectedOsmLayersAvailable;
                 break;
             case Map3DLayer::Buildings3D:
                 available = map_selection_.diagnostics.local3DTilesTilesetValid;
@@ -1865,7 +1877,10 @@ void Map3DWindow::refreshLayerMenuAvailability()
         const QString availability = available
             ? mapText(QStringLiteral("当前可用"))
             : mapText(QStringLiteral("当前场景未加载；数据可用时按此设置显示"));
-        const QString tooltip = QStringLiteral("%1\n%2").arg(layerDescription(layer), availability);
+        QString tooltip = QStringLiteral("%1\n%2").arg(layerDescription(layer), availability);
+        if ((layer == Map3DLayer::Hydrography || layer == Map3DLayer::RoadNetwork)
+            && (latest_earth_load_.onlineOsmAvailable || map_selection_.mode == MapDataMode::LocalGridOnly))
+            tooltip += QLatin1Char('\n') + mapText(QStringLiteral("在线 OpenStreetMap，按需加载，无需密钥"));
         if (layer_rows_[index])
         {
             layer_rows_[index]->setToolTip(tooltip);
@@ -2316,6 +2331,15 @@ void Map3DWindow::loadInitialEarthFile()
     const QString initialPath = hasPersistedCustomEarth ? persistedPath : startupSelection.earthFile;
     if (!view_ || !QFileInfo(initialPath).isFile())
     {
+        if (view_ && startupSelection.mode == MapDataMode::LocalGridOnly
+            && (layerVisible(Map3DLayer::RoadNetwork) || layerVisible(Map3DLayer::Hydrography))
+            && (view_->hasEarthMap() || view_->loadOnlineGlobe()))
+        {
+            latest_earth_load_ = view_->earthLoadDiagnostics();
+            setMapSelection(startupSelection);
+            applySelectedSatelliteImagery(false);
+            return;
+        }
         latest_earth_load_ = {};
         latest_earth_load_.requestedPath = initialPath;
         latest_earth_load_.failureReason = mapText(QStringLiteral("所选地图场景文件不存在。"));
@@ -3864,7 +3888,8 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool for
     {
         const QSize framebufferSize = view_ ? view_->framebufferSize() : headless_view_->size();
         text += mapText(QStringLiteral(" | 地图 %1 | 视口 %2×%3"))
-                    .arg(MapDataManager::modeLabel(map_selection_.mode))
+                    .arg(map_selection_.mode == MapDataMode::LocalGridOnly && latest_earth_load_.onlineOsmAvailable
+                         ? mapText(QStringLiteral("在线地球")) : MapDataManager::modeLabel(map_selection_.mode))
                     .arg(framebufferSize.width())
                     .arg(framebufferSize.height());
         if (tianditu_satellite_imagery_loaded_)
@@ -3877,7 +3902,8 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool for
         }
         text += QStringLiteral(" | DEM %1 | OSM %2")
                     .arg(selectedDemLabel(map_selection_.diagnostics),
-                         selectedOsmLabel(map_selection_.diagnostics));
+                         latest_earth_load_.onlineOsmAvailable ? mapText(QStringLiteral("在线矢量"))
+                                                               : selectedOsmLabel(map_selection_.diagnostics));
     }
     if (view_)
     {
@@ -3933,6 +3959,9 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool for
     if (view_ && view_->activeSatelliteImagerySource() == QStringLiteral("online:esri"))
         text.prepend(QStringLiteral("Esri, Vantor, Earthstar Geographics, GIS User Community | "));
     status_label_->setText(text);
+    if (osm_attribution_)
+        osm_attribution_->setVisible(view_ && latest_earth_load_.onlineOsmAvailable
+            && (layerVisible(Map3DLayer::RoadNetwork) || layerVisible(Map3DLayer::Hydrography)));
 }
 
 } // namespace VaporView::Map3D

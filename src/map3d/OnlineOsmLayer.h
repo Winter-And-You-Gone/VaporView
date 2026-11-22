@@ -1,0 +1,149 @@
+#pragma once
+
+#include <osgEarth/Cache>
+#include <osgEarth/FeatureRasterizer>
+#include <osgEarth/ImageLayer>
+#include <osgEarth/LineSymbol>
+#include <osgEarth/MVT>
+#include <osgEarth/PolygonSymbol>
+#include <osgEarth/Progress>
+#include <osgEarth/Registry>
+#include <osgEarth/Threading>
+
+#include <QDateTime>
+#include <QEventLoop>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QTimer>
+#include <QString>
+#include <memory>
+
+namespace VaporView::Map3D::Detail {
+
+class OnlineOsmLayer final : public osgEarth::ImageLayer
+{
+public:
+    static constexpr auto roadsName = "Online OSM roads";
+    static constexpr auto waterName = "Online OSM water";
+
+    OnlineOsmLayer(bool roads, osgEarth::ImageLayer* offline)
+        : ImageLayer(&options_, &originalOptions_), roads_(roads), offline_(offline),
+          base_(qEnvironmentVariable("VAPORVIEW_OSM_VECTOR_BASE_URL",
+                QStringLiteral("https://vector.openstreetmap.org/shortbread_v1")).toStdString())
+    {
+        using namespace osgEarth;
+        ImageLayer::init();
+        setName(roads ? roadsName : waterName);
+        setProfile(Profile::create(Profile::SPHERICAL_MERCATOR));
+        setAttribution("© OpenStreetMap contributors");
+        setAsyncLoading(true);
+        options().minLevel() = roads ? 10u : 6u;
+        options().maxDataLevel() = 19u;
+        // Only cache source vectors. A missing tile may temporarily use local data.
+        setCachePolicy(CachePolicy::NO_CACHE);
+        if (auto* cache = Registry::instance()->getDefaultCache())
+            tiles_ = cache->addBin("vaporview-osm-shortbread-v1");
+        auto* line = lineStyle_.getOrCreate<LineSymbol>();
+        line->stroke()->color() = Color(roads ? "#f6df8f" : "#76b9df");
+        line->stroke()->width() = Distance(1.5, Units::PIXELS);
+        fillStyle_.getOrCreate<PolygonSymbol>()->fill()->color() = Color("#3f86b980");
+    }
+
+    osgEarth::GeoImage createImageImplementation(const osgEarth::TileKey& key,
+                                                  osgEarth::ProgressCallback* progress) const override
+    {
+        using namespace osgEarth;
+        const TileKey source = key.getLOD() > 14 ? key.createAncestorKey(14) : key;
+        const std::string url = base_ + "/" + std::to_string(source.getLOD()) + "/"
+            + std::to_string(source.getTileX()) + "/" + std::to_string(source.getTileY()) + ".mvt";
+        FeatureList features;
+        const bool loaded = readFeatures(url, source, progress, features);
+        if (progress && progress->isCanceled()) return GeoImage::INVALID;
+        if (!loaded)
+            return offline_ && offline_->isOpen() ? offline_->createImage(key, progress) : GeoImage::INVALID;
+
+        FeatureList polygons, lines;
+        for (const auto& feature : features)
+        {
+            if (!feature->getGeometry()->getBounds().intersects(key.getExtent().bounds())) continue;
+            if (feature->getString("mvt_layer") == "water_polygons")
+                polygons.push_back(feature);
+            else
+                lines.push_back(feature);
+        }
+        // Re-rasterize at the requested zoom so streets stay sharp beyond source zoom 14.
+        Util::FeatureRasterizer raster(getTileSize(), getTileSize(), key.getExtent());
+        FilterContext context;
+        raster.render(polygons, fillStyle_, context);
+        raster.render(lines, lineStyle_, context);
+        return raster.finalize();
+    }
+
+private:
+    static osgEarth::ReadResult fetchTile(const std::string& url, const osgDB::Options* options,
+                                          osgEarth::ProgressCallback* progress)
+    {
+        const osgEarth::URI uri(url);
+        if (!uri.isRemote()) return uri.readString(options, progress);
+
+        // REX loads tiles on worker threads. Reuse each worker's TLS connection
+        // and use Qt's system proxy and certificate store, as the 2D viewer does.
+        thread_local QNetworkAccessManager network;
+        QNetworkRequest request(QUrl(QString::fromStdString(url)));
+        request.setRawHeader("User-Agent", "VaporView/1.0 (+https://github.com/Winter-And-You-Gone/VaporView)");
+        request.setTransferTimeout(8000);
+        std::unique_ptr<QNetworkReply> reply(network.get(request));
+        QEventLoop loop;
+        QObject::connect(reply.get(), &QNetworkReply::finished, &loop, &QEventLoop::quit);
+        QTimer cancelCheck;
+        if (progress)
+        {
+            QObject::connect(&cancelCheck, &QTimer::timeout, &loop, [&] {
+                if (progress->isCanceled()) reply->abort();
+            });
+            cancelCheck.start(100);
+        }
+        if (!reply->isFinished()) loop.exec(QEventLoop::ExcludeUserInputEvents);
+        if (reply->error() != QNetworkReply::NoError) return {};
+        return osgEarth::ReadResult(new osgEarth::StringObject(reply->readAll().toStdString()));
+    }
+
+    bool readFeatures(const std::string& url, const osgEarth::TileKey& source,
+                      osgEarth::ProgressCallback* progress, osgEarth::FeatureList& features) const
+    {
+        using namespace osgEarth;
+        static Threading::Gate<std::string> requests;
+        Threading::ScopedGate<std::string> lock(requests, url);
+        if (progress && progress->isCanceled()) return false;
+        const auto key = Cache::makeCacheKey(url);
+        const auto* options = getReadOptions();
+        const auto cached = tiles_ ? tiles_->readString(key, options) : ReadResult();
+        const auto decode = [&](const ReadResult& result) {
+            static const std::vector<std::string> roads{"streets"};
+            static const std::vector<std::string> water{"water_lines", "water_polygons"};
+            return result.succeeded() && !result.getString().empty()
+                && MVT::readTile(result.getString(), source, features, roads_ ? roads : water);
+        };
+        constexpr qint64 week = 7 * 24 * 60 * 60;
+        if (cached.lastModifiedTime() >= QDateTime::currentSecsSinceEpoch() - week && decode(cached))
+            return true;
+        const auto result = fetchTile(url, options, progress);
+        if (progress && progress->isCanceled()) return false;
+        if (decode(result))
+        {
+            if (tiles_) tiles_->write(key, result.getObject(), options);
+            return true;
+        }
+        return decode(cached);
+    }
+
+    Options options_;
+    const Options originalOptions_;
+    bool roads_;
+    osg::ref_ptr<osgEarth::ImageLayer> offline_;
+    std::string base_;
+    osg::ref_ptr<osgEarth::CacheBin> tiles_;
+    osgEarth::Style lineStyle_, fillStyle_;
+};
+
+} // namespace VaporView::Map3D::Detail

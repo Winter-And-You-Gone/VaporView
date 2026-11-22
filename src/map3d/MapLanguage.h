@@ -8,6 +8,10 @@
 namespace VaporView::Map3D {
 inline const QHash<QString, QString>& mapLanguageCatalog() {
     static const QHash<QString, QString> catalog{
+        {QStringLiteral("在线 OpenStreetMap，按需加载，无需密钥"), QStringLiteral("Online OpenStreetMap, loaded on demand without a key")},
+        {QStringLiteral("在线 OpenStreetMap 道路和水系，按视口加载"), QStringLiteral("Online OpenStreetMap roads and water for the visible area")},
+        {QStringLiteral("在线矢量"), QStringLiteral("Online vectors")},
+        {QStringLiteral("在线地球"), QStringLiteral("Online globe")},
         {QStringLiteral("回到实时地图"), QStringLiteral("Back to live map")},
         {QStringLiteral("返回 Session 回放"), QStringLiteral("Return to Session replay")},
         {QStringLiteral("实时地图"), QStringLiteral("Live map")},

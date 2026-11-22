@@ -8,6 +8,7 @@
 #include "MapLayerRemoval.h"
 #include "EarthProjectionProfile.h"
 #include "OpenAerialMapImageLayer.h"
+#include "OnlineOsmLayer.h"
 #include "TiandituImageLayer.h"
 #include <osgEarth/TerrainEngineNode>
 #include "Map3DRuntime.h"
@@ -31,6 +32,7 @@
 #include <osgViewer/GraphicsWindow>
 #include <osgViewer/Viewer>
 #include <osgEarth/EarthManipulator>
+#include <osgEarth/DecalLayer>
 #include <osgEarth/ElevationLayer>
 #include <osgEarth/GDAL>
 #include <osgEarth/GeoData>
@@ -699,7 +701,8 @@ unsigned tiandituSatelliteInsertIndex(osgEarth::Map* map)
     map->getLayers(layers);
     for (unsigned index = 0; index < layers.size(); ++index)
     {
-        if (dynamic_cast<osgEarth::ElevationLayer*>(layers[index].get()))
+        if (dynamic_cast<osgEarth::ElevationLayer*>(layers[index].get())
+            || dynamic_cast<Detail::OnlineOsmLayer*>(layers[index].get()))
         {
             return index;
         }
@@ -760,6 +763,8 @@ OsgEarthViewWidget::OsgEarthViewWidget(QWidget* parent, bool deferRendering)
     , aircraft_layer_(std::make_unique<Aircraft3DLayer>())
 {
     layer_visibility_.fill(true);
+    layer_visibility_[layerIndex(Map3DLayer::Hydrography)] = false;
+    layer_visibility_[layerIndex(Map3DLayer::RoadNetwork)] = false;
     rendering_started_ = !deferRendering;
     if (rendering_started_)
     {
@@ -1402,6 +1407,23 @@ void OsgEarthViewWidget::loadEarthFileAsync(const QString& earthPath,
     }));
 }
 
+bool OsgEarthViewWidget::loadOnlineGlobe()
+{
+    osg::ref_ptr<osgEarth::Map> map = new osgEarth::Map;
+    // Give transparent vectors a continuous surface even without any imagery files.
+    osg::ref_ptr<osgEarth::Contrib::DecalImageLayer> background = new osgEarth::Contrib::DecalImageLayer;
+    background->setName("Globe background");
+    background->options().maxDataLevel() = 0u;
+    osg::ref_ptr<osg::Image> pixel = osgEarth::ImageUtils::createOnePixelImage(osg::Vec4(0.22f, 0.25f, 0.28f, 1.0f));
+    background->addDecal("background", background->getProfile()->getExtent(), pixel.get());
+    map->addLayer(background.get());
+    osg::ref_ptr<osgEarth::MapNode> globe = new osgEarth::MapNode(map.get());
+    EarthLoadDiagnostics diagnostics;
+    diagnostics.attempted = diagnostics.loaded = diagnostics.foundMapNode = true;
+    diagnostics.onlineOsmAvailable = true;
+    return applyEarthLoad(diagnostics, globe, globe.get(), false, false);
+}
+
 bool OsgEarthViewWidget::applyEarthLoad(EarthLoadDiagnostics diagnostics,
                                         osg::ref_ptr<osg::Node> node,
                                         osgEarth::MapNode* mapNode,
@@ -1613,6 +1635,9 @@ bool OsgEarthViewWidget::layerVisible(Map3DLayer layer) const
 
 bool OsgEarthViewWidget::layerAvailable(Map3DLayer layer) const
 {
+    if ((layer == Map3DLayer::Hydrography || layer == Map3DLayer::RoadNetwork)
+        && map_node_ && earth_load_diagnostics_.onlineOsmAvailable)
+        return true;
     if (layer == Map3DLayer::Buildings3D)
     {
         return local_3d_tiles_node_.valid();
@@ -1675,6 +1700,29 @@ void OsgEarthViewWidget::applyLayerVisibility(Map3DLayer layer)
     }
     else if (map_node_ && map_node_->getMap())
     {
+        auto* map = map_node_->getMap();
+        if (earth_load_diagnostics_.onlineOsmAvailable
+            && (layer == Map3DLayer::Hydrography || layer == Map3DLayer::RoadNetwork))
+        {
+            const bool roads = layer == Map3DLayer::RoadNetwork;
+            const char* name = roads ? Detail::OnlineOsmLayer::roadsName : Detail::OnlineOsmLayer::waterName;
+            auto* offline = dynamic_cast<osgEarth::ImageLayer*>(
+                map->getLayerByName(roads ? "OSM roads" : "OSM water fill"));
+            if (offline) offline->setVisible(false);
+            if (!visible)
+                removeLayerByName(map, name);
+            else if (!map->getLayerByName(name))
+            {
+                osg::ref_ptr<Detail::OnlineOsmLayer> overlay = new Detail::OnlineOsmLayer(roads, offline);
+                auto* roadLayer = map->getLayerByName(Detail::OnlineOsmLayer::roadsName);
+                if (!roads && roadLayer)
+                    map->insertLayer(overlay.get(), map->getIndexOfLayer(roadLayer));
+                else
+                    map->addLayer(overlay.get());
+            }
+            update();
+            return;
+        }
         osgEarth::LayerVector layers;
         map_node_->getMap()->getLayers(layers);
         for (const osg::ref_ptr<osgEarth::Layer>& candidate : layers)

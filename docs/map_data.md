@@ -122,6 +122,12 @@ The 3D Map diagnostics panel also includes a readiness summary. Read it as the c
 - `Ready for terrain-backed offline map` means Natural Earth plus a DEM VRT is selected; generate the four OSM GeoPackages to unlock `Full local map`.
 - `Ready for full offline local map` means Natural Earth, one DEM source, and all required OSM GeoPackages are selected. Optional imagery overlays and native OSG building tiles may still be absent.
 
+## OSM roads and water in the 3D map
+
+Open the layer menu and enable roads or water to overlay them on satellite imagery. Each switch requests only the visible tiles from OpenStreetMap's public Shortbread vector service, without an API key. The map credits OpenStreetMap in the status bar. Both switches start off.
+
+The two overlays share a seven-day source tile cache. Beyond source zoom 14 the map redraws the same geometry at the display zoom. If a request fails, the map can reuse an older cached tile or the matching GeoPackage layer in a loaded full-local scene. Areas with neither source show the underlying imagery. With no local map package, enabling either overlay opens an online globe. Set `VAPORVIEW_OSM_VECTOR_BASE_URL` to use another Shortbread v1 XYZ service with the same layer names.
+
 ## Local OSM Vector Data
 
 Local OSM vector data is optional and lives under `resources/maps/osm/`. This path is for open, offline files only. Do not add online tile services, API keys, Cesium ion, or commercial map providers.

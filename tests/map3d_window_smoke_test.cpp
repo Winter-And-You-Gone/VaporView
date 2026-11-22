@@ -10,6 +10,7 @@
 #include "map3d/EarthProjectionProfile.h"
 #include "map3d/TiandituImageLayer.h"
 #include "map3d/OpenAerialMapImageLayer.h"
+#include "map3d/OnlineOsmLayer.h"
 #include "map3d/MapLayerRemoval.h"
 #include <osgEarth/Map>
 #include <osgEarth/TerrainTileModelFactory>
@@ -338,6 +339,58 @@ bool waitForSessionDirectory(const QString& path, int timeoutMs)
     return map3DTestSettings().value(QStringLiteral("lastSessionDir")).toString() == expected;
 }
 
+void checkOsmOverlays(bool useLiveService)
+{
+    using namespace osgEarth;
+    using VaporView::Map3D::Detail::OnlineOsmLayer;
+    VaporView::Map3D::initializeMap3DRuntime();
+    QTemporaryDir source;
+    QFile tile(source.filePath(QStringLiteral("14/13660/6746.mvt")));
+    const QByteArray originalBase = qgetenv("VAPORVIEW_OSM_VECTOR_BASE_URL");
+    if (!useLiveService)
+    {
+        require(QDir().mkpath(QFileInfo(tile).absolutePath()) && tile.open(QIODevice::WriteOnly),
+                "create isolated OSM tile source");
+        // Shortbread tile containing a horizontal street and a square lake in different quadrants.
+        tile.write(QByteArray::fromHex("1a1d0a0773747265657473120d1802220909800480080a8034002880207802"
+                                       "1a2b0a0e77617465725f706f6c79676f6e7312141803221009802080201a801000008010ff0f000f2880207802"));
+        tile.close();
+        qputenv("VAPORVIEW_OSM_VECTOR_BASE_URL", source.path().toUtf8());
+    }
+    osg::ref_ptr<OnlineOsmLayer> roads = new OnlineOsmLayer(true, nullptr);
+    osg::ref_ptr<OnlineOsmLayer> water = new OnlineOsmLayer(false, nullptr);
+    require(roads->open().isOK() && water->open().isOK(), "OSM overlays open without local GeoPackages");
+    const TileKey westLake(14, 13660, 6746, roads->getProfile());
+    const GeoImage roadImage = roads->createImage(westLake);
+    require(roadImage.valid(), "road tile loads");
+    if (!useLiveService) require(tile.remove(), "disconnect fixture after the first tile download");
+    const GeoImage waterImage = water->createImage(westLake);
+    require(waterImage.valid(), "water tile reuses the shared vector cache");
+    int roadPixels = 0, waterPixels = 0, clearPixels = 0;
+    for (int y = 0; y < roadImage.getImage()->t(); ++y)
+        for (int x = 0; x < roadImage.getImage()->s(); ++x)
+        {
+            const auto r = roadImage.getImage()->getColor(x, y);
+            const auto w = waterImage.getImage()->getColor(x, y);
+            if (r.a() > 0.1f && r.r() > r.b()) ++roadPixels;
+            if (w.a() > 0.1f && w.b() > w.r()) ++waterPixels;
+            if (r.a() == 0 && w.a() == 0) ++clearPixels;
+        }
+    require(roadPixels > 0 && waterPixels > 0 && clearPixels > 0,
+            "separate road and water pixels leave the underlying imagery visible");
+    if (!useLiveService)
+    {
+        const auto enlarged = water->createImage(westLake.createChildKey(3));
+        require(enlarged.valid(), "overzoom uses the cached level 14 vector geometry");
+        require(!roads->createImage(TileKey(14, 0, 0, roads->getProfile())).valid(),
+                "a missing uncached tile leaves the underlying imagery visible");
+        if (originalBase.isNull()) qunsetenv("VAPORVIEW_OSM_VECTOR_BASE_URL");
+        else qputenv("VAPORVIEW_OSM_VECTOR_BASE_URL", originalBase);
+    }
+    std::cout << "OSM overlay pixels: roads " << roadPixels << ", water " << waterPixels
+              << ", transparent background " << clearPixels << '\n';
+}
+
 void checkImageryFallback()
 {
     using namespace osgEarth;
@@ -543,6 +596,12 @@ int main(int argc, char** argv)
     }
 
     QApplication app(argc, argv);
+    if (app.arguments().contains(QStringLiteral("--osm-live")))
+    {
+        checkOsmOverlays(true);
+        return 0;
+    }
+    checkOsmOverlays(false);
     testRemovedImageryLifetime();
     if (app.arguments().contains(QStringLiteral("--layer-lifetime-only"))) return 0;
     QCoreApplication::setOrganizationName(QStringLiteral("VaporViewTest"));
