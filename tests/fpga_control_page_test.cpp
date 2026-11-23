@@ -459,6 +459,11 @@ int main(int argc,char **argv) {
     require(!page.findChild<QComboBox*>("fpgaWaveComponent48")&&!page.findChild<QComboBox*>("fpgaWaveComponent49")&&secondPlot,"both DLIA channels display their data without component selectors");
     require(plot->property("sampleMaximum").toDouble()==110&&secondPlot->property("sampleMaximum").toDouble()==210,"H1 and H2 are displayed together by default");
     require(std::abs(cyclePeak-210.0/110)<1e-9&&!peakPreview,"format2 publishes cycle peak ratio");
+    auto *triggerMode = page.findChild<QCheckBox*>("fpgaWaveformTrigger");
+    require(triggerMode && !triggerMode->isChecked(), "physical scan origin is the default");
+    require(page.findChild<QLabel*>("fpgaWaveSummary48")->text().contains("FPGA scan origin"),
+            "DLIA uses the scan origin on initial display");
+    triggerMode->click();
     auto shifted = wave;
     shifted.format=0; shifted.bytesPerPoint=8; shifted.totalPoints=9;
     for (int peak : {2, 7}) {
@@ -607,6 +612,10 @@ int main(int argc,char **argv) {
         page.updateWaveform(scan);
         require(!summary->text().contains("Scan edge aligned"),"repeated carrier edges alone do not trigger a scan");
     }
+    triggerMode->click();
+    require(page.findChild<QLabel*>("fpgaWaveSummary33")->text().contains("FPGA scan origin") &&
+            page.findChild<QLabel*>("fpgaWaveSummary48")->text().contains("FPGA scan origin"),
+            "switching back refreshes cached raw and harmonic plots together");
     auto rawTail=adc;rawTail.complete=false;rawTail.partial=true;rawTail.pointBytes.truncate(4);
     page.updateWaveform(rawTail);
     require(adcPlot->property("sampleCount").toInt()==0,"incomplete RAW clears the live plot instead of reusing an older cycle");

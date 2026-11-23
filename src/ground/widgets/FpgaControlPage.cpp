@@ -567,6 +567,12 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout) : Q
     readback(ai8grid,9,1,2,0x66a8,QStringLiteral("缓存 OP / SV 原码"),QStringLiteral("Cached OP / SV raw"));
     readback(ai8grid,10,1,2,0x66ac,QStringLiteral("缓存设备状态"),QStringLiteral("Cached device status"));
     ai8controls->addStretch();sensorLayout->addStretch();
+    waveformTrigger_ = new QCheckBox(waves);
+    waveformTrigger_->setObjectName("fpgaWaveformTrigger");
+    label(waveformTrigger_, QStringLiteral("波形触发对齐（关闭时按 FPGA 扫描起点显示）"),
+          QStringLiteral("Align by waveform trigger (off: FPGA scan origin)"));
+    waveLayout->addWidget(waveformTrigger_);
+    connect(waveformTrigger_, &QCheckBox::toggled, this, [this] { refreshMeasurements(); });
     auto *waveHint=new QLabel(waves); label(waveHint,QStringLiteral("ADC 未确认前端校准时显示原码；解调显示数字幅值，不代表气体浓度。"),QStringLiteral("ADC displays raw codes until frontend calibration is confirmed. Demodulation displays digital amplitude, not concentration.")); waveHint->setWordWrap(true); waveLayout->addWidget(waveHint);
     auto *faults=new QHBoxLayout;waveLayout->addLayout(faults);
     for(const auto &fault:QList<QPair<QString,QString>>{{"missing_cycle",QStringLiteral("模拟单周期丢片")},{"latch_dlia",QStringLiteral("模拟 DLIA 异常锁存")}}) {
@@ -1297,7 +1303,7 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
     int rawEdge = -1;
     if (adc) {
         plot->triggeredSamples.clear();
-        if (!s.preview) {
+        if (waveformTrigger_->isChecked() && !s.preview) {
             const quint32 modulation = hardwareValues_.value(0x201c+channel*0x100, c.wms[channel].sineMilliHz);
             rawEdge = rawScanEdge(s, modulation);
         }
@@ -1315,7 +1321,7 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
             sample = VaporView::FpgaWave::normalizedSecondHarmonic(referenceH1, sample);
         maxNormalizedH2 = VaporView::FpgaWave::normalizedSecondHarmonic(referenceH1, maxH2);
     }
-    const bool trigger = !adc && s.format != 1 && !s.preview && second->samples.size() > 2;
+    const bool trigger = waveformTrigger_->isChecked() && !adc && s.format != 1 && !s.preview && second->samples.size() > 2;
     if (trigger) {
         const int offset = triggerDliaSweep(*plot, *second, s, heldSweep);
         if (!heldSweep) {
@@ -1340,6 +1346,8 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
         .arg(displayPoints).arg(s.totalPoints).arg(text("点","points")).arg(text("抽稀间隔","stride")).arg(s.previewStride).arg(s.rate)
         .arg(volts?"V":text("原码 / 数字幅值","raw / digital amplitude")));
     if(!adc)l->setText(l->text()+" · "+(s.format==1?QStringLiteral("I1 / Q1 / I2 / Q2"):pairName));
+    if (!waveformTrigger_->isChecked())
+        l->setText(l->text() + text(" · FPGA 扫描起点", " · FPGA scan origin"));
     if (rawEdge >= 0) l->setText(l->text() + text(" · 跳变沿起点", " · Scan edge aligned"));
     if (trigger)
         l->setText(l->text() + (heldSweep ? text(" · 等待相似周期，显示上次触发", " · Waiting for trigger, showing previous sweep")

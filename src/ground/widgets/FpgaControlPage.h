@@ -180,6 +180,7 @@ private:
     QPlainTextEdit *diagnostics_ = nullptr;
     QComboBox *backend_ = nullptr;
     std::array<QComboBox*,2> cutoff_{{nullptr,nullptr}};
+    QCheckBox *waveformTrigger_ = nullptr;
     QCheckBox* ai8Scan_=nullptr;
     QCheckBox *recordSensors_ = nullptr, *recordDlia_ = nullptr;
     QTabWidget *tabs_ = nullptr;
