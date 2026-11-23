@@ -8,6 +8,7 @@
 #include <QFrame>
 #include <QHash>
 #include <QFocusEvent>
+#include <QMenu>
 #include <QPainter>
 #include <QProxyStyle>
 #include <QStyleOption>
@@ -120,6 +121,24 @@ AppStyleSheetController *appStyleSheetController()
 class ButtonFocusStyle final : public QProxyStyle
 {
 public:
+    int styleHint(StyleHint hint, const QStyleOption *option, const QWidget *widget,
+                  QStyleHintReturn *result) const override
+    {
+        const int value = QProxyStyle::styleHint(hint, option, widget, result);
+        if (hint != SH_Menu_SubMenuSloppyCloseTimeout && hint != SH_Menu_SubMenuSloppySelectOtherActions)
+            return value;
+        const QWidget *owner = widget;
+        while (qobject_cast<const QMenu *>(owner))
+            owner = owner->parentWidget();
+        if (owner && owner != widget && owner->property(kCascadingMenuGraceProperty).toBool())
+        {
+            // A zero system menu delay would close a branch as soon as the
+            // pointer crosses another row on its way into the child menu.
+            return hint == SH_Menu_SubMenuSloppyCloseTimeout ? std::max(value, 500) : 0;
+        }
+        return value;
+    }
+
     int pixelMetric(PixelMetric metric, const QStyleOption *option = nullptr,
                     const QWidget *widget = nullptr) const override
     {

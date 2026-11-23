@@ -901,6 +901,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     layer_visibility_[layerIndex(Map3DLayer::DigitalElevation)] = true;
     layer_visibility_[layerIndex(Map3DLayer::FlightElements)] = true;
     setObjectName(QStringLiteral("map3DWindow"));
+    setProperty(kCascadingMenuGraceProperty, true);
     setWindowTitle(mapText(QStringLiteral("VaporView 三维地图")));
     setAttribute(Qt::WA_QuitOnClose, false);
     resize(1100, 760);

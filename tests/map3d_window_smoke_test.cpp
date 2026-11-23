@@ -6,6 +6,7 @@
 #include "shared/theme/AppTheme.h"
 #include "geo/GeoTypes.h"
 #include "map3d/Map3DWindow.h"
+#include "map3d/MapResourceDialog.h"
 #include "map3d/Map3DRuntime.h"
 #include "map3d/EarthProjectionProfile.h"
 #include "map3d/TiandituImageLayer.h"
@@ -37,6 +38,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QLabel>
+#include <QMouseEvent>
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QProgressDialog>
@@ -51,8 +53,11 @@
 #include <QTextStream>
 #include <QThread>
 #include <QThreadPool>
+#include <QTimer>
 #include <QToolButton>
 #include <QWidgetAction>
+#include <QWindow>
+#include <QtCore/qtestsupport_core.h>
 
 #include <cstdlib>
 #include <cmath>
@@ -312,6 +317,37 @@ QAction* actionByName(VaporView::Map3D::Map3DWindow& window, const QString& obje
     QAction* action = window.findChild<QAction*>(objectName);
     require(action != nullptr, "map3d action exists");
     return action;
+}
+
+void selectMapResourceWithMouse(QToolButton* moreButton, QMenu* resources, QAction* target)
+{
+    auto* more = moreButton->defaultAction()->menu();
+    auto sendMouse = [](QEvent::Type type, QPoint global) {
+        auto* popup = QApplication::activePopupWidget();
+        require(popup && popup->windowHandle(), "map popup receives mouse input");
+        const auto button = type == QEvent::MouseMove ? Qt::NoButton : Qt::LeftButton;
+        const auto buttons = type == QEvent::MouseButtonPress ? Qt::LeftButton : Qt::NoButton;
+        QMouseEvent event(type, popup->mapFromGlobal(global), global, button, buttons, Qt::NoModifier);
+        QApplication::sendEvent(popup->windowHandle(), &event);
+    };
+    QTimer::singleShot(0, more, [&] {
+        const QPoint start = more->mapToGlobal(more->actionGeometry(resources->menuAction()).center());
+        sendMouse(QEvent::MouseMove, start - QPoint(10, 0));
+        sendMouse(QEvent::MouseMove, start);
+        require(QTest::qWaitFor([&] { return resources->isVisible(); }, 2000),
+                "hovering the map resources row opens the submenu");
+        const QPoint end = resources->mapToGlobal(resources->actionGeometry(target).center());
+        for (int step = 1; step <= 40; ++step)
+        {
+            sendMouse(QEvent::MouseMove, start + (end - start) * step / 40);
+            QTest::qWait(12);
+            require(resources->isVisible(), "map resources stay open while the pointer crosses into the submenu");
+        }
+        sendMouse(QEvent::MouseButtonPress, end);
+        sendMouse(QEvent::MouseButtonRelease, end);
+        require(!more->isVisible(), "selecting the resource closes the menu chain");
+    });
+    moreButton->showMenu();
 }
 
 QSettings map3DTestSettings()
@@ -596,6 +632,7 @@ int main(int argc, char** argv)
     }
 
     QApplication app(argc, argv);
+    VaporView::installButtonFocusStyle();
     if (app.arguments().contains(QStringLiteral("--osm-live")))
     {
         checkOsmOverlays(true);
@@ -758,7 +795,9 @@ int main(int argc, char** argv)
     auto* mapFilesAction = actionByName(window, QStringLiteral("map3DMapFilesAction"));
     require(mapFilesAction && mapFilesAction->text() == QStringLiteral("地图文件"),
             "map files button is available before rendering starts");
-    mapFilesAction->trigger();
+    auto* moreButton = window.findChild<QToolButton*>(QStringLiteral("map3DMoreButton"));
+    require(moreButton && moreButton->defaultAction()->menu() == moreMenu, "the toolbar opens the More menu");
+    selectMapResourceWithMouse(moreButton, resourcesMenu, mapFilesAction);
     QCoreApplication::processEvents();
     auto* filesDialog = window.findChild<QDialog*>(QStringLiteral("map3DMapFilesDialog"));
     auto* filesTable = window.findChild<QTableWidget*>(QStringLiteral("map3DMapFilesTable"));
@@ -879,7 +918,9 @@ int main(int argc, char** argv)
         QApplication::sendEvent(button, &leave);
     }
     require(titleIconCount == 3, "display panel has language, theme and close title icons");
-    actionByName(window, QStringLiteral("map3DMapResourcesAction"))->trigger();
+    selectMapResourceWithMouse(moreButton, resourcesMenu, actionByName(window, QStringLiteral("map3DMapResourcesAction")));
+    auto* resourceDialog = window.findChild<VaporView::Map3D::MapResourceDialog*>();
+    require(resourceDialog && resourceDialog->isVisible(), "mouse selection opens the map resource manager");
     for (QDialog* dialog : window.findChildren<QDialog*>())
     {
         require(dialog->windowFlags().testFlag(Qt::FramelessWindowHint)
@@ -970,7 +1011,6 @@ int main(int argc, char** argv)
     QCoreApplication::processEvents();
     const QRect windowClientRect(window.mapToGlobal(window.rect().topLeft()), window.rect().size());
     auto* more = window.findChild<QMenu*>(QStringLiteral("map3DMoreMenu"));
-    auto* moreButton = window.findChild<QToolButton*>(QStringLiteral("map3DMoreButton"));
     const auto originalPalette = qApp->palette();
     const auto originalTheme = qApp->property(VaporView::kAppDarkThemeProperty);
     for (bool dark : {false, true})

@@ -12,6 +12,7 @@ namespace VaporView
 
 // Suppress native dotted button focus after pointer input, preserving keyboard focus.
 void installButtonFocusStyle();
+inline constexpr auto kCascadingMenuGraceProperty = "vaporViewCascadingMenuGrace";
 
 enum class AppThemeColor
 {
