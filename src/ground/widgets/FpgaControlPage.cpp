@@ -124,7 +124,7 @@ protected:
         for (int i=0; i<trace.size(); ++i) {
             const int index = (i + displayOffset) % trace.size();
             const QPointF point(area.left()+area.width()*i/(trace.size()-1), area.bottom()-area.height()*(trace[index]-low)/span);
-            if (!i || !index) path.moveTo(point); else path.lineTo(point);
+            if (!i) path.moveTo(point); else path.lineTo(point);
         }
         p.setRenderHint(QPainter::Antialiasing);
         p.setPen(QPen(VaporView::appThemeColor(VaporView::AppThemeColor::PlotSeriesWaveBlue,

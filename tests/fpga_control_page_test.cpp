@@ -480,6 +480,20 @@ int main(int argc,char **argv) {
         };
         require(hasTraceAtPeak(secondPlot,4) && hasTraceAtPeak(plot,5),
             "DLIA0 centers shifted H2 peaks and keeps the H1 peak one sample later");
+        if (peak==2) {
+            // Display positions 1 and 2 straddle the original last/first samples.
+            for (QWidget *trace : {plot, secondPlot}) {
+                const QImage image=trace->grab().toImage();
+                const int x=qRound((12.0+(trace->width()-24)*1.5/8)*image.devicePixelRatio());
+                const int y=qRound((trace->height()-12)*image.devicePixelRatio());
+                bool connected=false;
+                for (int dy=-2; dy<=2; ++dy) {
+                    const QColor color=image.pixelColor(x,y+dy);
+                    connected |= color.blue()>color.red()+40;
+                }
+                require(connected,"both aligned harmonics draw through the original cycle boundary");
+            }
+        }
     }
     // Swap which H2 lobe is tallest while the whole sweep moves by three samples.
     auto multi = shifted;
