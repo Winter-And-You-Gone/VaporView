@@ -481,6 +481,26 @@ int main(int argc,char **argv) {
         require(hasTraceAtPeak(secondPlot,4) && hasTraceAtPeak(plot,5),
             "DLIA0 centers shifted H2 peaks and keeps the H1 peak one sample later");
     }
+    // Swap which H2 lobe is tallest while the whole sweep moves by three samples.
+    auto multi = shifted;
+    multi.totalPoints = 11;
+    for (int shift : {0, 3, 0, 3}) {
+        multi.pointBytes.clear();
+        for (int i=0; i<11; ++i) {
+            const int phase=(i+11-shift)%11;
+            appendWord(multi.pointBytes, phase==3 ? 20 : phase==6 ? 5 : 0);
+            appendWord(multi.pointBytes, phase==3 ? 100 : phase==6 ? (shift ? 101 : 99) : 0);
+        }
+        page.updateWaveform(multi);
+        const QImage image=plot->grab().toImage();
+        const QColor center=image.pixelColor(qRound(plot->width()*image.devicePixelRatio()/2), qRound(13*image.devicePixelRatio()));
+        require(center.blue()>center.red()+40,"switching H2 peak heights keeps the same H1 lobe centered");
+    }
+    const auto triggeredImage=secondPlot->grab().toImage();
+    multi.pointBytes.fill(0);
+    page.updateWaveform(multi);
+    require(page.findChild<QLabel*>("fpgaWaveSummary48")->text().contains("showing previous sweep")
+            && secondPlot->grab().toImage()==triggeredImage,"unmatched cycle explicitly holds the last trigger");
     page.updateWaveform(wave);
     const int beforeRerender=peakEvents;page.setLanguage(false);page.setLanguage(true);
     require(peakEvents==beforeRerender,"language rerender does not publish a new peak event");

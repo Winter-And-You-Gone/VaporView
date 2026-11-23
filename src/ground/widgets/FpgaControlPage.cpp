@@ -104,21 +104,26 @@ protected:
 class SamplePlot final : public QWidget {
 public:
     QVector<double> samples;
+    QVector<double> triggeredSamples;
     int displayOffset = 0;
+    QElapsedTimer lastTrigger;
+    quint32 triggerRate = 0, triggerPoints = 0;
+    quint16 triggerFormat = 0;
     explicit SamplePlot(QWidget *parent) : QWidget(parent) { setProperty("fpgaFixedPlot",true); setFixedHeight(100); setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed); }
 protected:
     void paintEvent(QPaintEvent *) override {
         QPainter p(this); p.fillRect(rect(), palette().base());
         const QRectF area = QRectF(rect()).adjusted(12,12,-12,-12);
         p.setPen(palette().mid().color()); p.drawRect(area);
-        if (samples.size() < 2) return;
-        const auto mm = std::minmax_element(samples.cbegin(), samples.cend());
+        const auto &trace = triggeredSamples.isEmpty() ? samples : triggeredSamples;
+        if (trace.size() < 2) return;
+        const auto mm = std::minmax_element(trace.cbegin(), trace.cend());
         const double low = *mm.first, extent = *mm.second - low;
         const double span = extent > 0 ? extent : 1.0;
         QPainterPath path;
-        for (int i=0; i<samples.size(); ++i) {
-            const int index = (i + displayOffset) % samples.size();
-            const QPointF point(area.left()+area.width()*i/(samples.size()-1), area.bottom()-area.height()*(samples[index]-low)/span);
+        for (int i=0; i<trace.size(); ++i) {
+            const int index = (i + displayOffset) % trace.size();
+            const QPointF point(area.left()+area.width()*i/(trace.size()-1), area.bottom()-area.height()*(trace[index]-low)/span);
             if (!i || !index) path.moveTo(point); else path.lineTo(point);
         }
         p.setRenderHint(QPainter::Antialiasing);
@@ -126,6 +131,46 @@ protected:
             VaporView::isDarkThemePalette(palette())),1.5)); p.drawPath(path);
     }
 };
+// Score circular shifts of both harmonics against the last triggered sweep.
+// Normalize the two components separately so a change in gain cannot choose the trigger.
+int triggerDliaSweep(SamplePlot &h1, SamplePlot &h2, const VaporView::FpgaWave::CompletedStream &stream, bool &held)
+{
+    const int n = int(h2.samples.size());
+    const bool tracking = h2.triggeredSamples.size() == n && h2.triggerRate == stream.rate &&
+        h2.triggerPoints == stream.totalPoints && h2.triggerFormat == stream.format;
+    int offset = 0;
+    if (tracking) {
+        QVector<double> scores(n, 0.0);
+        int components = 0;
+        const int step = std::max(1, (n + 95) / 96);
+        for (const SamplePlot *plot : {&h1, &h2}) {
+            const auto &reference = plot->triggeredSamples;
+            const auto &current = plot->samples;
+            for (int shift = 0; shift < n; ++shift) {
+                double xSum=0, ySum=0, xx=0, yy=0, xy=0;
+                int count=0;
+                for (int i=0; i<n; i+=step) {
+                    const double x=reference[(i+plot->displayOffset)%n], y=current[(i+shift)%n];
+                    xSum+=x; ySum+=y; xx+=x*x; yy+=y*y; xy+=x*y; ++count;
+                }
+                const double energy = std::max(0.0, xx-xSum*xSum/count) * std::max(0.0, yy-ySum*ySum/count);
+                if (energy>0) scores[shift] += (xy-xSum*ySum/count)/std::sqrt(energy);
+            }
+            if (*std::min_element(reference.cbegin(),reference.cend()) != *std::max_element(reference.cbegin(),reference.cend())) ++components;
+        }
+        // In a tie, retain the phase of the last sweep.
+        offset = h2.displayOffset;
+        for (int i=0; i<n; ++i) if (scores[i] > scores[offset]+1e-6) offset=i;
+        if (components && scores[offset] >= 0.9*components) return offset;
+        if (h2.lastTrigger.isValid() && h2.lastTrigger.elapsed()<1000) {
+            held=true;
+            return h2.displayOffset;
+        }
+    }
+    const int peak=int(std::max_element(h2.samples.cbegin(),h2.samples.cend())-h2.samples.cbegin());
+    return (peak+n-n/2)%n;
+}
+
 }
 
 QString FpgaControlPage::text(const char *zh, const char *en) const { return QString::fromUtf8(english_ ? en : zh); }
@@ -1107,6 +1152,8 @@ void FpgaControlPage::clearWaveformDisplay(quint16 source, const QString &zh, co
     for (auto *plot : iqPlots_.value(source)) plots.append(static_cast<SamplePlot*>(plot));
     for (auto *plot : plots) {
         plot->samples.clear();
+        plot->triggeredSamples.clear();
+        plot->displayOffset = 0;
         plot->setProperty("sampleCount", 0);
         plot->setProperty("sampleMinimum", QVariant());
         plot->setProperty("sampleMaximum", QVariant());
@@ -1192,17 +1239,27 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
                 activePlots[iq+2]->samples.append(double(qFromLittleEndian<qint32>(reinterpret_cast<const uchar*>(s.pointBytes.constData()+offset+(iq+2)*4))));
         }
     }
+    bool heldSweep = false;
     if (!adc) {
         for (double &sample : normalizedH2)
             sample = VaporView::FpgaWave::normalizedSecondHarmonic(referenceH1, sample);
         maxNormalizedH2 = VaporView::FpgaWave::normalizedSecondHarmonic(referenceH1, maxH2);
-        int offset = 0;
-        if (channel == 0 && s.format != 1 && !s.preview && second->samples.size() > 2) {
-            const auto &values = second->samples;
-            const auto peak = std::max_element(values.cbegin(), values.cend()) - values.cbegin();
-            offset = (peak + values.size() - values.size()/2) % values.size();
+    }
+    const bool trigger = s.source == 0x30 && s.format != 1 && !s.preview && second->samples.size() > 2;
+    if (trigger) {
+        const int offset = triggerDliaSweep(*plot, *second, s, heldSweep);
+        if (!heldSweep) {
+            plot->triggeredSamples = plot->samples;
+            second->triggeredSamples = second->samples;
+            plot->displayOffset = second->displayOffset = offset;
+            second->triggerRate = s.rate;
+            second->triggerPoints = s.totalPoints;
+            second->triggerFormat = s.format;
+            second->lastTrigger.start();
         }
-        plot->displayOffset = second->displayOffset = offset;
+    } else if (second) {
+        plot->triggeredSamples.clear(); second->triggeredSamples.clear();
+        plot->displayOffset = second->displayOffset = 0;
     }
     const bool valid=s.complete&&!s.partial&&!s.overflow&&!s.continuityError;
     l->setText(QString("%1 · %2 · %3 Hz · %4 %5 · %6%7").arg(adc?QString("ADC %1").arg(channel):QString("DLIA %1").arg(channel))
@@ -1213,8 +1270,9 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
         .arg(displayPoints).arg(s.totalPoints).arg(text("点","points")).arg(text("抽稀间隔","stride")).arg(s.previewStride).arg(s.rate)
         .arg(volts?"V":text("原码 / 数字幅值","raw / digital amplitude")));
     if(!adc)l->setText(l->text()+" · "+(s.format==1?QStringLiteral("I1 / Q1 / I2 / Q2"):pairName));
-    if (s.source == 0x30 && s.format != 1 && !s.preview)
-        l->setText(l->text() + text(" · H2 峰居中", " · H2 peak centered"));
+    if (trigger)
+        l->setText(l->text() + (heldSweep ? text(" · 等待相似周期，显示上次触发", " · Waiting for trigger, showing previous sweep")
+                                          : text(" · H1/H2 波形触发", " · H1/H2 waveform trigger")));
     if (replay) l->setText(text("历史回放 · ", "Historical replay · ") + l->text());
     l->setToolTip(l->text());
     for(auto *p:activePlots){p->setProperty("sampleCount",p->samples.size());p->setProperty("previewStride",s.preview?s.previewStride:1);if(!p->samples.isEmpty()){const auto mm=std::minmax_element(p->samples.cbegin(),p->samples.cend());p->setProperty("sampleMinimum",*mm.first);p->setProperty("sampleMaximum",*mm.second);}p->update();}
