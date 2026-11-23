@@ -510,6 +510,22 @@ int main(int argc,char **argv) {
         const QColor center=image.pixelColor(qRound(plot->width()*image.devicePixelRatio()/2), qRound(13*image.devicePixelRatio()));
         require(center.blue()>center.red()+40,"switching H2 peak heights keeps the same H1 lobe centered");
     }
+    // A clearly taller lobe becomes the center even while the two traces still correlate.
+    for (quint16 source : {0x30,0x31}) {
+        auto boundary=multi; boundary.source=source;
+        auto *h2Plot=page.findChild<QWidget*>(QString("fpgaWaveSecondPlot%1").arg(source));
+        for (int edgeHeight : {96, 115}) {
+            boundary.pointBytes.clear();
+            for (int i=0; i<11; ++i) {
+                appendWord(boundary.pointBytes, i==4 ? 20 : 0);
+                appendWord(boundary.pointBytes, i==5 ? 100 : i==0 ? edgeHeight : 0);
+            }
+            page.updateWaveform(boundary);
+        }
+        const QImage image=h2Plot->grab().toImage();
+        const auto color=image.pixelColor(qRound(h2Plot->width()*image.devicePixelRatio()/2), qRound(13*image.devicePixelRatio()));
+        require(color.blue()>color.red()+40,"dominant H2 peak at the cycle boundary is centered on either channel");
+    }
     const auto triggeredImage=secondPlot->grab().toImage();
     multi.pointBytes.fill(0);
     page.updateWaveform(multi);

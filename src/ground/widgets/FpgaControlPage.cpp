@@ -202,7 +202,21 @@ int triggerDliaSweep(SamplePlot &h1, SamplePlot &h2, const VaporView::FpgaWave::
         // In a tie, retain the phase of the last sweep.
         offset = h2.displayOffset;
         for (int i=0; i<n; ++i) if (scores[i] > scores[offset]+1e-6) offset=i;
-        if (components && scores[offset] >= 0.9*components) return offset;
+        if (components && scores[offset] >= 0.9*components) {
+            // Keep the tracked lobe when two peaks are nearly equal, but anchor each
+            // accepted sweep to a prominent H2 peak so small phase errors cannot accumulate.
+            const auto &values = h2.samples;
+            const auto [low, high] = std::minmax_element(values.cbegin(), values.cend());
+            const double threshold = *high - 0.05 * (*high - *low);
+            const int center = (offset + n/2) % n;
+            for (int distance=0; distance<=n/2; ++distance) {
+                for (int peak : {(center+distance)%n, (center-distance+n)%n}) {
+                    if (values[peak] >= threshold && values[peak] >= values[(peak+n-1)%n]
+                        && values[peak] >= values[(peak+1)%n]) return (peak+n-n/2)%n;
+                }
+            }
+            return offset;
+        }
         if (h2.lastTrigger.isValid() && h2.lastTrigger.elapsed()<1000) {
             held=true;
             return h2.displayOffset;
@@ -1301,7 +1315,7 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
             sample = VaporView::FpgaWave::normalizedSecondHarmonic(referenceH1, sample);
         maxNormalizedH2 = VaporView::FpgaWave::normalizedSecondHarmonic(referenceH1, maxH2);
     }
-    const bool trigger = s.source == 0x30 && s.format != 1 && !s.preview && second->samples.size() > 2;
+    const bool trigger = !adc && s.format != 1 && !s.preview && second->samples.size() > 2;
     if (trigger) {
         const int offset = triggerDliaSweep(*plot, *second, s, heldSweep);
         if (!heldSweep) {
