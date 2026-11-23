@@ -131,6 +131,47 @@ protected:
             VaporView::isDarkThemePalette(palette())),1.5)); p.drawPath(path);
     }
 };
+qint64 rawSample(const VaporView::FpgaWave::CompletedStream &stream, int index)
+{
+    const auto *word = stream.pointBytes.constData() + qsizetype(index) * 4;
+    if (stream.format == 1) return qFromLittleEndian<quint32>(word);
+    return qFromLittleEndian<qint32>(word);
+}
+
+// Locate the scan reset using the change in mean level across a modulation period.
+// Treat the capture as circular so the same edge scores equally at either end.
+int rawScanEdge(const VaporView::FpgaWave::CompletedStream &stream, quint32 modulationMilliHz)
+{
+    const int count = int(stream.totalPoints);
+    if (count < 32 || !stream.rate || !modulationMilliHz) return -1;
+    const int window = int(std::clamp(std::round(1000.0 * stream.rate / modulationMilliHz), 2.0, double(count / 16)));
+    const auto sample = [&](int i) { return rawSample(stream, i); };
+    qint64 left = 0, right = 0;
+    for (int i = 0; i < window; ++i) {
+        left += sample(count-window+i);
+        right += sample(i);
+    }
+    QVector<qint64> changes(count);
+    qint64 low = sample(0), high = low;
+    int edge = 0;
+    for (int i = 0; i < count; ++i) {
+        changes[i] = std::abs(right-left);
+        if (changes[i] > changes[edge]) edge = i;
+        const qint64 value = sample(i);
+        low = std::min(low, value);
+        high = std::max(high, value);
+        left += value - sample((i+count-window)%count);
+        right += sample((i+window)%count) - value;
+    }
+    // A reset must stand out from the carrier, noise and other comparable edges.
+    if (!changes[edge] || changes[edge] < 0.15 * window * (high-low)) return -1;
+    for (int i = 0; i < count; ++i) {
+        const int distance = std::abs(i-edge);
+        if (std::min(distance, count-distance) > window && changes[i] > 0.8 * changes[edge]) return -1;
+    }
+    return edge;
+}
+
 // Score circular shifts of both harmonics against the last triggered sweep.
 // Normalize the two components separately so a change in gain cannot choose the trigger.
 int triggerDliaSweep(SamplePlot &h1, SamplePlot &h2, const VaporView::FpgaWave::CompletedStream &stream, bool &held)
@@ -1223,7 +1264,7 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
     for(auto *p:activePlots)p->samples.clear();const int stride=qMax(1,int(displayPoints)/1000);const int components=adc?1:int(s.bytesPerPoint/4);
     double referenceH1 = 0;
     for(int point=0;point<int(displayPoints);++point){const int offset=point*components*4;if(offset+components*4>s.pointBytes.size())break;
-        const double value=adc&&s.format==1?double(qFromLittleEndian<quint32>(reinterpret_cast<const uchar*>(s.pointBytes.constData()+offset))):double(qFromLittleEndian<qint32>(reinterpret_cast<const uchar*>(s.pointBytes.constData()+offset+component*4)));
+        const double value=adc?double(rawSample(s,point)):double(qFromLittleEndian<qint32>(reinterpret_cast<const uchar*>(s.pointBytes.constData()+offset+component*4)));
         if (!adc) {
             const auto read = [&](int index) { return double(qFromLittleEndian<qint32>(reinterpret_cast<const uchar*>(s.pointBytes.constData()+offset+index*4))); };
             const double h1 = s.format == 1 ? std::hypot(read(0), read(1)) : read(component);
@@ -1237,6 +1278,21 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
             if(second)second->samples.append(double(qFromLittleEndian<qint32>(reinterpret_cast<const uchar*>(s.pointBytes.constData()+offset+(component+1)*4))));
             if(!adc&&s.format==1)for(int iq=0;iq<2;++iq)
                 activePlots[iq+2]->samples.append(double(qFromLittleEndian<qint32>(reinterpret_cast<const uchar*>(s.pointBytes.constData()+offset+(iq+2)*4))));
+        }
+    }
+    int rawEdge = -1;
+    if (adc) {
+        plot->triggeredSamples.clear();
+        if (!s.preview) {
+            const quint32 modulation = hardwareValues_.value(0x201c+channel*0x100, c.wms[channel].sineMilliHz);
+            rawEdge = rawScanEdge(s, modulation);
+        }
+        if (rawEdge > 0) {
+            // Rotate before display decimation so sub-stride shifts have the same origin.
+            for (int i=0; i<int(displayPoints); i+=stride) {
+                const double value = double(rawSample(s, (rawEdge+i)%displayPoints));
+                plot->triggeredSamples.append(volts ? value*c.frontend[channel].voltsPerCode*c.frontend[channel].polarity : value);
+            }
         }
     }
     bool heldSweep = false;
@@ -1270,6 +1326,7 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
         .arg(displayPoints).arg(s.totalPoints).arg(text("点","points")).arg(text("抽稀间隔","stride")).arg(s.previewStride).arg(s.rate)
         .arg(volts?"V":text("原码 / 数字幅值","raw / digital amplitude")));
     if(!adc)l->setText(l->text()+" · "+(s.format==1?QStringLiteral("I1 / Q1 / I2 / Q2"):pairName));
+    if (rawEdge >= 0) l->setText(l->text() + text(" · 跳变沿起点", " · Scan edge aligned"));
     if (trigger)
         l->setText(l->text() + (heldSweep ? text(" · 等待相似周期，显示上次触发", " · Waiting for trigger, showing previous sweep")
                                           : text(" · H1/H2 波形触发", " · H1/H2 waveform trigger")));

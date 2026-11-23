@@ -552,6 +552,31 @@ int main(int argc,char **argv) {
     for(qint32 value:{0,100,200})appendWord(adc.pointBytes,value);page.updateWaveform(adc);
     auto *adcPlot=page.findChild<QWidget*>("fpgaWavePlot32");require(adcPlot->property("sampleMaximum").toDouble()==0.2,"calibrated subvolt waveform retains physical range");
     page.setHardwareValues({{0x50,3},{0x403c,1},{0x413c,1}});
+    // A modulated ramp has a single scan reset. Move it across the frame and across the decimation grid.
+    for (int channel=0; channel<2; ++channel) {
+        auto scan=adc;
+        scan.source+=channel; scan.format=channel; scan.totalPoints=10000;
+        auto *rawPlot=page.findChild<QWidget*>(QString("fpgaWavePlot%1").arg(scan.source));
+        auto *summary=page.findChild<QLabel*>(QString("fpgaWaveSummary%1").arg(scan.source));
+        QImage aligned;
+        for (int edge : {0, 7683, 9999}) {
+            scan.pointBytes.clear();
+            for (int i=0; i<10000; ++i) {
+                const int phase=(i+10000-edge)%10000;
+                const int carrier=qRound(2000*std::sin(2*3.141592653589793*phase/50));
+                appendWord(scan.pointBytes, (channel ? 20000 : 0) - phase + carrier);
+            }
+            page.updateWaveform(scan);
+            require(summary->text().contains("Scan edge aligned"),"detect the scan reset under modulation");
+            const auto image=rawPlot->grab().toImage();
+            if (aligned.isNull()) aligned=image;
+            else require(image==aligned,"raw trace starts after the reset even for a sub-stride frame shift");
+        }
+        scan.pointBytes.clear();
+        for (int i=0;i<10000;++i) appendWord(scan.pointBytes,2000+(i%50)*20);
+        page.updateWaveform(scan);
+        require(!summary->text().contains("Scan edge aligned"),"repeated carrier edges alone do not trigger a scan");
+    }
     auto rawTail=adc;rawTail.complete=false;rawTail.partial=true;rawTail.pointBytes.truncate(4);
     page.updateWaveform(rawTail);
     require(adcPlot->property("sampleCount").toInt()==0,"incomplete RAW clears the live plot instead of reusing an older cycle");
