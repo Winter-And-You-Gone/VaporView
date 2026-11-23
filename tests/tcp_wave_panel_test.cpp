@@ -806,16 +806,16 @@ int main(int argc, char **argv)
         require(titles.contains("波形监控")&&titles.contains("一次谐波H1")&&titles.contains("二次谐波H2")
             &&!titles.contains("原始信号")&&titles.contains("归一化二次谐波")
             &&titles.contains("归一化二次谐波峰值趋势"),"FPGA monitor names both normalized graphs explicitly");
-        require(panel.testFirstHarmonicSamples()==QVector<float>({10,20,30})
-            &&panel.testSecondHarmonicSamples()==QVector<float>({40,50,60})
+        require(panel.testFirstHarmonicSamples()==QVector<float>({20,30,10})
+            &&panel.testSecondHarmonicSamples()==QVector<float>({50,60,40})
             &&h2->property("sampleCount").toInt()==3&&dlia->property("sampleCount").toInt()==3,
             "FPGA mode renders H1 and H2 from the same DLIA cycle instead of ADC RAW");
         panel.setFpgaWaveform(0x20,{{99,98}},{"ADC"},"ADC only",2);
-        require(panel.testFirstHarmonicSamples()==QVector<float>({10,20,30}),"ADC updates cannot replace the H1 graph");
+        require(panel.testFirstHarmonicSamples()==QVector<float>({20,30,10}),"ADC updates cannot replace the H1 graph");
         require(!raw->property("xAxisTimeMode").toBool()&&panel.testRawXAxisLabel()=="2",
             "FPGA x axis uses sample position rather than invented wall-clock time");
         auto *channel=panel.findChild<QComboBox*>("fpgaMonitorChannelCombo");
-        require(!panel.findChild<QComboBox*>("fpgaMonitorComponentCombo")&&panel.testHarmonicSamples()==QVector<float>({4,2.5,2}),
+        require(!panel.findChild<QComboBox*>("fpgaMonitorComponentCombo")&&panel.testHarmonicSamples()==QVector<float>({2.5,2,4}),
             "FPGA displays the validated normalized samples rather than raw H2 amplitudes");
         panel.setFpgaSecondHarmonicPeak(0x30,1,100,4,false);
         panel.setFpgaSecondHarmonicPeak(0x30,1,100,4,false);
@@ -832,6 +832,12 @@ int main(int argc, char **argv)
             &&std::abs(panel.testFirstHarmonicSamples().first()-std::hypot(1,3))<0.0001
             &&std::abs(panel.testSecondHarmonicSamples().first()-std::hypot(5,7))<0.0001,
             "IQ-only H1 and H2 graphs display magnitudes of their respective quadrature pairs");
+        panel.setFpgaWaveform(0x31,{{1,2,3,4},{8,4,1,2},{2,1,0.25,0.5}},
+            {"H1","H2","H2/max(H1)"},"complete",4);
+        require(panel.testFirstHarmonicSamples()==QVector<float>({3,4,1,2})
+            &&panel.testSecondHarmonicSamples()==QVector<float>({1,2,8,4})
+            &&panel.testHarmonicSamples()==QVector<float>({0.25,0.5,2,1}),
+            "channel 1 centers a boundary H2 peak and shifts both companion traces identically");
         panel.setFpgaSecondHarmonicPeak(0x31,2,200,10,true);
         require(panel.findChild<QLabel*>("fpgaMonitorPeakInfo")->text()=="预览峰值 · 最新："
             &&panel.findChild<QLabel*>("fpgaMonitorPeakValue")->text()=="10","bounded previews show the latest peak and retain the preview label");

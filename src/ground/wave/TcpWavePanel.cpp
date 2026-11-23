@@ -2440,6 +2440,19 @@ void TcpWavePanel::refreshFpgaWaveform()
     wave4_history_.clear();
     const int normalizedH2 = dlia.components.indexOf(QStringLiteral("H2/max(H1)"));
     if (normalizedH2 >= 0) wave4_history_ = convert(dlia.samples.value(normalizedH2));
+    // Use one display origin for all components of the complete sweep.
+    bool centered = false;
+    if (!dlia.preview && fpga_h2_history_.size() > 1) {
+        const auto [low, peak] = std::minmax_element(fpga_h2_history_.cbegin(), fpga_h2_history_.cend());
+        if (*peak > *low) {
+            const auto count = fpga_h2_history_.size();
+            const auto offset = (peak - fpga_h2_history_.cbegin() + count - count / 2) % count;
+            for (auto *trace : {&wave1_history_, &fpga_h2_history_, &wave4_history_}) {
+                if (trace->size() == count) std::rotate(trace->begin(), trace->begin() + offset, trace->end());
+            }
+            centered = true;
+        }
+    }
     const QString waiting = is_english_ ? QStringLiteral("Waiting for FPGA waveform") : QStringLiteral("等待 FPGA 波形");
     const auto present = [this, &waiting](QLabel *label, const FpgaWaveDisplay &wave, bool empty) {
         if (wave.samples.isEmpty() && !wave.detail.isEmpty()) {
@@ -2465,6 +2478,11 @@ void TcpWavePanel::refreshFpgaWaveform()
     if (!dlia.detail.isEmpty()) wave4_info_label_->setToolTip(dlia.detail + (is_english_
         ? QStringLiteral("\nH2 divided by the largest H1 magnitude in the received cycle or preview.")
         : QStringLiteral("\nH2 除以本周期或预览内的 H1 最大幅值。")));
+    if (centered) {
+        const auto origin = is_english_ ? QStringLiteral("H2 peak centered") : QStringLiteral("H2 主峰居中");
+        for (auto *label : {wave1_info_label_, fpga_h2_info_label_, wave4_info_label_})
+            label->setToolTip(label->toolTip() + '\n' + origin);
+    }
     wave1_plot_->setSampleAxis(true, dlia.totalPoints);
     fpga_h2_plot_->setSampleAxis(true, dlia.totalPoints);
     wave4_plot_->setSampleAxis(true, dlia.totalPoints);
