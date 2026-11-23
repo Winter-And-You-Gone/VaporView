@@ -625,6 +625,7 @@ void FpgaDeviceController::fail(const QString& detail, bool operationScoped, boo
     // heartbeat or lose its independent acknowledgement/timeout tracking.
     if (session_ && !preserveMotorOwner) session_->cancelQueuedCommands();
     detail_=detail; report(detail, LogLevel::Error, VAPORVIEW_LOG_FILE, VAPORVIEW_LOG_FUNCTION, VAPORVIEW_LOG_LINE, operationScoped);
+    if (!polling || !ready_) emit operationFailed(ready_);
     if(!extensionRequest_.isEmpty()) {
         extensionRequest_={};extensionResult_["ok"]=false;extensionResult_["detail"]=detail;
         emit extensionCompleted(extensionResult_);

@@ -1386,6 +1386,20 @@ static void localSimulatorRouting()
         } else check(message==0xfe||message==1||message==2,"other handshake operations are read-only");
     }
     check(targetStarted,"idle simulator actually receives the target start command");
+    auto *applyWms = page->findChild<QAbstractButton*>("fpgaApplyWms");
+    check(applyWms && applyWms->isEnabled(), "WMS parameters can be submitted");
+    const auto generation = MainWindowRtcmTestAccess::state(window).fpga_local_dispatch_generation_;
+    const auto beforePollError = generation->load();
+    VaporView::LogRecord pollError;
+    pollError.level = VaporView::LogLevel::Error;
+    pollError.message = QStringLiteral("UART response deadline expired; the command was not retried");
+    pollError.fields.insert("ready", true);
+    emit window.testFpgaController()->logRecordGenerated(pollError);
+    applyWms->click();
+    check(!applyWms->isEnabled(), "pending WMS submission prevents double clicks");
+    check(waitUntil([&]{ return applyWms->isEnabled() && disconnect->isEnabled(); }, 12000),
+          "WMS and connection controls recover after a concurrent polling diagnostic");
+    check(generation->load() == beforePollError, "polling diagnostic preserves queued WMS submission");
     check(waitUntil([&]{return connectionSuccesses.contains(0x40);})&&connectionSuccesses.size()==1,
         "only the requested simulated sensor reports a connection result");
     {

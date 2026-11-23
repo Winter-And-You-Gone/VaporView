@@ -67,6 +67,7 @@ signals:
     void capabilitiesUpdated(quint32 extensions);
     void extensionCompleted(const QJsonObject& result);
     void transportConnectionChanged(bool connected);
+    void operationFailed(bool transportReady);
     void connectionChanged(bool ready, bool busy, const QString& detail);
     void hardwareValuesChanged(const QMap<quint32, quint32>& values);
     void sensorConfigurationApplied(quint16 source, const QMap<quint32, quint32>& values, const QJsonObject& parameters);

@@ -1114,10 +1114,10 @@ void MainWindow::setupFpgaControlPage()
         }
         syncFpgaDeviceConfigUi();
     },Qt::QueuedConnection);
-    connect(controller, &Controller::logRecordGenerated, this, [this,page](const VaporView::LogRecord &record) {
-        if (record.level>=VaporView::LogLevel::Error && !isRemoteSkyMode()) {
-            handleHomeFpgaFailure(record.fields.value("ready").toBool());
-        }
+    connect(controller, &Controller::operationFailed, this, [this](bool transportReady) {
+        if (!isRemoteSkyMode()) handleHomeFpgaFailure(transportReady);
+    }, Qt::QueuedConnection);
+    connect(controller, &Controller::logRecordGenerated, this, [page](const VaporView::LogRecord &record) {
         page->appendDiagnostic(record.message);
         VaporView::LogService::withCurrentInstance([&record](VaporView::LogService &service) { service.publish(record); });
     }, Qt::QueuedConnection);

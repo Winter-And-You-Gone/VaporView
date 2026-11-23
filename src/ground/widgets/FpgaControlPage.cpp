@@ -1493,8 +1493,11 @@ void FpgaControlPage::setUiTestState(bool enabled, bool dataStalled, bool partia
             if(source==0x46) {auto config=configuration();config.ai8.pollIntervalMs=values.value(0x662c);setConfiguration(config);}
             emit simulationSensorConfigurationApplied(source,values);
         });
+        connect(controller,&VaporView::Ground::Devices::FpgaDeviceController::operationFailed,receiver,[this](bool ready) {
+            emit simulationOperationFailed(ready);
+        });
         connect(controller,&VaporView::Ground::Devices::FpgaDeviceController::logRecordGenerated,receiver,[this](const auto& record) {
-            appendDiagnostic(record.message);if(record.level>=VaporView::LogLevel::Error)emit simulationOperationFailed(record.fields.value("ready").toBool());
+            appendDiagnostic(record.message);
         });
         connect(simulation_.worker.get(),&QThread::finished,controller,&QObject::deleteLater);
         controller->moveToThread(simulation_.worker.get());
