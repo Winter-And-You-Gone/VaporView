@@ -416,16 +416,13 @@ int main(int argc,char **argv) {
     QObject::connect(&page,&FpgaControlPage::acquisitionRequested,&page,[&](bool){++acquisitions;});
     QObject::connect(&page,&FpgaControlPage::dacRequested,&page,[&](int,bool){++dacs;});
     page.findChild<QPushButton*>("fpgaAcquisitionStop")->click();require(acquisitions==1&&dacs==0,"stop acquisition never stops DAC");
-    auto *wmsGrid=page.findChild<QGridLayout*>("fpgaWmsGrid");
-    require(wmsGrid&&page.findChild<QDoubleSpinBox*>("fpga0Scan")->parentWidget()==page.findChild<QDoubleSpinBox*>("fpga1Scan")->parentWidget(),"WMS and DAC channels share one card");
-    require(page.findChild<QLabel*>("fpga0ScanLabel")&&!page.findChild<QLabel*>("fpga1ScanLabel"),"both channel columns reuse one field label");
-    for(const auto *field : {"Scan","PhaseMode","DacControl","DacSpi"}) {
-        auto *firstInput=page.findChild<QDoubleSpinBox*>(QString("fpga0%1").arg(field));
-        auto *secondInput=page.findChild<QDoubleSpinBox*>(QString("fpga1%1").arg(field));
-        int firstRow,firstColumn,secondRow,secondColumn,rowSpan,columnSpan;
-        wmsGrid->getItemPosition(wmsGrid->indexOf(firstInput),&firstRow,&firstColumn,&rowSpan,&columnSpan);
-        wmsGrid->getItemPosition(wmsGrid->indexOf(secondInput),&secondRow,&secondColumn,&rowSpan,&columnSpan);
-        require(firstRow==secondRow&&firstColumn==1&&secondColumn==3,"merged fields align on one row with independent inputs");
+    require(page.findChild<QDoubleSpinBox*>("fpga0Scan")->parentWidget()!=page.findChild<QDoubleSpinBox*>("fpga1Scan")->parentWidget(),"independent WMS channel cards");
+    for (int ch=0; ch<2; ++ch) {
+        auto *more=page.findChild<QPushButton*>(QString("fpga%1MoreParameters").arg(ch));
+        auto *advanced=page.findChild<QDoubleSpinBox*>(QString("fpga%1Phase").arg(ch))->parentWidget();
+        require(more && advanced->isHidden(),"advanced parameters start collapsed");
+        more->click();require(!advanced->isHidden(),"more parameters expands the channel");
+        more->click();require(advanced->isHidden(),"more parameters collapses the channel");
     }
     const auto beforeChannelEdit=page.configuration();
     page.findChild<QDoubleSpinBox*>("fpga1Scan")->setValue(123);
@@ -461,13 +458,36 @@ int main(int argc,char **argv) {
     auto *secondPlot=page.findChild<QWidget*>("fpgaWaveSecondPlot48");
     require(!page.findChild<QComboBox*>("fpgaWaveComponent48")&&!page.findChild<QComboBox*>("fpgaWaveComponent49")&&secondPlot,"both DLIA channels display their data without component selectors");
     require(plot->property("sampleMaximum").toDouble()==110&&secondPlot->property("sampleMaximum").toDouble()==210,"H1 and H2 are displayed together by default");
-    require(cyclePeak==2&&!peakPreview,"format2 publishes max(H2/H1), not max(H2) divided by max(H1)");
+    require(std::abs(cyclePeak-210.0/110)<1e-9&&!peakPreview,"format2 publishes cycle peak ratio");
+    auto shifted = wave;
+    shifted.format=0; shifted.bytesPerPoint=8; shifted.totalPoints=9;
+    for (int peak : {2, 7}) {
+        shifted.pointBytes.clear();
+        for (int i=0; i<9; ++i) {
+            appendWord(shifted.pointBytes, i==(peak+1)%9 ? 9 : 1);
+            appendWord(shifted.pointBytes, i==peak ? 12 : 0);
+        }
+        page.updateWaveform(shifted);
+        const auto hasTraceAtPeak=[](QWidget *widget, int position) {
+            const QImage image=widget->grab().toImage();
+            const int x=qRound((12.0+(widget->width()-24)*position/8.0)*image.devicePixelRatio());
+            const int y=qRound(12*image.devicePixelRatio());
+            for (int dy=0;dy<=3;++dy) for (int dx=-2;dx<=2;++dx) {
+                const QColor color=image.pixelColor(x+dx,y+dy);
+                if (color.blue()>color.red()+40) return true;
+            }
+            return false;
+        };
+        require(hasTraceAtPeak(secondPlot,4) && hasTraceAtPeak(plot,5),
+            "DLIA0 centers shifted H2 peaks and keeps the H1 peak one sample later");
+    }
+    page.updateWaveform(wave);
     const int beforeRerender=peakEvents;page.setLanguage(false);page.setLanguage(true);
     require(peakEvents==beforeRerender,"language rerender does not publish a new peak event");
     auto iq=wave;iq.format=1;iq.bytesPerPoint=16;iq.pointBytes.clear();
     for(qint32 value:{1,2,3,4,11,12,13,14})appendWord(iq.pointBytes,value);
     page.updateWaveform(iq);
-    require(std::abs(cyclePeak-std::hypot(3.0,4.0)/std::hypot(1.0,2.0))<0.0001,"IQ format normalizes magnitudes at the same point before finding the peak");
+    require(std::abs(cyclePeak-std::hypot(13.0,14.0)/std::hypot(11.0,12.0))<0.0001,"IQ format normalizes cycle peak magnitudes");
     auto *i2=page.findChild<QWidget*>("fpgaWaveIqPlot48_0"),*q2=page.findChild<QWidget*>("fpgaWaveIqPlot48_1");
     require(plot->property("sampleMaximum").toDouble()==11&&secondPlot->property("sampleMaximum").toDouble()==12&&i2&&q2
         &&i2->property("sampleMaximum").toDouble()==13&&q2->property("sampleMaximum").toDouble()==14&&!i2->parentWidget()->isHidden(),"IQ-only format displays all four components without a selector");
@@ -481,7 +501,7 @@ int main(int argc,char **argv) {
     page.updateWaveform(wave);
     auto preview=wave;preview.preview=true;preview.previewStride=1024;preview.totalPoints=2048;
     page.updateWaveform(preview);
-    require(cyclePeak==2&&peakPreview,"normalized preview maximum is marked as a preview peak");
+    require(std::abs(cyclePeak-210.0/110)<1e-9&&peakPreview,"normalized preview maximum is marked as a preview peak");
     require(plot->property("sampleCount").toInt()==2 && plot->property("previewStride").toInt()==1024,
         "bounded preview displays actual received points while preserving original stride");
     const auto previewLabel=page.findChild<QLabel*>("fpgaWaveSummary48")->text();
@@ -493,11 +513,11 @@ int main(int argc,char **argv) {
     QVector<double> normalizedSamples;
     QObject::connect(&page,&FpgaControlPage::waveformDisplayUpdated,&page,
         [&](quint16 source,const QVector<QVector<double>>& samples,const QStringList& components,const QString&,quint32,bool) {
-            if(source==0x30)normalizedSamples=samples.value(components.indexOf("H2/H1"));
+            if(source==0x30)normalizedSamples=samples.value(components.indexOf("H2/max(H1)"));
         });
     page.updateWaveform(invalidReference);
-    require(cyclePeak==0.5&&normalizedSamples.size()==3&&std::isnan(normalizedSamples[0])&&std::isnan(normalizedSamples[1])&&normalizedSamples[2]==0.5,
-        "zero and negative H1 retain sample positions as gaps and cannot become peaks");
+    require(cyclePeak==9999.0/4 && normalizedSamples==QVector<double>({9999.0/4,9999.0/4,0.5}),
+        "cycle reference preserves H2 shape even at local H1 minima");
     invalidReference.totalPoints=2;invalidReference.pointBytes.truncate(16);page.updateWaveform(invalidReference);
     require(std::isnan(cyclePeak),"a cycle with no valid H1 has no normalized peak");
     using VaporView::FpgaWave::normalizedSecondHarmonic;

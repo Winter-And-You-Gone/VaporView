@@ -2438,7 +2438,7 @@ void TcpWavePanel::refreshFpgaWaveform()
         fpga_h2_history_ = magnitude(QStringLiteral("I2"), QStringLiteral("Q2"));
     }
     wave4_history_.clear();
-    const int normalizedH2 = dlia.components.indexOf(QStringLiteral("H2/H1"));
+    const int normalizedH2 = dlia.components.indexOf(QStringLiteral("H2/max(H1)"));
     if (normalizedH2 >= 0) wave4_history_ = convert(dlia.samples.value(normalizedH2));
     const QString waiting = is_english_ ? QStringLiteral("Waiting for FPGA waveform") : QStringLiteral("等待 FPGA 波形");
     const auto present = [this, &waiting](QLabel *label, const FpgaWaveDisplay &wave, bool empty) {
@@ -2463,8 +2463,8 @@ void TcpWavePanel::refreshFpgaWaveform()
     present(wave4_info_label_, dlia, std::none_of(wave4_history_.cbegin(), wave4_history_.cend(),
         [](float value) { return std::isfinite(value); }));
     if (!dlia.detail.isEmpty()) wave4_info_label_->setToolTip(dlia.detail + (is_english_
-        ? QStringLiteral("\nPointwise H2/H1 (dimensionless); IQ-only format uses hypot(I2,Q2)/hypot(I1,Q1). Non-positive or invalid H1 leaves gaps.")
-        : QStringLiteral("\n逐点 H2/H1（无量纲）；仅 IQ 格式使用 hypot(I2,Q2)/hypot(I1,Q1)。H1 非正或无效时留断点。")));
+        ? QStringLiteral("\nH2 divided by the largest H1 magnitude in the received cycle or preview.")
+        : QStringLiteral("\nH2 除以本周期或预览内的 H1 最大幅值。")));
     wave1_plot_->setSampleAxis(true, dlia.totalPoints);
     fpga_h2_plot_->setSampleAxis(true, dlia.totalPoints);
     wave4_plot_->setSampleAxis(true, dlia.totalPoints);
@@ -2483,8 +2483,8 @@ void TcpWavePanel::refreshFpgaWaveform()
                                : (is_english_ ? QStringLiteral("Cycle peaks") : QStringLiteral("周期峰值"))));
     static_cast<DecimalAlignedPeakLabel *>(fpga_peak_value_label_)->setPeakText(peakText);
     fpga_peak_info_label_->setToolTip(is_english_
-        ? QStringLiteral("Maximum of valid pointwise H2/H1 per cycle (dimensionless), before display decimation. Invalid references are excluded. Preview peaks cover received points only. Time is host receipt time.")
-        : QStringLiteral("每周期有效 H2/H1 的最大值（无量纲），在绘图抽稀前计算；无效参考不参与峰值。预览峰值仅覆盖收到的点，时间为本机接收时间。"));
+        ? QStringLiteral("Maximum H2 divided by maximum H1, before display decimation. Preview peaks cover received points only. Time is host receipt time.")
+        : QStringLiteral("绘图抽稀前计算的 H2 峰值与 H1 峰值之比。预览峰值仅覆盖收到的点，时间为本机接收时间。"));
 }
 
 void TcpWavePanel::changeEvent(QEvent *event)

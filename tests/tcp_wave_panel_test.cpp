@@ -556,18 +556,18 @@ void testPeakPlotModeSwitch()
 void testNormalizedWaveformGapsRender()
 {
     TcpWavePanel panel;panel.setFpgaMode(true);panel.resize(1500,900);panel.show();
-    panel.setFpgaWaveform(0x30,{{1,1,1,1,1}},{"H2/H1"},"normalized",5);
+    panel.setFpgaWaveform(0x30,{{1,1,1,1,1}},{"H2/max(H1)"},"normalized",5);
     QApplication::processEvents();
     auto *plot=panel.findChild<QWidget*>("tcpWaveHarmonicPlot");
     const auto connected=plot->grab().toImage();
     const double invalid=std::numeric_limits<double>::quiet_NaN();
-    panel.setFpgaWaveform(0x30,{{1,1,invalid,1,1}},{"H2/H1"},"normalized",5);
+    panel.setFpgaWaveform(0x30,{{1,1,invalid,1,1}},{"H2/max(H1)"},"normalized",5);
     const auto gap=plot->grab().toImage();
     const QRect center(connected.width()/2-3,0,6,connected.height());
     require(connected.copy(center)!=gap.copy(center),"invalid normalized samples visibly break the waveform instead of joining across the gap");
-    panel.setFpgaWaveform(0x30,{{invalid,invalid,invalid,invalid,invalid}},{"H2/H1"},"normalized",5);
+    panel.setFpgaWaveform(0x30,{{invalid,invalid,invalid,invalid,invalid}},{"H2/max(H1)"},"normalized",5);
     require(plot->grab().toImage()!=gap,"all-invalid normalized waveforms render the empty state rather than a numeric trace");
-    panel.setFpgaWaveform(0x30,{{invalid,1,1,1,1}},{"H2/H1"},"normalized",5);
+    panel.setFpgaWaveform(0x30,{{invalid,1,1,1,1}},{"H2/max(H1)"},"normalized",5);
     const QRect right(connected.width()*3/4,0,6,connected.height());
     require(plot->grab().toImage().copy(right)==connected.copy(right),"an invalid first reference does not suppress the remaining finite waveform");
 }
@@ -699,7 +699,7 @@ void testFpgaWaveDisplaySelection()
     checkPlots(15);
     clickRow(showAll);
     checkPlots(0);
-    panel.setFpgaWaveform(0x30, {{10, 20}, {40, 50}, {4, 2.5}}, {"H1", "H2", "H2/H1"}, "complete", 2);
+    panel.setFpgaWaveform(0x30, {{10, 20}, {40, 50}, {4, 2.5}}, {"H1", "H2", "H2/max(H1)"}, "complete", 2);
     panel.setFpgaSecondHarmonicPeak(0x30, 1, 100, 4, false);
     require(panel.testPeakValues() == QVector<float>({4}), "hidden trend continues collecting cycle peaks");
     clickRow(actions[2]);
@@ -775,7 +775,7 @@ int main(int argc, char **argv)
     {
         TcpWavePanel panel;panel.setConnectionEndpoint("127.0.0.9",9901);panel.setFpgaMode(true);
         panel.setFpgaWaveform(0x20,{{1,2,3}},{"ADC"},"ADC complete",3);
-        panel.setFpgaWaveform(0x30,{{10,20,30},{40,50,60},{4,2.5,2}},{"H1","H2","H2/H1"},"DLIA complete",3);
+        panel.setFpgaWaveform(0x30,{{10,20,30},{40,50,60},{4,2.5,2}},{"H1","H2","H2/max(H1)"},"DLIA complete",3);
         auto *raw=panel.findChild<QWidget*>("tcpWaveRawPlot");
         auto *dlia=panel.findChild<QWidget*>("tcpWaveHarmonicPlot");
         auto *h2=panel.findChild<QWidget*>("fpgaWaveH2Plot");
@@ -825,7 +825,7 @@ int main(int argc, char **argv)
         require(raw->property("sampleCount").toInt()==0&&h2->property("sampleCount").toInt()==0&&dlia->property("sampleCount").toInt()==0&&peaks->property("sampleCount").toInt()==0,
             "channel switch shows only that channel's waveforms and peak history");
         panel.setFpgaWaveform(0x31,{{1,2},{3,4},{5,6},{7,8},{std::hypot(5,7)/std::hypot(1,3),std::hypot(6,8)/std::hypot(2,4)}},
-            {"I1","Q1","I2","Q2","H2/H1"},"IQ complete",2);
+            {"I1","Q1","I2","Q2","H2/max(H1)"},"IQ complete",2);
         require(panel.testHarmonicSamples().size()==2&&std::abs(panel.testHarmonicSamples().first()-std::hypot(5,7)/std::hypot(1,3))<0.0001,
             "IQ-only format displays the normalized harmonic magnitudes");
         require(panel.testFirstHarmonicSamples().size()==2&&panel.testSecondHarmonicSamples().size()==2
@@ -835,7 +835,7 @@ int main(int argc, char **argv)
         panel.setFpgaSecondHarmonicPeak(0x31,2,200,10,true);
         require(panel.findChild<QLabel*>("fpgaMonitorPeakInfo")->text()=="预览峰值 · 最新："
             &&panel.findChild<QLabel*>("fpgaMonitorPeakValue")->text()=="10","bounded previews show the latest peak and retain the preview label");
-        panel.setFpgaWaveform(0x31,{{},{},{},{},{}},{"I1","Q1","I2","Q2","H2/H1"},"incomplete",2);
+        panel.setFpgaWaveform(0x31,{{},{},{},{},{}},{"I1","Q1","I2","Q2","H2/max(H1)"},"incomplete",2);
         require(raw->property("sampleCount").toInt()==0&&h2->property("sampleCount").toInt()==0
             &&dlia->property("sampleCount").toInt()==0,"invalid FPGA cycle clears all three harmonic waveforms");
         panel.setFpgaSecondHarmonicPeak(0x31,3,300,std::numeric_limits<double>::quiet_NaN(),false);

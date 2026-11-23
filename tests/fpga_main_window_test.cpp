@@ -2321,11 +2321,11 @@ static void relayConfigurationPresentation()
         qToLittleEndian<qint32>(i==1?1234:i==3?20:i==5?99999:-5,reinterpret_cast<uchar*>(word));full.pointBytes.append(word,4);
     }
     page->updateWaveform(full);
-    require(monitor->testPeakValues()==QVector<float>({10}),"normalized peak uses same-point H1 before display decimation and skips invalid references");
-    require(monitor->testHarmonicSamples().size()>3&&monitor->testHarmonicSamples().first()==-0.5&&std::isnan(monitor->testHarmonicSamples()[3]),
-        "home waveform displays H2/H1 and preserves invalid-reference gaps across display decimation");
+    require(monitor->testPeakValues()==QVector<float>({99999.f/1000}),"cycle-normalized peak uses full resolution before display decimation");
+    require(monitor->testHarmonicSamples().size()>3&&monitor->testHarmonicSamples().first()==-0.005f&&monitor->testHarmonicSamples()[3]==-0.005f,
+        "home waveform retains H2 shape across local reference minima");
     page->setLanguage(true);page->setLanguage(false);page->updateWaveform(full);
-    require(monitor->testPeakValues()==QVector<float>({10}),"FPGA rerender and repeated cycle do not duplicate trend entries");
+    require(monitor->testPeakValues()==QVector<float>({99999.f/1000}),"FPGA rerender and repeated cycle do not duplicate trend entries");
     const auto h1Before=monitor->testFirstHarmonicSamples();
     const auto h2Before=monitor->testSecondHarmonicSamples();
     VaporView::FpgaWave::CompletedStream partial;partial.source=0x20;partial.totalPoints=2;partial.partial=true;
