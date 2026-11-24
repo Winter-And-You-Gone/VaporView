@@ -521,21 +521,23 @@ void MainWindow::requestHomeFpgaWaveAction(bool raw, bool enabled)
     const auto action = homeFpgaDeviceActionState(VaporView::SkyDeviceId::WaveTcp);
     if (!isFpgaRelayPath() || !state_->fpga_page_ || homeFpgaRegisters().isEmpty()
         || action == VaporView::DeviceState::Disabled || action == VaporView::DeviceState::Connecting) return;
-    if (!raw) { setHomeFpgaDeviceEnabled(VaporView::SkyDeviceId::WaveTcp, enabled); return; }
+    const bool linkedStart = !raw && enabled && state_->fpga_page_->linkDacsOnStart();
+    if (!raw && !linkedStart) { setHomeFpgaDeviceEnabled(VaporView::SkyDeviceId::WaveTcp, enabled); return; }
     const auto registers = homeFpgaRegisters();
     bool acquiring = true;
     for (quint32 control : {0x4004u, 0x4104u, 0x5004u, 0x5104u}) acquiring &= (registers.value(control) & 1) != 0;
-    if (enabled && !acquiring) {
+    if (raw && enabled && !acquiring) {
         state_->fpga_home_raw_start_pending_ = true;
         setHomeFpgaDeviceEnabled(VaporView::SkyDeviceId::WaveTcp, true);
         return;
     }
     state_->fpga_pending_home_actions_.insert(VaporView::SkyDeviceId::WaveTcp);
-    queueFpgaAction([this, enabled] {
+    queueFpgaAction([this, enabled, linkedStart] {
         state_->fpga_pending_home_actions_.remove(VaporView::SkyDeviceId::WaveTcp);
         state_->fpga_home_action_device_ = VaporView::SkyDeviceId::WaveTcp;
         state_->fpga_home_action_started_ = false;
-        emit state_->fpga_page_->rawRequested(enabled);
+        if (linkedStart) emit state_->fpga_page_->acquisitionRequested(true, true);
+        else emit state_->fpga_page_->rawRequested(enabled);
         if (!isUiTestMode() && isRemoteSkyMode() && !state_->fpga_session_.requestId)
             state_->fpga_home_action_device_ = VaporView::SkyDeviceId::All;
     }, [this](const QString &error) {
@@ -986,8 +988,10 @@ void MainWindow::setupFpgaControlPage()
     connect(page, &FpgaControlPage::refreshRequested, this, [dispatch, controller] {
         dispatch({{"op", "refresh"}}, [controller] { controller->refresh(); });
     });
-    connect(page, &FpgaControlPage::acquisitionRequested, this, [dispatch, controller](bool enabled) {
-        dispatch({{"op", "acquisition"}, {"enabled", enabled}}, [controller, enabled] { controller->setAcquisition(enabled); });
+    connect(page, &FpgaControlPage::acquisitionRequested, this, [dispatch, controller](bool enabled, bool enableDacs) {
+        QJsonObject request{{"op", "acquisition"}, {"enabled", enabled}};
+        if (enableDacs) request.insert("enableDacs", true);
+        dispatch(request, [controller, enabled, enableDacs] { controller->setAcquisition(enabled, enableDacs); });
     });
     connect(page, &FpgaControlPage::waveformRequested, this, [dispatch, controller](int channel, bool enabled) {
         dispatch({{"op", "wms"}, {"channel", channel}, {"enabled", enabled}}, [controller, channel, enabled] { controller->setWaveform(channel, enabled); });

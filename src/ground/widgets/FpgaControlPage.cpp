@@ -329,10 +329,14 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout) : Q
         auto *b=new QPushButton(this); label(b,QString::fromUtf8(zh),QString::fromUtf8(en)); b->setObjectName(name);
         layout->addWidget(b,row,col); onlineControls_.append(b); connect(b,&QPushButton::clicked,this,[this,fn]{ lockOperation(); fn(); }); return b;
     };
-    action(actions,0,0,"开始 H1/H2","Start H1/H2","fpgaAcquisitionStart",[this]{emit acquisitionRequested(true);});
+    action(actions,0,0,"开始 H1/H2","Start H1/H2","fpgaAcquisitionStart",[this]{emit acquisitionRequested(true, linkDacsOnStart());});
     action(actions,0,1,"停止 H1/H2","Stop H1/H2","fpgaAcquisitionStop",[this]{emit acquisitionRequested(false);});
     action(actions,0,2,"开始原始波形","Start raw waveform","fpgaRawStart",[this]{emit rawRequested(true);});
     action(actions,0,3,"停止原始波形","Stop raw waveform","fpgaRawStop",[this]{emit rawRequested(false);});
+    linkDacs_ = new QCheckBox(capture);
+    linkDacs_->setObjectName("fpgaLinkDacsOnStart");
+    label(linkDacs_, QStringLiteral("开始 H1/H2 时开启双路 DAC"), QStringLiteral("Enable both DACs when starting H1/H2"));
+    captureLayout->addWidget(linkDacs_);
     captureStatus_=new QLabel(capture); captureStatus_->setObjectName(QStringLiteral("fpgaCaptureStatus")); captureStatus_->setProperty("fpgaSecondaryText",true); captureStatus_->setWordWrap(true); captureLayout->addWidget(captureStatus_);
     auto *hint=new QLabel(capture); label(hint,QStringLiteral("先开始 H1/H2。需要查看原始波形时，再开始原始波形上传。"),QStringLiteral("Start H1/H2 first. To view raw waveforms, start raw waveform upload as well.")); hint->setWordWrap(true); captureLayout->addWidget(hint);
     auto *common=tab(QStringLiteral("公共参数"),QStringLiteral("Common settings"));
@@ -1114,6 +1118,11 @@ void FpgaControlPage::setConnectionState(bool ready,bool busy,const QString &det
     }
     updateActions();
 }
+bool FpgaControlPage::linkDacsOnStart() const
+{
+    return linkDacs_->isChecked();
+}
+
 void FpgaControlPage::setHardwareValues(const QMap<quint32,quint32> &v){
     hardwareValues_=v;
     for(int ch=0;ch<2;++ch) {
@@ -1591,7 +1600,7 @@ void FpgaControlPage::simulateOperation(const QJsonObject &request)
             else controller->setSensorEnabled(quint16(request.value("source").toInt()),false);
         }
         else if(op=="sensor_config")controller->configureSensor(request);
-        else if(op=="acquisition")controller->setAcquisition(enabled);
+        else if(op=="acquisition")controller->setAcquisition(enabled, request.value("enableDacs").toBool());
         else if(op=="raw")controller->setRawEnabled(enabled);
         else if(op=="wms")controller->setWaveform(request.value("channel").toInt(),enabled);
         else if(op=="dac")controller->setDac(request.value("channel").toInt(),enabled);

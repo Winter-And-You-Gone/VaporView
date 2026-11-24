@@ -953,6 +953,8 @@ void laserDriverProtection(){
     f.controller.setDac(0,true);
     f.finish();
     require(f.transport->writes().isEmpty()&&!f.diagnostics.isEmpty(),"channel 1 cannot enable before limits are committed");
+    f.transport->clear(); f.controller.setAcquisition(true,true); f.finish();
+    require(f.transport->writes().isEmpty(),"linked start checks protection even with DAC1 off");
     f.transport->regs[0x3004]=1; // Already enabled outside this session.
     f.transport->clear();
     f.controller.setWaveform(0,true);
@@ -1003,6 +1005,11 @@ void laserDriverProtection(){
     f.controller.setDac(0,true);
     f.finish();
     require(indexOfWrite(f.transport->writes(),0x3004,1)>=0,"confirmed protection allows channel 1 output");
+    f.transport->clear(); f.controller.setAcquisition(true,true); f.finish();
+    const auto linked = f.transport->writes();
+    const int dac2 = indexOfWrite(linked,0x3104,1);
+    require(indexOfWrite(linked,0x3004,1)<0 && dac2>=0 && indexOfWrite(linked,0x2004,1)>dac2
+        && indexOfWrite(linked,0x4104,1)>dac2,"linked acquisition enables only the missing DAC before starting capture");
     f.transport->regs[0x301c]=0xfffffu;
     f.transport->clear();
     f.diagnostics.clear();

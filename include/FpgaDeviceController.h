@@ -51,7 +51,7 @@ public slots:
     void setConfiguration(const FpgaControlConfig& config);
     void refresh();
     void executeOperation(const QJsonObject& request);
-    void setAcquisition(bool enable);
+    void setAcquisition(bool enable, bool enableDacs = false);
     void setWaveform(int channel, bool enable);
     void setDac(int channel, bool enable);
     void setSensorEnabled(quint16 source, bool enable);

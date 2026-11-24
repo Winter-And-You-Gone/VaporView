@@ -175,6 +175,10 @@ bool validateControl(const QJsonObject& control, QString *error)
     } else if (op == "acquisition" || op == "wms" || op == "dac" || op == "sensor" || op == "raw") {
         keys << "enabled";
         if (!control.value("enabled").isBool()) return fail();
+        if (op == "acquisition" && control.contains("enableDacs")) {
+            keys << "enableDacs";
+            if (!control.value("enabled").toBool() || !control.value("enableDacs").isBool()) return fail();
+        }
         if (op == "wms" || op == "dac") {
             keys << "channel";
             if (!integer(control.value("channel"), 0, 1)) return fail();

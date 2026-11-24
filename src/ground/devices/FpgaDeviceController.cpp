@@ -1059,11 +1059,12 @@ void FpgaDeviceController::checkDac1Protection(bool enablingDac)
     });
 }
 
-void FpgaDeviceController::setAcquisition(bool enable)
+void FpgaDeviceController::setAcquisition(bool enable, bool enableDacs)
 {
     if (!ready_ || !begin(enable?QStringLiteral("启动采集"):QStringLiteral("停止并排空采集"))) return;
     if (enable) {
-        checkDac1Protection();
+        checkDac1Protection(enableDacs);
+        if (enableDacs) waitFor(0x3108, kDacReadyMask, kDacReady);
         trackConnection(0);
         if (!enableUpload()) return;
         // DLIA stop latches cycle_partial; enable alone cannot clear it. Reset
@@ -1073,6 +1074,20 @@ void FpgaDeviceController::setAcquisition(bool enable)
         resetAcquisition();
         // WMS supplies cycle labels even with independent DLIA references.
         write(0x0004,registers_.value(4)|1u);
+        if (enableDacs) {
+            for (const quint32 base : {0x3000u, 0x3100u}) {
+                read(base + 4);
+                callback([this, base] {
+                    if (registers_.value(base + 4) & 1) return;
+                    Step enable;
+                    enable.kind = Kind::Write;
+                    enable.address = base + 4;
+                    enable.values = {1};
+                    steps_.push_front(enable);
+                });
+                waitFor(base + 8, kDacReadyMask | 1u, kDacReady | 1u);
+            }
+        }
         for (quint32 b:{0x2000u,0x2100u}) { write(b+4,1); verify(b+4,1); }
         for (quint32 b:{0x5000u,0x5100u}) { write(b+4,1); waitFor(b+8,7,3); }
         for (quint32 b:{0x4000u,0x4100u}) { write(b+4,1); waitFor(b+8,5,1); }

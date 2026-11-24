@@ -36,6 +36,7 @@ public:
     explicit FpgaControlPage(QWidget *parent = nullptr, QVBoxLayout *motionLayout = nullptr);
     ~FpgaControlPage() override;
     VaporView::Ground::Devices::FpgaDeviceController* uiTestController() const;
+    bool linkDacsOnStart() const;
     bool uiTestReady() const { return ready_; }
     bool uiTestBusy() const { return busy_; }
     bool uiTestConnected() const { return connected_; }
@@ -83,7 +84,7 @@ signals:
     void refreshRequested();
     void operationRequested(const QJsonObject& request);
     void motorHeartbeatRequested();
-    void acquisitionRequested(bool enable);
+    void acquisitionRequested(bool enable, bool enableDacs = false);
     void waveformRequested(int channel, bool enable);
     void dacRequested(int channel, bool enable);
     void sensorEnableRequested(quint16 source, bool enable);
@@ -180,6 +181,7 @@ private:
     QPlainTextEdit *diagnostics_ = nullptr;
     QComboBox *backend_ = nullptr;
     std::array<QComboBox*,2> cutoff_{{nullptr,nullptr}};
+    QCheckBox *linkDacs_ = nullptr;
     QCheckBox *waveformTrigger_ = nullptr;
     QCheckBox* ai8Scan_=nullptr;
     QCheckBox *recordSensors_ = nullptr, *recordDlia_ = nullptr;

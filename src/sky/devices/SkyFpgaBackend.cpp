@@ -370,7 +370,7 @@ void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion,
             const auto config = FpgaControlConfig::fromJson(operation.value("configuration").toObject());
             controller->applyConfiguration(config,operation.value("section").toString("all"));
         }
-        else if (op == "acquisition") controller->setAcquisition(operation.value("enabled").toBool());
+        else if (op == "acquisition") controller->setAcquisition(operation.value("enabled").toBool(), operation.value("enableDacs").toBool());
         else if (op == "wms") controller->setWaveform(operation.value("channel").toInt(), operation.value("enabled").toBool());
         else if (op == "dac") controller->setDac(operation.value("channel").toInt(), operation.value("enabled").toBool());
         else if (op == "sensor") {
