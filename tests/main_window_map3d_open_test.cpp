@@ -30,6 +30,9 @@
 #include <QTimer>
 #include <QProcess>
 #include <QJsonArray>
+#ifdef Q_OS_WIN
+#include <qt_windows.h>
+#endif
 #include <algorithm>
 #include <cmath>
 #include <functional>
@@ -232,6 +235,15 @@ int main(int argc, char** argv)
     auto* openingMap = qobject_cast<VaporView::Map3D::Map3DWindow*>(findMap3DWindow());
     require(openingMap && !openingMap->findChild<VaporView::Map3D::OsgEarthViewWidget*>(),
             QStringLiteral("loading window opens before constructing the GL renderer"));
+    auto* renderPlaceholder = openingMap->findChild<QLabel*>(QStringLiteral("map3DRenderPlaceholder"));
+    require(renderPlaceholder != nullptr, QStringLiteral("render failure placeholder exists"));
+#ifdef Q_OS_WIN
+    // Seed a stale native cursor without moving or clicking the test desktop's pointer.
+    openingMap->move(openingMap->pos() + QCursor::pos() - renderPlaceholder->mapToGlobal(renderPlaceholder->rect().center()));
+    require(QApplication::widgetAt(QCursor::pos()) == renderPlaceholder,
+            QStringLiteral("the stationary pointer is over the loading canvas"));
+    HCURSOR previousCursor = SetCursor(LoadCursor(nullptr, IDC_SIZENWSE));
+#endif
     VaporView::Geo::NavSample pendingSample;
     pendingSample.recordTimestampUs = 1000000;
     pendingSample.latDeg = 31.2;
@@ -246,9 +258,6 @@ int main(int argc, char** argv)
 
     QLabel* mapStatusLabel = mapWindow->findChild<QLabel*>(QStringLiteral("map3DStatusLabel"));
     require(mapStatusLabel != nullptr, QStringLiteral("3D map status label exists"));
-    QLabel* renderPlaceholder = mapWindow->findChild<QLabel*>(
-        QStringLiteral("map3DRenderPlaceholder"));
-    require(renderPlaceholder != nullptr, QStringLiteral("render failure placeholder exists"));
     require(mapWindow->findChild<QAction*>(QStringLiteral("map3DStartRenderingAction")) == nullptr,
             QStringLiteral("manual start action is removed"));
     processEventsFor(3000);
@@ -258,6 +267,12 @@ int main(int argc, char** argv)
             QStringLiteral("3D map starts the real renderer without closing the window"));
     require(view->isRenderingStarted(),
             QStringLiteral("3D map activates osgEarth automatically when opened"));
+#ifdef Q_OS_WIN
+    const HCURSOR canvasCursor = GetCursor();
+    SetCursor(previousCursor);
+    require(QApplication::widgetAt(QCursor::pos()) == view && canvasCursor == LoadCursor(nullptr, IDC_ARROW),
+            QStringLiteral("first map render restores the native arrow under a stationary pointer without a click"));
+#endif
     require(!view->framebufferSize().isEmpty(),
             QStringLiteral("3D map initializes an OpenGL framebuffer after rendering starts"));
     require(view->earthLoadDiagnostics().attempted,

@@ -77,6 +77,9 @@
 #include <QSvgRenderer>
 #include <QFutureWatcher>
 #include <QtConcurrent/QtConcurrentRun>
+#ifdef Q_OS_WIN
+#include <qt_windows.h>
+#endif
 
 #include <algorithm>
 #include <chrono>
@@ -1522,6 +1525,16 @@ void Map3DWindow::startRendering()
         controls->setParent(render_host_);
     }
     configureViewSignals();
+#ifdef Q_OS_WIN
+    // Showing the native GL child under a stationary pointer can leave the
+    // previous window's resize cursor on screen until the next mouse event.
+    connect(view_, &QOpenGLWidget::frameSwapped, this, [this] {
+        if (!QApplication::overrideCursor() && !QWidget::mouseGrabber()
+            && QApplication::widgetAt(QCursor::pos()) == view_) {
+            SetCursor(LoadCursor(nullptr, IDC_ARROW));
+        }
+    }, Qt::SingleShotConnection);
+#endif
     connect(view_, &OsgEarthViewWidget::renderingFailed, this, [this](const QString& reason) {
         render_placeholder_label_->setText(mapText(QStringLiteral("3D 渲染已停止：%1\n可关闭窗口或查看地图文件状态。")).arg(reason));
         render_stack_->setCurrentWidget(render_placeholder_label_);
