@@ -1806,6 +1806,12 @@ void TemperatureControllerPanel::setupUi()
     controllerModeLayout->setSpacing(kTemperatureControllerInlineLabelSpacing);
     controllerModeLayout->addWidget(controller_mode_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     controllerModeLayout->addWidget(controller_mode_combo_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    temperature_plot_view_button_ = VaporView::Ground::Widgets::createTemperaturePlotViewButton(controller_mode_field_);
+    temperature_plot_view_button_->setObjectName(QStringLiteral("tec103PlotViewToggle"));
+    temperature_plot_view_button_->hide();
+    controllerModeLayout->addWidget(temperature_plot_view_button_, 0, Qt::AlignVCenter);
+    connect(temperature_plot_view_button_, &QToolButton::toggled,
+            this, &TemperatureControllerPanel::updateTemperaturePlotView);
 
     auto *configCard = new QFrame(this);
     configCard->setObjectName(QStringLiteral("temperatureConfigCard"));
@@ -1962,8 +1968,7 @@ void TemperatureControllerPanel::setupUi()
     temperature_plot_->setProperty("temperatureConfigPlot", true);
     temperature_plot_->setCompactMode(true);
     temperature_plot_->setTimeAxisEnabled(true);
-    temperature_plot_->setFixedHeight(kTemperatureControllerConfigPlotHeight);
-    temperature_plot_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    temperature_plot_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     temperaturePlotLayout->addWidget(temperature_plot_, 1, 0);
     temperaturePlotLayout->setColumnStretch(0, 1);
 
@@ -1971,18 +1976,14 @@ void TemperatureControllerPanel::setupUi()
     remote_temperature_plot_->setObjectName(QStringLiteral("tec103RemoteTemperaturePlot"));
     remote_temperature_plot_->setCompactMode(true);
     remote_temperature_plot_->setTimeAxisEnabled(true);
+    remote_temperature_plot_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     temperaturePlotLayout->addWidget(remote_temperature_plot_, 1, 1);
+    temperaturePlotLayout->setRowStretch(1, 1);
 
     in_situ_plot_label_ = new QLabel(temperature_plot_container_);
     remote_plot_label_ = new QLabel(temperature_plot_container_);
     temperaturePlotLayout->addWidget(in_situ_plot_label_, 0, 0, Qt::AlignCenter);
     temperaturePlotLayout->addWidget(remote_plot_label_, 0, 1, Qt::AlignCenter);
-
-    temperature_plot_view_button_ = VaporView::Ground::Widgets::createTemperaturePlotViewButton(temperature_plot_container_);
-    temperature_plot_view_button_->setObjectName(QStringLiteral("tec103PlotViewToggle"));
-    temperaturePlotLayout->addWidget(temperature_plot_view_button_, 0, 0, 1, 2, Qt::AlignRight);
-    connect(temperature_plot_view_button_, &QToolButton::toggled,
-            this, &TemperatureControllerPanel::updateTemperaturePlotView);
     contentRowLayout->addWidget(temperature_plot_container_, 1, Qt::AlignTop);
 
     configCardLayout->addWidget(contentRow, 0);
@@ -2275,6 +2276,8 @@ QWidget *TemperatureControllerPanel::createChannelCommonParamsPage(int index)
                                                      QLabel *&label,
                                                      int fieldWidth) {
         label = makeFieldLabel(labelText);
+        editor->setProperty("temperatureCompactEditor", true);
+        editor->setProperty("styleSheetManagedHeight", true);
         editor->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         auto *cell = new QWidget(page);
         cell->setObjectName(QStringLiteral("temperatureConfigFieldColumn"));
@@ -2299,7 +2302,6 @@ QWidget *TemperatureControllerPanel::createChannelCommonParamsPage(int index)
     for (QSpinBox *spin : {channel.kp_spin, channel.ki_spin, channel.kd_spin})
     {
         spin->setRange(0, std::numeric_limits<int>::max());
-        spin->setProperty("styleSheetManagedHeight", true);
         spin->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     }
     channel.kp_spin->setFixedWidth(kTemperatureControllerPidSideInputWidth);
@@ -4075,10 +4077,6 @@ void TemperatureControllerPanel::updateTemperaturePlotView()
     remote_plot_label_->setVisible(multiple);
     remote_temperature_plot_->setVisible(multiple);
     static_cast<QGridLayout *>(temperature_plot_container_->layout())->setColumnStretch(1, multiple ? 1 : 0);
-    const int headerHeight = dual_tec103_ ? temperature_plot_view_button_->height() : 0;
-    const int plotHeight = kTemperatureControllerConfigPlotHeight - headerHeight;
-    temperature_plot_->setFixedHeight(plotHeight);
-    remote_temperature_plot_->setFixedHeight(plotHeight);
     updateTemperaturePlots();
 }
 

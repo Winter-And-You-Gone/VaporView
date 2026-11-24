@@ -3215,17 +3215,31 @@ static void tec103PidLayout()
     const auto checkPidEditors = [&](int deviceIndex) {
         QCoreApplication::processEvents();
         require(device->isVisible() && pages->currentIndex() == deviceIndex, "Expected TEC103 device page is visible");
-        const auto editor = [&](QChar parameter) {
-            return pages->currentWidget()->findChild<QSpinBox *>(
-                QStringLiteral("temperaturePidK%1SpinChannel%2").arg(parameter).arg(deviceIndex + 1));
+        const auto editor = [&](const char *name) {
+            return pages->currentWidget()->findChild<QWidget *>(QString::fromLatin1(name).arg(deviceIndex + 1));
         };
-        auto *p = editor(QLatin1Char('p'));
-        auto *i = editor(QLatin1Char('i'));
-        auto *d = editor(QLatin1Char('d'));
-        require(p && i && d && p->isVisible() && i->isVisible() && d->isVisible(), "TEC103 PID editors are visible");
+        auto *p = qobject_cast<QSpinBox *>(editor("temperaturePidKpSpinChannel%1"));
+        require(p && p->isVisible(), "TEC103 P editor is visible");
+        const QList<QWidget *> editors{p, editor("temperaturePidKiSpinChannel%1"),
+                                      editor("temperaturePidKdSpinChannel%1"), editor("temperatureOutputModeComboChannel%1"),
+                                      editor("temperatureTargetSpinChannel%1"), editor("temperatureMaxOutputSpinChannel%1")};
         const int height = p->height();
-        const auto sameHeight = [&] { return p->height() == height && i->height() == height && d->height() == height; };
-        require(sameHeight(), "TEC103 PID editors start with the same height");
+        const auto sameHeight = [&] {
+            return std::all_of(editors.cbegin(), editors.cend(), [height](QWidget *field) {
+                return field && field->isVisible() && field->height() == height;
+            });
+        };
+        require(sameHeight(), "All TEC103 common parameter editors start with the same height");
+        auto *common = editor("temperatureChannelCommonParamsPageChannel%1");
+        auto *maxOutput = editors.last();
+        require(common && common->rect().contains(QRect(maxOutput->mapTo(common, QPoint()), maxOutput->size())),
+                "The bottom TEC103 maximum output editor fits inside the common parameters page");
+        auto *mode = page->findChild<QComboBox *>("temperatureControllerModeCombo");
+        auto *view = page->findChild<QToolButton *>("tec103PlotViewToggle");
+        require(mode && mode->isVisible() && view && view->isVisible() && mode->parentWidget() == view->parentWidget() &&
+                    mode->geometry().right() < view->geometry().left() &&
+                    std::abs(mode->geometry().center().y() - view->geometry().center().y()) <= 1,
+                "TEC103 plot toggle sits beside the controller mode combo");
         p->setFocus(Qt::TabFocusReason);
         QCoreApplication::processEvents();
         require(p->hasFocus() && sameHeight(), "Focusing P preserves the TEC103 PID editor heights");

@@ -79,7 +79,8 @@ void testTec103PlotViews()
     require(remotePlot->isVisible() && plot->geometry().right() < remotePlot->geometry().left() &&
                 std::abs(plot->width() - remotePlot->width()) <= 1 &&
                 plot->geometry().top() == remotePlot->geometry().top() &&
-                plot->geometry().height() == singleBounds.height() &&
+                plot->height() == remotePlot->height() &&
+                plot->geometry().top() > singleBounds.top() && plot->geometry().bottom() == singleBounds.bottom() &&
                 plot->property("sampleCount").toInt() == 2 && remotePlot->property("sampleCount").toInt() == 1,
             "TEC103 shows independent in situ (left) and remote (right) histories");
     viewToggle->click();
