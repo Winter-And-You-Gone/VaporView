@@ -1,5 +1,4 @@
 #include "MapLanguage.h"
-#include "CesiumTerrain.h"
 #include "map3d/Map3DWindow.h"
 
 #include "ground/widgets/CustomTitleBar.h"
@@ -1707,7 +1706,7 @@ void Map3DWindow::setLayerVisible(Map3DLayer layer, bool visible, bool announce)
     {
         view_->setLayerVisible(layer, visible);
         if (visible && (layer == Map3DLayer::RoadNetwork || layer == Map3DLayer::Hydrography
-                        || (layer == Map3DLayer::DigitalElevation && !Detail::configuredCesiumToken().isEmpty()))
+                        || layer == Map3DLayer::DigitalElevation)
             && map_selection_.mode == MapDataMode::LocalGridOnly && !view_->hasEarthMap()
             && view_->isRenderingStarted() && !VaporView::settingsWritesSuspended() && view_->loadOnlineGlobe())
         {
@@ -2353,7 +2352,7 @@ void Map3DWindow::loadInitialEarthFile()
     {
         if (view_ && startupSelection.mode == MapDataMode::LocalGridOnly
             && (layerVisible(Map3DLayer::RoadNetwork) || layerVisible(Map3DLayer::Hydrography)
-                || (layerVisible(Map3DLayer::DigitalElevation) && !Detail::configuredCesiumToken().isEmpty()))
+                || layerVisible(Map3DLayer::DigitalElevation))
             && (view_->hasEarthMap() || view_->loadOnlineGlobe()))
         {
             latest_earth_load_ = view_->earthLoadDiagnostics();
@@ -3601,12 +3600,14 @@ void Map3DWindow::setMapSelection(const MapDataSelection& selection)
             diagnostics.selectedBaseModeKey = MapDataManager::modeKey(map_selection_.mode);
         }
     }
-    if (view_ && view_->earthLoadDiagnostics().cesiumTerrainConfigured)
+    if (view_ && view_->earthLoadDiagnostics().onlineCopernicusConfigured)
     {
         auto& diagnostics = map_selection_.diagnostics;
         diagnostics.selectedDemLayerAvailable = true;
         diagnostics.selectedElevationSource = view_->earthLoadDiagnostics().openElevationLayerName;
-        if (diagnostics.selectedElevationSource != QStringLiteral("Cesium World Terrain"))
+        if (diagnostics.selectedElevationSource != QStringLiteral("Online Copernicus GLO-30"))
+            diagnostics.selectedElevationSource += QStringLiteral(" → Online Copernicus GLO-30");
+        if (view_->earthLoadDiagnostics().cesiumTerrainConfigured)
             diagnostics.selectedElevationSource += QStringLiteral(" → Cesium World Terrain");
     }
     refreshSatelliteImageryMenu();

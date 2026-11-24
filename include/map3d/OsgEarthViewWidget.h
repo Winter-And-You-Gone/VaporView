@@ -86,6 +86,7 @@ struct EarthLoadDiagnostics {
     bool usedTexturedFallback = false;
     bool foundMapNode = false;
     bool onlineOsmAvailable = false;
+    bool onlineCopernicusConfigured = false;
     bool cesiumTerrainConfigured = false;
     int layerCount = 0;
     int openLayerCount = 0;

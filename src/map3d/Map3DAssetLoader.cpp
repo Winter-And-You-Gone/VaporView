@@ -1,5 +1,6 @@
 #include "MapLanguage.h"
 #include "CesiumTerrain.h"
+#include "OnlineCopernicusLayer.h"
 #include "Map3DAssetLoader.h"
 #include "Map3DRuntime.h"
 #include "map3d/MapDataManager.h"
@@ -205,9 +206,11 @@ void configureBuiltInTerrain(osgEarth::Map* map, EarthLoadDiagnostics& diagnosti
     map->getLayers(layers);
     for (const auto& layer : layers)
         if (layer->isOpen()) diagnostics.openElevationLayerName = QString::fromStdString(layer->getName());
+    map->insertLayer(new OnlineCopernicusLayer, 0);
+    if (diagnostics.openElevationLayerName.isEmpty())
+        diagnostics.openElevationLayerName = QString::fromLatin1(OnlineCopernicusLayer::name);
+    diagnostics.onlineCopernicusConfigured = true;
     diagnostics.cesiumTerrainConfigured = addCesiumTerrainFallback(map);
-    if (diagnostics.cesiumTerrainConfigured && diagnostics.openElevationLayerName.isEmpty())
-        diagnostics.openElevationLayerName = QStringLiteral("Cesium World Terrain");
 }
 
 EarthAssetLoadResult loadEarthAsset(const QString& earthPath)

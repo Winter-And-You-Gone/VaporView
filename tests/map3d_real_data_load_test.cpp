@@ -119,8 +119,11 @@ void checkHttpCache()
             QStringLiteral("changed tile replaced after revalidation"));
 }
 
-void checkLiveTerrain(const QString& earth)
+void checkLiveTerrain(const QString& earth, bool blockCopernicus)
 {
+    // Only GDAL's remote file reader is affected. The local DEM and ion's Qt
+    // HTTP transport remain available for the full elevation-stack test.
+    if (blockCopernicus) qputenv("CPL_VSIL_CURL_ALLOWED_EXTENSIONS", ".disabled");
     const QUrl proxy(qEnvironmentVariable("HTTPS_PROXY"));
     if (!proxy.host().isEmpty())
         QNetworkProxy::setApplicationProxy(QNetworkProxy(QNetworkProxy::HttpProxy, proxy.host(), proxy.port(8080)));
@@ -129,8 +132,9 @@ void checkLiveTerrain(const QString& earth)
     auto* map = scene.mapNode->getMap();
     osgEarth::ElevationLayerVector layers;
     map->getLayers(layers);
-    require(layers.size() >= 2 && layers.front()->getName() == "Cesium World Terrain",
-            QStringLiteral("local heights precede Cesium in sampling order"));
+    require(layers.size() >= 3 && layers.front()->getName() == "Cesium World Terrain"
+                && layers[1]->getName() == "Online Copernicus GLO-30",
+            QStringLiteral("sampling order is local, online Copernicus, then Cesium"));
     // An entire tile inside the Xihu DEM must resolve without contacting ion.
     const auto sample = [&](double lon, double lat) {
         const auto key = map->getProfile()->createTileKey(lon, lat, 12);
@@ -139,15 +143,22 @@ void checkLiveTerrain(const QString& earth)
         std::fill(hf->getHeightList().begin(), hf->getHeightList().end(), NO_DATA_VALUE);
         require(layers.populateHeightField(hf, nullptr, key, nullptr, osgEarth::INTERP_BILINEAR, nullptr),
                 QStringLiteral("terrain tile has data"));
-        return hf->getHeight(32, 32);
+        return hf;
     };
-    const float xihu = sample(120.07, 30.2);
+    const float xihu = sample(120.07, 30.2)->getHeight(32, 32);
     require(xihu > 0 && VaporView::Map3D::Detail::cesiumTerrainCredit(map, false).isEmpty(),
             QStringLiteral("local DEM used before ion authentication"));
-    const float mountain = sample(86.925, 27.99);
-    require(mountain > 4000 && !VaporView::Map3D::Detail::cesiumTerrainCredit(map, false).isEmpty(),
-            QStringLiteral("online Himalayan terrain decoded outside the installed DEM"));
-    std::cout << "Local and online tile center heights: " << xihu << ", " << mountain << " m\n";
+    // This Himalayan tile straddles the boundary between two one-degree COGs.
+    const auto mountainTile = sample(86.925, 28.0);
+    const auto& heights = mountainTile->getHeightList();
+    const float mountain = mountainTile->getHeight(32, 32);
+    const bool usedCesium = !VaporView::Map3D::Detail::cesiumTerrainCredit(map, false).isEmpty();
+    std::cout << "Local and online tile center heights: " << xihu << ", " << mountain
+              << " m; tile minimum " << *std::min_element(heights.begin(), heights.end())
+              << " m; Cesium used " << usedCesium << std::endl;
+    require(*std::min_element(heights.begin(), heights.end()) > 4000 && usedCesium == blockCopernicus,
+            blockCopernicus ? QStringLiteral("Cesium supplies terrain when online GLO-30 is unavailable")
+                            : QStringLiteral("online GLO-30 supplies Himalayan terrain before Cesium"));
 }
 
 } // namespace
@@ -156,8 +167,10 @@ int main(int argc, char** argv)
 {
     QTemporaryDir cacheDir;
     require(cacheDir.isValid(), QStringLiteral("isolated map cache directory"));
-    const bool liveTerrain = argc == 2 && QByteArray(argv[1]) == "--cesium-live";
-    if (!liveTerrain || !qEnvironmentVariableIsSet("OSGEARTH_CACHE_PATH"))
+    const QByteArray mode = argc == 2 ? QByteArray(argv[1]) : QByteArray();
+    const bool blockCopernicus = mode == "--cesium-live";
+    const bool liveTerrain = blockCopernicus || mode == "--copernicus-live";
+    if (mode != "--copernicus-live" || !qEnvironmentVariableIsSet("OSGEARTH_CACHE_PATH"))
         qputenv("OSGEARTH_CACHE_PATH", cacheDir.path().toUtf8());
     QApplication app(argc, argv);
 
@@ -169,7 +182,7 @@ int main(int argc, char** argv)
 
     if (liveTerrain)
     {
-        checkLiveTerrain(earthPath);
+        checkLiveTerrain(earthPath, blockCopernicus);
         return 0;
     }
     checkHttpCache();

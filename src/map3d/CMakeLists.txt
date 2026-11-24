@@ -73,6 +73,7 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
             Qt6::Concurrent
             ${OSGEARTH_TARGET}
             ${OPENSCENEGRAPH_LIBRARIES}
+        PRIVATE GDAL::GDAL
     )
 
     if(WIN32)
