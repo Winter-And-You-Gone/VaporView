@@ -1217,6 +1217,10 @@ void MainWindow::setupFpgaControlPage()
             && state_->fpga_session_.remoteStatus.value("ready").toBool()
             && std::chrono::steady_clock::now() - state_->fpga_session_.statusTime < std::chrono::seconds(4))
         {
+            if (reading.validity.structure && reading.validity.crc) {
+                if (reading.validity.deviceOnline) state_->home_online_fpga_sensors_.insert(reading.source);
+                else state_->home_online_fpga_sensors_.remove(reading.source);
+            }
             page->updateSensor(reading);
             updateInternalEnvironment(reading);
         }
@@ -1406,6 +1410,10 @@ void MainWindow::receiveFpgaMeasurements(const VaporView::FpgaSensor::AdaptedMea
 {
     if ((isRemoteSkyMode()&&!isUiTestMode()) || (isUiTestMode()&&!isFpgaRelayPath())) return;
     const auto &r = m.reading;
+    if (r.validity.structure && r.validity.crc) {
+        if (r.validity.deviceOnline) state_->home_online_fpga_sensors_.insert(r.source);
+        else state_->home_online_fpga_sensors_.remove(r.source);
+    }
     state_->fpga_sensor_rates_[r.source] = m.sampleRateHz;
     if(!isUiTestMode())state_->fpga_page_->updateSensor(r);
     const bool valid = r.validity.structure && r.validity.crc && r.validity.deviceOnline && r.validity.measurement;
@@ -1587,6 +1595,7 @@ void MainWindow::invalidateFpgaMeasurements()
     state_->fpga_home_raw_start_pending_ = false;
     state_->fpga_sensor_rates_.clear();state_->fpga_wave_times_.clear();
     state_->fpga_sensor_times_.clear();
+    state_->home_online_fpga_sensors_.clear();
     state_->home_device_data_state_.clear();
     { const std::lock_guard<std::mutex> lock(state_->fpga_snapshot_mutex_); state_->fpga_recording_snapshot_ = VaporView::Ground::Session::GroundSensorSnapshot{}; }
     state_->fpga_epsilon_status_fresh_=false;

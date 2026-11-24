@@ -5397,7 +5397,7 @@ void MainWindow::setupConfigPanel()
         button->setFocusPolicy(Qt::TabFocus);
         connect(button, &QToolButton::clicked, this, [this, device]() {
             triggerHomeDeviceAction(device == VaporView::SkyDeviceId::TemperatureController && isFpgaRelayPath()
-                ? VaporView::SkyDeviceId::Tec103InSitu : device);
+                ? VaporView::SkyDeviceId::Tec103InSitu : device, true);
         });
         return button;
     };

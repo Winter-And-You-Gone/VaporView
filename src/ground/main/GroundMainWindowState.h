@@ -445,7 +445,7 @@ struct MainWindowState
         bool receivedData = false;
     };
     QHash<VaporView::SkyDeviceId, HomeDeviceDataState> home_device_data_state_;
-    qint64 home_motion_connected_since_ms_ = 0;
+    QSet<quint16> home_online_fpga_sensors_;
     QMap<quint16, std::chrono::steady_clock::time_point> fpga_sensor_times_;
     qint64 local_ai8_sample_ms_ = 0;
     QLabel *log_inline_title_lbl_;

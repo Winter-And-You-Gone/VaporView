@@ -412,7 +412,8 @@ private:
     void updateHomeFpgaWaveActions();
     void requestHomeFpgaWaveAction(bool raw, bool enabled);
     void finishHomeFpgaRawStart();
-    void triggerHomeDeviceAction(VaporView::SkyDeviceId device);
+    VaporView::DeviceState homeOverviewState(VaporView::SkyDeviceId device, VaporView::DeviceState state) const;
+    void triggerHomeDeviceAction(VaporView::SkyDeviceId device, bool overview = false);
     void startHomeDeviceActionSpinner(VaporView::SkyDeviceId device);
     bool homeDeviceActionSpinnerActive(VaporView::SkyDeviceId device, qint64 nowMs) const;
     int homeDeviceActionSpinnerDegrees(VaporView::SkyDeviceId device, qint64 nowMs) const;

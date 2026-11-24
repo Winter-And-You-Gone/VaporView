@@ -894,8 +894,16 @@ static void remoteHomeActions()
     connectAck.command_seq=commandSequence;send(MsgType::CommandAck,TelemetryCodec::serializeCommandAck(connectAck));
     connected.request_id=requests.last().request_id;
     send(MsgType::DeviceOperationResponse,TelemetryCodec::serializeDeviceOperationResponse(connected));
-    require(waitUntil([&]{return epsilon->isEnabled()&&epsilon->property("state")=="connected";}),
-        "register readback enables home controls without any valid measurement packets");
+    require(waitUntil([&]{return epsilon->isEnabled()&&epsilon->property("state")=="disconnected";}),
+        "an enabled FPGA channel without an online sensor offers Connect");
+    const int beforeRetry = requests.size();
+    epsilon->click();
+    require(waitUntil([&]{return requests.size() == beforeRetry + 1;}) &&
+        FpgaRemote::parseControl(requests.last().payload,enableControl) && enableControl.value("enabled").toBool(),
+        "clicking an offline sensor with its run bit set requests enable");
+    connectAck.command_seq=commandSequence;send(MsgType::CommandAck,TelemetryCodec::serializeCommandAck(connectAck));
+    connected.request_id=requests.last().request_id;
+    send(MsgType::DeviceOperationResponse,TelemetryCodec::serializeDeviceOperationResponse(connected));
     require(!homeAction(window,QStringLiteral("原位 TEC103"))->isEnabled(),"unsupported RD105 remains unavailable");
     auto *pressureRate=window.findChild<PtbPanel*>()->findChild<QLabel*>("rateLabel");
     auto *humidityRate=window.findChild<Hc2aPanel*>()->findChild<QLabel*>("rateLabel");
@@ -982,7 +990,7 @@ static void remoteHomeActions()
     const int beforeSelection=requests.size();
     epsilonSelection->click();processFor(50);
     require(!epsilonSelection->isChecked()&&requests.size()==beforeSelection
-        &&homeAction(window,"EPSILON")->property("connected").toBool(),
+        &&!homeAction(window,"EPSILON")->isEnabled(),
         "remote selection changes persist without sending hardware commands or stopping the channel");
     send(MsgType::FpgaStatus,FpgaRemote::encodeStatus(status));processFor(50);
     require(!epsilonSelection->isChecked(),"remote hardware readback never overwrites a cleared selection");
@@ -991,6 +999,11 @@ static void remoteHomeActions()
         &&deviceWaveRate(window)->toolTip().contains("2000"),"remote ADC and DLIA rates use actual register readback");
     for (int index=0;index<names.size();++index) {
         auto *button=homeAction(window,names[index]);
+        if (sources[index]) {
+            FpgaSensor::Reading reading;reading.source=sources[index];reading.validity={true,true,true,true};
+            send(MsgType::FpgaSensor,FpgaRemote::encodeSensor(reading,1));
+            require(waitUntil([&]{return button->property("connected").toBool();}),"online sensor offers Disconnect");
+        }
         for (bool enabled:{false,true}) {
             if(sources[index]!=0x42)refreshNavigation();
             const int changesBefore=navigationChanges;
@@ -2525,7 +2538,7 @@ static void directInternalEnvironmentRouting()
     require(waveCapsule, "Home waveform capsule exists");
     const auto hasState = [&](const QString &state) { return waveCapsule->property("state") == state; };
     MainWindowRtcmTestAccess::refreshCapsules(window);
-    require(hasState(QStringLiteral("connected")), "Waveform has time to deliver its first frame");
+    require(hasState(QStringLiteral("warning")), "Connected waveform warns until its first valid frame");
     const int normalWidth = waveCapsule->minimumSizeHint().width();
     auto &history = MainWindowRtcmTestAccess::state(window).home_device_data_state_[SkyDeviceId::WaveTcp];
     history.connectedSinceMs -= 4000;

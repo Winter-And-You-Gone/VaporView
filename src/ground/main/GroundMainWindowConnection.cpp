@@ -323,10 +323,22 @@ VaporView::DeviceState MainWindow::homeDeviceActionState(VaporView::SkyDeviceId 
     return VaporView::DeviceState::Disconnected;
 }
 
-void MainWindow::triggerHomeDeviceAction(VaporView::SkyDeviceId device)
+VaporView::DeviceState MainWindow::homeOverviewState(VaporView::SkyDeviceId device, VaporView::DeviceState state) const
+{
+    using VaporView::DeviceState;
+    if (!isFpgaRelayPath()) return state;
+    if (!homeFpgaDeviceSelected(device)) return DeviceState::Disabled;
+    const auto source = homeFpgaSensorSource(device);
+    if (state == DeviceState::Connected && source >= 0x40 && source <= 0x46 &&
+        !state_->home_online_fpga_sensors_.contains(source)) return DeviceState::Disconnected;
+    return state;
+}
+
+void MainWindow::triggerHomeDeviceAction(VaporView::SkyDeviceId device, bool overview)
 {
     if (isRemoteSkyMode() && (state_->remote_config_session_.applying || state_->remote_config_session_.reading)) return;
-    const VaporView::DeviceState state = homeDeviceActionState(device);
+    const auto actionState = homeDeviceActionState(device);
+    const auto state = overview ? homeOverviewState(device, actionState) : actionState;
     if (state == VaporView::DeviceState::Disabled ||
         state == VaporView::DeviceState::Connecting ||
         state == VaporView::DeviceState::Reconnecting)
@@ -531,19 +543,10 @@ bool MainWindow::updateHomeMotionDeviceControls(qint64 nowMs, bool animationOnly
         : motionState.busy ? (state_->is_english_ ? QStringLiteral("Connecting") : QStringLiteral("连接中"))
         : ready ? (state_->is_english_ ? QStringLiteral("Ready to connect") : QStringLiteral("可以连接"))
         : (state_->is_english_ ? QStringLiteral("Not ready") : QStringLiteral("未就绪"));
-    auto &connectedSinceMs = state_->home_motion_connected_since_ms_;
-    bool warning = false;
-    if (!connected)
-        connectedSinceMs = 0;
-    else
-    {
-        if (connectedSinceMs == 0)
-            connectedSinceMs = nowMs;
-        warning = !motionState.valid[0] && nowMs - connectedSinceMs >= 3000;
-        if (warning)
-            statusText = state_->is_english_ ? QStringLiteral("Connected; no valid angle feedback")
-                                             : QStringLiteral("已连接；未收到有效角度反馈");
-    }
+    const bool warning = connected && !motionState.valid[0];
+    if (warning)
+        statusText = state_->is_english_ ? QStringLiteral("Connected; no valid angle feedback")
+                                         : QStringLiteral("已连接；未收到有效角度反馈");
     if (auto *label = state_->home_motion_status_lbl_)
     {
         setLabelTextIfChanged(label, state_->is_english_ ? QStringLiteral("EM-FWC3 Motor") : QStringLiteral("EM-FWC3电机"));
@@ -750,8 +753,7 @@ QString MainWindow::homeDeviceMeasurementWarning(VaporView::SkyDeviceId device, 
     }
     if (!fault.isEmpty())
         return fault;
-    const bool laserController = fpga && device == SkyDeviceId::TemperatureController;
-    if (valid || (!laserController && nowMs - history.connectedSinceMs < timeoutMs))
+    if (valid)
         return {};
     if (history.receivedData)
         return english ? QStringLiteral("Measurement data timed out") : QStringLiteral("测量数据超时");
@@ -780,8 +782,8 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         }
         const VaporView::DeviceState actionState = homeDeviceActionState(device);
         // A serialized FPGA command locks actions without changing channel connectivity.
-        const VaporView::DeviceState state = isFpgaRelayPath() && actionState == VaporView::DeviceState::Disabled
-            ? homeFpgaDeviceState(device) : actionState;
+        const auto state = homeOverviewState(device, isFpgaRelayPath() && actionState == VaporView::DeviceState::Disabled
+            ? homeFpgaDeviceState(device) : actionState);
         const bool connected = state == VaporView::DeviceState::Connected;
         const bool connecting = state == VaporView::DeviceState::Connecting || state == VaporView::DeviceState::Reconnecting;
         const bool spinnerActive = connecting || homeDeviceActionSpinnerActive(device, nowMs);
@@ -819,12 +821,28 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         {
             state_->home_device_data_state_.remove(device);
         }
+        const bool fpga = isFpgaRelayPath();
+        const bool channelEnabled = fpga ? homeFpgaDeviceSelected(device)
+            : !isRemoteSkyMode() && !isUiTestMode() ? localDeviceEnabled(device)
+            : state != VaporView::DeviceState::Disabled;
+        const bool displayConnected = channelEnabled && connected;
+        QString displayState;
+        if (!channelEnabled) {
+            displayState = QStringLiteral("disabled");
+            stateText = state_->is_english_ ? QStringLiteral("Channel disabled") : QStringLiteral("通道未启用");
+        } else if (!displayConnected) {
+            displayState = QStringLiteral("disconnected");
+            if (!connecting)
+                stateText = state_->is_english_ ? QStringLiteral("Disconnected") : QStringLiteral("未连接");
+        } else {
+            displayState = warning.isEmpty() ? QStringLiteral("connected") : QStringLiteral("warning");
+        }
         const QString deviceName = homeDeviceDisplayName(device, state_->is_english_);
         setLabelTextIfChanged(label, deviceName);
         bool labelStyleChanged = false;
-        labelStyleChanged |= setDynamicPropertyIfChanged(label, "connected", connected);
+        labelStyleChanged |= setDynamicPropertyIfChanged(label, "connected", displayConnected);
         labelStyleChanged |= setDynamicPropertyIfChanged(label, "state",
-            warning.isEmpty() ? stateKey : QStringLiteral("warning"));
+            displayState);
         const QString tooltip = state_->is_english_ ? QStringLiteral("%1 status: %2").arg(deviceName, stateText)
                                                     : QStringLiteral("%1状态：%2").arg(deviceName, stateText);
         setWidgetToolTipIfChanged(label, tooltip.toHtmlEscaped());
@@ -843,7 +861,7 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         }
         const bool remoteMode = isRemoteSkyMode();
         const bool linkOpen = state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen();
-        const bool enabled = actionState == VaporView::DeviceState::Disabled || spinnerActive
+        const bool enabled = !channelEnabled || actionState == VaporView::DeviceState::Disabled || spinnerActive
             ? false
             : isFpgaRelayPath() || isUiTestMode()
                 ? true
