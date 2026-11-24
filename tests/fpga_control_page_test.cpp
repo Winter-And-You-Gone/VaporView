@@ -582,6 +582,21 @@ int main(int argc,char **argv) {
     for(qint32 value:{0,0,100,200})appendWord(zeroIq.pointBytes,value);
     page.updateWaveform(zeroIq);require(std::isnan(cyclePeak),"zero IQ reference cannot produce a normalized peak");
     page.updateWaveform(wave);
+    {
+        FpgaControlPage dacPage;
+        dacPage.setLanguage(true);
+        dacPage.setConnectionState(true,false);
+        auto *captureStatus = dacPage.findChild<QLabel*>("fpgaCaptureStatus");
+        dacPage.setHardwareValues({{4,1},{0x3004,1},{0x3008,0x1b},{0x3104,0},{0x3108,0x12}});
+        require(captureStatus->text().contains("DAC1: on and ready") && captureStatus->text().contains("DAC2: off"),
+                "capture status reports each DAC from its hardware readback");
+        dacPage.setHardwareValues({{4,0},{0x3004,1},{0x3008,0x13},{0x3104,1},{0x3108,0x93}});
+        require(captureStatus->text().contains("DAC1: on, not ready") && captureStatus->text().contains("DAC2: fault"),
+                "capture status distinguishes global disable and DAC fault");
+        dacPage.setTransportConnected(false);
+        dacPage.setConnectionState(true,false);
+        require(captureStatus->text().contains("DAC1: awaiting readback"), "reconnection needs fresh DAC state");
+    }
     auto volts=page.configuration();volts.frontend[0].calibrated=true;volts.frontend[0].voltsPerCode=0.001;page.setConfiguration(volts);
     VaporView::FpgaWave::CompletedStream adc;adc.source=0x20;adc.message=0x1000;adc.bytesPerPoint=4;adc.totalPoints=3;adc.rate=1000000;adc.complete=true;
     for(qint32 value:{0,100,200})appendWord(adc.pointBytes,value);page.updateWaveform(adc);

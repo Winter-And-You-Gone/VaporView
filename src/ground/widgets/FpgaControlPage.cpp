@@ -977,15 +977,26 @@ void FpgaControlPage::updateCaptureStatus(){
     if(!captureStatus_)return;
     if(!connected_) {
         captureStatus_->setText(text("采集状态：未连接","Capture: offline"));
+        captureStatus_->setToolTip(captureStatus_->text());
         return;
     }
     bool acquiring=true;
     for(quint32 control:{0x4004u,0x4104u,0x5004u,0x5104u})
         acquiring &= hardwareValues_.contains(control) && (hardwareValues_.value(control)&1);
     const bool raw=rawEnabled_.value(0x20,false)||rawEnabled_.value(0x21,false);
-    captureStatus_->setText(text("H1/H2：%1 · 原始波形：%2","H1/H2: %1 · Raw waveform: %2")
+    const auto dacState = [this](quint32 base) {
+        if (!ready_ || !hardwareValues_.contains(base+4) || !hardwareValues_.contains(base+8))
+            return text("等待读回", "awaiting readback");
+        const quint32 status = hardwareValues_.value(base+8);
+        if (status & 0x80) return text("故障", "fault");
+        if (!(hardwareValues_.value(base+4) & 1)) return text("已关闭", "off");
+        if (!hardwareValues_.contains(4)) return text("已开启，就绪未知", "on, readiness unknown");
+        const bool operational = (hardwareValues_.value(4) & 1) && (status & 7) == 3;
+        return operational ? text("已开启并就绪", "on and ready") : text("已开启，未就绪", "on, not ready");
+    };
+    captureStatus_->setText(text("H1/H2：%1 · 原始波形：%2\nDAC1：%3 · DAC2：%4", "H1/H2: %1 · Raw waveform: %2\nDAC1: %3 · DAC2: %4")
         .arg(acquiring?text("运行中","running"):text("已停止","stopped"))
-        .arg(raw?text("上传中","uploading"):text("已停止","stopped")));
+        .arg(raw?text("上传中","uploading"):text("已停止","stopped")).arg(dacState(0x3000), dacState(0x3100)));
     captureStatus_->setToolTip(captureStatus_->text());
 }
 void FpgaControlPage::setExtensions(quint32 bits) {
@@ -1071,6 +1082,7 @@ void FpgaControlPage::setTransportConnected(bool connected){
             endMotorEstimate("连接已断开，运动状态未确认。","Disconnected; motion state is unconfirmed.");
         for(auto it=latestReadings_.cbegin();it!=latestReadings_.cend();++it)historicalReadings_.insert(it.key());
         rawEnabled_.clear();
+        for (quint32 address : {0x3004u,0x3008u,0x3104u,0x3108u}) hardwareValues_.remove(address);
         const auto sources = plots_.keys();
         for(const quint16 source : sources) {
             clearWaveformDisplay(source, "无实时波形 · FPGA 连接已断开", "No live waveform · FPGA disconnected");
