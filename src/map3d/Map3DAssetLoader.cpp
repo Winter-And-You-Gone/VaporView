@@ -1,4 +1,5 @@
 #include "MapLanguage.h"
+#include "CesiumTerrain.h"
 #include "Map3DAssetLoader.h"
 #include "Map3DRuntime.h"
 #include "map3d/MapDataManager.h"
@@ -185,6 +186,30 @@ QString localPayloadPath(const QString& tilesetDirectory, QString uri)
 
 } // namespace
 
+void configureBuiltInTerrain(osgEarth::Map* map, EarthLoadDiagnostics& diagnostics)
+{
+    const auto local = MapDataManager().selectBestAvailableMap(MapDataScanMode::LightweightStartup).diagnostics;
+    auto* installed = map->getLayer<osgEarth::ElevationLayer>();
+    const auto configuredName = installed ? QString::fromStdString(installed->getName()) : QString();
+    const auto addLocal = [&](const QString& path, const char* name, bool highestPriority) {
+        if (!QFileInfo(path).isFile() || configuredName.contains(name, Qt::CaseInsensitive)) return;
+        osg::ref_ptr<osgEarth::GDALElevationLayer> layer = new osgEarth::GDALElevationLayer;
+        layer->setName(name);
+        layer->setURL(osgEarth::URI(QDir::fromNativeSeparators(path).toStdString()));
+        if (highestPriority) map->addLayer(layer.get());
+        else map->insertLayer(layer.get(), 0);
+    };
+    addLocal(local.srtmDemVrtPath, "SRTM", false);
+    addLocal(local.copernicusDemVrtPath, "Copernicus DEM GLO-30", true);
+    osgEarth::ElevationLayerVector layers;
+    map->getLayers(layers);
+    for (const auto& layer : layers)
+        if (layer->isOpen()) diagnostics.openElevationLayerName = QString::fromStdString(layer->getName());
+    diagnostics.cesiumTerrainConfigured = addCesiumTerrainFallback(map);
+    if (diagnostics.cesiumTerrainConfigured && diagnostics.openElevationLayerName.isEmpty())
+        diagnostics.openElevationLayerName = QStringLiteral("Cesium World Terrain");
+}
+
 EarthAssetLoadResult loadEarthAsset(const QString& earthPath)
 {
     EarthAssetLoadResult result;
@@ -219,34 +244,11 @@ EarthAssetLoadResult loadEarthAsset(const QString& earthPath)
         result.node = nullptr;
         return result;
     }
-    // Local imagery templates only contain imagery. Restore the best available
-    // DEM before opening the scene so switching imagery cannot flatten terrain.
     MapDataManager mapDataManager;
-    const bool localImageryScene = mapDataManager.isLocalImageryEarthFile(earthPath);
-    result.diagnostics.onlineOsmAvailable = mapDataManager.isBuiltInEarthFile(earthPath) || localImageryScene;
-    if (result.mapNode->getMap() && localImageryScene)
-    {
-        osgEarth::LayerVector layers;
-        result.mapNode->getMap()->getLayers(layers);
-        const bool hasElevation = std::any_of(layers.cbegin(), layers.cend(), [](const auto& layer) {
-            return dynamic_cast<osgEarth::ElevationLayer*>(layer.get()) != nullptr;
-        });
-        if (!hasElevation)
-        {
-            const auto diagnostics = mapDataManager.selectBestAvailableMap(
-                MapDataScanMode::LightweightStartup).diagnostics;
-            const bool copernicus = diagnostics.copernicusDemAvailable;
-            const QString demPath = copernicus ? diagnostics.copernicusDemVrtPath
-                                              : diagnostics.srtmDemVrtPath;
-            if ((copernicus || diagnostics.srtmDemAvailable) && QFileInfo(demPath).isFile())
-            {
-                osg::ref_ptr<osgEarth::GDALElevationLayer> elevation = new osgEarth::GDALElevationLayer;
-                elevation->setName(copernicus ? "Copernicus DEM GLO-30" : "SRTM");
-                elevation->setURL(osgEarth::URI(QDir::fromNativeSeparators(demPath).toStdString()));
-                result.mapNode->getMap()->addLayer(elevation.get());
-            }
-        }
-    }
+    result.diagnostics.onlineOsmAvailable = mapDataManager.isBuiltInEarthFile(earthPath)
+        || mapDataManager.isLocalImageryEarthFile(earthPath);
+    if (result.mapNode->getMap() && result.diagnostics.onlineOsmAvailable)
+        configureBuiltInTerrain(result.mapNode->getMap(), result.diagnostics);
     result.mapNode->openMapLayers();
     if (result.mapNode->getMap())
     {

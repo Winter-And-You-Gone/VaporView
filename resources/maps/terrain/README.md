@@ -14,7 +14,9 @@ resources/maps/terrain/
     srtm.vrt
 ```
 
-VaporView prefers Copernicus DEM GLO-30 GeoTIFF tiles. SRTM GeoTIFF tiles are the fallback when Copernicus data is unavailable.
+The built-in 3D maps sample local Copernicus DEM GLO-30 first, then local SRTM. To fill the remaining gaps with Cesium World Terrain, set the environment variable `VAPORVIEW_CESIUM_ION_TOKEN` to an ion token with read access to asset 1 before starting VaporView. Windows installations also accept the current user's `VaporView/Map3D` setting `cesium/ion_token`.
+
+The first tile outside local coverage triggers ion authentication. The shared map HTTP disk cache keeps up to 256 MiB of responses and follows the server's expiration dates and validators. Opening the same area again can reuse fresh tiles after authentication. Offline deployments can install their own DEMs in the directories above.
 
 Build a VRT after placing GeoTIFF tiles:
 

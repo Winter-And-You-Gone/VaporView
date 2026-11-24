@@ -18,6 +18,8 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
     set(MAP3D_SOURCES
         ${CMAKE_SOURCE_DIR}/src/map3d/MapDataManager.cpp
         ${CMAKE_SOURCE_DIR}/src/map3d/Map3DAssetLoader.cpp
+        ${CMAKE_SOURCE_DIR}/src/map3d/MapHttp.cpp
+        ${CMAKE_SOURCE_DIR}/src/map3d/CesiumTerrain.cpp
         ${CMAKE_SOURCE_DIR}/src/map3d/Map3DDiagnosticsFormatter.cpp
         ${CMAKE_SOURCE_DIR}/src/map3d/Map3DRuntime.cpp
         ${CMAKE_SOURCE_DIR}/src/map3d/MapResourceDialog.cpp

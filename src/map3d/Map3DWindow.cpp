@@ -1,4 +1,5 @@
 #include "MapLanguage.h"
+#include "CesiumTerrain.h"
 #include "map3d/Map3DWindow.h"
 
 #include "ground/widgets/CustomTitleBar.h"
@@ -1357,6 +1358,10 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     osm_attribution_->setOpenExternalLinks(true);
     statusBar()->addPermanentWidget(osm_attribution_);
     osm_attribution_->hide();
+    cesium_attribution_ = new QLabel(this);
+    cesium_attribution_->setOpenExternalLinks(true);
+    statusBar()->addPermanentWidget(cesium_attribution_);
+    cesium_attribution_->hide();
     updateReplayUi();
     updateHeatLegend();
     if (isMap3DHeadlessTest())
@@ -1701,7 +1706,8 @@ void Map3DWindow::setLayerVisible(Map3DLayer layer, bool visible, bool announce)
     if (view_)
     {
         view_->setLayerVisible(layer, visible);
-        if (visible && (layer == Map3DLayer::RoadNetwork || layer == Map3DLayer::Hydrography)
+        if (visible && (layer == Map3DLayer::RoadNetwork || layer == Map3DLayer::Hydrography
+                        || (layer == Map3DLayer::DigitalElevation && !Detail::configuredCesiumToken().isEmpty()))
             && map_selection_.mode == MapDataMode::LocalGridOnly && !view_->hasEarthMap()
             && view_->isRenderingStarted() && !VaporView::settingsWritesSuspended() && view_->loadOnlineGlobe())
         {
@@ -2346,7 +2352,8 @@ void Map3DWindow::loadInitialEarthFile()
     if (!view_ || !QFileInfo(initialPath).isFile())
     {
         if (view_ && startupSelection.mode == MapDataMode::LocalGridOnly
-            && (layerVisible(Map3DLayer::RoadNetwork) || layerVisible(Map3DLayer::Hydrography))
+            && (layerVisible(Map3DLayer::RoadNetwork) || layerVisible(Map3DLayer::Hydrography)
+                || (layerVisible(Map3DLayer::DigitalElevation) && !Detail::configuredCesiumToken().isEmpty()))
             && (view_->hasEarthMap() || view_->loadOnlineGlobe()))
         {
             latest_earth_load_ = view_->earthLoadDiagnostics();
@@ -3594,6 +3601,14 @@ void Map3DWindow::setMapSelection(const MapDataSelection& selection)
             diagnostics.selectedBaseModeKey = MapDataManager::modeKey(map_selection_.mode);
         }
     }
+    if (view_ && view_->earthLoadDiagnostics().cesiumTerrainConfigured)
+    {
+        auto& diagnostics = map_selection_.diagnostics;
+        diagnostics.selectedDemLayerAvailable = true;
+        diagnostics.selectedElevationSource = view_->earthLoadDiagnostics().openElevationLayerName;
+        if (diagnostics.selectedElevationSource != QStringLiteral("Cesium World Terrain"))
+            diagnostics.selectedElevationSource += QStringLiteral(" → Cesium World Terrain");
+    }
     refreshSatelliteImageryMenu();
     if (local_3d_tiles_action_)
     {
@@ -3973,6 +3988,17 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool for
     if (view_ && view_->activeSatelliteImagerySource() == QStringLiteral("online:esri"))
         text.prepend(QStringLiteral("Esri, Vantor, Earthstar Geographics, GIS User Community | "));
     status_label_->setText(text);
+    if (cesium_attribution_)
+    {
+        const QString credit = view_ && latest_earth_load_.cesiumTerrainConfigured
+            && layerVisible(Map3DLayer::DigitalElevation) ? view_->cesiumTerrainCredit(false) : QString();
+        if (credit != cesium_attribution_->text())
+        {
+            cesium_attribution_->setText(credit);
+            cesium_attribution_->setToolTip(view_ ? view_->cesiumTerrainCredit(true) : QString());
+        }
+        cesium_attribution_->setVisible(!credit.isEmpty());
+    }
     if (osm_attribution_)
         osm_attribution_->setVisible(view_ && latest_earth_load_.onlineOsmAvailable
             && (layerVisible(Map3DLayer::RoadNetwork) || layerVisible(Map3DLayer::Hydrography)));

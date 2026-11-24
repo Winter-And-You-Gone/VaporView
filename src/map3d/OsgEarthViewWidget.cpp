@@ -9,6 +9,7 @@
 #include "EarthProjectionProfile.h"
 #include "OpenAerialMapImageLayer.h"
 #include "OnlineOsmLayer.h"
+#include "CesiumTerrain.h"
 #include "TiandituImageLayer.h"
 #include <osgEarth/TerrainEngineNode>
 #include "Map3DRuntime.h"
@@ -1407,6 +1408,11 @@ void OsgEarthViewWidget::loadEarthFileAsync(const QString& earthPath,
     }));
 }
 
+QString OsgEarthViewWidget::cesiumTerrainCredit(bool collapsible) const
+{
+    return Detail::cesiumTerrainCredit(map_node_ ? map_node_->getMap() : nullptr, collapsible);
+}
+
 bool OsgEarthViewWidget::loadOnlineGlobe()
 {
     osg::ref_ptr<osgEarth::Map> map = new osgEarth::Map;
@@ -1421,6 +1427,7 @@ bool OsgEarthViewWidget::loadOnlineGlobe()
     EarthLoadDiagnostics diagnostics;
     diagnostics.attempted = diagnostics.loaded = diagnostics.foundMapNode = true;
     diagnostics.onlineOsmAvailable = true;
+    Detail::configureBuiltInTerrain(map.get(), diagnostics);
     return applyEarthLoad(diagnostics, globe, globe.get(), false, false);
 }
 

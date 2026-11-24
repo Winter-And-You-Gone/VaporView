@@ -1,7 +1,10 @@
 #include "test_settings_sandbox.h"
 #include "map3d/OsgEarthViewWidget.h"
 #include "../src/map3d/Map3DAssetLoader.h"
+#include "../src/map3d/CesiumTerrain.h"
+#include "../src/map3d/MapHttp.h"
 
+#include <osgEarth/ElevationLayer>
 #include <osgEarth/ElevationPool>
 #include <osgEarth/Map>
 #include <osgEarth/MapNode>
@@ -21,6 +24,9 @@
 #include <QKeyEvent>
 #include <QLabel>
 #include <QMouseEvent>
+#include <QNetworkProxy>
+#include <QTcpServer>
+#include <QTcpSocket>
 #include <QWheelEvent>
 #include <QString>
 #include <QThread>
@@ -31,6 +37,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <functional>
+#include <future>
 #include <limits>
 
 namespace
@@ -67,13 +74,91 @@ bool waitUntil(const std::function<bool()>& predicate, int timeoutMs)
     return predicate();
 }
 
+void checkHttpCache()
+{
+    QTcpServer server;
+    require(server.listen(QHostAddress::LocalHost), QStringLiteral("HTTP cache fixture listens"));
+    int requests = 0;
+    bool conditional = false;
+    QObject::connect(&server, &QTcpServer::newConnection, &server, [&] {
+        auto* socket = server.nextPendingConnection();
+        QObject::connect(socket, &QTcpSocket::readyRead, socket, [&, socket] {
+            if (!socket->peek(socket->bytesAvailable()).contains("\r\n\r\n")) return;
+            const QByteArray headers = socket->readAll().toLower();
+            conditional = headers.contains("if-none-match: \"one\"");
+            ++requests;
+            const bool fresh = headers.startsWith("get /fresh");
+            const bool unchanged = !fresh && requests == 3 && conditional;
+            QByteArray response = unchanged ? "HTTP/1.1 304 Not Modified\r\n" : "HTTP/1.1 200 OK\r\n";
+            response += fresh ? "Cache-Control: public, max-age=3600\r\n"
+                              : "Cache-Control: public\r\nExpires: Mon, 01 Jan 2001 00:00:00 GMT\r\n";
+            response += "Date: " + QLocale::c().toString(QDateTime::currentDateTimeUtc(),
+                QStringLiteral("ddd, dd MMM yyyy HH:mm:ss 'GMT'")).toLatin1() + "\r\n";
+            const QByteArray body = unchanged ? "" : requests <= 2 ? "first" : "updated";
+            response += requests <= 3 ? "ETag: \"one\"\r\n" : "ETag: \"two\"\r\n";
+            response += "Connection: close\r\nContent-Length: " + QByteArray::number(body.size());
+            socket->write(response + "\r\n\r\n" + body);
+            socket->disconnectFromHost();
+        });
+    });
+    const auto get = [&](const QString& path) {
+        QNetworkRequest request(QUrl(QStringLiteral("http://127.0.0.1:%1/%2").arg(server.serverPort()).arg(path)));
+        auto future = std::async(std::launch::async, [request] {
+            return VaporView::Map3D::Detail::mapHttpGet(request, nullptr);
+        });
+        require(waitUntil([&] { return future.wait_for(std::chrono::seconds(0)) == std::future_status::ready; }, 10000),
+                QStringLiteral("HTTP map request completed"));
+        return future.get();
+    };
+    require(get("fresh").body == "first" && get("fresh").fromCache && requests == 1,
+            QStringLiteral("fresh tile reused without an HTTP request"));
+    require(get("expired").body == "first", QStringLiteral("expired tile initially downloaded"));
+    require(get("expired").body == "first" && requests == 3 && conditional,
+            QStringLiteral("expired tile conditionally validated and reused after 304"));
+    require(get("expired").body == "updated" && requests == 4 && conditional,
+            QStringLiteral("changed tile replaced after revalidation"));
+}
+
+void checkLiveTerrain(const QString& earth)
+{
+    const QUrl proxy(qEnvironmentVariable("HTTPS_PROXY"));
+    if (!proxy.host().isEmpty())
+        QNetworkProxy::setApplicationProxy(QNetworkProxy(QNetworkProxy::HttpProxy, proxy.host(), proxy.port(8080)));
+    auto scene = VaporView::Map3D::Detail::loadEarthAsset(earth);
+    require(scene.mapNode && scene.diagnostics.cesiumTerrainConfigured, QStringLiteral("configured terrain stack"));
+    auto* map = scene.mapNode->getMap();
+    osgEarth::ElevationLayerVector layers;
+    map->getLayers(layers);
+    require(layers.size() >= 2 && layers.front()->getName() == "Cesium World Terrain",
+            QStringLiteral("local heights precede Cesium in sampling order"));
+    // An entire tile inside the Xihu DEM must resolve without contacting ion.
+    const auto sample = [&](double lon, double lat) {
+        const auto key = map->getProfile()->createTileKey(lon, lat, 12);
+        osg::ref_ptr<osg::HeightField> hf = new osg::HeightField;
+        hf->allocate(65, 65);
+        std::fill(hf->getHeightList().begin(), hf->getHeightList().end(), NO_DATA_VALUE);
+        require(layers.populateHeightField(hf, nullptr, key, nullptr, osgEarth::INTERP_BILINEAR, nullptr),
+                QStringLiteral("terrain tile has data"));
+        return hf->getHeight(32, 32);
+    };
+    const float xihu = sample(120.07, 30.2);
+    require(xihu > 0 && VaporView::Map3D::Detail::cesiumTerrainCredit(map, false).isEmpty(),
+            QStringLiteral("local DEM used before ion authentication"));
+    const float mountain = sample(86.925, 27.99);
+    require(mountain > 4000 && !VaporView::Map3D::Detail::cesiumTerrainCredit(map, false).isEmpty(),
+            QStringLiteral("online Himalayan terrain decoded outside the installed DEM"));
+    std::cout << "Local and online tile center heights: " << xihu << ", " << mountain << " m\n";
+}
+
 } // namespace
 
 int main(int argc, char** argv)
 {
     QTemporaryDir cacheDir;
     require(cacheDir.isValid(), QStringLiteral("isolated map cache directory"));
-    qputenv("OSGEARTH_CACHE_PATH", cacheDir.path().toUtf8());
+    const bool liveTerrain = argc == 2 && QByteArray(argv[1]) == "--cesium-live";
+    if (!liveTerrain || !qEnvironmentVariableIsSet("OSGEARTH_CACHE_PATH"))
+        qputenv("OSGEARTH_CACHE_PATH", cacheDir.path().toUtf8());
     QApplication app(argc, argv);
 
     const QDir sourceRoot(QStringLiteral(VAPORVIEW_SOURCE_DIR));
@@ -81,6 +166,13 @@ int main(int argc, char** argv)
         sourceRoot.filePath(QStringLiteral("resources/maps/vaporview_real3d_local.earth"));
     const QString tilesetPath =
         sourceRoot.filePath(QStringLiteral("resources/maps/tiles3d/local/tileset.json"));
+
+    if (liveTerrain)
+    {
+        checkLiveTerrain(earthPath);
+        return 0;
+    }
+    checkHttpCache();
 
     if (!QFileInfo::exists(earthPath) || !QFileInfo::exists(tilesetPath))
     {

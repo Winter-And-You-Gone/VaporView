@@ -8,6 +8,7 @@
 
 namespace osgEarth {
 class MapNode;
+class Map;
 }
 
 namespace VaporView::Map3D::Detail {
@@ -29,6 +30,7 @@ struct AircraftAssetLoadResult {
     osg::ref_ptr<osg::Node> node;
 };
 
+void configureBuiltInTerrain(osgEarth::Map* map, EarthLoadDiagnostics& diagnostics);
 EarthAssetLoadResult loadEarthAsset(const QString& earthPath);
 Local3DTilesAssetLoadResult loadLocal3DTilesAsset(const QString& tilesetPath);
 AircraftAssetLoadResult loadAircraftAsset(const QString& modelPath,

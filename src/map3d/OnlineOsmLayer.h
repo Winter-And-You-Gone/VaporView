@@ -11,10 +11,7 @@
 #include <osgEarth/Threading>
 
 #include <QDateTime>
-#include <QEventLoop>
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
-#include <QTimer>
+#include "MapHttp.h"
 #include <QString>
 #include <memory>
 
@@ -86,26 +83,9 @@ private:
         const osgEarth::URI uri(url);
         if (!uri.isRemote()) return uri.readString(options, progress);
 
-        // REX loads tiles on worker threads. Reuse each worker's TLS connection
-        // and use Qt's system proxy and certificate store, as the 2D viewer does.
-        thread_local QNetworkAccessManager network;
-        QNetworkRequest request(QUrl(QString::fromStdString(url)));
-        request.setRawHeader("User-Agent", "VaporView/1.0 (+https://github.com/Winter-And-You-Gone/VaporView)");
-        request.setTransferTimeout(8000);
-        std::unique_ptr<QNetworkReply> reply(network.get(request));
-        QEventLoop loop;
-        QObject::connect(reply.get(), &QNetworkReply::finished, &loop, &QEventLoop::quit);
-        QTimer cancelCheck;
-        if (progress)
-        {
-            QObject::connect(&cancelCheck, &QTimer::timeout, &loop, [&] {
-                if (progress->isCanceled()) reply->abort();
-            });
-            cancelCheck.start(100);
-        }
-        if (!reply->isFinished()) loop.exec(QEventLoop::ExcludeUserInputEvents);
-        if (reply->error() != QNetworkReply::NoError) return {};
-        return osgEarth::ReadResult(new osgEarth::StringObject(reply->readAll().toStdString()));
+        const auto result = mapHttpGet(QNetworkRequest(QUrl(QString::fromStdString(url))), progress);
+        if (result.body.isEmpty()) return {};
+        return osgEarth::ReadResult(new osgEarth::StringObject(result.body.toStdString()));
     }
 
     bool readFeatures(const std::string& url, const osgEarth::TileKey& source,
