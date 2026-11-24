@@ -316,7 +316,7 @@ static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale
             if(channelSettings)parameterTabs->setCurrentIndex(parameterTab);
             processFor(50);
             QList<QWidget*> channelCards;
-            for(const auto *name : {"fpgaDliaChannels","fpgaWaveChannels","fpgaRecordingCards"}) {
+            for(const auto *name : {"fpgaWmsChannels","fpgaDliaChannels","fpgaWaveChannels","fpgaRecordingCards"}) {
                 auto *row=page->findChild<QHBoxLayout*>(name);
                 require(row&&row->count()==2,"paired FPGA rows each retain two cards");
                 auto *first=row->itemAt(0)->widget(),*second=row->itemAt(1)->widget();
@@ -345,9 +345,15 @@ static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale
                 }
             }
             if(channelSettings&&parameterTab==0) {
-                auto *first=page->findChild<QWidget*>("fpga0Scan"),*second=page->findChild<QWidget*>("fpga1Scan");
-                require(first->parentWidget()==second->parentWidget()&&first->geometry().top()==second->geometry().top(),"merged WMS card aligns independent channel inputs on the same row");
-                require(page->findChild<QLabel*>("fpga0ScanLabel")&&!page->findChild<QLabel*>("fpga1ScanLabel"),"main window shares WMS field labels across channels");
+                auto *row = page->findChild<QHBoxLayout*>("fpgaWmsChannels");
+                for (int channel = 0; channel < row->count(); ++channel) {
+                    auto *card = row->itemAt(channel)->widget();
+                    const QString name = QStringLiteral("fpga%1Scan").arg(channel);
+                    auto *input = card->findChild<QDoubleSpinBox*>(name);
+                    auto *label = card->findChild<QLabel*>(name + QStringLiteral("Label"));
+                    require(input && label && label->buddy() == input && label->isVisible() && input->isVisible(),
+                            "each WMS card shows the scan input and its label for the corresponding channel");
+                }
                 require(page->findChild<QLabel*>("fpgaRegister3028")->text()!=QStringLiteral("—")
                     &&page->findChild<QLabel*>("fpgaRegister3128")->text()!=QStringLiteral("—"),"UI test mode populates both channel diagnostic counters");
             }
@@ -1884,7 +1890,7 @@ static void simulatedMonitorActions()
         for(auto *pill:configPage->findChildren<QFrame*>("homeTelemetrySummaryPill")) {
             auto *label=pill->findChild<QLabel*>("homeTelemetrySummaryNameLabel");
             auto *value=pill->findChild<QLabel*>("homeTelemetrySummaryValueLabel");
-            if(label&&value&&label->text()==name)return value;
+            if(label&&value&&value->isVisible()&&label->text()==name)return value;
         }
         return nullptr;
     };
@@ -1897,6 +1903,8 @@ static void simulatedMonitorActions()
         MainWindowRtcmTestAccess::refreshSummary(window);
     };
     const qint64 originalStart=MainWindowRtcmTestAccess::state(window).ui_test_started_ms_;
+    require(waitUntil([&]{return displayedLabel(QStringLiteral("基础遥测")) != nullptr;}),
+            "the FPGA telemetry summary is visible before sampling the demo clock");
     setDemoElapsed(200);
     const auto previewShown=[&] {
         const QString frequency = sensorPath->currentData()==QStringLiteral("fpga_relay")
@@ -1909,7 +1917,7 @@ static void simulatedMonitorActions()
             && displayedValue(QStringLiteral("CRC"))==QStringLiteral("0")
             && displayedValue(QStringLiteral("EPSILON"))==QStringLiteral("有");
     };
-    require(waitUntil(previewShown),"visible FPGA configuration pills show demo values before connection");
+    require(previewShown(),"visible FPGA configuration pills show demo values before connection");
     setDemoElapsed(1200);
     require(displayedValue(QStringLiteral("基础遥测"))==QStringLiteral("89.8 Hz")
         && displayedValue(QStringLiteral("天→地"))!=QStringLiteral("234.5 Mbps"),
@@ -1933,11 +1941,16 @@ static void simulatedMonitorActions()
         && displayedValue(QStringLiteral("CRC"))==QStringLiteral("--")
         && missingDevice && missingDevice->text()==QStringLiteral("无"),
         "demo shows unavailable values separately from errors");
-    setDemoElapsed(200);
     sensorPath->setCurrentIndex(sensorPath->findData("direct_devices"));
-    require(waitUntil(previewShown),"visible direct configuration pills retain demo values");
+    require(waitUntil([&]{return displayedLabel(QStringLiteral("基础")) != nullptr;}),
+            "switching to direct devices shows the direct telemetry summary");
+    setDemoElapsed(200);
+    require(previewShown(),"visible direct configuration pills retain demo values");
     sensorPath->setCurrentIndex(sensorPath->findData("fpga_relay"));
-    require(waitUntil(previewShown),"visible FPGA configuration pills restore demo values after path switch");
+    require(waitUntil([&]{return displayedLabel(QStringLiteral("基础遥测")) != nullptr;}),
+            "switching back to FPGA relay shows the FPGA telemetry summary");
+    setDemoElapsed(200);
+    require(previewShown(),"visible FPGA configuration pills restore demo values after path switch");
     MainWindowRtcmTestAccess::state(window).ui_test_started_ms_=originalStart;
     {
         const auto summary = MainWindowRtcmTestAccess::summary(window);

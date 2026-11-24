@@ -5382,7 +5382,7 @@ void MainWindow::setupConfigPanel()
         label->setObjectName(QStringLiteral("homeDeviceStatusCapsule"));
         label->setAlignment(Qt::AlignCenter);
         label->setTextFormat(Qt::PlainText);
-        label->setMinimumHeight(kHomeDeviceCapsuleHeight);
+        label->setFixedHeight(kHomeDeviceCapsuleHeight);
         label->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
         label->setWordWrap(false);
         return label;

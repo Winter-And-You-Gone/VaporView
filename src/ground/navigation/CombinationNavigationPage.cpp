@@ -163,6 +163,11 @@ protected:
     void focusInEvent(QFocusEvent *event) override
     {
         QPushButton::focusInEvent(event);
+        // These navigation entries are individual tab stops even though the
+        // button group allows only one selected page.
+        if (auto *navigationGroup = group())
+            for (auto *entry : navigationGroup->buttons())
+                entry->setFocusPolicy(Qt::TabFocus);
         const Qt::FocusReason reason = event ? event->reason() : Qt::OtherFocusReason;
         setKeyboardFocusIndicatorVisible(reason == Qt::TabFocusReason ||
                                          reason == Qt::BacktabFocusReason ||
