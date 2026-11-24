@@ -1248,20 +1248,25 @@ protected:
 
         const int columns = std::max(2, static_cast<int>(std::floor(plotRect.width())));
         QPolygonF polyline;
-        polyline.reserve(columns);
+        const int vertexCount = std::min<int>(columns, samples_.size());
+        polyline.reserve(vertexCount);
         const int sampleCount = samples_.size();
+        const auto drawSegment = [&] {
+            if (polyline.size() == 1) painter.drawPoint(polyline.first());
+            else painter.drawPolyline(polyline);
+        };
         int previousIndex = -1;
         painter.setPen(QPen(line_color_, 1.4));
-        for (int x = 0; x < columns; ++x)
+        for (int x = 0; x < vertexCount; ++x)
         {
-            const double ratio = columns == 1 ? 0.0 : static_cast<double>(x) / static_cast<double>(columns - 1);
+            const double ratio = vertexCount == 1 ? 0.0 : static_cast<double>(x) / static_cast<double>(vertexCount - 1);
             const int index = std::clamp(static_cast<int>(std::llround(ratio * (sampleCount - 1))), 0, sampleCount - 1);
             const float value = samples_.at(index);
             const bool gap = std::any_of(samples_.cbegin() + previousIndex + 1, samples_.cbegin() + index + 1,
                 [](float sample) { return !std::isfinite(sample); });
             previousIndex = index;
             if (gap) {
-                painter.drawPolyline(polyline);
+                drawSegment();
                 polyline.clear();
             }
             if (!std::isfinite(value)) continue;
@@ -1271,7 +1276,7 @@ protected:
             polyline.append(QPointF(px, py));
         }
 
-        painter.drawPolyline(polyline);
+        drawSegment();
 
         painter.setPen(theme.text);
         for (int i = 0; i < 4; ++i)
