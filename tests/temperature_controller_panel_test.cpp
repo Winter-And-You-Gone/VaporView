@@ -10,6 +10,7 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QStringList>
+#include <QToolButton>
 #include <QWidget>
 
 #include <cmath>
@@ -42,11 +43,62 @@ QWidget *findConfigTemperaturePlot(TemperatureControllerPanel& panel)
     return nullptr;
 }
 
+void testTec103PlotViews()
+{
+    TemperatureControllerPanel panel;
+    panel.resize(900, 420);
+    panel.show();
+    QApplication::processEvents();
+    auto *plot = findConfigTemperaturePlot(panel);
+    VaporView::TemperatureControllerData data;
+    data.valid = true;
+    data.channels[0].measured_temperature_c = 24.7;
+    data.timestamp = std::chrono::steady_clock::now();
+    auto *viewToggle = panel.findChild<QToolButton*>("tec103PlotViewToggle");
+    auto *device = panel.findChild<QAbstractButton*>("tec103DeviceSwitch");
+    auto *remotePlot = panel.findChild<QWidget*>("tec103RemoteTemperaturePlot");
+    require(viewToggle && device && remotePlot && viewToggle->isHidden() && remotePlot->isHidden(),
+            "RD105 hides the TEC103-specific controls");
+    panel.setDualTec103(true);
+    panel.clearTemperatureHistory();
+    data.channels[1].measured_temperature_c = std::numeric_limits<double>::quiet_NaN();
+    panel.updateData(data, 10.0);
+    data.timestamp += std::chrono::seconds(1);
+    data.channels[1].measured_temperature_c = 26.9;
+    panel.updateData(data, 11.0);
+    QApplication::processEvents();
+    require(viewToggle->isVisible() && !viewToggle->icon().isNull() && remotePlot->isHidden() &&
+                plot->property("sampleCount").toInt() == 2,
+            "TEC103 defaults to the in situ device plot");
+    const QRect singleBounds = plot->geometry();
+    device->click();
+    require(plot->property("sampleCount").toInt() == 1,
+            "TEC103 single view follows the selected device");
+    viewToggle->click();
+    QApplication::processEvents();
+    require(remotePlot->isVisible() && plot->geometry().right() < remotePlot->geometry().left() &&
+                std::abs(plot->width() - remotePlot->width()) <= 1 &&
+                plot->geometry().top() == remotePlot->geometry().top() &&
+                plot->geometry().height() == singleBounds.height() &&
+                plot->property("sampleCount").toInt() == 2 && remotePlot->property("sampleCount").toInt() == 1,
+            "TEC103 shows independent in situ (left) and remote (right) histories");
+    viewToggle->click();
+    QApplication::processEvents();
+    require(remotePlot->isHidden() && plot->geometry() == singleBounds &&
+                plot->property("sampleCount").toInt() == 1,
+            "Returning to single view restores the selected TEC103 and full width");
+    panel.setDualTec103(false);
+    require(viewToggle->isHidden() && remotePlot->isHidden(), "RD105 restores its single-plot layout");
+
+    std::cout << "TEC103 plot view checks passed" << std::endl;
+}
+
 } // namespace
 
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
+    testTec103PlotViews();
 
     TemperatureControllerPanel panel;
     std::unique_ptr<VaporView::Ground::Widgets::TemperatureControllerOverviewPanel> overview(

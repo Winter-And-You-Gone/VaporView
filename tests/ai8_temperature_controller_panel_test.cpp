@@ -207,6 +207,27 @@ int main(int argc, char **argv)
         auto *multi = panel.findChild<QWidget*>("ai8MultiChannelPlots");
         auto *parameters = panel.findChild<QStackedWidget*>("ai8ParameterStack");
         require(toggle && !toggle->icon().isNull() && multi->isHidden(), "Lucide toggle defaults to single view");
+        const QImage icon = toggle->icon().pixmap(toggle->iconSize()).toImage();
+        bool hasBlue = false;
+        for (int y = 0; y < icon.height(); ++y)
+        {
+            for (int x = 0; x < icon.width(); ++x)
+            {
+                const QColor color = icon.pixelColor(x, y);
+                hasBlue |= color.alpha() > 128 && color.blue() > color.red() + 80;
+            }
+        }
+        require(hasBlue, "Temperature plot view toggle has a blue icon");
+        QApplication::processEvents();
+        toggle->clearFocus();
+        toggle->setAttribute(Qt::WA_UnderMouse, false);
+        const QColor idle = toggle->grab().toImage().pixelColor(4, 16);
+        toggle->setAttribute(Qt::WA_UnderMouse, true);
+        const QColor hovered = toggle->grab().toImage().pixelColor(4, 16);
+        toggle->setAttribute(Qt::WA_UnderMouse, false);
+        require(hovered != idle && std::abs(hovered.red() - hovered.blue()) < 6,
+                "Temperature plot view toggle paints a gray hover background");
+        std::cout << "AI-8 plot toggle appearance checks passed" << std::endl;
         VaporView::Ai8TemperatureControllerProtocol::LiveData data;
         data.valid = true;
         data.setpointsValid = true;

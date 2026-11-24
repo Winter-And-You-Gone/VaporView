@@ -9,6 +9,8 @@
 
 #include <functional>
 
+class QToolButton;
+
 namespace VaporView::Ground::Widgets
 {
 
@@ -24,6 +26,8 @@ public:
 };
 
 QString thermalEndpointLabel(bool dualTec103, int channel, bool english);
+QToolButton *createTemperaturePlotViewButton(QWidget *parent);
+void updateTemperaturePlotViewButton(QToolButton *button, const QString& hint);
 
 class TemperatureControllerOverviewPanel : public QWidget
 {
