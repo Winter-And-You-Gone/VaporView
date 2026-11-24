@@ -8,9 +8,6 @@
 #include <QButtonGroup>
 #include <QComboBox>
 #include <QDateTime>
-#include <QCoreApplication>
-#include <QDir>
-#include <QIcon>
 #include <QDoubleSpinBox>
 #include <QFrame>
 #include <QGridLayout>
@@ -390,16 +387,8 @@ void Ai8TemperatureControllerPanel::setupUi()
     connect(writeButton, &QPushButton::clicked, this,
             &Ai8TemperatureControllerPanel::writePageRequested);
 
-    plot_view_button_ = new QToolButton(statusRow);
-    plot_view_button_->setObjectName("ai8PlotViewToggle");
-    plot_view_button_->setCheckable(true);
-    plot_view_button_->setAutoRaise(true);
-    plot_view_button_->setStyleSheet(QStringLiteral(
-        "QToolButton#ai8PlotViewToggle, QToolButton#ai8PlotViewToggle:checked, "
-        "QToolButton#ai8PlotViewToggle:hover, QToolButton#ai8PlotViewToggle:pressed {"
-        "background: transparent; border: none; padding: 0px;}"));
-    plot_view_button_->setIconSize(QSize(20, 20));
-    plot_view_button_->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    plot_view_button_ = VaporView::Ground::Widgets::createTemperaturePlotViewButton(statusRow);
+    plot_view_button_->setObjectName(QStringLiteral("ai8PlotViewToggle"));
     statusLayout->addWidget(plot_view_button_);
     connect(plot_view_button_, &QToolButton::toggled, this, [this] { updatePlotView(); });
 
@@ -1804,12 +1793,8 @@ void Ai8TemperatureControllerPanel::updatePlotView()
     const QString hint = multiple
         ? (english_ ? QStringLiteral("Show selected channel") : QStringLiteral("切换为当前通道单视图"))
         : (english_ ? QStringLiteral("Show all 8 channels (2 × 4)") : QStringLiteral("切换为八通道多视图（两行四列）"));
-    plot_view_button_->setToolTip(hint);
-    plot_view_button_->setAccessibleName(hint);
+    VaporView::Ground::Widgets::updateTemperaturePlotViewButton(plot_view_button_, hint);
     plot_view_stack_->setCurrentIndex(multiple ? 1 : 0);
-    const QString iconName = multiple ? QStringLiteral("chart-quadrant") : QStringLiteral("chart-line");
-    plot_view_button_->setIcon(QIcon(QDir(QCoreApplication::applicationDirPath()).filePath(
-        QStringLiteral("resources/lucide/%1.svg").arg(iconName))));
     for (int i = 0; i < 8; ++i) {
         channel_plots_[i]->setEnglish(english_);
     }

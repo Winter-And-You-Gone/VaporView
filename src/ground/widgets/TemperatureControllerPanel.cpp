@@ -41,6 +41,7 @@
 #include <QStyleOptionComboBox>
 #include <QSvgRenderer>
 #include <QTimer>
+#include <QToolButton>
 #include <QVariantAnimation>
 #include <QVBoxLayout>
 
@@ -1540,7 +1541,7 @@ void TemperatureControllerPanel::alignChannelTopControlFields(int channelIndex)
     int rowSpacing = 12;
     int pageSpacing = 12;
     int middleGap = 0;
-    if (commonPageActive)
+    if (commonPageActive && !dual_tec103_)
     {
         const int availableWidth = std::max(0, selectorRow->width() -
                                                 channel_top_bar_->width() -
@@ -1554,7 +1555,7 @@ void TemperatureControllerPanel::alignChannelTopControlFields(int channelIndex)
         pageSpacing = baseGap;
         channel.common_top_controls->setFixedWidth(enableFieldWidth + autoPidFieldWidth + middleGap);
     }
-    else if (sensorPageActive)
+    else if (sensorPageActive && !dual_tec103_)
     {
         const int sensorModelFieldWidth = currentFieldWidth(channel.sensor_model_field);
         const int availableWidth = std::max(0, selectorRow->width() -
@@ -1565,6 +1566,10 @@ void TemperatureControllerPanel::alignChannelTopControlFields(int channelIndex)
         pageSpacing = rowSpacing + (availableWidth % 2);
     }
 
+    if (commonPageActive && dual_tec103_)
+    {
+        channel.common_top_controls->setFixedWidth(enableFieldWidth + autoPidFieldWidth);
+    }
     channel.common_top_leading_spacer->setFixedWidth(0);
     channel.common_top_middle_spacer->setFixedWidth(middleGap);
     channel.common_top_mode_spacer->setFixedWidth(0);
@@ -1708,15 +1713,6 @@ void TemperatureControllerPanel::setupUi()
     title_status_strip_->setFixedHeight(36);
     title_status_strip_->setVisible(false);
     auto *statusLayout = new QHBoxLayout(title_status_strip_);
-    device_selector_ = new SegmentedSwitchButton(title_status_strip_);
-    device_selector_->setObjectName(QStringLiteral("tec103TitleDeviceSwitch"));
-    device_selector_->hide();
-    device_selector_->setStyleSheet(QStringLiteral("QPushButton#tec103TitleDeviceSwitch { min-height: 36px; max-height: 36px; padding: 0; border: none; }"));
-    statusLayout->addWidget(device_selector_, 0, Qt::AlignVCenter);
-    connect(device_selector_, &SegmentedSwitchButton::selectionRequested, this, [this] {
-        selectChannel(selected_config_page_index_);
-        emit tec103SelectionChanged();
-    });
     statusLayout->setContentsMargins(0, 0, 0, 0);
     statusLayout->setSpacing(10);
     internal_temperature_lbl_ = new QLabel(this);
@@ -1883,6 +1879,15 @@ void TemperatureControllerPanel::setupUi()
     channelTopBarLayout->addWidget(channel_button_1_);
     channelTopBarLayout->addWidget(channel_button_2_);
     channelTopBarLayout->addWidget(common_settings_button_);
+    device_selector_ = new SegmentedSwitchButton(channelSelectorRow);
+    device_selector_->setObjectName(QStringLiteral("tec103DeviceSwitch"));
+    device_selector_->hide();
+    device_selector_->setStyleSheet(QStringLiteral("QPushButton#tec103DeviceSwitch { min-height: 36px; max-height: 36px; padding: 0; border: none; }"));
+    channelSelectorRowLayout->addWidget(device_selector_, 0, Qt::AlignVCenter);
+    connect(device_selector_, &SegmentedSwitchButton::selectionRequested, this, [this] {
+        selectChannel(selected_config_page_index_);
+        emit tec103SelectionChanged();
+    });
     channelSelectorRowLayout->addWidget(channel_top_bar_, 0, Qt::AlignLeft | Qt::AlignVCenter);
 
     channel_top_controls_stack_ = new QStackedWidget(channelSelectorRow);
@@ -1959,7 +1964,25 @@ void TemperatureControllerPanel::setupUi()
     temperature_plot_->setTimeAxisEnabled(true);
     temperature_plot_->setFixedHeight(kTemperatureControllerConfigPlotHeight);
     temperature_plot_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    temperaturePlotLayout->addWidget(temperature_plot_, 0, 0);
+    temperaturePlotLayout->addWidget(temperature_plot_, 1, 0);
+    temperaturePlotLayout->setColumnStretch(0, 1);
+
+    remote_temperature_plot_ = new TemperatureTrendPlotWidget(temperature_plot_container_);
+    remote_temperature_plot_->setObjectName(QStringLiteral("tec103RemoteTemperaturePlot"));
+    remote_temperature_plot_->setCompactMode(true);
+    remote_temperature_plot_->setTimeAxisEnabled(true);
+    temperaturePlotLayout->addWidget(remote_temperature_plot_, 1, 1);
+
+    in_situ_plot_label_ = new QLabel(temperature_plot_container_);
+    remote_plot_label_ = new QLabel(temperature_plot_container_);
+    temperaturePlotLayout->addWidget(in_situ_plot_label_, 0, 0, Qt::AlignCenter);
+    temperaturePlotLayout->addWidget(remote_plot_label_, 0, 1, Qt::AlignCenter);
+
+    temperature_plot_view_button_ = VaporView::Ground::Widgets::createTemperaturePlotViewButton(temperature_plot_container_);
+    temperature_plot_view_button_->setObjectName(QStringLiteral("tec103PlotViewToggle"));
+    temperaturePlotLayout->addWidget(temperature_plot_view_button_, 0, 0, 1, 2, Qt::AlignRight);
+    connect(temperature_plot_view_button_, &QToolButton::toggled,
+            this, &TemperatureControllerPanel::updateTemperaturePlotView);
     contentRowLayout->addWidget(temperature_plot_container_, 1, Qt::AlignTop);
 
     configCardLayout->addWidget(contentRow, 0);
@@ -2917,7 +2940,11 @@ void TemperatureControllerPanel::selectChannel(int index)
     // Both FPGA device slots currently carry their instrument's TC1.
     const int pageIndex = dual_tec103_ && selected_config_page_index_ < 2
         ? int(device_selector_->switchChecked()) : selected_config_page_index_;
-    if (pageIndex < 2)
+    if (dual_tec103_)
+    {
+        selected_channel_index_ = int(device_selector_->switchChecked());
+    }
+    else if (pageIndex < 2)
     {
         selected_channel_index_ = pageIndex;
     }
@@ -2977,13 +3004,7 @@ void TemperatureControllerPanel::selectChannel(int index)
     updateButton(channel_button_2_, 1);
     updateButton(common_settings_button_, 2);
 
-    if (temperature_plot_ && pageIndex < 2)
-    {
-        temperature_plot_->setChannelIndex(channelIndex);
-        temperature_plot_->setTargetTemperature(target_temperature_by_channel_[channelIndex]);
-        temperature_plot_->setSamples(measured_temperature_history_[channelIndex]);
-        temperature_plot_->setSampleTimes(measured_temperature_time_history_[channelIndex]);
-    }
+    updateTemperaturePlots();
     updateCalibrationDrawerVisibility();
 }
 
@@ -3318,6 +3339,12 @@ void TemperatureControllerPanel::setDualTec103(bool dual)
     dual_tec103_ = dual;
     device_selector_->setVisible(dual);
     channel_button_2_->setVisible(!dual);
+    if (!dual)
+    {
+        const QSignalBlocker blocker(temperature_plot_view_button_);
+        temperature_plot_view_button_->setChecked(false);
+    }
+    updateTemperaturePlotView();
     selectChannel(0);
     updateChannelTexts();
 }
@@ -3325,10 +3352,11 @@ void TemperatureControllerPanel::setDualTec103(bool dual)
 void TemperatureControllerPanel::setEnglish(bool english)
 {
     is_english_ = english;
-    if (temperature_plot_)
-    {
-        temperature_plot_->setEnglish(english);
-    }
+    temperature_plot_->setEnglish(english);
+    remote_temperature_plot_->setEnglish(english);
+    in_situ_plot_label_->setText(thermalEndpointLabel(true, 1, english));
+    remote_plot_label_->setText(thermalEndpointLabel(true, 2, english));
+    updateTemperaturePlotView();
     updateChannelTexts();
 }
 
@@ -3918,6 +3946,7 @@ void TemperatureControllerPanel::clearTemperatureHistory()
     for (auto& history : measured_temperature_time_history_) history.clear();
     target_temperature_by_channel_.fill(std::numeric_limits<double>::quiet_NaN());
     last_temperature_timestamp_ = {};
+    updateTemperaturePlots();
 }
 
 void TemperatureControllerPanel::updateData(const VaporView::TemperatureControllerData& controllerData, double recordedSeconds)
@@ -4030,13 +4059,41 @@ void TemperatureControllerPanel::updateData(const VaporView::TemperatureControll
     }
     updateChannelData(0, controllerData.channels[0], controllerData.valid);
     updateChannelData(1, controllerData.channels[1], controllerData.valid);
-    if (temperature_plot_)
+    updateTemperaturePlots();
+}
+
+void TemperatureControllerPanel::updateTemperaturePlotView()
+{
+    const bool multiple = dual_tec103_ && temperature_plot_view_button_->isChecked();
+    const QString hint = multiple
+        ? (is_english_ ? QStringLiteral("Show selected TEC103") : QStringLiteral("切换为单设备视图"))
+        : (is_english_ ? QStringLiteral("Show both TEC103 devices") : QStringLiteral("切换为双设备视图"));
+    VaporView::Ground::Widgets::updateTemperaturePlotViewButton(temperature_plot_view_button_, hint);
+    temperature_plot_view_button_->setVisible(dual_tec103_);
+    in_situ_plot_label_->setVisible(multiple);
+    remote_plot_label_->setVisible(multiple);
+    remote_temperature_plot_->setVisible(multiple);
+    static_cast<QGridLayout *>(temperature_plot_container_->layout())->setColumnStretch(1, multiple ? 1 : 0);
+    const int headerHeight = dual_tec103_ ? temperature_plot_view_button_->height() : 0;
+    const int plotHeight = kTemperatureControllerConfigPlotHeight - headerHeight;
+    temperature_plot_->setFixedHeight(plotHeight);
+    remote_temperature_plot_->setFixedHeight(plotHeight);
+    updateTemperaturePlots();
+}
+
+void TemperatureControllerPanel::updateTemperaturePlots()
+{
+    const bool multiple = dual_tec103_ && temperature_plot_view_button_->isChecked();
+    const auto updatePlot = [this](TemperatureTrendPlotWidget *plot, int channelIndex) {
+        plot->setChannelIndex(channelIndex);
+        plot->setTargetTemperature(target_temperature_by_channel_[channelIndex]);
+        plot->setSamples(measured_temperature_history_[channelIndex]);
+        plot->setSampleTimes(measured_temperature_time_history_[channelIndex]);
+    };
+    updatePlot(temperature_plot_, multiple ? 0 : selected_channel_index_);
+    if (multiple)
     {
-        const int channelIndex = std::clamp(selected_channel_index_, 0, 1);
-        temperature_plot_->setChannelIndex(channelIndex);
-        temperature_plot_->setTargetTemperature(target_temperature_by_channel_[channelIndex]);
-        temperature_plot_->setSamples(measured_temperature_history_[channelIndex]);
-        temperature_plot_->setSampleTimes(measured_temperature_time_history_[channelIndex]);
+        updatePlot(remote_temperature_plot_, 1);
     }
 }
 
@@ -4077,6 +4134,33 @@ QString thermalEndpointLabel(bool dualTec103, int channel, bool english)
     return english ? QStringLiteral("Remote") : QStringLiteral("遥测");
 }
 
+
+QToolButton *createTemperaturePlotViewButton(QWidget *parent)
+{
+    auto *button = new QToolButton(parent);
+    button->setProperty("temperaturePlotViewToggle", true);
+    button->setCheckable(true);
+    button->setCursor(Qt::PointingHandCursor);
+    button->setFocusPolicy(Qt::TabFocus);
+    button->setIconSize(QSize(20, 20));
+    button->setFixedSize(32, 32);
+    button->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    button->setStyleSheet(QStringLiteral(
+        "QToolButton[temperaturePlotViewToggle=true] {"
+        "background-color: transparent; border: none; border-radius: 6px; padding: 0; }"
+        "QToolButton[temperaturePlotViewToggle=true]:hover, "
+        "QToolButton[temperaturePlotViewToggle=true]:focus { background-color: rgba(128,128,128,44); }"
+        "QToolButton[temperaturePlotViewToggle=true]:pressed { background-color: rgba(128,128,128,68); }"));
+    return button;
+}
+
+void updateTemperaturePlotViewButton(QToolButton *button, const QString& hint)
+{
+    button->setToolTip(hint);
+    button->setAccessibleName(hint);
+    const QString iconName = button->isChecked() ? QStringLiteral("chart-quadrant") : QStringLiteral("chart-line");
+    button->setIcon(createLucideIcon(iconName, appThemeColor(AppThemeColor::ToolbarBlue, false)));
+}
 
 QComboBox *createSingleLevelPopupComboBox(QWidget *parent,
                                           bool showSelectionCheck,

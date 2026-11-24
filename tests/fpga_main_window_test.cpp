@@ -2005,7 +2005,7 @@ static void simulatedMonitorActions()
     auto *tc1 = window.findChild<QAbstractButton*>("temperatureChannelSelectorButton1");
     auto *tc2 = window.findChild<QAbstractButton*>("temperatureChannelSelectorButton2");
     auto *title = window.findChild<QWidget*>("temperatureTitleStatusStrip");
-    auto *device = title ? title->findChild<QAbstractButton*>("tec103TitleDeviceSwitch") : nullptr;
+    auto *device = window.findChild<QAbstractButton*>("tec103DeviceSwitch");
     auto *pages = window.findChild<QStackedWidget*>("temperatureChannelStack");
     require(tc1 && tc2 && tc1->text() == QStringLiteral("通道1") && tc2->isHidden() &&
             device && !device->isHidden() && pages, "Separate TEC103 device and channel selectors exist");
@@ -2015,11 +2015,11 @@ static void simulatedMonitorActions()
     auto *previousPage = stack->currentWidget();
     stack->setCurrentWidget(temperaturePage);
     QCoreApplication::processEvents();
-    title->layout()->activate();
-    auto *titleSwitch = window.findChild<QAbstractButton*>("titleSensorTransportSwitch");
-    require(titleSwitch && device->size() == titleSwitch->size(), "TEC selector matches window title switches");
-    require(title->rect().contains(device->geometry()) && std::abs(title->rect().center().y() - device->geometry().center().y()) <= 1,
-            "Device selector is centered and fully contained in its title strip");
+    auto *navigation = tc1->parentWidget();
+    require(device->parentWidget() == navigation->parentWidget() &&
+            device->geometry().right() < navigation->geometry().left() &&
+            std::abs(device->geometry().center().y() - navigation->geometry().center().y()) <= 1,
+            "TEC103 device selector precedes the temperature navigation bar");
     device->click();
     require(tc1->isChecked() && pages->currentIndex() == 1, "Remote TC1 uses the remote instrument page");
     device->click();

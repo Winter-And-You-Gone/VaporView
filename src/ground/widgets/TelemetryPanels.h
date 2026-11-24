@@ -22,6 +22,7 @@ class QButtonGroup;
 class QEvent;
 class QObject;
 class QRadioButton;
+class QToolButton;
 class EnvironmentTrendSparklineWidget;
 namespace VaporView::Ground::Widgets { class SegmentedSwitchButton; }
 class TemperatureTrendPlotWidget;
@@ -378,6 +379,8 @@ private:
     QWidget *createChannelSensorConfigPage(int index);
     QWidget *createCommonSettingsPage();
     void selectChannel(int index);
+    void updateTemperaturePlotView();
+    void updateTemperaturePlots();
     void selectChannelSubPage(int channelIndex, int subPageIndex);
     bool eventFilter(QObject *watched, QEvent *event) override;
     void alignChannelTopControlFields(int channelIndex);
@@ -403,6 +406,10 @@ private:
     QStackedWidget *channel_stack_ = nullptr;
     QStackedWidget *sub_page_bar_stack_ = nullptr;
     TemperatureTrendPlotWidget *temperature_plot_ = nullptr;
+    TemperatureTrendPlotWidget *remote_temperature_plot_ = nullptr;
+    QToolButton *temperature_plot_view_button_ = nullptr;
+    QLabel *in_situ_plot_label_ = nullptr;
+    QLabel *remote_plot_label_ = nullptr;
     QWidget *temperature_plot_container_ = nullptr;
     QWidget *title_status_strip_ = nullptr;
     QWidget *controller_mode_field_ = nullptr;
