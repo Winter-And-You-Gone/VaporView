@@ -766,7 +766,7 @@ int runApplication(int argc, char *argv[])
         if (!parser.isSet(virtualFpgaOption) || !validPort || !virtualFpgaPort ||
             parser.value(modeOption).compare(QStringLiteral("ground"), Qt::CaseInsensitive) != 0 ||
             parser.isSet(ai8RemoteE2eOption) || parser.isSet(remoteDeviceE2eOption)) {
-            qCritical("Virtual FPGA requires --virtual-fpga in ground mode and a TCP port from 1 to 65535.");
+            qCritical("虚拟 FPGA 仅支持地面模式，请启用 --virtual-fpga，指定 1 到 65535 的 TCP 端口，并关闭远程设备端到端测试。");
             return requestProcessExit(2, "invalid_virtual_fpga_options");
         }
     }

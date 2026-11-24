@@ -389,6 +389,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout) : Q
     connect(this,&FpgaControlPage::configurationChanged,this,&FpgaControlPage::updateDac1Target);
     auto *dliaHint=new QLabel(dliaPage);dliaHint->setWordWrap(true);label(dliaHint,QStringLiteral("仅提交解调参数，保留 WMS / DAC 设置。应用后需重新开始采集。"),QStringLiteral("Apply demodulation settings only; preserve WMS / DAC. Restart acquisition after applying."));dliaLayout->addWidget(dliaHint);
     auto *wmsChannels = new QHBoxLayout;
+    wmsChannels->setObjectName("fpgaWmsChannels");
     wmsChannels->setSpacing(12);
     wmsLayout->addLayout(wmsChannels);
     auto *dliaChannels=new QHBoxLayout;dliaChannels->setObjectName("fpgaDliaChannels");dliaChannels->setSpacing(12);dliaLayout->addLayout(dliaChannels);

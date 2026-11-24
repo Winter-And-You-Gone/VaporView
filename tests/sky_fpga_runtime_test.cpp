@@ -208,7 +208,8 @@ static void sessionLogFailureContextTest()
     options.telemetry_tcp_port = 0;
     options.simulate_data = true;
     SkyRuntime runtime(options);
-    require(runtime.start(), "start session log failure runtime");
+    // The constructor installs the session log sink. Starting the devices would
+    // also produce unrelated log writes while this test holds a file closed.
     auto& recorder = SkyRuntimeStorageFailureTestAccess::recorder(runtime);
     QString error;
     require(recorder.start(directory.path(), QStringLiteral("session-log-test"), 0, &error),
@@ -283,7 +284,13 @@ static void storageFailureContextTest(bool stale, bool writerFailure = false, bo
     QVector<LogRecord> records;
     QObject::connect(&runtime, &SkyRuntime::logRecord, [&records](const LogRecord& record) { records.push_back(record); });
     require(runtime.start(), "start storage failure runtime");
-    waitUntil([&] { return runtime.currentFpgaStatus().value("ready").toBool(); }, "storage failure FPGA ready");
+    // The ready status can arrive before the backend releases its connect request.
+    waitUntil([&] {
+        for (const auto& record : records)
+            if (record.fields.value("event") == "fpga_async_connection_result")
+                return record.fields.value("result_code", -1).toInt() == int(CommandErrorCode::Ok);
+        return false;
+    }, "storage failure fixture completes the FPGA connection");
     QString error;
     auto& recorder = SkyRuntimeStorageFailureTestAccess::recorder(runtime);
     const auto snapshot = calibrationSnapshot();
