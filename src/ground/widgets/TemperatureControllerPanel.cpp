@@ -2299,6 +2299,7 @@ QWidget *TemperatureControllerPanel::createChannelCommonParamsPage(int index)
     for (QSpinBox *spin : {channel.kp_spin, channel.ki_spin, channel.kd_spin})
     {
         spin->setRange(0, std::numeric_limits<int>::max());
+        spin->setProperty("styleSheetManagedHeight", true);
         spin->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     }
     channel.kp_spin->setFixedWidth(kTemperatureControllerPidSideInputWidth);

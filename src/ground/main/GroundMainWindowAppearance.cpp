@@ -890,8 +890,10 @@ void MainWindow::applyScaledUiMetrics()
             widget->setMinimumWidth(std::max(1, scalePixels(widget->property(kBaseMinWidthProperty).toInt())));
         }
 
+        // The scaled stylesheet already sets these heights and reapplies them on repolish.
+        const bool styleSheetManagedHeight = widget->property("styleSheetManagedHeight").toBool();
         const int minimumHeight = widget->minimumHeight();
-        if (minimumHeight > 0)
+        if (!styleSheetManagedHeight && minimumHeight > 0)
         {
             rememberBaseMetric(widget, kBaseMinHeightProperty, minimumHeight);
             widget->setMinimumHeight(std::max(1, scalePixels(widget->property(kBaseMinHeightProperty).toInt())));
@@ -905,7 +907,7 @@ void MainWindow::applyScaledUiMetrics()
         }
 
         const int maximumHeight = widget->maximumHeight();
-        if (maximumHeight > 0 && maximumHeight < QWIDGETSIZE_MAX)
+        if (!styleSheetManagedHeight && maximumHeight > 0 && maximumHeight < QWIDGETSIZE_MAX)
         {
             rememberBaseMetric(widget, kBaseMaxHeightProperty, maximumHeight);
             widget->setMaximumHeight(std::max(1, scalePixels(widget->property(kBaseMaxHeightProperty).toInt())));

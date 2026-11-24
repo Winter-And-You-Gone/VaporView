@@ -517,6 +517,8 @@ if(COMMAND vaporview_stage_osgearth_runtime)
 endif()
 vaporview_add_test(NAME fpga_main_window_test COMMAND fpga_main_window_test --window-layout-only)
 set_tests_properties(fpga_main_window_test PROPERTIES LABELS "gui;fpga" TIMEOUT 120 RUN_SERIAL TRUE)
+vaporview_add_test(NAME tec103_pid_layout_test COMMAND fpga_main_window_test --tec103-pid-layout)
+set_tests_properties(tec103_pid_layout_test PROPERTIES LABELS "gui;fpga;layout" TIMEOUT 60 RUN_SERIAL TRUE)
 # Keep every existing scenario, with the same per-test deadline, without making
 # the window/layout case accumulate all of their asynchronous waits.
 vaporview_add_test(NAME fpga_relay_configuration_test COMMAND fpga_main_window_test --relay-configuration)

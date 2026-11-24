@@ -42,6 +42,7 @@
 #include <QDialog>
 #include <QEventLoop>
 #include <QEvent>
+#include <QMouseEvent>
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QIntValidator>
@@ -63,6 +64,7 @@
 #include <QTcpSocket>
 #include <QDoubleSpinBox>
 #include <QSpinBox>
+#include <QStyleOptionSpinBox>
 #include <QTemporaryDir>
 #include <QDir>
 #include <QStandardItemModel>
@@ -3189,12 +3191,84 @@ static void liveVirtualFpgaAcquisition(quint16 port)
     }
 }
 
+static void tec103PidLayout()
+{
+    QSettings native("VaporView", "MainWindow");
+    native.setValue("font_scale_percent", 80);
+    MainWindow window;
+    auto *stack = window.findChild<QStackedWidget *>("mainPageStack");
+    auto *page = window.findChild<QWidget *>("temperaturePage");
+    auto *transport = window.findChild<QComboBox *>("deviceSensorTransportPathCombo");
+    require(stack && page && transport, "TEC103 temperature page and transport selector exist");
+    QMetaObject::invokeMethod(&window, "onDataSourceModeChanged", Q_ARG(int, 0));
+    const int relayIndex = transport->findData("fpga_relay");
+    require(relayIndex >= 0, "FPGA relay transport is available");
+    transport->setCurrentIndex(relayIndex);
+    auto *device = page->findChild<QAbstractButton *>("tec103DeviceSwitch");
+    auto *pages = page->findChild<QStackedWidget *>("temperatureChannelStack");
+    require(device && pages, "TEC103 device selector and panels exist");
+    window.resize(1600, 1000);
+    window.show();
+    stack->setCurrentWidget(page);
+    QApplication::setActiveWindow(&window);
+
+    const auto checkPidEditors = [&](int deviceIndex) {
+        QCoreApplication::processEvents();
+        require(device->isVisible() && pages->currentIndex() == deviceIndex, "Expected TEC103 device page is visible");
+        const auto editor = [&](QChar parameter) {
+            return pages->currentWidget()->findChild<QSpinBox *>(
+                QStringLiteral("temperaturePidK%1SpinChannel%2").arg(parameter).arg(deviceIndex + 1));
+        };
+        auto *p = editor(QLatin1Char('p'));
+        auto *i = editor(QLatin1Char('i'));
+        auto *d = editor(QLatin1Char('d'));
+        require(p && i && d && p->isVisible() && i->isVisible() && d->isVisible(), "TEC103 PID editors are visible");
+        const int height = p->height();
+        const auto sameHeight = [&] { return p->height() == height && i->height() == height && d->height() == height; };
+        require(sameHeight(), "TEC103 PID editors start with the same height");
+        p->setFocus(Qt::TabFocusReason);
+        QCoreApplication::processEvents();
+        require(p->hasFocus() && sameHeight(), "Focusing P preserves the TEC103 PID editor heights");
+
+        QStyleOptionSpinBox option;
+        option.initFrom(p);
+        option.subControls = QStyle::SC_All;
+        option.buttonSymbols = p->buttonSymbols();
+        option.frame = p->hasFrame();
+        const QPoint arrow = p->style()->subControlRect(QStyle::CC_SpinBox, &option, QStyle::SC_SpinBoxUp, p).center();
+        QMouseEvent move(QEvent::MouseMove, QPointF(arrow), QPointF(p->mapToGlobal(arrow)),
+                         Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(p, &move);
+        QCoreApplication::processEvents();
+        require(p->property("spinArrowHover").toString() == QStringLiteral("up") && sameHeight(),
+                "Hovering the P arrow preserves the TEC103 PID editor heights");
+
+        QEvent leave(QEvent::Leave);
+        QCoreApplication::sendEvent(p, &leave);
+        p->clearFocus();
+        QCoreApplication::processEvents();
+        require(sameHeight(), "Leaving the P editor preserves the TEC103 PID editor heights");
+        return height;
+    };
+
+    const int compactHeight = checkPidEditors(0);
+    device->click();
+    require(checkPidEditors(1) == compactHeight, "Both TEC103 devices use the same height at 80% scale");
+    device->click();
+    MainWindowRtcmTestAccess::state(window).font_normal_action_->trigger();
+    const int normalHeight = checkPidEditors(0);
+    device->click();
+    require(checkPidEditors(1) == normalHeight && normalHeight > compactHeight,
+            "Both TEC103 devices use the same larger editor height at 100% scale");
+    device->click();
+}
+
 int main(int argc,char **argv)
 {
     require(VaporViewTest::SettingsSandbox::initialized,"isolated native/INI application settings");
 #ifdef Q_OS_WIN
     bool localSimulator=false;
-    for(int i=1;i<argc;++i) localSimulator|=QByteArray(argv[i])=="--local-simulator";
+    for(int i=1;i<argc;++i) localSimulator|=QByteArray(argv[i])=="--local-simulator" || QByteArray(argv[i])=="--tec103-pid-layout";
     // Native theme queries can block on a non-input Windows test desktop. Set
     // the override before QApplication so the app's QProxyStyle also uses Fusion.
     // Other modes retain Windows 11 style coverage, including the font regression.
@@ -3233,6 +3307,7 @@ int main(int argc,char **argv)
     if(app.arguments().contains("--rtcm-context")) { rtcmCompletionContext(); scheduledRecordingCorrelation(); return 0; }
     native.setValue("font_scale_percent",100);
     native.setValue("app_sidebar_width",62);
+    if(args.contains("--tec103-pid-layout")) { tec103PidLayout(); return 0; }
     if(app.arguments().contains("--epsilon-packets")) {epsilonMixedPacketPresentation();return 0;}
     if(app.arguments().contains("--internal-direct")) {directInternalEnvironmentRouting();return 0;}
     if(app.arguments().contains("--ai8-fault-status")) {remoteAi8FaultMetadata();return 0;}
