@@ -27,6 +27,7 @@ class QHBoxLayout;
 namespace VaporView::Ground::Widgets { class SegmentedSwitchButton; }
 class WavePlotWidget;
 class PeakTrendPlotWidget;
+class WaterProfilePlotWidget;
 
 class TcpWavePanel : public QWidget
 {
@@ -56,6 +57,9 @@ public:
     void setFpgaWaveform(quint16 source, const QVector<QVector<double>> &samples,
                          const QStringList &components, const QString &detail, quint32 totalPoints, bool preview = false);
     void setFpgaSecondHarmonicPeak(quint16 source, quint32 cycleId, quint64 timestamp, double peak, bool preview);
+    void setWaterCalibration(const QString &key, const QString &name, const QString &unit, bool locked, const QString &detail);
+    void clearWaterSamples();
+    void appendWaterSample(int channel, const QString &id, qint64 timeMs, double value, double heightM);
     void setUiTestMode(bool enabled);
     void setUiTestConnected(bool connected);
     void setRemoteWaveTcpState(VaporView::DeviceState state);
@@ -111,6 +115,7 @@ protected:
     void changeEvent(QEvent *event) override;
 
 signals:
+    void waterCalibrationRequested();
     void normalizedSecondHarmonicFrameReady(quint64 timestampUs, QVector<float> samples);
     void rawWaveFrameReady(quint64 timestampUs, QByteArray rawSignalPayload, QByteArray harmonicPayload, VaporView::TcpFloatEncoding floatEncoding);
     void connectionStateChanged(bool connected);
@@ -159,12 +164,16 @@ private:
     void updateWaveDisplayModeTexts();
     void updateWaveDisplayModeIcon();
     void applyWaveDisplayMode();
+    void layoutPlots();
+    void createWaterPlots();
+    void refreshWaterPlots();
     struct WaveDisplayMode {
         bool all = true;
         bool raw = false;
         bool harmonic = false;
         bool peak_trend = false;
         bool h2 = false;
+        bool defaults = false;
     };
     const WaveDisplayMode &waveDisplayMode() const;
     void updatePeakPlotModeButtonText();
@@ -234,7 +243,25 @@ private:
     QPushButton *peak_clear_button_;
     QGridLayout *control_layout_;
     QHBoxLayout *top_controls_layout_;
-    QHBoxLayout *plots_layout_;
+    QGridLayout *plots_layout_;
+    QHBoxLayout *peak_header_layout_ = nullptr;
+    QHBoxLayout *fpga_peak_controls_layout_ = nullptr;
+    QWidget *fpga_peak_controls_ = nullptr;
+    QGroupBox *water_concentration_group_ = nullptr;
+    QGroupBox *water_profile_group_ = nullptr;
+    QLabel *water_concentration_title_ = nullptr;
+    QLabel *water_profile_title_ = nullptr;
+    QLabel *water_profile_axes_ = nullptr;
+    QPushButton *water_calibration_button_ = nullptr;
+    PeakTrendPlotWidget *water_concentration_plot_ = nullptr;
+    WaterProfilePlotWidget *water_profile_plot_ = nullptr;
+    QString water_calibration_key_, water_calibration_name_, water_unit_, water_calibration_detail_;
+    struct WaterSample {
+        QString id;
+        qint64 timeMs;
+        double value, heightM;
+    };
+    QMap<int, QVector<WaterSample>> water_samples_;
     QTcpSocket *socket_;
     QTimer *live_display_timer_;
 
@@ -254,7 +281,7 @@ private:
     QString remote_feature_status_text_;
     PeakFilterSettings peak_filter_settings_;
     WaveDisplayMode direct_wave_display_;
-    WaveDisplayMode fpga_wave_display_;
+    WaveDisplayMode fpga_wave_display_{false, false, false, false, false, true};
     int peak_search_start_index_;
     int peak_search_end_index_;
     bool peak_plot_scatter_mode_;

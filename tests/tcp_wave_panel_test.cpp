@@ -653,7 +653,9 @@ void testFpgaWaveDisplaySelection()
     const QList<QWidget *> plots = {panel.findChild<QWidget *>("tcpWaveRawPlot"),
                                     panel.findChild<QWidget *>("fpgaWaveH2Plot"),
                                     panel.findChild<QWidget *>("tcpWaveHarmonicPlot"),
-                                    panel.findChild<QWidget *>("tcpWavePeakTrendPlot")};
+                                    panel.findChild<QWidget *>("tcpWavePeakTrendPlot"),
+                                    panel.findChild<QWidget *>("waterConcentrationPlot"),
+                                    panel.findChild<QWidget *>("waterProfilePlot")};
     const auto clickRow = [&](const QString &name) {
         button->click();
         require(waitUntil([&] { return menu->isVisible(); }), "wave display menu opens in either transport mode");
@@ -673,13 +675,25 @@ void testFpgaWaveDisplaySelection()
     };
     clickRow(actions[0]); // Remember a different selection for direct mode.
     panel.setFpgaMode(true);
+    QApplication::processEvents();
     require(button->isVisible(), "FPGA keeps the wave display settings button visible");
-    checkPlots(15);
+    checkPlots(60);
+    const auto equalRow = [&](int left, int right) {
+        const auto *a = plots[left]->parentWidget();
+        const auto *b = plots[right]->parentWidget();
+        return a->geometry().top() == b->geometry().top() && a->geometry().right() < b->geometry().left() &&
+               std::abs(a->width() - b->width()) <= 1;
+    };
+    require(equalRow(2, 4) && equalRow(3, 5), "default water plots align in two equal-width rows");
+    const QString defaultView = QStringLiteral("fpgaWaveDisplayDefaultMenuAction");
+    const QString showAll = QStringLiteral("tcpWaveDisplayShowAllMenuAction");
+    clickRow(showAll);
+    checkPlots(63);
+    require(equalRow(0, 1) && equalRow(2, 4) && equalRow(3, 5), "all six plots use the requested 1:1 pairings");
     const int allHeight = panel.preferredPanelHeight();
     int acquisitionRequests = 0;
     QObject::connect(&panel, &TcpWavePanel::fpgaAcquisitionRequested, &panel,
                      [&](bool, bool) { ++acquisitionRequests; });
-    const QString showAll = QStringLiteral("tcpWaveDisplayShowAllMenuAction");
     for (int mask = 0; mask < 16; ++mask) {
         if (mask > 0) clickRow(showAll); // Restore all, then deselect all to reset the subset.
         clickRow(showAll);
@@ -696,7 +710,7 @@ void testFpgaWaveDisplaySelection()
         }
     }
     clickRow(showAll);
-    checkPlots(15);
+    checkPlots(63);
     clickRow(showAll);
     checkPlots(0);
     panel.setFpgaWaveform(0x30, {{10, 20}, {40, 50}, {4, 2.5}}, {"H1", "H2", "H2/max(H1)"}, "complete", 2);
@@ -718,6 +732,25 @@ void testFpgaWaveDisplaySelection()
     panel.setFpgaMode(true);
     QApplication::processEvents();
     checkPlots(12);
+    clickRow(defaultView);
+    checkPlots(60);
+    panel.setWaterCalibration("cal-a", "sample.vcal", "ppmv", false, {});
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    panel.appendWaterSample(0, "one", now, 12.5, 30.0);
+    panel.appendWaterSample(0, "one", now, 12.5, 30.0);
+    panel.appendWaterSample(0, "two", now + 1, 13.0, std::numeric_limits<double>::quiet_NaN());
+    require(plots[4]->property("sampleCount").toInt() == 2 && plots[5]->property("sampleCount").toInt() == 1,
+            "water charts deduplicate features and require a height for the profile");
+    panel.appendWaterSample(0, "two", now + 1, 13.0, 35.0);
+    require(plots[4]->property("sampleCount").toInt() == 2 && plots[5]->property("sampleCount").toInt() == 2,
+            "a timely later height completes the profile point without duplicating concentration");
+    panel.appendWaterSample(1, "other", now, 4.0, 60.0);
+    panel.findChild<QComboBox *>("fpgaMonitorChannelCombo")->setCurrentIndex(1);
+    require(plots[4]->property("sampleCount").toInt() == 1 && plots[5]->property("sampleCount").toInt() == 1,
+            "water plots follow the selected FPGA channel");
+    panel.setWaterCalibration("cal-b", "other.vcal", "ppmv", false, {});
+    require(plots[4]->property("sampleCount").toInt() == 0 && plots[5]->property("sampleCount").toInt() == 0,
+            "calibration changes clear prior measurements");
     require(acquisitionRequests == 0, "display selections do not send acquisition commands");
 }
 
@@ -733,6 +766,10 @@ int main(int argc, char **argv)
     app.setOrganizationName(QStringLiteral("VaporViewTcpWavePanelTest"));
     app.setApplicationName(QStringLiteral("tcp_wave_panel_test"));
 
+    if (app.arguments().contains(QStringLiteral("--fpga-display-only"))) {
+        testFpgaWaveDisplaySelection();
+        return 0;
+    }
     testInvalidPortPublishesStructuredWarning();
     testSocketLifecyclePublishesStructuredLogs();
     testSocketErrorPublishesStructuredError();

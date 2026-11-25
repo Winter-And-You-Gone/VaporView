@@ -2200,6 +2200,13 @@ static void harmonicHomeGraphs()
         }
         page->setConnectionState(true,false);
         page->updateWaveform(wave);
+        require(monitor->findChild<QWidget *>("waterConcentrationPlot")->isVisibleTo(monitor) &&
+            monitor->findChild<QWidget *>("waterProfilePlot")->isVisibleTo(monitor) &&
+            !monitor->findChild<QWidget *>("tcpWaveRawPlot")->isVisibleTo(monitor),
+            "home FPGA monitor starts in the water measurement view");
+        auto *all = monitor->findChild<QAction *>("tcpWaveDisplayShowAllMenuAction");
+        require(all, "home monitor provides the all-graphs view");
+        all->trigger();
         for (const QSize size : {QSize(1600,1000), QSize(1150,850)}) {
             window.resize(size);
             for (bool english : {false,true}) {

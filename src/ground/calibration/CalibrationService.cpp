@@ -184,12 +184,13 @@ QJsonObject CalibrationService::diagnostics() const
         {"capacity_rejected",QString::number(capacityRejectedCount_)},
         {"automatic_pauses",QString::number(autoPauseCount_)},{"last_automatic_pause",lastAutoPauseReason_}};
 }
-void CalibrationService::submit(std::function<void()> job)
+bool CalibrationService::submit(std::function<void()> job)
 {
     std::lock_guard lock(mutex_);
-    if(commands_.size()>=32) {message(QStringLiteral("定标操作队列繁忙，请稍后重试"),true);return;}
-    if(stopping_)return;
+    if(commands_.size()>=32) {message(QStringLiteral("定标操作队列繁忙，请稍后重试"),true);return false;}
+    if(stopping_)return false;
     commands_.push_back({std::move(job),admittedSerial_});wake_.notify_all();
+    return true;
 }
 void CalibrationService::synchronize()
 {
@@ -533,12 +534,16 @@ void CalibrationService::openProject(const QString& filename,bool draft)
         dirty_=true;if(persist())message(QStringLiteral("草稿/修订任务已加载；恢复前请核对设备及标气稳定状态"));
     });
 }
-void CalibrationService::selectFile(const QString& filename, bool confirmed)
+void CalibrationService::selectFile(const QString& filename, bool confirmed,
+                                    std::function<void(const QString&)> completion)
 {
-    submit([this, filename, confirmed] {
+    const bool accepted = submit([this, filename, confirmed, completion] {
         const QString error = selectFileImpl(filename, confirmed, {}, false);
         if (!error.isEmpty()) message(error, true);
+        if (completion) completion(error);
     });
+    if (!accepted && completion)
+        completion(QStringLiteral("定标服务当前不可用或操作队列繁忙，请稍后重试"));
 }
 
 void CalibrationService::selectFileForRecording(const QString& filename, bool confirmed, const QString& expectedSha256,
