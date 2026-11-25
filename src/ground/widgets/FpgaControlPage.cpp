@@ -7,6 +7,7 @@
 #include "FpgaExtensions.h"
 #include "FpgaDliaSos.h"
 #include "FpgaHarmonics.h"
+#include "ground/wave/WavePlotFrame.h"
 #include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/CheckedIndicator.h"
@@ -109,29 +110,108 @@ public:
     QVector<double> samples;
     QVector<double> triggeredSamples;
     int displayOffset = 0;
+    quint64 sampleStride = 1;
+    QString emptyText = QStringLiteral("暂无数据");
     QElapsedTimer lastTrigger;
     quint32 triggerRate = 0, triggerPoints = 0;
     quint16 triggerFormat = 0;
     explicit SamplePlot(QWidget *parent) : QWidget(parent) { setProperty("fpgaFixedPlot",true); setFixedHeight(100); setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed); }
 protected:
-    void paintEvent(QPaintEvent *) override {
-        QPainter p(this); p.fillRect(rect(), palette().base());
-        const QRectF area = QRectF(rect()).adjusted(12,12,-12,-12);
-        p.setPen(palette().mid().color()); p.drawRect(area);
+    void paintEvent(QPaintEvent *) override
+    {
+        using namespace VaporView::WavePlotFrame;
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        const auto theme = plotThemeFor(this);
+        painter.fillRect(rect(), theme.background);
         const auto &trace = triggeredSamples.isEmpty() ? samples : triggeredSamples;
-        if (trace.size() < 2) return;
-        const auto mm = std::minmax_element(trace.cbegin(), trace.cend());
-        const double low = *mm.first, extent = *mm.second - low;
-        const double span = extent > 0 ? extent : 1.0;
-        QPainterPath path;
-        for (int i=0; i<trace.size(); ++i) {
-            const int index = (i + displayOffset) % trace.size();
-            const QPointF point(area.left()+area.width()*i/(trace.size()-1), area.bottom()-area.height()*(trace[index]-low)/span);
-            if (!i) path.moveTo(point); else path.lineTo(point);
+        const auto metrics = painter.fontMetrics();
+        qreal leftMargin = 6;
+        qreal rightMargin = 6;
+        int columns = 4;
+        QStringList xLabels, yLabels;
+        double low = 0, high = 0;
+        if (!trace.isEmpty()) {
+            const auto [minimum, maximum] = std::minmax_element(trace.cbegin(), trace.cend());
+            low = *minimum;
+            high = *maximum;
+            if (low == high) {
+                const double padding = std::max(1e-6, std::abs(low) * 0.05);
+                low -= padding;
+                high += padding;
+            }
+            const auto makeYLabels = [&](int precision) {
+                QStringList labels;
+                for (int i = 0; i < 4; ++i)
+                    labels.append(QString::number(high - (high - low) * (i / 3.0), 'g', precision));
+                return labels;
+            };
+            yLabels = makeYLabels(6);
+            if (std::adjacent_find(yLabels.cbegin(), yLabels.cend()) != yLabels.cend())
+                yLabels = makeYLabels(12);
+            for (const auto &label : yLabels)
+                leftMargin = std::max(leftMargin, qreal(metrics.horizontalAdvance(label) + 6));
+
+            // Show indices in the capture, including points skipped by either decimator.
+            const quint64 lastIndex = quint64(trace.size() - 1) * sampleStride;
+            const QString endLabel = QString::number(lastIndex);
+            rightMargin = std::max(rightMargin, metrics.horizontalAdvance(endLabel) / 2.0 + 2.0);
+            const int labelSpacing = metrics.horizontalAdvance(endLabel + QStringLiteral(".75")) + 6;
+            const int maxColumns = lastIndex < 4 ? std::max(1, int(lastIndex)) : 4;
+            const qreal available = width() - leftMargin - rightMargin;
+            columns = available >= maxColumns * labelSpacing ? maxColumns
+                : (maxColumns >= 2 && available >= 2 * labelSpacing ? 2 : 1);
+            for (int i = 0; i <= (lastIndex ? columns : 0); ++i)
+                xLabels.append(QString::number(double(lastIndex) * i / columns, 'g', 12));
         }
-        p.setRenderHint(QPainter::Antialiasing);
-        p.setPen(QPen(VaporView::appThemeColor(VaporView::AppThemeColor::PlotSeriesWaveBlue,
-            VaporView::isDarkThemePalette(palette())),1.5)); p.drawPath(path);
+
+        const QRectF area = QRectF(rect()).adjusted(leftMargin, 4, -rightMargin, -metrics.height() - 8);
+        setProperty("plotAreaLeft", area.left());
+        setProperty("plotAreaTop", area.top());
+        setProperty("plotAreaRight", area.right());
+        setProperty("plotAreaBottom", area.bottom());
+        setProperty("xAxisTickLabels", xLabels);
+        if (area.width() <= 1 || area.height() <= 1)
+            return;
+        drawGrid(painter, area, columns, theme);
+        if (trace.isEmpty()) {
+            painter.setPen(theme.mutedText);
+            painter.drawText(area, Qt::AlignCenter, emptyText);
+            return;
+        }
+
+        QPainterPath path;
+        for (int i = 0; i < trace.size(); ++i) {
+            const int index = (i + displayOffset) % trace.size();
+            const qreal x = area.left() + area.width() * i / std::max<qsizetype>(1, trace.size() - 1);
+            const qreal y = area.bottom() - area.height() * (trace.at(index) - low) / (high - low);
+            if (i == 0)
+                path.moveTo(x, y);
+            else
+                path.lineTo(x, y);
+        }
+        painter.setPen(QPen(VaporView::appThemeColor(VaporView::AppThemeColor::PlotSeriesWaveBlue,
+            VaporView::isDarkThemePalette(palette())), 1.5));
+        if (trace.size() == 1)
+            painter.drawPoint(path.currentPosition());
+        else
+            painter.drawPath(path);
+
+        painter.setPen(theme.text);
+        const int yIntervals = int(yLabels.size()) - 1;
+        for (int i = 0; i <= yIntervals; ++i) {
+            const qreal y = area.top() + area.height() * i / yIntervals;
+            const qreal top = i == 0 ? area.top() - 2
+                : (i == yIntervals ? area.bottom() - metrics.height() + 2 : y - metrics.height() / 2.0);
+            painter.drawText(QRectF(2, top, leftMargin - 4, metrics.height()),
+                             Qt::AlignRight | Qt::AlignVCenter, yLabels.at(i));
+        }
+        for (int i = 0; i < xLabels.size(); ++i) {
+            const qreal x = area.left() + area.width() * i / columns;
+            const qreal labelWidth = metrics.horizontalAdvance(xLabels.at(i)) + 2;
+            painter.drawText(QRectF(x - labelWidth / 2.0, area.bottom() + 2, labelWidth, metrics.height()),
+                             Qt::AlignCenter, xLabels.at(i));
+        }
     }
 };
 qint64 rawSample(const VaporView::FpgaWave::CompletedStream &stream, int index)
@@ -592,7 +672,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout, QVB
           QStringLiteral("Align by waveform trigger (off: FPGA scan origin)"));
     waveLayout->addWidget(waveformTrigger_);
     connect(waveformTrigger_, &QCheckBox::toggled, this, [this] { refreshMeasurements(); });
-    auto *waveHint=new QLabel(waves); label(waveHint,QStringLiteral("ADC 未确认前端校准时显示原码；解调显示数字幅值，不代表气体浓度。"),QStringLiteral("ADC displays raw codes until frontend calibration is confirmed. Demodulation displays digital amplitude, not concentration.")); waveHint->setWordWrap(true); waveLayout->addWidget(waveHint);
+    auto *waveHint=new QLabel(waves); label(waveHint,QStringLiteral("横轴为采样点序号。ADC 未确认前端校准时显示原码；解调显示数字幅值，不代表气体浓度。"),QStringLiteral("The horizontal axis shows the sample index. ADC displays raw codes until frontend calibration is confirmed. Demodulation displays digital amplitude, not concentration.")); waveHint->setWordWrap(true); waveLayout->addWidget(waveHint);
     auto *faults=new QHBoxLayout;waveLayout->addLayout(faults);
     for(const auto &fault:QList<QPair<QString,QString>>{{"missing_cycle",QStringLiteral("模拟单周期丢片")},{"latch_dlia",QStringLiteral("模拟 DLIA 异常锁存")}}) {
         auto *button=new QPushButton(waves);button->setObjectName("fpgaSimulate_"+fault.first);
@@ -1529,6 +1609,8 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
                                           : text(" · H1/H2 波形触发", " · H1/H2 waveform trigger")));
     if (replay) l->setText(text("历史回放 · ", "Historical replay · ") + l->text());
     l->setToolTip(l->text());
+    for (auto *p : activePlots)
+        p->sampleStride = quint64(stride) * (s.preview ? s.previewStride : 1);
     for(auto *p:activePlots){p->setProperty("sampleCount",p->samples.size());p->setProperty("previewStride",s.preview?s.previewStride:1);if(!p->samples.isEmpty()){const auto mm=std::minmax_element(p->samples.cbegin(),p->samples.cend());p->setProperty("sampleMinimum",*mm.first);p->setProperty("sampleMaximum",*mm.second);}p->update();}
     publishDisplay();
 }
@@ -1571,6 +1653,13 @@ void FpgaControlPage::setLanguage(bool en){
                 label(widget, widget->property("fpgaZh").toString(), widget->property("fpgaEn").toString());
     };
     retranslate(this);
+    const auto emptyText = text("暂无数据", "No data");
+    for (auto *widget : findChildren<QWidget *>()) {
+        if (widget->property("fpgaFixedPlot").toBool()) {
+            static_cast<SamplePlot *>(widget)->emptyText = emptyText;
+            widget->update();
+        }
+    }
     updateDac1Target(configuration());
     for (const auto &view : motorViews_)
         if (!isAncestorOf(view.card)) retranslate(view.card);

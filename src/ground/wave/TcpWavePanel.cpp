@@ -3,6 +3,7 @@
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
 #include "TcpWavePanel.h"
+#include "WavePlotFrame.h"
 #include "ground/widgets/VisualTextLabel.h"
 #include "ground/widgets/LabelTextSelection.h"
 #include "ground/widgets/SegmentedSwitchButton.h"
@@ -69,6 +70,8 @@ using VaporView::SingleLevelPopupAnchor;
 using VaporView::SingleLevelPopupMenu;
 using VaporView::SingleLevelPopupMenuRow;
 using VaporView::SingleLevelPopupTextAlignment;
+using VaporView::WavePlotFrame::PlotTheme;
+using VaporView::WavePlotFrame::plotThemeFor;
 
 namespace
 {
@@ -842,35 +845,6 @@ private:
     }
 };
 
-struct PlotTheme
-{
-    QColor background;
-    QColor grid;
-    QColor border;
-    QColor text;
-    QColor mutedText;
-};
-
-PlotTheme plotThemeFor(const QWidget *widget)
-{
-    const QPalette palette = widget->palette();
-    QColor background = palette.color(QPalette::Base);
-    if (!background.isValid() || background.alpha() == 0)
-    {
-        background = palette.color(QPalette::Window);
-    }
-    const bool dark = background.lightness() < 128;
-    const QColor neutralGrid = dark ? QColor(QStringLiteral("#2A2A2A")) : QColor(QStringLiteral("#E6E8EC"));
-    const QColor neutralBorder = dark ? QColor(QStringLiteral("#3D3D3D")) : QColor(QStringLiteral("#D7DCE3"));
-    return {
-        background,
-        neutralGrid,
-        neutralBorder,
-        appThemeColor(AppThemeColor::PlotText, dark),
-        appThemeColor(AppThemeColor::PlotMutedText, dark)
-    };
-}
-
 bool isReasonableWavePayload(const QVector<float>& values, double maxMagnitude, double *observedMaxMagnitude = nullptr)
 {
     double observedMax = 0.0;
@@ -1208,21 +1182,7 @@ protected:
         setProperty("xAxisTimeMode", !sample_axis_);
         updateTimeAxisGeometryProperties(this, plotRect, timeAxis);
         const auto drawGrid = [&]() {
-            painter.setPen(QPen(theme.grid, 1));
-            const int intervals = std::max(1, static_cast<int>(timeAxis.labels.size()) - 1);
-            for (int i = 0; i < static_cast<int>(timeAxis.labels.size()); ++i)
-            {
-                const qreal x = plotRect.left() + plotRect.width() * i / static_cast<qreal>(intervals);
-                painter.drawLine(QPointF(x, plotRect.top()), QPointF(x, plotRect.bottom()));
-            }
-            for (int i = 0; i <= 6; ++i)
-            {
-                const qreal y = plotRect.top() + plotRect.height() * i / 6.0;
-                painter.drawLine(QPointF(plotRect.left(), y), QPointF(plotRect.right(), y));
-            }
-
-            painter.setPen(QPen(theme.border, 1));
-            painter.drawRect(plotRect);
+            VaporView::WavePlotFrame::drawGrid(painter, plotRect, std::max(1, static_cast<int>(timeAxis.labels.size()) - 1), theme);
         };
 
         float minValue = std::numeric_limits<float>::infinity();
@@ -1443,21 +1403,7 @@ protected:
         setTimeAxisProperties(this, timeAxis);
         updateTimeAxisGeometryProperties(this, plotRect, timeAxis);
         const auto drawGrid = [&]() {
-            painter.setPen(QPen(theme.grid, 1));
-            const int intervals = std::max(1, static_cast<int>(timeAxis.labels.size()) - 1);
-            for (int i = 0; i < static_cast<int>(timeAxis.labels.size()); ++i)
-            {
-                const qreal x = plotRect.left() + plotRect.width() * i / static_cast<qreal>(intervals);
-                painter.drawLine(QPointF(x, plotRect.top()), QPointF(x, plotRect.bottom()));
-            }
-            for (int i = 0; i <= 6; ++i)
-            {
-                const qreal y = plotRect.top() + plotRect.height() * i / 6.0;
-                painter.drawLine(QPointF(plotRect.left(), y), QPointF(plotRect.right(), y));
-            }
-
-            painter.setPen(QPen(theme.border, 1));
-            painter.drawRect(plotRect);
+            VaporView::WavePlotFrame::drawGrid(painter, plotRect, std::max(1, static_cast<int>(timeAxis.labels.size()) - 1), theme);
         };
 
         if (peak_values_.isEmpty())

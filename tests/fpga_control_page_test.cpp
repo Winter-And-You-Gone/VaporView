@@ -515,6 +515,26 @@ int main(int argc,char **argv) {
     triggerMode->click();
     auto shifted = wave;
     shifted.format=0; shifted.bytesPerPoint=8; shifted.totalPoints=9;
+    const auto plotPixel = [](QWidget *widget, const QImage &image, double xRatio, double yRatio) {
+        const auto coordinate = [&](const char *start, const char *end, double ratio) {
+            const double lo = widget->property(start).toDouble();
+            const double hi = widget->property(end).toDouble();
+            return qRound((lo + (hi - lo) * ratio) * image.devicePixelRatio());
+        };
+        return QPoint(coordinate("plotAreaLeft", "plotAreaRight", xRatio),
+                      coordinate("plotAreaTop", "plotAreaBottom", yRatio));
+    };
+    const auto hasTraceAtPeak = [&](QWidget *widget, double ratio) {
+        const QImage image = widget->grab().toImage();
+        const QPoint peak = plotPixel(widget, image, ratio, 0);
+        for (int dy = 0; dy <= 3; ++dy) {
+            for (int dx = -2; dx <= 2; ++dx) {
+                const QColor color = image.pixelColor(peak + QPoint(dx, dy));
+                if (color.blue() > color.red() + 40) return true;
+            }
+        }
+        return false;
+    };
     for (int peak : {2, 7}) {
         shifted.pointBytes.clear();
         for (int i=0; i<9; ++i) {
@@ -522,27 +542,17 @@ int main(int argc,char **argv) {
             appendWord(shifted.pointBytes, i==peak ? 12 : 0);
         }
         page.updateWaveform(shifted);
-        const auto hasTraceAtPeak=[](QWidget *widget, int position) {
-            const QImage image=widget->grab().toImage();
-            const int x=qRound((12.0+(widget->width()-24)*position/8.0)*image.devicePixelRatio());
-            const int y=qRound(12*image.devicePixelRatio());
-            for (int dy=0;dy<=3;++dy) for (int dx=-2;dx<=2;++dx) {
-                const QColor color=image.pixelColor(x+dx,y+dy);
-                if (color.blue()>color.red()+40) return true;
-            }
-            return false;
-        };
-        require(hasTraceAtPeak(secondPlot,4) && hasTraceAtPeak(plot,5),
+
+        require(hasTraceAtPeak(secondPlot, 0.5) && hasTraceAtPeak(plot, 5.0 / 8),
             "DLIA0 centers shifted H2 peaks and keeps the H1 peak one sample later");
         if (peak==2) {
             // Display positions 1 and 2 straddle the original last/first samples.
             for (QWidget *trace : {plot, secondPlot}) {
                 const QImage image=trace->grab().toImage();
-                const int x=qRound((12.0+(trace->width()-24)*1.5/8)*image.devicePixelRatio());
-                const int y=qRound((trace->height()-12)*image.devicePixelRatio());
+                const QPoint boundary = plotPixel(trace, image, 1.5 / 8, 1);
                 bool connected=false;
                 for (int dy=-2; dy<=2; ++dy) {
-                    const QColor color=image.pixelColor(x,y+dy);
+                    const QColor color=image.pixelColor(boundary + QPoint(0, dy));
                     connected |= color.blue()>color.red()+40;
                 }
                 require(connected,"both aligned harmonics draw through the original cycle boundary");
@@ -560,9 +570,7 @@ int main(int argc,char **argv) {
             appendWord(multi.pointBytes, phase==3 ? 100 : phase==6 ? (shift ? 101 : 99) : 0);
         }
         page.updateWaveform(multi);
-        const QImage image=plot->grab().toImage();
-        const QColor center=image.pixelColor(qRound(plot->width()*image.devicePixelRatio()/2), qRound(13*image.devicePixelRatio()));
-        require(center.blue()>center.red()+40,"switching H2 peak heights keeps the same H1 lobe centered");
+        require(hasTraceAtPeak(plot, 0.5), "switching H2 peak heights keeps the same H1 lobe centered");
     }
     // A clearly taller lobe becomes the center even while the two traces still correlate.
     for (quint16 source : {0x30,0x31}) {
@@ -576,9 +584,7 @@ int main(int argc,char **argv) {
             }
             page.updateWaveform(boundary);
         }
-        const QImage image=h2Plot->grab().toImage();
-        const auto color=image.pixelColor(qRound(h2Plot->width()*image.devicePixelRatio()/2), qRound(13*image.devicePixelRatio()));
-        require(color.blue()>color.red()+40,"dominant H2 peak at the cycle boundary is centered on either channel");
+        require(hasTraceAtPeak(h2Plot, 0.5), "dominant H2 peak at the cycle boundary is centered on either channel");
     }
     const auto triggeredImage=secondPlot->grab().toImage();
     multi.pointBytes.fill(0);
@@ -608,6 +614,10 @@ int main(int argc,char **argv) {
     require(std::abs(cyclePeak-210.0/110)<1e-9&&peakPreview,"normalized preview maximum is marked as a preview peak");
     require(plot->property("sampleCount").toInt()==2 && plot->property("previewStride").toInt()==1024,
         "bounded preview displays actual received points while preserving original stride");
+    require(!plot->grab().isNull(), "preview plot renders");
+    const auto sampleTicks = plot->property("xAxisTickLabels").toStringList();
+    require(sampleTicks.size() >= 2 && sampleTicks.first() == "0" && sampleTicks.last() == "1024",
+        "sample axis shows original point indices after preview decimation");
     const auto previewLabel=page.findChild<QLabel*>("fpgaWaveSummary48")->text();
     require(previewLabel.contains("Sky waveform preview") && previewLabel.contains("2/2048") && !previewLabel.contains("Complete cycle"),
         "preview cannot claim a full cycle or original-length sample buffer");
