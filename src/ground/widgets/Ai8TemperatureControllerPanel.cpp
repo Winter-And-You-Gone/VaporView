@@ -1269,7 +1269,7 @@ void Ai8TemperatureControllerPanel::setupAutoApply()
     auto_apply_timer_ = new QTimer(this);
     auto_apply_timer_->setSingleShot(true);
     auto_apply_timer_->setTimerType(Qt::PreciseTimer);
-    auto_apply_timer_->setInterval(450);
+    auto_apply_timer_->setInterval(1000);
     connect(auto_apply_timer_, &QTimer::timeout, this, &Ai8TemperatureControllerPanel::sendPendingWrite);
 
     const auto bind = [this](const char *name, WriteField field, auto group, auto member) {

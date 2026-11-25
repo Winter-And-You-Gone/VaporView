@@ -45,10 +45,10 @@ void require(bool condition, const char *message)
     }
 }
 
-void waitForAutoApply(int milliseconds = 520)
+void waitForAutoApply(int milliseconds = 1200)
 {
     QEventLoop loop;
-    QTimer::singleShot(milliseconds, &loop, &QEventLoop::quit);
+    QTimer::singleShot(milliseconds, Qt::PreciseTimer, &loop, &QEventLoop::quit);
     loop.exec();
 }
 
@@ -86,7 +86,9 @@ int main(int argc, char **argv)
         QMetaObject::invokeMethod(p, "editingFinished");
         panel.applyPageData(readback);
         require(p->value() == 30.0 && writes.isEmpty(), "Readback preserves a pending edit during debounce");
-        waitForAutoApply();
+        waitForAutoApply(600);
+        require(writes.isEmpty(), "Auto apply keeps edits queued within the one-second debounce");
+        waitForAutoApply(600);
         require(writes.size() == 1 && writes[0].channel.proportionalBand == 30 &&
                 writes[0].channel.integralTimeS == 10 && writes[0].selection.channel == 1 &&
                 writes[0].writeFields == (writeFieldBit(WriteField::ProportionalBand) | writeFieldBit(WriteField::IntegralTime)),
