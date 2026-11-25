@@ -534,12 +534,13 @@ public:
         setMouseTracking(true);
         menu_->setObjectName(QStringLiteral("waveDisplayMenu"));
         menu_->refreshTheme();
+        show_default_row_ = addModeRow(5);
         show_all_row_ = addModeRow(0);
         show_raw_row_ = addModeRow(1);
         show_h2_row_ = addModeRow(4);
         show_harmonic_row_ = addModeRow(2);
         show_peak_trend_row_ = addModeRow(3);
-        setCurrentStates(true, false, false, false);
+        setCurrentStates(true, false, false, false, false, false);
     }
 
     QSize sizeHint() const override
@@ -588,6 +589,8 @@ public:
         setToolTip(title);
         setAccessibleName(title);
         menu_->setTitle(english ? QStringLiteral("Wave Display") : QStringLiteral("波形显示"));
+        show_default_row_->setText(english ? QStringLiteral("Default View") : QStringLiteral("默认显示"));
+        show_default_row_->defaultAction()->setVisible(fpgaMode);
         show_all_row_->setText(english ? QStringLiteral("Show All") : QStringLiteral("全部显示"));
         show_raw_row_->setText(fpgaMode
             ? (english ? QStringLiteral("Show First Harmonic H1") : QStringLiteral("显示一次谐波H1"))
@@ -603,9 +606,11 @@ public:
         refreshTooltipAnchor();
     }
 
-    void setCurrentStates(bool showAll, bool showRaw, bool showHarmonic, bool showPeakTrend, bool showH2 = false)
+    void setCurrentStates(bool showAll, bool showRaw, bool showHarmonic, bool showPeakTrend, bool showH2, bool showDefault)
     {
         show_all_ = showAll;
+        show_default_ = showDefault;
+        show_default_row_->setChecked(show_default_);
         show_raw_ = showRaw;
         show_harmonic_ = showHarmonic;
         show_peak_trend_ = showPeakTrend;
@@ -620,14 +625,14 @@ public:
     void setCheckIcon(const QIcon& icon)
     {
         check_icon_ = icon;
-        for (SingleLevelPopupMenuRow *row : {show_all_row_, show_raw_row_, show_h2_row_, show_harmonic_row_, show_peak_trend_row_})
+        for (SingleLevelPopupMenuRow *row : {show_default_row_, show_all_row_, show_raw_row_, show_h2_row_, show_harmonic_row_, show_peak_trend_row_})
         {
             row->setCheckIcon(check_icon_);
             row->refreshTheme();
         }
     }
 
-    void setModeChangedCallback(std::function<void(bool, bool, bool, bool, bool)> callback)
+    void setModeChangedCallback(std::function<void(bool, bool, bool, bool, bool, bool)> callback)
     {
         mode_changed_ = std::move(callback);
     }
@@ -765,12 +770,14 @@ private:
     QIcon normal_icon_;
     QIcon check_icon_;
     SingleLevelPopupMenu *menu_;
+    SingleLevelPopupMenuRow *show_default_row_ = nullptr;
     SingleLevelPopupMenuRow *show_all_row_ = nullptr;
     SingleLevelPopupMenuRow *show_raw_row_ = nullptr;
     SingleLevelPopupMenuRow *show_h2_row_ = nullptr;
     SingleLevelPopupMenuRow *show_harmonic_row_ = nullptr;
     SingleLevelPopupMenuRow *show_peak_trend_row_ = nullptr;
-    std::function<void(bool, bool, bool, bool, bool)> mode_changed_;
+    std::function<void(bool, bool, bool, bool, bool, bool)> mode_changed_;
+    bool show_default_ = false;
     bool show_all_ = false;
     bool show_raw_ = false;
     bool show_harmonic_ = false;
@@ -793,6 +800,8 @@ private:
                 return QStringLiteral("tcpWaveDisplayPeakTrendMenuAction");
             case 4:
                 return QStringLiteral("fpgaWaveDisplayH2MenuAction");
+            case 5:
+                return QStringLiteral("fpgaWaveDisplayDefaultMenuAction");
             case 0:
             default:
                 return QStringLiteral("tcpWaveDisplayShowAllMenuAction");
@@ -806,14 +815,18 @@ private:
         row->setCheckIconSize(QSize(18, 18));
         row->setRowHeight(34);
         row->setMinimumRowWidth(238);
-        row->setCloseOnClick(mode == 0);
+        row->setCloseOnClick(mode == 0 || mode == 5);
         auto *action = menu_->addRow(row);
         action->setObjectName(objectName);
         action->setCheckable(true);
         connect(action, &QAction::triggered, this, [this, mode]() {
-            if (mode == 0)
+            if (mode == 5)
             {
-                setCurrentStates(!show_all_, false, false, false);
+                setCurrentStates(false, false, false, false, false, true);
+            }
+            else if (mode == 0)
+            {
+                setCurrentStates(!show_all_, false, false, false, false, false);
             }
             else
             {
@@ -834,11 +847,11 @@ private:
                 {
                     show_h2_ = !show_h2_;
                 }
-                setCurrentStates(false, show_raw_, show_harmonic_, show_peak_trend_, show_h2_);
+                setCurrentStates(false, show_raw_, show_harmonic_, show_peak_trend_, show_h2_, false);
             }
             if (mode_changed_)
             {
-                mode_changed_(show_all_, show_raw_, show_harmonic_, show_peak_trend_, show_h2_);
+                mode_changed_(show_all_, show_raw_, show_harmonic_, show_peak_trend_, show_h2_, show_default_);
             }
         });
         return row;
@@ -1640,6 +1653,84 @@ private:
     std::function<void(int, int, int)> on_view_changed_;
 };
 
+class WaterProfilePlotWidget final : public QWidget
+{
+public:
+    explicit WaterProfilePlotWidget(QWidget *parent) : QWidget(parent)
+    {
+        setFont(numericFontFrom(font()));
+        setMinimumHeight(kPeakPlotMinimumHeight);
+        setMaximumHeight(kPeakPlotMaximumHeight);
+    }
+
+    void setProfile(const QVector<QPointF> &points, const QString &emptyText)
+    {
+        points_ = points;
+        empty_text_ = emptyText;
+        setProperty("sampleCount", points.size());
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        const auto theme = plotThemeFor(this);
+        painter.fillRect(rect(), theme.background);
+        const QFontMetrics metrics = painter.fontMetrics();
+        const auto bounds = [this](auto coordinate) {
+            const auto range = std::minmax_element(points_.cbegin(), points_.cend(),
+                [coordinate](const QPointF &a, const QPointF &b) { return coordinate(a) < coordinate(b); });
+            if (range.first == points_.cend()) return std::pair{0.0, 1.0};
+            const double low = coordinate(*range.first), high = coordinate(*range.second);
+            const double padding = high > low ? (high - low) * 0.04 : std::max(0.01, std::abs(high) * 0.05);
+            return std::pair{low - padding, high + padding};
+        };
+        const auto [xMin, xMax] = bounds([](const QPointF &p) { return p.x(); });
+        const auto [yMin, yMax] = bounds([](const QPointF &p) { return p.y(); });
+        const int rightMargin = 5 + metrics.horizontalAdvance(formatWaveValue(xMax, 2)) / 2;
+        const int leftMargin = 8 + std::max({metrics.horizontalAdvance(formatWaveValue(yMin, 2)),
+                                           metrics.horizontalAdvance(formatWaveValue(yMax, 2)),
+                                           metrics.horizontalAdvance(formatWaveValue(xMin, 2)) / 2});
+        const QRectF area = QRectF(rect()).adjusted(leftMargin, 4, -rightMargin, -metrics.height() - 8);
+        if (area.width() < 2 || area.height() < 2) return;
+        const int columns = area.width() >= 4 * (rightMargin * 2 + 8) ? 4 : 2;
+        VaporView::WavePlotFrame::drawGrid(painter, area, columns, theme);
+        if (points_.isEmpty()) {
+            painter.setPen(theme.mutedText);
+            painter.drawText(area, Qt::AlignCenter | Qt::TextWordWrap, empty_text_);
+            return;
+        }
+        painter.setPen(theme.text);
+        for (int i = 0; i <= columns; ++i) {
+            const double ratio = double(i) / columns;
+            const QString label = formatWaveValue(xMin + (xMax - xMin) * ratio, 2);
+            const int labelWidth = metrics.horizontalAdvance(label) + 2;
+            const qreal x = area.left() + area.width() * ratio;
+            painter.drawText(QRectF(x - labelWidth / 2.0, area.bottom() + 2, labelWidth, metrics.height()),
+                             Qt::AlignCenter, label);
+        }
+        for (int i = 0; i <= 3; ++i) {
+            const double ratio = i / 3.0;
+            const qreal y = area.top() + area.height() * ratio;
+            painter.drawText(QRectF(0, y - metrics.height() / 2.0 + (i == 0 ? 5 : 0), leftMargin - 4, metrics.height()),
+                             Qt::AlignRight | Qt::AlignVCenter, formatWaveValue(yMax - (yMax - yMin) * ratio, 2));
+        }
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(appThemeColor(AppThemeColor::PlotSeriesWaveBlue, theme.background.lightness() < 128));
+        for (const QPointF &point : points_) {
+            const qreal x = area.left() + area.width() * (point.x() - xMin) / (xMax - xMin);
+            const qreal y = area.bottom() - area.height() * (point.y() - yMin) / (yMax - yMin);
+            painter.drawEllipse(QPointF(x, y), 2.5, 2.5);
+        }
+    }
+
+private:
+    QVector<QPointF> points_;
+    QString empty_text_;
+};
+
 TcpWavePanel::TcpWavePanel(QWidget *parent)
     : QWidget(parent)
     , host_edit_(nullptr)
@@ -1731,66 +1822,23 @@ void TcpWavePanel::setCompactLayout(bool compact)
     }
 
     compact_layout_ = compact;
-    if (plots_layout_)
-    {
-        plots_layout_->setDirection(compact ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight);
-        plots_layout_->setSpacing(compact ? 4 : 1);
-        plots_layout_->invalidate();
-        plots_layout_->activate();
-    }
+    layoutPlots();
     updateGeometry();
 }
 
 int TcpWavePanel::preferredPanelHeight() const
 {
     const int topControlsHeight = control_layout_ ? control_layout_->sizeHint().height() : kTcpTitleBarHeight;
-    const auto &mode = waveDisplayMode();
-    if (fpga_mode_) {
-        int wavesHeight = 0;
-        int waveCount = 0;
-        for (const auto &wave : {std::pair{wave1_group_, mode.all || mode.raw},
-                                std::pair{fpga_h2_group_, mode.all || mode.h2},
-                                std::pair{wave4_group_, mode.all || mode.harmonic}}) {
-            if (!wave.second) continue;
-            const int height = wave.first->minimumSizeHint().height();
-            wavesHeight = compact_layout_ ? wavesHeight + height : std::max(wavesHeight, height);
-            ++waveCount;
-        }
-        if (compact_layout_) wavesHeight += std::max(0, waveCount - 1) * plots_layout_->spacing();
-        const QMargins margins = layout()->contentsMargins();
-        const bool showPeak = mode.all || mode.peak_trend;
-        return topControlsHeight + wavesHeight + (showPeak
-            ? std::max(peak_group_->minimumHeight(), peak_group_->minimumSizeHint().height()) : 0)
-            + ((waveCount > 0 ? 1 : 0) + (showPeak ? 1 : 0)) * layout()->spacing()
-            + margins.top() + margins.bottom();
-    }
-    int height = topControlsHeight + 4;
-
-    const bool showRawWave = mode.all || mode.raw;
-    const bool showHarmonicWave = mode.all || mode.harmonic;
-    const bool showPeakTrend = mode.all || mode.peak_trend;
-    const int visibleWaveRows = (showRawWave ? 1 : 0) + (showHarmonicWave ? 1 : 0);
-
-    if (visibleWaveRows > 0)
-    {
-        const int plotRowHeight = kTcpTitleBarHeight + kWavePlotMinimumHeight + 6;
-        height += 4;
-        height += compact_layout_
-            ? visibleWaveRows * plotRowHeight + std::max(0, visibleWaveRows - 1) * 4
-            : plotRowHeight;
-    }
-    if (showPeakTrend)
-    {
-        height += 4;
-        height += kTcpTitleBarHeight + kPeakPlotMinimumHeight + 8;
-    }
-    return height;
+    const QMargins margins = layout()->contentsMargins();
+    const int plotHeight = plots_layout_->minimumSize().height();
+    return topControlsHeight + plotHeight + (plotHeight ? layout()->spacing() : 0)
+        + margins.top() + margins.bottom();
 }
 
 bool TcpWavePanel::hasVisibleWaveDisplay() const
 {
     const auto &mode = waveDisplayMode();
-    return mode.all || mode.raw || mode.harmonic || mode.peak_trend || (fpga_mode_ && mode.h2);
+    return mode.all || mode.raw || mode.harmonic || mode.peak_trend || (fpga_mode_ && (mode.h2 || mode.defaults));
 }
 
 bool TcpWavePanel::hasRecentData(qint64 timeoutMs) const
@@ -1801,13 +1849,7 @@ bool TcpWavePanel::hasRecentData(qint64 timeoutMs) const
 
 bool TcpWavePanel::usesExpandedPanelHeight() const
 {
-    const auto &mode = waveDisplayMode();
-    const int visibleDisplayCount =
-        ((mode.all || mode.raw) ? 1 : 0) +
-        ((mode.all || mode.harmonic) ? 1 : 0) +
-        ((mode.all || mode.peak_trend) ? 1 : 0) +
-        ((fpga_mode_ && (mode.all || mode.h2)) ? 1 : 0);
-    return visibleDisplayCount > 1;
+    return plots_layout_->count() > 1;
 }
 
 void TcpWavePanel::setupUi()
@@ -1830,8 +1872,8 @@ void TcpWavePanel::setupUi()
     control_layout_->addWidget(topControlsBar, 0, 0, 1, 6);
 
     auto *waveDisplayTitle = new WaveDisplayTitleLabel(topControlsBar);
-    waveDisplayTitle->setModeChangedCallback([this](bool showAll, bool showRaw, bool showHarmonic, bool showPeakTrend, bool showH2) {
-        (fpga_mode_ ? fpga_wave_display_ : direct_wave_display_) = {showAll, showRaw, showHarmonic, showPeakTrend, showH2};
+    waveDisplayTitle->setModeChangedCallback([this](bool showAll, bool showRaw, bool showHarmonic, bool showPeakTrend, bool showH2, bool showDefault) {
+        (fpga_mode_ ? fpga_wave_display_ : direct_wave_display_) = {showAll, showRaw, showHarmonic, showPeakTrend, showH2, showDefault};
         applyWaveDisplayMode();
     });
     panel_title_label_ = waveDisplayTitle;
@@ -1919,7 +1961,7 @@ void TcpWavePanel::setupUi()
     fpga_channel_combo_->setFixedHeight(kTcpControlHeight);
     fpga_channel_combo_->hide();
     top_controls_layout_->addWidget(fpga_channel_combo_, 0, Qt::AlignVCenter);
-    connect(fpga_channel_combo_, &QComboBox::currentIndexChanged, this, [this] { refreshFpgaWaveform(); });
+    connect(fpga_channel_combo_, &QComboBox::currentIndexChanged, this, [this] { refreshFpgaWaveform(); refreshWaterPlots(); });
 
     for (bool raw : {true, false}) {
         auto *button = new QPushButton(topControlsBar);
@@ -1959,7 +2001,7 @@ void TcpWavePanel::setupUi()
 
     mainLayout->addLayout(control_layout_);
 
-    plots_layout_ = new QHBoxLayout();
+    plots_layout_ = new QGridLayout();
     plots_layout_->setSpacing(1);
 
     wave1_group_ = new QGroupBox(this);
@@ -1993,7 +2035,6 @@ void TcpWavePanel::setupUi()
     wave1_plot_->setObjectName(QStringLiteral("tcpWaveRawPlot"));
     wave1Layout->addWidget(wave1_plot_, 1);
     installTcpWaveCardOutline(wave1_group_);
-    plots_layout_->addWidget(wave1_group_, 1);
 
     fpga_h2_group_ = new QGroupBox(this);
     fpga_h2_group_->setObjectName("sensorGroupBox");
@@ -2021,7 +2062,6 @@ void TcpWavePanel::setupUi()
     fpga_h2_plot_->setObjectName(QStringLiteral("fpgaWaveH2Plot"));
     h2Layout->addWidget(fpga_h2_plot_, 1);
     installTcpWaveCardOutline(fpga_h2_group_);
-    plots_layout_->addWidget(fpga_h2_group_, 1);
 
     wave4_group_ = new QGroupBox(this);
     wave4_group_->setObjectName("sensorGroupBox");
@@ -2054,9 +2094,8 @@ void TcpWavePanel::setupUi()
     wave4_plot_->setObjectName(QStringLiteral("tcpWaveHarmonicPlot"));
     wave4Layout->addWidget(wave4_plot_, 1);
     installTcpWaveCardOutline(wave4_group_);
-    plots_layout_->addWidget(wave4_group_, 1);
 
-    mainLayout->addLayout(plots_layout_, 1);
+
 
     peak_group_ = new QGroupBox(this);
     peak_group_->setObjectName("sensorGroupBox");
@@ -2120,7 +2159,21 @@ void TcpWavePanel::setupUi()
     peak_plot_->setPlotMode(peak_plot_scatter_mode_ ? PeakTrendPlotWidget::PlotMode::Scatter : PeakTrendPlotWidget::PlotMode::Polyline);
     peakLayout->addWidget(peak_plot_);
     installTcpWaveCardOutline(peak_group_);
-    mainLayout->addWidget(peak_group_, 0);
+    // The half-width FPGA trend keeps its controls on a second header row.
+    peak_header_layout_ = peakHeaderLayout;
+    fpga_peak_controls_ = new QWidget(peak_group_);
+    fpga_peak_controls_layout_ = new QHBoxLayout(fpga_peak_controls_);
+    fpga_peak_controls_layout_->setContentsMargins(8, 0, 8, 0);
+    fpga_peak_controls_layout_->addStretch();
+    peakLayout->insertWidget(1, fpga_peak_controls_);
+    fpga_peak_controls_->hide();
+    fpga_peak_info_label_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+
+    createWaterPlots();
+    for (auto *group : {wave1_group_, fpga_h2_group_, wave4_group_, peak_group_,
+                        water_concentration_group_, water_profile_group_})
+        group->setSizePolicy(QSizePolicy::Ignored, group->sizePolicy().verticalPolicy());
+    mainLayout->addLayout(plots_layout_, 1);
 
     connect(host_edit_, &QLineEdit::textChanged, this, [this](const QString&) {
         saveRememberedInputState();
@@ -2283,6 +2336,7 @@ void TcpWavePanel::setEnglish(bool english)
     wave4_info_label_->setText(english ? "waiting for frame" : "等待数据帧");
     updatePeakFilterButtonText();
     updatePeakPlotModeButtonText();
+    refreshWaterPlots();
     applyWaveDisplayMode();
 
     if (!socket_ || socket_->state() != QAbstractSocket::ConnectedState)
@@ -2310,8 +2364,17 @@ void TcpWavePanel::setFpgaMode(bool enabled)
     fpga_peak_info_label_->setVisible(enabled);
     fpga_peak_value_label_->setVisible(enabled);
     peak_filter_button_->setVisible(!enabled);
+    fpga_peak_controls_->setVisible(enabled);
+    for (QWidget *control : QList<QWidget *>{peak_mode_button_, peak_clear_button_, fpga_peak_info_label_, fpga_peak_value_label_})
+    {
+        auto *from = enabled ? peak_header_layout_ : fpga_peak_controls_layout_;
+        auto *to = enabled ? fpga_peak_controls_layout_ : peak_header_layout_;
+        from->removeWidget(control);
+        const bool metadata = control == fpga_peak_info_label_ || control == fpga_peak_value_label_;
+        to->insertWidget(metadata ? to->count() : to->count() - 1, control, 0, Qt::AlignVCenter);
+    }
     clearRemoteWaveformDisplay();
-    if (!enabled) { fpga_waves_.clear(); fpga_peaks_.clear(); }
+    if (!enabled) { fpga_waves_.clear(); fpga_peaks_.clear(); clearWaterSamples(); }
     wave1_plot_->setSampleAxis(enabled);
     wave4_plot_->setSampleAxis(enabled);
     updateEndpointEditorState();
@@ -2522,12 +2585,12 @@ void TcpWavePanel::applyWaveDisplayMode()
     const bool showH2 = fpga_mode_ && (mode.all || mode.h2);
     fpga_h2_group_->setVisible(showH2);
     const bool showRawWave = mode.all || mode.raw;
-    const bool showHarmonicWave = mode.all || mode.harmonic;
-    const bool showPeakTrend = mode.all || mode.peak_trend;
+    const bool showHarmonicWave = mode.all || mode.harmonic || mode.defaults;
+    const bool showPeakTrend = mode.all || mode.peak_trend || mode.defaults;
 
     if (auto *titleLabel = dynamic_cast<WaveDisplayTitleLabel *>(panel_title_label_))
     {
-        titleLabel->setCurrentStates(mode.all, mode.raw, mode.harmonic, mode.peak_trend, mode.h2);
+        titleLabel->setCurrentStates(mode.all, mode.raw, mode.harmonic, mode.peak_trend, mode.h2, mode.defaults);
     }
 
     if (wave1_group_)
@@ -2543,6 +2606,10 @@ void TcpWavePanel::applyWaveDisplayMode()
         peak_group_->setVisible(showPeakTrend);
     }
 
+    const bool showWater = fpga_mode_ && (mode.all || mode.defaults);
+    water_concentration_group_->setVisible(showWater);
+    water_profile_group_->setVisible(showWater);
+    layoutPlots();
     const bool wavePlotsFillAvailableHeight = !showPeakTrend;
     fpga_h2_plot_->setMaximumHeight(showH2 && wavePlotsFillAvailableHeight
         ? QWIDGETSIZE_MAX : kWavePlotMaximumHeight);
@@ -2574,6 +2641,155 @@ void TcpWavePanel::applyWaveDisplayMode()
 
     updateGeometry();
     emit preferredPanelHeightChanged();
+}
+
+void TcpWavePanel::createWaterPlots()
+{
+    const auto createCard = [this](QGroupBox *&group, QLabel *&title, const QString &name) {
+        group = new QGroupBox(this);
+        group->setObjectName(QStringLiteral("sensorGroupBox"));
+        group->setProperty("waterPlotCard", name);
+        auto *body = new QVBoxLayout(group);
+        body->setContentsMargins(2, 2, 2, 2);
+        auto *header = new QWidget(group);
+        header->setObjectName(QStringLiteral("sectionTitleBar"));
+        header->setFixedHeight(kTcpTitleBarHeight);
+        auto *row = new QHBoxLayout(header);
+        row->setContentsMargins(8, 2, 8, 2);
+        title = new VaporView::VisualTextLabel(header);
+        title->setObjectName(QStringLiteral("sectionTitleLabel"));
+        VaporView::configureSelectableCardTitle(title);
+        row->addWidget(title);
+        body->addWidget(header);
+        installTcpWaveCardOutline(group);
+        return row;
+    };
+    auto *concentrationHeader = createCard(water_concentration_group_, water_concentration_title_, QStringLiteral("concentration"));
+    water_calibration_button_ = new QPushButton(water_concentration_group_);
+    water_calibration_button_->setObjectName(QStringLiteral("compactTcpButton"));
+    water_calibration_button_->setFixedHeight(kTcpButtonHeight);
+    concentrationHeader->addStretch();
+    concentrationHeader->addWidget(water_calibration_button_);
+    connect(water_calibration_button_, &QPushButton::clicked, this, &TcpWavePanel::waterCalibrationRequested);
+    water_concentration_plot_ = new PeakTrendPlotWidget(water_concentration_group_);
+    water_concentration_plot_->setObjectName(QStringLiteral("waterConcentrationPlot"));
+    water_concentration_plot_->setMinimumHeight(kWavePlotMinimumHeight);
+    water_concentration_plot_->setMaximumHeight(kWavePlotMaximumHeight);
+    water_concentration_plot_->setPlotMode(PeakTrendPlotWidget::PlotMode::Polyline);
+    water_concentration_group_->layout()->addWidget(water_concentration_plot_);
+    water_profile_plot_ = new WaterProfilePlotWidget(this);
+    auto *profileHeader = createCard(water_profile_group_, water_profile_title_, QStringLiteral("profile"));
+    water_profile_axes_ = new QLabel(water_profile_group_);
+    water_profile_axes_->setObjectName(QStringLiteral("fieldLabel"));
+    water_profile_axes_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    water_profile_axes_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+    profileHeader->addWidget(water_profile_axes_, 1);
+    water_profile_plot_->setObjectName(QStringLiteral("waterProfilePlot"));
+    water_profile_group_->layout()->addWidget(water_profile_plot_);
+}
+
+void TcpWavePanel::setWaterCalibration(const QString &key, const QString &name, const QString &unit,
+                                       bool locked, const QString &detail)
+{
+    water_calibration_button_->setEnabled(!locked);
+    if (water_calibration_key_ == key && water_calibration_name_ == name &&
+        water_unit_ == unit && water_calibration_detail_ == detail) return;
+    const bool changed = water_calibration_key_ != key;
+    if (changed) {
+        water_calibration_key_ = key;
+        water_samples_.clear();
+    }
+    water_calibration_name_ = name;
+    water_unit_ = unit;
+    water_calibration_detail_ = detail;
+    refreshWaterPlots();
+}
+
+void TcpWavePanel::clearWaterSamples()
+{
+    if (water_samples_.isEmpty()) return;
+    water_samples_.clear();
+    refreshWaterPlots();
+}
+
+void TcpWavePanel::appendWaterSample(int channel, const QString &id, qint64 timeMs, double value, double heightM)
+{
+    if (!fpga_mode_ || channel < 0 || channel > 1 || water_calibration_key_.isEmpty() || id.isEmpty() || timeMs <= 0) return;
+    auto &series = water_samples_[channel];
+    if (!series.isEmpty() && series.last().timeMs > timeMs) return;
+    if (!series.isEmpty() && series.last().id == id) {
+        // A lidar update may arrive after the concentration but still be within the pairing window.
+        if (std::isfinite(series.last().heightM) || !std::isfinite(heightM)) return;
+        series.last().heightM = heightM;
+    } else {
+        series.append({id, timeMs, value, heightM});
+        if (series.size() > kPeakTrendFrameWindow) series.removeFirst();
+    }
+    if (channel == fpga_channel_combo_->currentIndex()) refreshWaterPlots();
+}
+
+void TcpWavePanel::refreshWaterPlots()
+{
+    const auto name = is_english_ ? QStringLiteral("Water Vapor Concentration") : QStringLiteral("水汽浓度");
+    const auto profile = is_english_ ? QStringLiteral("Water Vapor Profile") : QStringLiteral("水汽廓线");
+    const QString unit = water_unit_.isEmpty() ? QString() : QStringLiteral(" (%1)").arg(water_unit_);
+    water_concentration_title_->setText(name + unit);
+    water_profile_title_->setText(profile);
+    const QString axisText = is_english_ ? QStringLiteral("Concentration%1 / Height (m)").arg(unit)
+                                         : QStringLiteral("浓度%1 / 高度 (m)").arg(unit);
+    water_profile_axes_->setText(axisText);
+    water_profile_axes_->setToolTip(axisText);
+    water_profile_plot_->setToolTip(is_english_ ? QStringLiteral("X: concentration%1. Y: lidar height (m).").arg(unit)
+                                              : QStringLiteral("横轴：水汽浓度%1。纵轴：测距雷达高度 (m)。").arg(unit));
+    const auto fileText = is_english_ ? QStringLiteral("Calibration File") : QStringLiteral("定标文件");
+    water_calibration_button_->setAccessibleName(fileText);
+    water_calibration_button_->setText(water_calibration_name_.isEmpty() ? fileText
+        : water_calibration_button_->fontMetrics().elidedText(water_calibration_name_, Qt::ElideMiddle, 140));
+    const QString selectText = is_english_ ? QStringLiteral("Select a calibration file") : QStringLiteral("请选择定标文件");
+    water_calibration_button_->setToolTip((water_calibration_name_.isEmpty() ? selectText : water_calibration_name_)
+        + (water_calibration_detail_.isEmpty() ? QString() : QStringLiteral("\n") + water_calibration_detail_));
+    const auto &series = water_samples_.value(fpga_channel_combo_->currentIndex());
+    QVector<float> values;
+    QVector<qint64> times;
+    QVector<QPointF> points;
+    for (const auto &sample : series) {
+        values.append(float(sample.value));
+        times.append(sample.timeMs);
+        if (std::isfinite(sample.value) && std::isfinite(sample.heightM)) points.append({sample.value, sample.heightM});
+    }
+    water_concentration_plot_->setEmptyText(water_calibration_name_.isEmpty() ? selectText
+        : (is_english_ ? QStringLiteral("Waiting for concentration") : QStringLiteral("等待有效浓度")));
+    water_concentration_plot_->setPeakValues(values, times);
+    water_profile_plot_->setProfile(points, water_calibration_name_.isEmpty() ? selectText
+        : (is_english_ ? QStringLiteral("Waiting for paired lidar and concentration") : QStringLiteral("等待配对的测距与浓度")));
+}
+
+void TcpWavePanel::layoutPlots()
+{
+    while (auto *item = plots_layout_->takeAt(0)) delete item;
+    plots_layout_->setSpacing(4);
+    plots_layout_->setColumnStretch(0, 1);
+    plots_layout_->setColumnStretch(1, 1);
+    int row = 0;
+    const auto addRow = [&](QWidget *left, QWidget *right = nullptr) {
+        if (left && left->isHidden()) left = nullptr;
+        if (right && right->isHidden()) right = nullptr;
+        if (left && right) {
+            plots_layout_->addWidget(left, row, 0);
+            plots_layout_->addWidget(right, row++, 1);
+        } else if (left || right) {
+            plots_layout_->addWidget(left ? left : right, row++, 0, 1, 2);
+        }
+    };
+    if (fpga_mode_) {
+        addRow(wave1_group_, fpga_h2_group_);
+        addRow(wave4_group_, water_concentration_group_);
+        addRow(peak_group_, water_profile_group_);
+    } else {
+        addRow(wave1_group_, compact_layout_ ? nullptr : wave4_group_);
+        if (compact_layout_) addRow(wave4_group_);
+        addRow(peak_group_);
+    }
 }
 
 void TcpWavePanel::updatePeakPlotModeButtonText()

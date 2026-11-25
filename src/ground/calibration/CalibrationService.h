@@ -55,7 +55,9 @@ public:
     void fitProject();
     void generateFile(const QString& name);
     void openProject(const QString& filename, bool draft);
-    void selectFile(const QString& filename, bool identityConfirmed = false);
+    // If supplied, completion receives the error (or an empty string) and may run on the worker.
+    void selectFile(const QString& filename, bool identityConfirmed = false,
+                    std::function<void(const QString&)> completion = {});
     // A nonempty completion result describes the failure. Callback may run on the service worker.
     void selectFileForRecording(const QString& filename, bool identityConfirmed, const QString& expectedSha256,
                                 std::function<void(const QString&)> completion);
@@ -104,7 +106,7 @@ private:
     QString lastAutoPauseReason_;
     QMap<int, quint64> laneMaximumLatencyNs_, laneProcessedCount_;
     QString sessionDirectory_;
-    void submit(std::function<void()>);
+    bool submit(std::function<void()>);
     void run();
     void process(const PendingPeak&);
     void tick();

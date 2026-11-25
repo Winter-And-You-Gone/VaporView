@@ -10,7 +10,10 @@
 #include "FpgaExtensions.h"
 #include "ground/calibration/WaterCalibrationPage.h"
 
+#include <QDateTime>
 #include <QEvent>
+#include <QFileInfo>
+#include <QInputDialog>
 #include <QGraphicsOpacityEffect>
 #include <QLayout>
 #include <QLinearGradient>
@@ -6290,6 +6293,70 @@ void MainWindow::setupDataPanels()
     tcpWaveLayout->setSpacing(0);
 
     state_->tcp_wave_panel_ = new TcpWavePanel(this);
+    using VaporView::Ground::Calibration::CalibrationService;
+    const auto refreshWaterMeasurement = [this] {
+        const auto view = state_->calibration_service_->view();
+        auto *panel = state_->tcp_wave_panel_;
+        panel->setWaterCalibration(view.selected.sha256, QFileInfo(view.selected.filename).fileName(),
+                                   view.selected.valid ? view.selected.project.unit : QString(),
+                                   view.acquiring || view.locked || (isRemoteSkyMode() && state_->remote_recording_state_ != 0),
+                                   view.error ? view.message : view.identityWarning);
+        if (!view.connected || state_->session_replay_) {
+            panel->clearWaterSamples();
+            return;
+        }
+        const auto nowWall = QDateTime::currentMSecsSinceEpoch();
+        const auto nowSteady = std::chrono::steady_clock::now();
+        const auto &lidar = state_->current_lidar_;
+        constexpr qint64 maxPairAgeMs = 1000;
+        for (const auto &reading : view.live) {
+            const auto &feature = reading.input.feature;
+            const qint64 timeMs = qint64(feature.hostTimeUs / 1000);
+            double height = std::numeric_limits<double>::quiet_NaN();
+            if (lidar.valid && lidar.timestamp != std::chrono::steady_clock::time_point{} &&
+                std::isfinite(lidar.distance_m) && lidar.distance_m >= 0) {
+                const auto lidarAge = std::chrono::duration_cast<std::chrono::milliseconds>(nowSteady - lidar.timestamp).count();
+                const auto concentrationAge = nowWall - timeMs;
+                if (lidarAge >= 0 && lidarAge <= maxPairAgeMs && concentrationAge >= 0 &&
+                    concentrationAge <= maxPairAgeMs)
+                    height = lidar.distance_m;
+            }
+            panel->appendWaterSample(int(feature.channel) - 0x30, feature.id, timeMs,
+                reading.valid ? reading.value : std::numeric_limits<double>::quiet_NaN(), height);
+        }
+    };
+    connect(state_->calibration_service_.get(), &CalibrationService::changed, this, refreshWaterMeasurement, Qt::QueuedConnection);
+    refreshWaterMeasurement();
+    connect(state_->tcp_wave_panel_, &TcpWavePanel::waterCalibrationRequested, this, [this] {
+        const auto view = state_->calibration_service_->view();
+        const bool english = state_->is_english_;
+        if (view.files.isEmpty()) {
+            QMessageBox::information(this, english ? QStringLiteral("Calibration File") : QStringLiteral("定标文件"),
+                english ? QStringLiteral("No .vcal files. Generate or import one on the Water Calibration page first.")
+                        : QStringLiteral("没有可用的 .vcal 文件，请先在水汽定标页面生成或导入定标文件。"));
+            return;
+        }
+        QStringList names;
+        for (const auto &path : view.files) names.append(QFileInfo(path).fileName());
+        bool confirmed = false;
+        const auto name = QInputDialog::getItem(this,
+            english ? QStringLiteral("Calibration File") : QStringLiteral("定标文件"),
+            english ? QStringLiteral("Select a .vcal file") : QStringLiteral("选择 .vcal 定标文件"),
+            names, std::max(0, int(view.files.indexOf(view.selected.filename))), false, &confirmed);
+        if (!confirmed) return;
+        state_->calibration_service_->selectFile(view.files.value(names.indexOf(name)), false,
+            [this](const QString &error) {
+                if (error.isEmpty()) return;
+                QMetaObject::invokeMethod(this, [this, error] {
+                    const bool english = state_->is_english_;
+                    QMessageBox::warning(this,
+                        english ? QStringLiteral("Calibration File") : QStringLiteral("定标文件"),
+                        error + QStringLiteral("\n\n") + (english
+                            ? QStringLiteral("To review the file and confirm a device identity mismatch, open Water Calibration → Calibration File Management.")
+                            : QStringLiteral("如需核对设备身份并确认使用，请打开定标页面的「定标文件管理」。")));
+                }, Qt::QueuedConnection);
+            });
+    });
     state_->tcp_wave_panel_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     connect(state_->tcp_wave_panel_, &TcpWavePanel::connectionEndpointChanged,
             this, [this](const QString&, int) {
