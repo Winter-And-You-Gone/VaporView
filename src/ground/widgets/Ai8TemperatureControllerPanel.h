@@ -9,6 +9,7 @@
 #include <QWidget>
 
 #include <array>
+#include <functional>
 
 class QAbstractButton;
 class QButtonGroup;
@@ -18,6 +19,7 @@ class QResizeEvent;
 class QStackedWidget;
 class TemperatureTrendPlotWidget;
 class QToolButton;
+class QTimer;
 
 namespace VaporView::Ground::Widgets
 {
@@ -31,7 +33,9 @@ public:
 
     void setEnglish(bool english);
     void setBackendConnected(bool connected, const QString& detail = QString());
-    void setPageCommandsEnabled(bool enabled, const QString& disabledToolTip = QString());
+    void setPageCommandsEnabled(bool enabled, const QString& disabledToolTip = QString(),
+                                bool operationPending = false);
+    void discardPendingWrites();
     void setFpgaSetpointMode(bool relay);
     void setProtocolStatusLabel(QLabel *label);
     void setDeviceSetpointLabel(QLabel *label);
@@ -44,7 +48,7 @@ public:
 
 signals:
     void readPageRequested();
-    void writePageRequested();
+    void writePageRequested(const Ai8TemperatureControllerProtocol::PageData& changes);
     void outputStatusChanged();
 
 protected:
@@ -106,6 +110,12 @@ private:
     void updateAlarmStatusDisplay();
     void updateTemperaturePlot();
     void updatePlotView();
+    using PageData = Ai8TemperatureControllerProtocol::PageData;
+    using WriteField = Ai8TemperatureControllerProtocol::WriteField;
+    void setupAutoApply();
+    void bindAutoApply(const char *name, WriteField field,
+                       std::function<void(PageData&, const QVariant&)> assign);
+    void sendPendingWrite();
     void refreshPageCommandControls();
     void refreshFpgaSetpoint();
     void adjustTemperaturePlotHeight();
@@ -122,7 +132,8 @@ private:
     std::array<TemperatureTrendPlotWidget*, 8> channel_plots_{};
     QLabel *protocol_status_label_ = nullptr;
     QAbstractButton *read_button_ = nullptr;
-    QAbstractButton *write_button_ = nullptr;
+    QTimer *auto_apply_timer_ = nullptr;
+    QList<PageData> pending_writes_;
     QComboBox *run_state_combo_ = nullptr;
     QVector<LabelBinding> label_bindings_;
     QVector<ButtonBinding> button_bindings_;
@@ -152,6 +163,7 @@ private:
     bool english_ = false;
     bool backend_connected_ = false;
     bool page_commands_enabled_ = true;
+    bool page_operation_pending_ = false;
     QString page_commands_disabled_tooltip_;
     bool operation_succeeded_ = true;
     bool detail_sections_expanded_ = false;

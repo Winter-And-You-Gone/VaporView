@@ -8349,9 +8349,8 @@ int main(int argc, char **argv)
         QStringLiteral("ai8ReadParametersButton"));
     auto *ai8WriteButton = ai8TemperatureCard->findChild<QPushButton *>(
         QStringLiteral("ai8WriteParametersButton"));
-    require(ai8ReadButton != nullptr && ai8WriteButton != nullptr &&
-                !ai8ReadButton->isEnabled() && !ai8WriteButton->isEnabled(),
-            "AI-8 read and write actions remain disabled until the protocol backend is connected");
+    require(ai8ReadButton && !ai8ReadButton->isEnabled() && !ai8WriteButton,
+            "AI-8 read requires a connection and the page write button is replaced by auto apply");
 
     auto *temperaturePortCombo = window.findChild<QComboBox *>(QStringLiteral("deviceTemperaturePortCombo"));
     auto *temperatureBaudCombo = window.findChild<QComboBox *>(QStringLiteral("deviceTemperatureBaudCombo"));

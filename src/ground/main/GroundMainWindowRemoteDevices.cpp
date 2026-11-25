@@ -637,10 +637,14 @@ void MainWindow::onDataSourceModeChanged(int index)
     state_->remote_sky_mode_ = index == 1;
     if (state_->ai8_device_session_)
     {
-        state_->ai8_device_session_->setBackend(
-            state_->remote_sky_mode_
-                ? VaporView::Ground::Devices::Ai8Backend::Remote
-                : VaporView::Ground::Devices::Ai8Backend::Local);
+        const auto backend = state_->remote_sky_mode_
+            ? VaporView::Ground::Devices::Ai8Backend::Remote
+            : VaporView::Ground::Devices::Ai8Backend::Local;
+        if (state_->ai8_temperature_controller_panel_ && state_->ai8_device_session_->backend() != backend)
+        {
+            state_->ai8_temperature_controller_panel_->discardPendingWrites();
+        }
+        state_->ai8_device_session_->setBackend(backend);
         if (state_->ai8_temperature_controller_panel_)
         {
             const auto page = state_->ai8_temperature_controller_panel_->currentPageData();

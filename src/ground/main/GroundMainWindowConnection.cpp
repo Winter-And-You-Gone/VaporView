@@ -2455,15 +2455,12 @@ void MainWindow::onAi8ReadPageRequested()
     state_->ai8_device_session_->readPage(requested.page, requested.selection);
 }
 
-void MainWindow::onAi8WritePageRequested()
+void MainWindow::onAi8WritePageRequested(const VaporView::Ai8TemperatureControllerProtocol::PageData& changes)
 {
-    if (!state_->ai8_temperature_controller_panel_ || !state_->ai8_device_session_)
+    if (state_->ai8_device_session_ && state_->ai8_device_session_->operationsAvailable())
     {
-        return;
+        state_->ai8_device_session_->writePage(changes);
     }
-    const auto requested = state_->ai8_temperature_controller_panel_->currentPageData();
-    state_->ai8_device_session_->activatePage(requested.page, requested.selection);
-    state_->ai8_device_session_->writePage(requested);
 }
 
 void MainWindow::onAi8SessionAvailabilityChanged(bool available, const QString& reason)
@@ -2474,7 +2471,8 @@ void MainWindow::onAi8SessionAvailabilityChanged(bool available, const QString& 
     }
     if (isFpgaRelayPath()) { syncFpgaDeviceConfigUi(); return; }
     state_->ai8_temperature_controller_panel_->setPageCommandsEnabled(
-        available, available ? QString() : reason);
+        available, available ? QString() : reason,
+        state_->ai8_device_session_ && state_->ai8_device_session_->operationPending());
 }
 
 void MainWindow::onAi8SessionOperationStarted(
@@ -2496,7 +2494,7 @@ void MainWindow::onAi8SessionOperationStarted(
     state_->ai8_temperature_controller_panel_->setPageCommandsEnabled(
         false,
         state_->is_english_ ? QStringLiteral("Waiting for the device backend...")
-                            : QStringLiteral("正在等待设备后端响应…"));
+                            : QStringLiteral("正在等待设备后端响应…"), true);
 }
 
 void MainWindow::onAi8SessionOperationFinished(
@@ -2527,6 +2525,7 @@ void MainWindow::onAi8SessionOperationFinished(
 
     state_->ai8_temperature_controller_panel_->setOperationStatus(
         statusText, result.success());
+    if (!result.success()) state_->ai8_temperature_controller_panel_->discardPendingWrites();
     state_->ai8_temperature_controller_panel_->setPageCommandsEnabled(
         state_->ai8_device_session_->operationsAvailable(),
         state_->ai8_device_session_->operationsAvailable() ? QString() : statusText);
@@ -2579,9 +2578,10 @@ void MainWindow::onAi8SessionOperationFinished(
 void MainWindow::onAi8SessionPageDataAvailable(
     const VaporView::Ai8TemperatureControllerProtocol::PageData& pageData)
 {
-    if (state_->ai8_temperature_controller_panel_)
+    if (auto *panel = state_->ai8_temperature_controller_panel_;
+        panel && VaporView::Ai8TemperatureControllerProtocol::samePageTarget(pageData, panel->currentPageData()))
     {
-        state_->ai8_temperature_controller_panel_->applyPageData(pageData);
+        panel->applyPageData(pageData);
     }
 }
 

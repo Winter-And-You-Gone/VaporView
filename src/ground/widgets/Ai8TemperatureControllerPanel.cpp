@@ -24,6 +24,7 @@
 #include <QStyle>
 #include <QStringList>
 #include <QTimer>
+#include <type_traits>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -373,20 +374,6 @@ void Ai8TemperatureControllerPanel::setupUi()
     connect(readButton, &QPushButton::clicked, this,
             &Ai8TemperatureControllerPanel::readPageRequested);
 
-    auto *writeButton = new QPushButton(statusRow);
-    write_button_ = writeButton;
-    writeButton->setObjectName(QStringLiteral("ai8WriteParametersButton"));
-    writeButton->setProperty("primaryAction", true);
-    writeButton->setEnabled(false);
-    writeButton->setFocusPolicy(Qt::TabFocus);
-    writeButton->setMinimumWidth(112);
-    button_bindings_.append({writeButton,
-                             QStringLiteral("写入当前页"),
-                             QStringLiteral("Write Page")});
-    statusLayout->addWidget(writeButton);
-    connect(writeButton, &QPushButton::clicked, this,
-            &Ai8TemperatureControllerPanel::writePageRequested);
-
     plot_view_button_ = VaporView::Ground::Widgets::createTemperaturePlotViewButton(statusRow);
     plot_view_button_->setObjectName(QStringLiteral("ai8PlotViewToggle"));
     statusLayout->addWidget(plot_view_button_);
@@ -474,6 +461,7 @@ void Ai8TemperatureControllerPanel::setupUi()
 
     setEnglish(false);
     selectPage(0);
+    setupAutoApply();
 }
 
 QWidget *Ai8TemperatureControllerPanel::createDetailSection(const QString& objectName,
@@ -1242,7 +1230,10 @@ void Ai8TemperatureControllerPanel::setEnglish(bool english)
 
 void Ai8TemperatureControllerPanel::setBackendConnected(bool connected, const QString& detail)
 {
-    if (!connected) fpga_page_read_requested_ = false;
+    if (!connected) {
+        fpga_page_read_requested_ = false;
+        discardPendingWrites();
+    }
     if (!connected && backend_connected_) {
         sp_known_.fill(false);
         sp_confirmed_.fill(false);
@@ -1260,24 +1251,140 @@ void Ai8TemperatureControllerPanel::setBackendConnected(bool connected, const QS
     emit outputStatusChanged();
 }
 
-void Ai8TemperatureControllerPanel::setPageCommandsEnabled(bool enabled, const QString& disabledToolTip)
+void Ai8TemperatureControllerPanel::setPageCommandsEnabled(bool enabled, const QString& disabledToolTip,
+                                                            bool operationPending)
 {
     page_commands_enabled_ = enabled;
+    page_operation_pending_ = operationPending;
+    if (operationPending) auto_apply_timer_->stop();
+    if (!enabled && !operationPending) discardPendingWrites();
     page_commands_disabled_tooltip_ = disabledToolTip;
+    if (enabled && !pending_writes_.isEmpty() && !auto_apply_timer_->isActive()) auto_apply_timer_->start();
     refreshPageCommandControls();
+}
+
+void Ai8TemperatureControllerPanel::setupAutoApply()
+{
+    using namespace Ai8TemperatureControllerProtocol;
+    auto_apply_timer_ = new QTimer(this);
+    auto_apply_timer_->setSingleShot(true);
+    auto_apply_timer_->setTimerType(Qt::PreciseTimer);
+    auto_apply_timer_->setInterval(450);
+    connect(auto_apply_timer_, &QTimer::timeout, this, &Ai8TemperatureControllerPanel::sendPendingWrite);
+
+    const auto bind = [this](const char *name, WriteField field, auto group, auto member) {
+        bindAutoApply(name, field, [group, member](PageData& data, const QVariant& value) {
+            using Value = std::decay_t<decltype((data.*group).*member)>;
+            (data.*group).*member = value.value<Value>();
+        });
+    };
+    bind("ai8SetpointSpin", WriteField::Setpoint, &PageData::channel, &ChannelParameters::setpointC);
+    bind("ai8ProportionalBandSpin", WriteField::ProportionalBand, &PageData::channel, &ChannelParameters::proportionalBand);
+    bind("ai8IntegralTimeSpin", WriteField::IntegralTime, &PageData::channel, &ChannelParameters::integralTimeS);
+    bind("ai8DerivativeTimeSpin", WriteField::DerivativeTime, &PageData::channel, &ChannelParameters::derivativeTimeS);
+    bind("ai8ChannelOutputGroupSpin", WriteField::ChannelOutputGroup, &PageData::channel, &ChannelParameters::channelOutputGroupRaw);
+    bind("ai8ProgramNumberSpin", WriteField::ProgramNumber, &PageData::channel, &ChannelParameters::programNumber);
+    bind("ai8WorkModeCombo", WriteField::WorkMode, &PageData::channel, &ChannelParameters::workMode);
+    bind("ai8ManualOutputSpin", WriteField::ManualOutput, &PageData::channel, &ChannelParameters::manualOutputPercent);
+    bind("ai8HighAlarmSpin", WriteField::HighAlarm, &PageData::channel, &ChannelParameters::highAlarmC);
+    bind("ai8LowAlarmSpin", WriteField::LowAlarm, &PageData::channel, &ChannelParameters::lowAlarmC);
+    bind("ai8InputSpecCombo", WriteField::InputType, &PageData::input, &InputParameters::inputType);
+    bind("ai8ScaleLowSpin", WriteField::ScaleLow, &PageData::input, &InputParameters::scaleLow);
+    bind("ai8ScaleHighSpin", WriteField::ScaleHigh, &PageData::input, &InputParameters::scaleHigh);
+    bind("ai8FilterSpin", WriteField::Filter, &PageData::input, &InputParameters::filter);
+    bind("ai8ChannelInputConfigSpin", WriteField::ChannelInputGroup, &PageData::input, &InputParameters::channelInputGroup);
+    bind("ai8MeasurementOffsetSpin", WriteField::MeasurementOffset, &PageData::input, &InputParameters::measurementOffset);
+    bind("ai8CorrectionEntrySpin", WriteField::CorrectionEntry, &PageData::input, &InputParameters::correctionEntry);
+    bind("ai8ControlActionCombo", WriteField::ControlAction, &PageData::output, &OutputParameters::controlAction);
+    bind("ai8DeviationHighAlarmSpin", WriteField::DeviationHighAlarm, &PageData::output, &OutputParameters::deviationHighAlarm);
+    bind("ai8DeviationLowAlarmSpin", WriteField::DeviationLowAlarm, &PageData::output, &OutputParameters::deviationLowAlarm);
+    bind("ai8HysteresisSpin", WriteField::Hysteresis, &PageData::output, &OutputParameters::hysteresis);
+    bind("ai8OutputLowSpin", WriteField::OutputLow, &PageData::output, &OutputParameters::outputLowPercent);
+    bind("ai8OutputHighSpin", WriteField::OutputHigh, &PageData::output, &OutputParameters::outputHighPercent);
+    bind("ai8OutputHighThresholdSpin", WriteField::OutputHighThreshold, &PageData::output, &OutputParameters::outputHighThreshold);
+    bind("ai8RiseSlopeSpin", WriteField::RiseSlope, &PageData::output, &OutputParameters::riseSlope);
+    bind("ai8FallSlopeSpin", WriteField::FallSlope, &PageData::output, &OutputParameters::fallSlope);
+    bind("ai8SetpointLowLimitSpin", WriteField::SetpointLowLimit, &PageData::output, &OutputParameters::setpointLowLimit);
+    bind("ai8SetpointHighLimitSpin", WriteField::SetpointHighLimit, &PageData::output, &OutputParameters::setpointHighLimit);
+    bind("ai8AlarmResetSpin", WriteField::AlarmReset, &PageData::output, &OutputParameters::alarmResetFlags);
+    bind("ai8ControlChannelCountSpin", WriteField::ControlChannelCount, &PageData::global, &GlobalParameters::controlChannelCount);
+    bind("ai8ControlCycleSpin", WriteField::ControlCycle, &PageData::global, &GlobalParameters::controlCycleS);
+    bind("ai8ParameterLockCombo", WriteField::ParameterLock, &PageData::global, &GlobalParameters::parameterLock);
+    bind("ai8SampleModeSpin", WriteField::SampleMode, &PageData::global, &GlobalParameters::sampleMode);
+    bind("ai8DecimalPointSpin", WriteField::DecimalPoint, &PageData::global, &GlobalParameters::decimalPoint);
+    bindAutoApply("ai8RunModeCombo", WriteField::RunState, [](PageData& data, const QVariant& value) {
+        data.global.runStateWriteRequested = true;
+        data.global.runStateWriteValue = value.toUInt();
+    });
+}
+
+void Ai8TemperatureControllerPanel::bindAutoApply(
+    const char *name, WriteField field, std::function<void(PageData&, const QVariant&)> assign)
+{
+    auto *editor = findChild<QWidget *>(QString::fromLatin1(name));
+    editor->setProperty("ai8WriteField", QVariant::fromValue(writeFieldBit(field)));
+    auto commit = [this, editor, field, assign = std::move(assign)](const QVariant& value) {
+        if (!value.isValid() || value == editor->property("ai8CommittedValue")) return;
+        if (field == WriteField::RunState && !Ai8TemperatureControllerProtocol::isDocumentedRunState(value.toUInt())) return;
+        editor->setProperty("ai8CommittedValue", value);
+        if (auto *line = editor->findChild<QLineEdit *>()) line->setModified(false);
+        if (!backend_connected_ || (!page_commands_enabled_ && !page_operation_pending_)) return;
+
+        const auto target = currentPageData();
+        auto batch = std::find_if(pending_writes_.begin(), pending_writes_.end(), [&target](const PageData& entry) {
+            return Ai8TemperatureControllerProtocol::samePageTarget(entry, target);
+        });
+        if (batch == pending_writes_.end())
+        {
+            PageData entry;
+            entry.page = target.page;
+            entry.selection = target.selection;
+            pending_writes_.append(entry);
+            batch = pending_writes_.end() - 1;
+        }
+        assign(*batch, value);
+        batch->writeFields |= writeFieldBit(field);
+        if (page_commands_enabled_) auto_apply_timer_->start();
+    };
+    if (auto *combo = qobject_cast<QComboBox *>(editor))
+    {
+        combo->setProperty("ai8CommittedValue", combo->currentData());
+        connect(combo, &QComboBox::activated, this, [combo, commit](int index) { commit(combo->itemData(index)); });
+    }
+    else if (auto *spin = qobject_cast<QAbstractSpinBox *>(editor))
+    {
+        spin->setKeyboardTracking(false);
+        spin->setProperty("ai8CommittedValue", spin->property("value"));
+        connect(spin, &QAbstractSpinBox::editingFinished, this, [spin, commit] { commit(spin->property("value")); });
+    }
+}
+
+void Ai8TemperatureControllerPanel::discardPendingWrites()
+{
+    auto_apply_timer_->stop();
+    pending_writes_.clear();
+}
+
+void Ai8TemperatureControllerPanel::sendPendingWrite()
+{
+    if (backend_connected_ && page_commands_enabled_ && !pending_writes_.isEmpty())
+    {
+        const PageData changes = pending_writes_.takeFirst();
+        emit writePageRequested(changes);
+    }
 }
 
 void Ai8TemperatureControllerPanel::refreshPageCommandControls()
 {
     refreshFpgaSetpoint();
     const bool commandsEnabled = backend_connected_ && page_commands_enabled_;
-    if (fpga_relay_ && commandsEnabled && !fpga_page_read_requested_ && !fpga_page_read_pending_) {
+    if (fpga_relay_ && commandsEnabled && pending_writes_.isEmpty() && !fpga_page_read_requested_ && !fpga_page_read_pending_) {
         fpga_page_read_pending_ = true;
         // Defer until connection/capability updates have finished. Busy transitions
         // must not turn every completed operation into another automatic read.
         QTimer::singleShot(0, this, [this] {
             fpga_page_read_pending_ = false;
-            if (!fpga_relay_ || !backend_connected_ || !page_commands_enabled_ || fpga_page_read_requested_) return;
+            if (!fpga_relay_ || !backend_connected_ || !page_commands_enabled_ || !pending_writes_.isEmpty() || fpga_page_read_requested_) return;
             fpga_page_read_requested_ = true;
             emit readPageRequested();
         });
@@ -1300,16 +1407,13 @@ void Ai8TemperatureControllerPanel::refreshPageCommandControls()
         read_button_->setEnabled(commandsEnabled);
         read_button_->setToolTip(backendToolTip);
     }
-    if (write_button_)
-    {
-        write_button_->setEnabled(commandsEnabled);
-        write_button_->setToolTip(backendToolTip);
-    }
+
 }
 
 void Ai8TemperatureControllerPanel::setFpgaSetpointMode(bool relay)
 {
     if (fpga_relay_ != relay) {
+        discardPendingWrites();
         fpga_page_read_requested_ = false;
         sp_dirty_.fill(false);
         sp_known_.fill(false);
@@ -1337,22 +1441,27 @@ void Ai8TemperatureControllerPanel::refreshFpgaSetpoint()
             if (sp_dirty_[i]) sp->setValue(sp_draft_[i]);
             else if (sp_known_[i]) sp->setValue(sp_actual_[i]);
             else sp->clear();
+            sp->setProperty("ai8CommittedValue", sp->value());
         }
         sp->setToolTip(sp_known_[i]
             ? (english_ ? QStringLiteral("Device SP: %1 °C") : QStringLiteral("设备回读 SP：%1 ℃")).arg(sp_actual_[i], 0, 'f', 1)
             : (english_ ? QStringLiteral("Device SP not received") : QStringLiteral("尚未收到此通道的 SP")));
     } else sp->setMaximum(3200.0);
+    // Addr/bAud change the active transport and are only displayed on this card.
+    auto *address = findChild<QSpinBox *>("ai8DeviceAddressSpin");
+    auto *baud = findChild<QComboBox *>("ai8BaudCombo");
+    address->setReadOnly(true);
     const QString unavailable = english_ ? QStringLiteral("Full parameter access is unavailable through this FPGA firmware.") : QStringLiteral("当前 FPGA 固件不支持完整参数读写；此参数不可编辑。");
     for (auto *editor : findChildren<QAbstractSpinBox*>()) {
         if (editor == channel || editor == sp) continue;
-        editor->setEnabled(!fpga_relay_ || page_commands_enabled_);
+        editor->setEnabled(!fpga_relay_ || page_commands_enabled_ || page_operation_pending_);
         editor->setToolTip(fpga_relay_ && !page_commands_enabled_ ? unavailable : QString());
     }
     for (auto *editor : findChildren<QComboBox*>()) {
-        editor->setEnabled(!fpga_relay_ || page_commands_enabled_);
+        editor->setEnabled(editor != baud && (!fpga_relay_ || page_commands_enabled_ || page_operation_pending_));
         editor->setToolTip(fpga_relay_ && !page_commands_enabled_ ? unavailable : QString());
     }
-    sp->setEnabled(!fpga_relay_ || (backend_connected_ && page_commands_enabled_));
+    sp->setEnabled(!fpga_relay_ || (backend_connected_ && (page_commands_enabled_ || page_operation_pending_)));
 }
 
 void Ai8TemperatureControllerPanel::setProtocolStatusLabel(QLabel *label)
@@ -1508,37 +1617,47 @@ Ai8TemperatureControllerProtocol::PageData Ai8TemperatureControllerPanel::curren
 void Ai8TemperatureControllerPanel::applyPageData(
     const Ai8TemperatureControllerProtocol::PageData& pageData)
 {
-    if (fpga_relay_) {
-        const auto current = currentPageData();
-        // An earlier transaction may finish after the user changes selection.
-        // Keep that result from restoring the old selectors or parameter values.
-        if (pageData.page != current.page ||
-            pageData.selection.channel != current.selection.channel ||
-            pageData.selection.inputGroup != current.selection.inputGroup ||
-            pageData.selection.outputGroup != current.selection.outputGroup) return;
+    const auto current = currentPageData();
+    if (fpga_relay_ && !Ai8TemperatureControllerProtocol::samePageTarget(pageData, current)) return;
+
+    quint64 pendingFields = 0;
+    for (const PageData& batch : pending_writes_)
+    {
+        if (Ai8TemperatureControllerProtocol::samePageTarget(batch, pageData)) pendingFields |= batch.writeFields;
     }
-    auto setSpin = [this](const char *name, int value) {
+    const auto preserveEdit = [pendingFields](QWidget *editor) {
+        if (pendingFields & editor->property("ai8WriteField").toULongLong()) return true;
+        auto *line = editor->findChild<QLineEdit *>();
+        return line && (editor->hasFocus() || line->hasFocus()) && line->isModified();
+    };
+    auto setSpin = [this, &preserveEdit](const char *name, int value) {
         if (auto *widget = findChild<QSpinBox *>(QString::fromLatin1(name)))
         {
+            if (preserveEdit(widget)) return;
             const QSignalBlocker blocker(widget);
             widget->setValue(value);
+            if (widget->property("ai8WriteField").isValid()) widget->setProperty("ai8CommittedValue", widget->value());
         }
     };
-    auto setDouble = [this](const char *name, double value) {
+    auto setDouble = [this, &preserveEdit](const char *name, double value) {
         if (auto *widget = findChild<QDoubleSpinBox *>(QString::fromLatin1(name)))
         {
+            if (preserveEdit(widget)) return;
             const QSignalBlocker blocker(widget);
             widget->setValue(value);
+            if (widget->property("ai8WriteField").isValid()) widget->setProperty("ai8CommittedValue", widget->value());
         }
     };
-    auto setCombo = [this](const char *name, int value) {
+    auto setCombo = [this, &preserveEdit](const char *name, int value) {
         if (auto *widget = findChild<QComboBox *>(QString::fromLatin1(name)))
         {
             const int index = widget->findData(value);
             if (index >= 0)
             {
+                if (preserveEdit(widget)) return;
                 const QSignalBlocker blocker(widget);
                 widget->setCurrentIndex(index);
+                widget->setProperty("ai8CommittedValue", widget->currentData());
             }
         }
     };
@@ -1549,20 +1668,27 @@ void Ai8TemperatureControllerPanel::applyPageData(
         }
     };
 
-    setSpin("ai8ChannelSpin", pageData.selection.channel);
-    setSpin("ai8InputGroupSpin", pageData.selection.inputGroup);
-    setSpin("ai8OutputGroupSpin", pageData.selection.outputGroup);
+    if (!Ai8TemperatureControllerProtocol::samePageTarget(pageData, current))
+    {
+        setSpin("ai8ChannelSpin", pageData.selection.channel);
+        setSpin("ai8InputGroupSpin", pageData.selection.inputGroup);
+        setSpin("ai8OutputGroupSpin", pageData.selection.outputGroup);
+    }
     switch (pageData.page)
     {
     case Ai8TemperatureControllerProtocol::Page::Channel:
         if (fpga_relay_ && pageData.selection.channel >= 1 && pageData.selection.channel <= 8) {
             const int i = pageData.selection.channel - 1;
-            sp_draft_[i] = pageData.channel.setpointC;
+            auto *sp = findChild<QDoubleSpinBox *>("ai8SetpointSpin");
             sp_actual_[i] = pageData.channel.setpointC;
             sp_known_[i] = true;
-            sp_dirty_[i] = true;
-            sp_confirmed_[i] = true;
-            sp_status_->clear();
+            if (!preserveEdit(sp))
+            {
+                sp_draft_[i] = pageData.channel.setpointC;
+                sp_dirty_[i] = true;
+                sp_confirmed_[i] = true;
+                sp_status_->clear();
+            }
             refreshFpgaSetpoint();
         }
         setDouble("ai8SetpointSpin", pageData.channel.setpointC);
@@ -1618,7 +1744,11 @@ void Ai8TemperatureControllerPanel::applyPageData(
         setCombo("ai8BaudCombo", pageData.global.baudRate);
         setSpin("ai8ControlChannelCountSpin", pageData.global.controlChannelCount);
         setDouble("ai8ControlCycleSpin", pageData.global.controlCycleS);
-        updateRunStateCombo(pageData.global.runStateRaw);
+        if (!preserveEdit(run_state_combo_))
+        {
+            updateRunStateCombo(pageData.global.runStateRaw);
+            run_state_combo_->setProperty("ai8CommittedValue", run_state_combo_->currentData());
+        }
         setCombo("ai8ParameterLockCombo", (pageData.global.parameterLock & 0x0020) != 0 ? 32 : 0);
         setSpin("ai8SampleModeSpin", pageData.global.sampleMode);
         setSpin("ai8DecimalPointSpin", pageData.global.decimalPoint);

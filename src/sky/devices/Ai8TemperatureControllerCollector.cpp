@@ -498,73 +498,109 @@ bool Ai8TemperatureControllerCollector::readPage(Page page,
     return false;
 }
 
+static bool writesField(const PageData& data, WriteField field)
+{
+    return data.writeFields == 0 || (data.writeFields & writeFieldBit(field));
+}
+
 bool Ai8TemperatureControllerCollector::writeChannelPage(const PageData& data, QString *errorMessage)
 {
     const int channel = std::clamp(data.selection.channel, 1, kChannelCount);
-    auto write = [&](Register reg, quint16 value) {
-        return writeAndConfirm(channelRegister(reg, channel), value, errorMessage);
+    auto write = [&](WriteField field, Register reg, quint16 value) {
+        return !writesField(data, field) || writeAndConfirm(channelRegister(reg, channel), value, errorMessage);
     };
-    if (!write(Register::SetpointBase, encodeSignedTenths(data.channel.setpointC)) ||
-        !write(Register::ProportionalBandBase, encodeUnsignedTenths(data.channel.proportionalBand)) ||
-        !write(Register::IntegralTimeBase, encodeUnsignedTenths(data.channel.integralTimeS)) ||
-        !write(Register::DerivativeTimeBase, encodeSignedHundredths(data.channel.derivativeTimeS)) ||
-        !write(Register::ChannelOutputBase, static_cast<quint16>(data.channel.channelOutputGroupRaw)) ||
-        !write(Register::ProgramNumberBase, static_cast<quint16>(data.channel.programNumber)) ||
-        !write(Register::WorkModeBase, static_cast<quint16>(data.channel.workMode)))
+    quint16 workMode = static_cast<quint16>(data.channel.workMode);
+    if (data.writeFields && writesField(data, WriteField::ManualOutput))
+    {
+        if (!writesField(data, WriteField::WorkMode) &&
+            !readRegisterValue(channelRegister(Register::WorkModeBase, channel), workMode, errorMessage))
+        {
+            return false;
+        }
+        if (workMode != 3)
+        {
+            if (errorMessage) *errorMessage = isEnglishLog()
+                ? QStringLiteral("Manual output requires manual work mode.")
+                : QStringLiteral("手动输出仅能在手动工作模式下设置。");
+            return false;
+        }
+    }
+    if (!write(WriteField::Setpoint, Register::SetpointBase, encodeSignedTenths(data.channel.setpointC)) ||
+        !write(WriteField::ProportionalBand, Register::ProportionalBandBase, encodeUnsignedTenths(data.channel.proportionalBand)) ||
+        !write(WriteField::IntegralTime, Register::IntegralTimeBase, encodeUnsignedTenths(data.channel.integralTimeS)) ||
+        !write(WriteField::DerivativeTime, Register::DerivativeTimeBase, encodeSignedHundredths(data.channel.derivativeTimeS)) ||
+        !write(WriteField::ChannelOutputGroup, Register::ChannelOutputBase, static_cast<quint16>(data.channel.channelOutputGroupRaw)) ||
+        !write(WriteField::ProgramNumber, Register::ProgramNumberBase, static_cast<quint16>(data.channel.programNumber)) ||
+        !write(WriteField::WorkMode, Register::WorkModeBase, static_cast<quint16>(data.channel.workMode)))
     {
         return false;
     }
-    if (data.channel.workMode == 3 &&
-        !write(Register::ManualOutputBase, encodeManualOutput(data.channel.manualOutputPercent)))
+    if (workMode == 3 &&
+        !write(WriteField::ManualOutput, Register::ManualOutputBase, encodeManualOutput(data.channel.manualOutputPercent)))
     {
         return false;
     }
-    return write(Register::HighAlarmBase, encodeSignedTenths(data.channel.highAlarmC)) &&
-           write(Register::LowAlarmBase, encodeSignedTenths(data.channel.lowAlarmC));
+    return write(WriteField::HighAlarm, Register::HighAlarmBase, encodeSignedTenths(data.channel.highAlarmC)) &&
+           write(WriteField::LowAlarm, Register::LowAlarmBase, encodeSignedTenths(data.channel.lowAlarmC));
 }
 
 bool Ai8TemperatureControllerCollector::writeInputPage(const PageData& data, QString *errorMessage)
 {
     const int group = std::clamp(data.selection.inputGroup, 1, kParameterGroupCount);
     const int channel = std::clamp(data.selection.channel, 1, kChannelCount);
-    auto writeGroup = [&](Register reg, quint16 value) {
-        return writeAndConfirm(groupRegister(reg, group), value, errorMessage);
+    auto writeGroup = [&](WriteField field, Register reg, quint16 value) {
+        return !writesField(data, field) || writeAndConfirm(groupRegister(reg, group), value, errorMessage);
     };
-    return writeGroup(Register::InputTypeBase, static_cast<quint16>(data.input.inputType)) &&
-           writeGroup(Register::ScaleLowBase, encodeSignedTenths(data.input.scaleLow)) &&
-           writeGroup(Register::ScaleHighBase, encodeSignedTenths(data.input.scaleHigh)) &&
-           writeGroup(Register::FilterBase, static_cast<quint16>(data.input.filter)) &&
-           writeAndConfirm(channelRegister(Register::ChannelInputBase, channel),
-                           encodeChannelInput(data.input.channelInputGroup, data.input.correctionEntry),
-                           errorMessage) &&
-           writeAndConfirm(channelRegister(Register::MeasurementOffsetBase, channel),
-                           encodeSignedTenths(data.input.measurementOffset),
-                           errorMessage);
+    const bool writeInput = writesField(data, WriteField::ChannelInputGroup);
+    const bool writeCorrection = writesField(data, WriteField::CorrectionEntry);
+    const quint16 inputAddress = channelRegister(Register::ChannelInputBase, channel);
+    int inputGroup = data.input.channelInputGroup;
+    int correctionEntry = data.input.correctionEntry;
+    if (writeInput != writeCorrection)
+    {
+        quint16 current = 0;
+        if (!readRegisterValue(inputAddress, current, errorMessage)) return false;
+        if (!writeInput) inputGroup = decodeChannelInputGroup(current);
+        if (!writeCorrection) correctionEntry = decodeCorrectionEntry(current);
+    }
+    return writeGroup(WriteField::InputType, Register::InputTypeBase, static_cast<quint16>(data.input.inputType)) &&
+           writeGroup(WriteField::ScaleLow, Register::ScaleLowBase, encodeSignedTenths(data.input.scaleLow)) &&
+           writeGroup(WriteField::ScaleHigh, Register::ScaleHighBase, encodeSignedTenths(data.input.scaleHigh)) &&
+           writeGroup(WriteField::Filter, Register::FilterBase, static_cast<quint16>(data.input.filter)) &&
+           (!(writeInput || writeCorrection) ||
+            writeAndConfirm(inputAddress, encodeChannelInput(inputGroup, correctionEntry), errorMessage)) &&
+           (!writesField(data, WriteField::MeasurementOffset) ||
+            writeAndConfirm(channelRegister(Register::MeasurementOffsetBase, channel),
+                            encodeSignedTenths(data.input.measurementOffset), errorMessage));
 }
 
 bool Ai8TemperatureControllerCollector::writeOutputPage(const PageData& data, QString *errorMessage)
 {
     const int group = std::clamp(data.selection.outputGroup, 1, kParameterGroupCount);
     auto address = [&](Register reg) { return groupRegister(reg, group); };
+    auto write = [&](WriteField field, Register reg, quint16 value) {
+        return !writesField(data, field) || writeAndConfirm(address(reg), value, errorMessage);
+    };
     quint16 currentAction = 0;
-    if (!readRegisterValue(address(Register::ControlActionBase), currentAction, errorMessage))
+    if (writesField(data, WriteField::ControlAction) &&
+        !readRegisterValue(address(Register::ControlActionBase), currentAction, errorMessage))
     {
         return false;
     }
     const quint16 updatedAction = static_cast<quint16>((currentAction & ~0x0001u) |
                                                        (data.output.controlAction & 0x0001));
-    return writeAndConfirm(address(Register::ControlActionBase), updatedAction, errorMessage) &&
-           writeAndConfirm(address(Register::DeviationHighAlarmBase), encodeSignedTenths(data.output.deviationHighAlarm), errorMessage) &&
-           writeAndConfirm(address(Register::DeviationLowAlarmBase), encodeSignedTenths(data.output.deviationLowAlarm), errorMessage) &&
-           writeAndConfirm(address(Register::HysteresisBase), encodeSignedTenths(data.output.hysteresis), errorMessage) &&
-           writeAndConfirm(address(Register::OutputLowBase), static_cast<quint16>(data.output.outputLowPercent), errorMessage) &&
-           writeAndConfirm(address(Register::OutputHighBase), static_cast<quint16>(data.output.outputHighPercent), errorMessage) &&
-           writeAndConfirm(address(Register::OutputHighThresholdBase), encodeSignedTenths(data.output.outputHighThreshold), errorMessage) &&
-           writeAndConfirm(address(Register::RiseSlopeBase), encodeUnsignedTenths(data.output.riseSlope), errorMessage) &&
-           writeAndConfirm(address(Register::FallSlopeBase), encodeUnsignedTenths(data.output.fallSlope), errorMessage) &&
-           writeAndConfirm(address(Register::SetpointLowLimitBase), encodeSignedTenths(data.output.setpointLowLimit), errorMessage) &&
-           writeAndConfirm(address(Register::SetpointHighLimitBase), encodeSignedTenths(data.output.setpointHighLimit), errorMessage) &&
-           writeAndConfirm(address(Register::AlarmResetBase), static_cast<quint16>(data.output.alarmResetFlags), errorMessage);
+    return write(WriteField::ControlAction, Register::ControlActionBase, updatedAction) &&
+           write(WriteField::DeviationHighAlarm, Register::DeviationHighAlarmBase, encodeSignedTenths(data.output.deviationHighAlarm)) &&
+           write(WriteField::DeviationLowAlarm, Register::DeviationLowAlarmBase, encodeSignedTenths(data.output.deviationLowAlarm)) &&
+           write(WriteField::Hysteresis, Register::HysteresisBase, encodeSignedTenths(data.output.hysteresis)) &&
+           write(WriteField::OutputLow, Register::OutputLowBase, static_cast<quint16>(data.output.outputLowPercent)) &&
+           write(WriteField::OutputHigh, Register::OutputHighBase, static_cast<quint16>(data.output.outputHighPercent)) &&
+           write(WriteField::OutputHighThreshold, Register::OutputHighThresholdBase, encodeSignedTenths(data.output.outputHighThreshold)) &&
+           write(WriteField::RiseSlope, Register::RiseSlopeBase, encodeUnsignedTenths(data.output.riseSlope)) &&
+           write(WriteField::FallSlope, Register::FallSlopeBase, encodeUnsignedTenths(data.output.fallSlope)) &&
+           write(WriteField::SetpointLowLimit, Register::SetpointLowLimitBase, encodeSignedTenths(data.output.setpointLowLimit)) &&
+           write(WriteField::SetpointHighLimit, Register::SetpointHighLimitBase, encodeSignedTenths(data.output.setpointHighLimit)) &&
+           write(WriteField::AlarmReset, Register::AlarmResetBase, static_cast<quint16>(data.output.alarmResetFlags));
 }
 
 bool Ai8TemperatureControllerCollector::writeGlobalPage(const PageData& data, QString *resultMessage)
@@ -597,28 +633,29 @@ bool Ai8TemperatureControllerCollector::writeGlobalPage(const PageData& data, QS
         return false;
     }
 
-    const bool connectionSettingsChanged =
+    const bool connectionSettingsChanged = !data.writeFields && (
         current.global.address != data.global.address ||
-        current.global.baudRate != data.global.baudRate;
+        current.global.baudRate != data.global.baudRate);
     const quint16 currentLock = static_cast<quint16>(current.global.parameterLock);
     const quint16 targetLock = static_cast<quint16>(
         (currentLock & ~0x0020u) |
-        (data.global.parameterLock & 0x0020));
+        ((writesField(data, WriteField::ParameterLock) ? data.global.parameterLock : currentLock) & 0x0020));
     const quint16 targetControlChannelCount = static_cast<quint16>(
         std::clamp(data.global.controlChannelCount, 1, kChannelCount));
     const quint16 targetControlCycle = encodeUnsignedTenths(data.global.controlCycleS);
     const quint16 targetRunState = data.global.runStateWriteValue;
     const quint16 targetSampleMode = static_cast<quint16>(data.global.sampleMode);
     const quint16 targetDecimalPoint = static_cast<quint16>(data.global.decimalPoint);
-    const bool controlChannelCountChanged =
+    const bool controlChannelCountChanged = writesField(data, WriteField::ControlChannelCount) &&
         static_cast<quint16>(current.global.controlChannelCount) != targetControlChannelCount;
-    const bool controlCycleChanged =
+    const bool controlCycleChanged = writesField(data, WriteField::ControlCycle) &&
         encodeUnsignedTenths(current.global.controlCycleS) != targetControlCycle;
-    const bool runStateChanged = data.global.runStateWriteRequested &&
+    const bool runStateChanged = writesField(data, WriteField::RunState) &&
+                                 data.global.runStateWriteRequested &&
                                  current.global.runStateRaw != targetRunState;
-    const bool sampleModeChanged =
+    const bool sampleModeChanged = writesField(data, WriteField::SampleMode) &&
         static_cast<quint16>(current.global.sampleMode) != targetSampleMode;
-    const bool decimalPointChanged =
+    const bool decimalPointChanged = writesField(data, WriteField::DecimalPoint) &&
         static_cast<quint16>(current.global.decimalPoint) != targetDecimalPoint;
     const bool nonLockChanges = controlChannelCountChanged ||
                                 controlCycleChanged ||
@@ -681,6 +718,11 @@ bool Ai8TemperatureControllerCollector::writeGlobalPage(const PageData& data, QS
 
 bool Ai8TemperatureControllerCollector::writePage(const PageData& data, QString *resultMessage)
 {
+    if (!validWriteFields(data))
+    {
+        if (resultMessage) *resultMessage = QStringLiteral("Invalid AI-8 parameter changes for this page.");
+        return false;
+    }
     QString error;
     bool success = false;
     switch (data.page)

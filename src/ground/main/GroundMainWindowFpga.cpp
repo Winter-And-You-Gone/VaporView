@@ -100,7 +100,8 @@ void MainWindow::syncFpgaDeviceConfigUi()
         state_->ai8_temperature_controller_panel_->setBackendConnected(
             homeFpgaDeviceState(VaporView::SkyDeviceId::Ai8TemperatureController) == VaporView::DeviceState::Connected,
             state_->is_english_ ? QStringLiteral("FPGA relay") : QStringLiteral("FPGA 中转"));
-        state_->ai8_temperature_controller_panel_->setPageCommandsEnabled(state_->ai8_device_session_ && state_->ai8_device_session_->operationsAvailable(), ai8Unsupported);
+        state_->ai8_temperature_controller_panel_->setPageCommandsEnabled(state_->ai8_device_session_ && state_->ai8_device_session_->operationsAvailable(), ai8Unsupported,
+            state_->ai8_device_session_ && state_->ai8_device_session_->operationPending());
     }
     const auto registers = homeFpgaRegisters();
     if(auto* read=findChild<QToolButton*>(QStringLiteral("temperatureFpgaReadParameters"))) {

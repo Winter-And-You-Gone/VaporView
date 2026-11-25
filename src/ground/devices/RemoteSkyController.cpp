@@ -385,7 +385,8 @@ quint32 RemoteSkyController::readAi8Page(Ai8TemperatureControllerProtocol::Page 
 
 quint32 RemoteSkyController::writeAi8Page(const Ai8TemperatureControllerProtocol::PageData& data)
 {
-    return sendAi8Operation(DeviceOperation::WriteParameters, data);
+    return sendAi8Operation(data.writeFields ? DeviceOperation::WriteAi8ParameterChanges
+                                             : DeviceOperation::WriteParameters, data);
 }
 
 quint32 RemoteSkyController::restoreAi8FactoryDefaults(

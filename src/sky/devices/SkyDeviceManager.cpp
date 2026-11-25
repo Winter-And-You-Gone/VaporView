@@ -323,6 +323,54 @@ bool finiteAi8PageValues(const Ai8TemperatureControllerProtocol::PageData& data)
            finite(data.output.setpointHighLimit);
 }
 
+void applySimulatedAi8Changes(Ai8TemperatureControllerProtocol::PageData& page,
+                             const Ai8TemperatureControllerProtocol::PageData& changes)
+{
+    using namespace Ai8TemperatureControllerProtocol;
+    const auto apply = [&page, &changes](WriteField field, auto group, auto member) {
+        if (changes.writeFields & writeFieldBit(field)) (page.*group).*member = (changes.*group).*member;
+    };
+    apply(WriteField::Setpoint, &PageData::channel, &ChannelParameters::setpointC);
+    apply(WriteField::ProportionalBand, &PageData::channel, &ChannelParameters::proportionalBand);
+    apply(WriteField::IntegralTime, &PageData::channel, &ChannelParameters::integralTimeS);
+    apply(WriteField::DerivativeTime, &PageData::channel, &ChannelParameters::derivativeTimeS);
+    apply(WriteField::ChannelOutputGroup, &PageData::channel, &ChannelParameters::channelOutputGroupRaw);
+    apply(WriteField::ProgramNumber, &PageData::channel, &ChannelParameters::programNumber);
+    apply(WriteField::WorkMode, &PageData::channel, &ChannelParameters::workMode);
+    apply(WriteField::ManualOutput, &PageData::channel, &ChannelParameters::manualOutputPercent);
+    apply(WriteField::HighAlarm, &PageData::channel, &ChannelParameters::highAlarmC);
+    apply(WriteField::LowAlarm, &PageData::channel, &ChannelParameters::lowAlarmC);
+    apply(WriteField::InputType, &PageData::input, &InputParameters::inputType);
+    apply(WriteField::ScaleLow, &PageData::input, &InputParameters::scaleLow);
+    apply(WriteField::ScaleHigh, &PageData::input, &InputParameters::scaleHigh);
+    apply(WriteField::Filter, &PageData::input, &InputParameters::filter);
+    apply(WriteField::ChannelInputGroup, &PageData::input, &InputParameters::channelInputGroup);
+    apply(WriteField::MeasurementOffset, &PageData::input, &InputParameters::measurementOffset);
+    apply(WriteField::CorrectionEntry, &PageData::input, &InputParameters::correctionEntry);
+    apply(WriteField::ControlAction, &PageData::output, &OutputParameters::controlAction);
+    apply(WriteField::DeviationHighAlarm, &PageData::output, &OutputParameters::deviationHighAlarm);
+    apply(WriteField::DeviationLowAlarm, &PageData::output, &OutputParameters::deviationLowAlarm);
+    apply(WriteField::Hysteresis, &PageData::output, &OutputParameters::hysteresis);
+    apply(WriteField::OutputLow, &PageData::output, &OutputParameters::outputLowPercent);
+    apply(WriteField::OutputHigh, &PageData::output, &OutputParameters::outputHighPercent);
+    apply(WriteField::OutputHighThreshold, &PageData::output, &OutputParameters::outputHighThreshold);
+    apply(WriteField::RiseSlope, &PageData::output, &OutputParameters::riseSlope);
+    apply(WriteField::FallSlope, &PageData::output, &OutputParameters::fallSlope);
+    apply(WriteField::SetpointLowLimit, &PageData::output, &OutputParameters::setpointLowLimit);
+    apply(WriteField::SetpointHighLimit, &PageData::output, &OutputParameters::setpointHighLimit);
+    apply(WriteField::AlarmReset, &PageData::output, &OutputParameters::alarmResetFlags);
+    apply(WriteField::ControlChannelCount, &PageData::global, &GlobalParameters::controlChannelCount);
+    apply(WriteField::ControlCycle, &PageData::global, &GlobalParameters::controlCycleS);
+    apply(WriteField::ParameterLock, &PageData::global, &GlobalParameters::parameterLock);
+    apply(WriteField::SampleMode, &PageData::global, &GlobalParameters::sampleMode);
+    apply(WriteField::DecimalPoint, &PageData::global, &GlobalParameters::decimalPoint);
+    if ((changes.writeFields & writeFieldBit(WriteField::RunState)) && changes.global.runStateWriteRequested)
+    {
+        page.global.runStateRaw = changes.global.runStateWriteValue;
+        page.global.runStateIsDocumented = true;
+    }
+}
+
 bool validAi8PageValues(const Ai8TemperatureControllerProtocol::PageData& data)
 {
     using namespace Ai8TemperatureControllerProtocol;
@@ -2348,7 +2396,7 @@ bool SkyDeviceManager::writeAi8Page(const Ai8TemperatureControllerProtocol::Page
     if (config_.sensor_transport_path == SensorTransportPath::FpgaRelay) { setAi8Error(errorCode,errorMessage,CommandErrorCode::UnknownCommand,
         QStringLiteral("Unsupported: VLP1 does not expose AI8 parameter pages."));return false; }
     if (!validAi8Page(requested.page) || !validAi8Selection(requested.selection) ||
-        !validAi8PageValues(requested))
+        !Ai8TemperatureControllerProtocol::validWriteFields(requested) || !validAi8PageValues(requested))
     {
         setAi8Error(errorCode, errorMessage, CommandErrorCode::InvalidPayload,
                     QStringLiteral("AI-8 page values are invalid."));
@@ -2370,19 +2418,33 @@ bool SkyDeviceManager::writeAi8Page(const Ai8TemperatureControllerProtocol::Page
                                         simulated_ai8_global_);
             simulated_ai8_pages_initialized_ = true;
         }
+        auto effective = requested;
+        if (requested.writeFields)
+        {
+            effective = simulatedAi8Page(requested.page, requested.selection, simulated_ai8_channels_,
+                                         simulated_ai8_inputs_, simulated_ai8_outputs_, simulated_ai8_global_);
+            applySimulatedAi8Changes(effective, requested);
+            using namespace Ai8TemperatureControllerProtocol;
+            if ((requested.writeFields & writeFieldBit(WriteField::ManualOutput)) && effective.channel.workMode != 3)
+            {
+                setAi8Error(errorCode, errorMessage, CommandErrorCode::ConfigApplyFailed,
+                            QStringLiteral("Manual output requires manual work mode."));
+                return false;
+            }
+        }
         switch (requested.page)
         {
         case Ai8TemperatureControllerProtocol::Page::Channel:
-            simulated_ai8_channels_[static_cast<size_t>(requested.selection.channel - 1)] = requested.channel;
+            simulated_ai8_channels_[static_cast<size_t>(requested.selection.channel - 1)] = effective.channel;
             break;
         case Ai8TemperatureControllerProtocol::Page::InputGroup:
-            simulated_ai8_inputs_[static_cast<size_t>(requested.selection.inputGroup - 1)] = requested.input;
+            simulated_ai8_inputs_[static_cast<size_t>(requested.selection.inputGroup - 1)] = effective.input;
             break;
         case Ai8TemperatureControllerProtocol::Page::OutputGroup:
-            simulated_ai8_outputs_[static_cast<size_t>(requested.selection.outputGroup - 1)] = requested.output;
+            simulated_ai8_outputs_[static_cast<size_t>(requested.selection.outputGroup - 1)] = effective.output;
             break;
         case Ai8TemperatureControllerProtocol::Page::Global:
-            simulated_ai8_global_ = requested.global;
+            simulated_ai8_global_ = effective.global;
             break;
         }
         confirmed = simulatedAi8Page(requested.page,

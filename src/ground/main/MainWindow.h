@@ -166,7 +166,7 @@ private slots:
     void onTemperatureControllerDataReady();
     void onAi8TemperatureControllerDataReady();
     void onAi8ReadPageRequested();
-    void onAi8WritePageRequested();
+    void onAi8WritePageRequested(const VaporView::Ai8TemperatureControllerProtocol::PageData& changes);
     void onRefreshTimer();
     void onClearLogClicked();
     void onRefreshPortsClicked();

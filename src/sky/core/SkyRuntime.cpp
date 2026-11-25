@@ -2114,7 +2114,8 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
             break;
         }
         Ai8TemperatureControllerProtocol::PageData requestData;
-        if (!TelemetryCodec::parseAi8PageData(request.payload, requestData))
+        if (!TelemetryCodec::parseAi8PageData(request.payload, requestData) ||
+            (request.operation == DeviceOperation::WriteAi8ParameterChanges) != (requestData.writeFields != 0))
         {
             response.error_code = CommandErrorCode::InvalidPayload;
             response.error_message = QStringLiteral("AI-8 page payload is invalid.");
@@ -2136,6 +2137,7 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
                                               &errorMessage);
             break;
         case DeviceOperation::WriteParameters:
+        case DeviceOperation::WriteAi8ParameterChanges:
             ok = device_manager_.writeAi8Page(requestData,
                                                responseData,
                                                &error,

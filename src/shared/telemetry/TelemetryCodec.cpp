@@ -1479,7 +1479,7 @@ QJsonObject ai8PageDataToJson(const Ai8TemperatureControllerProtocol::PageData& 
                        {QStringLiteral("at_function"), g.atFunction},
                        {QStringLiteral("aifl_p1pr"), g.aiflP1pr},
                        {QStringLiteral("p1ti_opsn"), g.p1tiOpsn}};
-    return QJsonObject{{QStringLiteral("page"), static_cast<int>(data.page)},
+    QJsonObject root{{QStringLiteral("page"), static_cast<int>(data.page)},
                        {QStringLiteral("selection"), QJsonObject{
                            {QStringLiteral("channel"), data.selection.channel},
                            {QStringLiteral("input_group"), data.selection.inputGroup},
@@ -1488,6 +1488,11 @@ QJsonObject ai8PageDataToJson(const Ai8TemperatureControllerProtocol::PageData& 
                        {QStringLiteral("input"), input},
                        {QStringLiteral("output"), output},
                        {QStringLiteral("global"), global}};
+    if (data.writeFields)
+    {
+        root.insert(QStringLiteral("write_fields"), static_cast<qint64>(data.writeFields));
+    }
+    return root;
 }
 
 template <typename T>
@@ -1527,6 +1532,15 @@ bool ai8PageDataFromJson(const QJsonObject& root, Ai8TemperatureControllerProtoc
     }
     data = Ai8TemperatureControllerProtocol::PageData{};
     data.page = static_cast<Ai8TemperatureControllerProtocol::Page>(page);
+    if (root.contains(QStringLiteral("write_fields")))
+    {
+        const qint64 fields = root.value(QStringLiteral("write_fields")).toInteger(-1);
+        if (fields <= 0 || static_cast<quint64>(fields) >= Ai8TemperatureControllerProtocol::writeFieldBit(Ai8TemperatureControllerProtocol::WriteField::Count))
+        {
+            return false;
+        }
+        data.writeFields = static_cast<quint64>(fields);
+    }
     const QJsonObject selection = root.value(QStringLiteral("selection")).toObject();
     readJsonInt(selection, "channel", data.selection.channel);
     readJsonInt(selection, "input_group", data.selection.inputGroup);
@@ -1622,6 +1636,7 @@ bool validDeviceOperation(DeviceOperation operation)
 {
     return operation == DeviceOperation::ReadParameters ||
            operation == DeviceOperation::WriteParameters ||
+           operation == DeviceOperation::WriteAi8ParameterChanges ||
            operation == DeviceOperation::FactoryReset ||
            operation == DeviceOperation::ConfigureEpsilonPacketRates ||
            operation == DeviceOperation::ConfigureEpsilonMainAntennaLeverArm ||

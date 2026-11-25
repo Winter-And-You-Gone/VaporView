@@ -130,6 +130,40 @@ int main()
         return Protocol::groupRegister(reg, group);
     };
 
+    {
+        using Protocol::Register;
+        using Protocol::WriteField;
+        Protocol::PageData changes;
+        changes.selection.channel = 4;
+        changes.channel.setpointC = 23.5;
+        changes.writeFields = Protocol::writeFieldBit(WriteField::Setpoint);
+        const auto address = channelAddress(Register::SetpointBase, 4);
+        require(collector.writePage(changes, &message) && backend.writes == std::vector<quint16>{address} &&
+                    backend.registers[address] == Protocol::encodeSignedTenths(23.5),
+                "Auto apply changes only the requested setpoint register");
+        backend.resetWrites();
+        changes.page = Protocol::Page::InputGroup;
+        require(!collector.writePage(changes, &message) && backend.writes.empty(),
+                "A write mask from another page is rejected before register access");
+        const auto inputAddress = channelAddress(Register::ChannelInputBase, 4);
+        backend.registers[inputAddress] = Protocol::encodeChannelInput(2, 3);
+        changes.writeFields = Protocol::writeFieldBit(WriteField::ChannelInputGroup);
+        changes.input.channelInputGroup = 5;
+        require(collector.writePage(changes, &message) && backend.writes == std::vector<quint16>{inputAddress} &&
+                    backend.registers[inputAddress] == Protocol::encodeChannelInput(5, 3),
+                "Auto apply preserves the other field in the shared channel input register");
+        backend.resetWrites();
+        seedGlobalRegisters(backend, 9655);
+        changes.page = Protocol::Page::Global;
+        changes.writeFields = Protocol::writeFieldBit(WriteField::ControlCycle);
+        changes.global.controlCycleS = 1.5;
+        require(collector.writePage(changes, &message) && backend.writes == std::vector<quint16>{controlCycleRegister} &&
+                    backend.registers[runStateRegister] == 9655,
+                "Auto apply does not replace unrelated global settings with defaults");
+        backend.resetWrites();
+        backend.registers.clear();
+    }
+
     for (int channel = 1; channel <= 8; ++channel)
     {
         backend.registers[channelAddress(Protocol::Register::SetpointBase, channel)] =

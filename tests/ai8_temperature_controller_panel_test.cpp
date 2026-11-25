@@ -45,11 +45,74 @@ void require(bool condition, const char *message)
     }
 }
 
+void waitForAutoApply(int milliseconds = 520)
+{
+    QEventLoop loop;
+    QTimer::singleShot(milliseconds, &loop, &QEventLoop::quit);
+    loop.exec();
+}
+
 } // namespace
 
 int main(int argc, char **argv)
 {
+    require(VaporViewTest::SettingsSandbox::initialized, "isolated native/INI application settings");
     QApplication app(argc, argv);
+
+    {
+        using namespace VaporView::Ai8TemperatureControllerProtocol;
+        VaporView::Ground::Widgets::Ai8TemperatureControllerPanel panel;
+        QVector<PageData> writes;
+        QObject::connect(&panel, &VaporView::Ground::Widgets::Ai8TemperatureControllerPanel::writePageRequested,
+                         [&](const PageData& changes) {
+            writes.append(changes);
+            panel.setPageCommandsEnabled(false, {}, true);
+        });
+        panel.setBackendConnected(true);
+        auto *p = panel.findChild<QDoubleSpinBox *>("ai8ProportionalBandSpin");
+        auto *i = panel.findChild<QDoubleSpinBox *>("ai8IntegralTimeSpin");
+        auto *channel = panel.findChild<QSpinBox *>("ai8ChannelSpin");
+        PageData readback;
+        readback.channel.proportionalBand = 21;
+        panel.applyPageData(readback);
+        QMetaObject::invokeMethod(p, "editingFinished");
+        waitForAutoApply();
+        require(writes.isEmpty(), "Readback and unchanged editor completion do not write");
+        p->setValue(25.0);
+        QMetaObject::invokeMethod(p, "editingFinished");
+        i->setValue(10.0);
+        QMetaObject::invokeMethod(i, "editingFinished");
+        p->setValue(30.0);
+        QMetaObject::invokeMethod(p, "editingFinished");
+        panel.applyPageData(readback);
+        require(p->value() == 30.0 && writes.isEmpty(), "Readback preserves a pending edit during debounce");
+        waitForAutoApply();
+        require(writes.size() == 1 && writes[0].channel.proportionalBand == 30 &&
+                writes[0].channel.integralTimeS == 10 && writes[0].selection.channel == 1 &&
+                writes[0].writeFields == (writeFieldBit(WriteField::ProportionalBand) | writeFieldBit(WriteField::IntegralTime)),
+                "One request contains only the last committed value of each changed field");
+        channel->setValue(2);
+        p->setValue(35.0);
+        QMetaObject::invokeMethod(p, "editingFinished");
+        channel->setValue(3);
+        waitForAutoApply();
+        require(writes.size() == 1, "A second batch must wait for the first readback");
+        panel.setPageCommandsEnabled(true);
+        waitForAutoApply(200);
+        require(writes.size() == 1, "The post-operation gap limits back-to-back bursts");
+        waitForAutoApply();
+        require(writes.size() == 2 && writes[1].selection.channel == 2 && writes[1].channel.proportionalBand == 35,
+                "A queued batch keeps its original target after channel navigation");
+        panel.setPageCommandsEnabled(true);
+        p->setValue(40.0);
+        QMetaObject::invokeMethod(p, "editingFinished");
+        panel.setBackendConnected(false);
+        panel.setBackendConnected(true);
+        waitForAutoApply();
+        require(writes.size() == 2, "A reconnect never sends an old queued edit");
+    }
+    if (app.arguments().contains(QStringLiteral("--auto-apply-only"))) return 0;
+
 
     {
         using VaporView::Ground::Widgets::Ai8TemperatureControllerPanel;
@@ -155,7 +218,7 @@ int main(int argc, char **argv)
         auto *ch = relay.findChild<QSpinBox*>("ai8ChannelSpin");
         auto *sp = relay.findChild<QDoubleSpinBox*>("ai8SetpointSpin");
         require(!relay.findChild<QPushButton*>("ai8FpgaApplySetpoint"), "duplicate SP button removed");
-        auto *write = relay.findChild<QPushButton*>("ai8WriteParametersButton");
+        require(!relay.findChild<QPushButton*>("ai8WriteParametersButton"), "Page write button replaced by auto apply");
         ch->setValue(5);
         VaporView::Ai8TemperatureControllerProtocol::LiveData live;
         live.valid = true; live.detailedChannel = 5; live.setpointC = 100;
@@ -170,28 +233,31 @@ int main(int argc, char **argv)
         require(sp->value() == 60, "channel switch does not inherit another channel draft");
         ch->setValue(5);
         require(sp->value() == 25, "channel draft restored");
-        int writes = 0;
-        QObject::connect(&relay, &Ai8TemperatureControllerPanel::writePageRequested, [&] { ++writes; });
-        write->click();
-        const auto requested = relay.currentPageData();
-        require(writes == 1 && requested.selection.channel == 5 && requested.channel.setpointC == 25,
-                "page write captures channel 5 SP draft");
+        QVector<VaporView::Ai8TemperatureControllerProtocol::PageData> writes;
+        QObject::connect(&relay, &Ai8TemperatureControllerPanel::writePageRequested,
+                         [&](const auto& changes) { writes.append(changes); });
+        sp->setValue(26);
+        QMetaObject::invokeMethod(sp, "editingFinished");
+        waitForAutoApply();
+        require(writes.size() == 1 && writes.front().selection.channel == 5 && writes.front().channel.setpointC == 26,
+                "auto apply captures channel 5 SP draft");
+        const auto requested = writes.front();
         relay.setOperationStatus(QStringLiteral("timeout"), false);
         relay.applyLiveData(live);
-        require(sp->value() == 25, "failed page write preserves draft");
+        require(sp->value() == 26, "failed page write preserves draft");
         auto confirmed = requested;
         relay.applyPageData(confirmed);
         live.detailedChannel = 5; live.setpointC = 100;
         relay.applyLiveData(live);
-        require(sp->value() == 25, "old telemetry does not undo page readback");
-        live.setpointC = 25; relay.applyLiveData(live);
+        require(sp->value() == 26, "old telemetry does not undo page readback");
+        live.setpointC = 26; relay.applyLiveData(live);
         live.setpointC = 27; relay.applyLiveData(live);
         require(sp->value() == 27, "matching telemetry retires page draft");
         sp->setValue(26);
         relay.setBackendConnected(false);
-        require(!write->isEnabled(), "page write disabled while disconnected");
+        require(!sp->isEnabled(), "page write disabled while disconnected");
         relay.setBackendConnected(true);
-        require(sp->value() == 26 && write->isEnabled(), "reconnect retains draft without writing");
+        require(sp->value() == 26 && sp->isEnabled() && writes.size() == 1, "reconnect retains draft without writing");
         relay.setPageCommandsEnabled(false);
         require(!sp->isEnabled(), "SP requires page write capability");
         require(!relay.findChild<QDoubleSpinBox*>("ai8ProportionalBandSpin")->isEnabled(), "unsupported parameter disabled");
@@ -1066,27 +1132,26 @@ int main(int argc, char **argv)
             "page navigation does not create an Srun write request");
 
     auto *readButton = panel.findChild<QPushButton *>(QStringLiteral("ai8ReadParametersButton"));
-    auto *writeButton = panel.findChild<QPushButton *>(QStringLiteral("ai8WriteParametersButton"));
+    require(!panel.findChild<QPushButton *>(QStringLiteral("ai8WriteParametersButton")), "AI-8 automatically applies edits");
     auto *statusLabel = &protocolStatusLabel;
-    require(readButton != nullptr && writeButton != nullptr && statusLabel != nullptr &&
-                !readButton->isEnabled() && !writeButton->isEnabled() &&
+    require(readButton != nullptr && statusLabel != nullptr &&
+                !readButton->isEnabled() &&
                 !statusLabel->property("protocolReady").toBool(),
             "AI-8 read and write stay unavailable before connection");
 
     panel.setBackendConnected(true, QStringLiteral("COM8 @ 19200"));
     QApplication::processEvents();
-    require(readButton->isEnabled() && writeButton->isEnabled() &&
+    require(readButton->isEnabled() &&
                 statusLabel->property("protocolReady").toBool(),
             "AI-8 read and write become available after connection");
     panel.setPageCommandsEnabled(false, QStringLiteral("remote-readonly"));
     QApplication::processEvents();
-    require(!readButton->isEnabled() && !writeButton->isEnabled() &&
-                readButton->toolTip() == QStringLiteral("remote-readonly") &&
-                writeButton->toolTip() == QStringLiteral("remote-readonly"),
+    require(!readButton->isEnabled() &&
+                readButton->toolTip() == QStringLiteral("remote-readonly"),
             "AI-8 page read/write commands can be disabled for Remote Sky read-only data");
     panel.setPageCommandsEnabled(true);
     QApplication::processEvents();
-    require(readButton->isEnabled() && writeButton->isEnabled(),
+    require(readButton->isEnabled(),
             "AI-8 page read/write commands recover after returning to local control");
 
     setpointSpin->setValue(23.0);

@@ -3232,8 +3232,18 @@ static void tec103PidLayout()
         require(sameHeight(), "All TEC103 common parameter editors start with the same height");
         auto *common = editor("temperatureChannelCommonParamsPageChannel%1");
         auto *maxOutput = editors.last();
-        require(common && common->rect().contains(QRect(maxOutput->mapTo(common, QPoint()), maxOutput->size())),
-                "The bottom TEC103 maximum output editor fits inside the common parameters page");
+        require(common && common->isAncestorOf(maxOutput), "The maximum output editor belongs to common parameters");
+        for (QWidget *ancestor = maxOutput->parentWidget(); ancestor && ancestor != page;
+             ancestor = ancestor->parentWidget())
+        {
+            const QRect editorRect(maxOutput->mapTo(ancestor, QPoint()), maxOutput->size());
+            const bool controlsCard = ancestor->objectName() == QStringLiteral("temperatureControllerControlsCard");
+            if (controlsCard || ancestor == common || qobject_cast<QStackedWidget *>(ancestor))
+            {
+                const QRect bounds = controlsCard ? ancestor->rect().adjusted(0, 0, 0, -2) : ancestor->rect();
+                require(bounds.contains(editorRect), "The maximum output editor is fully visible inside the card and stacks");
+            }
+        }
         auto *mode = page->findChild<QComboBox *>("temperatureControllerModeCombo");
         auto *view = page->findChild<QToolButton *>("tec103PlotViewToggle");
         require(mode && mode->isVisible() && view && view->isVisible() && mode->parentWidget() == view->parentWidget() &&

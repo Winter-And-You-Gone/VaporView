@@ -110,6 +110,7 @@ enum class DeviceOperation : quint8
     ReadParameters = 1,
     WriteParameters = 2,
     FactoryReset = 3,
+    WriteAi8ParameterChanges = 4,
     ConfigureEpsilonPacketRates = 10,
     ConfigureEpsilonMainAntennaLeverArm = 11,
     ConfigureEpsilonRtcmInput = 12,

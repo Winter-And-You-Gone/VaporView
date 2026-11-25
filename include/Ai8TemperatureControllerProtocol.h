@@ -196,6 +196,22 @@ struct GlobalParameters
     int p1tiOpsn = 0;
 };
 
+// Fields explicitly committed by the user. A zero mask is the legacy whole-page write.
+enum class WriteField
+{
+    Setpoint, ProportionalBand, IntegralTime, DerivativeTime, ChannelOutputGroup,
+    ProgramNumber, WorkMode, ManualOutput, HighAlarm, LowAlarm,
+    InputType, ScaleLow, ScaleHigh, Filter, ChannelInputGroup, MeasurementOffset, CorrectionEntry,
+    ControlAction, DeviationHighAlarm, DeviationLowAlarm, Hysteresis, OutputLow, OutputHigh,
+    OutputHighThreshold, RiseSlope, FallSlope, SetpointLowLimit, SetpointHighLimit, AlarmReset,
+    ControlChannelCount, ControlCycle, RunState, ParameterLock, SampleMode, DecimalPoint, Count
+};
+
+constexpr quint64 writeFieldBit(WriteField field)
+{
+    return quint64{1} << static_cast<int>(field);
+}
+
 struct PageData
 {
     Page page = Page::Channel;
@@ -204,7 +220,31 @@ struct PageData
     InputParameters input;
     OutputParameters output;
     GlobalParameters global;
+    quint64 writeFields = 0;
 };
+
+inline bool validWriteFields(const PageData& data)
+{
+    if (!data.writeFields) return true;
+    constexpr WriteField pageBounds[] = {WriteField::Setpoint, WriteField::InputType,
+        WriteField::ControlAction, WriteField::ControlChannelCount, WriteField::Count};
+    const auto page = static_cast<unsigned>(data.page);
+    return page < 4 && (data.writeFields & ~(writeFieldBit(pageBounds[page + 1]) - writeFieldBit(pageBounds[page]))) == 0;
+}
+
+inline bool samePageTarget(const PageData& a, const PageData& b)
+{
+    if (a.page != b.page) return false;
+    switch (a.page)
+    {
+    case Page::Channel: return a.selection.channel == b.selection.channel;
+    case Page::InputGroup: return a.selection.channel == b.selection.channel &&
+                                 a.selection.inputGroup == b.selection.inputGroup;
+    case Page::OutputGroup: return a.selection.outputGroup == b.selection.outputGroup;
+    case Page::Global: return true;
+    }
+    return false;
+}
 
 struct LiveData
 {

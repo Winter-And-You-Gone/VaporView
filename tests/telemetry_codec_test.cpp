@@ -1009,6 +1009,18 @@ void testAi8DeviceOperation()
                 parsedRequest.operation == request.operation &&
                 parsedRequest.payload == request.payload,
             "DeviceOperation request round-trip");
+    DeviceOperationRequest changes = request;
+    changes.operation = DeviceOperation::WriteAi8ParameterChanges;
+    auto changedPage = page;
+    changedPage.writeFields = Ai8TemperatureControllerProtocol::writeFieldBit(
+        Ai8TemperatureControllerProtocol::WriteField::DecimalPoint);
+    changes.payload = TelemetryCodec::serializeAi8PageData(changedPage);
+    require(TelemetryCodec::parseDeviceOperationRequest(
+                TelemetryCodec::serializeDeviceOperationRequest(changes), parsedRequest) &&
+                parsedRequest.operation == DeviceOperation::WriteAi8ParameterChanges &&
+                TelemetryCodec::parseAi8PageData(parsedRequest.payload, parsedPage) &&
+                parsedPage.writeFields == changedPage.writeFields,
+            "AI-8 changed-field operation and its full-width mask survive serialization");
     QByteArray invalidOperation = requestPayload;
     invalidOperation[5] = static_cast<char>(99);
     require(!TelemetryCodec::parseDeviceOperationRequest(invalidOperation, parsedRequest),

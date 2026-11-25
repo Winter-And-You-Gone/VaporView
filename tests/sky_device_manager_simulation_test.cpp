@@ -735,6 +735,17 @@ int main(int argc, char **argv)
                                 &operationMessage) &&
                 std::fabs(readBackAi8Page.channel.setpointC - 37.5) < 0.000001,
             "AI-8 simulated read reflects written value");
+    {
+        using namespace VaporView::Ai8TemperatureControllerProtocol;
+        PageData changes;
+        changes.selection = ai8Selection;
+        changes.writeFields = writeFieldBit(WriteField::ProportionalBand);
+        changes.channel.proportionalBand = 16.0;
+        require(manager.writeAi8Page(changes, confirmedAi8Page, &error, &operationMessage) &&
+                    confirmedAi8Page.channel.proportionalBand == 16.0 &&
+                    confirmedAi8Page.channel.setpointC == 37.5,
+                "The simulated masked write preserves the unrelated setpoint");
+    }
     VaporView::Ai8TemperatureControllerProtocol::Selection otherChannel = ai8Selection;
     otherChannel.channel = 3;
     require(manager.readAi8Page(VaporView::Ai8TemperatureControllerProtocol::Page::Channel,
