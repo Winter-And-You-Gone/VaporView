@@ -9,6 +9,7 @@
 #include "map3d/MapResourceDialog.h"
 #include "map3d/Map3DRuntime.h"
 #include "map3d/EarthProjectionProfile.h"
+#include "map3d/GroundDetailEllipse.h"
 #include "map3d/TiandituImageLayer.h"
 #include "map3d/OpenAerialMapImageLayer.h"
 #include "map3d/OnlineOsmLayer.h"
@@ -600,11 +601,45 @@ void checkImageryFallback()
             "zooming beyond source maximum still displays upsampled imagery");
 }
 
+void checkGroundDetailEllipse()
+{
+    using VaporView::Map3D::Detail::GroundDetailEllipse;
+    osgEarth::Ellipsoid earth;
+    GroundDetailEllipse ellipse;
+    const osg::Vec3d eye = earth.geodeticToGeocentric({116.4, 39.9, 3500});
+    const osg::Vec3d nearGround = earth.geodeticToGeocentric({116.4, 39.9, 0});
+    for (double longitude : {115.82, 116.98})
+    {
+        const osg::Vec3d target = earth.geodeticToGeocentric({longitude, 39.9, 0});
+        const auto pose = osg::Matrixd::inverse(osg::Matrixd::lookAt(eye, target, eye - nearGround));
+        const double range = (target - eye).length();
+        ellipse.update(earth, pose, range, -4);
+        require(ellipse.majorAxisM > 77000 && ellipse.majorAxisM < 79000,
+                "Beijing oblique view covers both foci with a 30 km semi-minor axis");
+        require(ellipse.intersects({nearGround, 0}) && ellipse.intersects({target, 0}),
+                "both the ground under the camera and the distant target receive detail");
+        const auto middle = (nearGround + target) * 0.5;
+        auto side = (target - nearGround) ^ ellipse.up;
+        side.normalize();
+        require(ellipse.intersects({middle + side * 29000, 0}) &&
+                !ellipse.intersects({middle + side * 31000, 0}) &&
+                ellipse.intersects({middle + side * 31000, 2000}),
+                "side detail ends at 30 km and tiles overlapping the boundary are retained");
+        require(!ellipse.intersects({nearGround - (target - nearGround), 20}),
+                "turning the camera leaves detail behind it outside the ellipse");
+        require(ellipse.requiredFarPlaneM > range, "far plane accommodates the target");
+        ellipse.update(earth, pose, range, -90);
+        require(ellipse.intersects({middle + side * 90000, 0}) && ellipse.requiredFarPlaneM == 0,
+                "top-down views release the detail limit");
+    }
+}
+
 } // namespace
 
 int main(int argc, char** argv)
 {
     qputenv("VAPORVIEW_MAP3D_HEADLESS_TEST", "1");
+    checkGroundDetailEllipse();
 
     QTemporaryDir settingsDir;
     require(settingsDir.isValid(), "temporary settings directory is valid");

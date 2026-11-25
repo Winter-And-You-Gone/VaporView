@@ -1,6 +1,7 @@
 #pragma once
 
 #include "MapHttp.h"
+#include "GroundDetailEllipse.h"
 #include <osgEarth/AltitudeSymbol>
 #include <osgEarth/ExtrusionSymbol>
 #include <osgEarth/FilterContext>
@@ -27,9 +28,10 @@ public:
     static constexpr auto layerName = "OpenFreeMap buildings";
     static constexpr unsigned sourceLevel = 14;
 
-    explicit OpenFreeMapBuildings(const QPainterPath& localCoverage = {})
+    explicit OpenFreeMapBuildings(const QPainterPath& localCoverage = {},
+                                  std::shared_ptr<const GroundDetailEllipse> ellipse = {})
         : TiledModelLayer(&options_, &originalOptions_), localCoverage_(localCoverage),
-          profile_(osgEarth::Profile::create(osgEarth::Profile::SPHERICAL_MERCATOR))
+          profile_(osgEarth::Profile::create(osgEarth::Profile::SPHERICAL_MERCATOR)), ellipse_(std::move(ellipse))
     {
         using namespace osgEarth;
         TiledModelLayer::init();
@@ -80,8 +82,9 @@ protected:
             // osgEarth's asynchronous GL precompile retains the cull visitor by
             // raw pointer. It can outlive the view on reload. Draw the meshes
             // with the active context once they have merged instead.
-            pager->setCreatePagedNodeFunction([](const osgEarth::TileKey&) {
+            pager->setCreatePagedNodeFunction([ellipse = ellipse_](const osgEarth::TileKey&) {
                 auto* node = new osgEarth::Util::PagedNode2;
+                if (ellipse) node->addCullCallback(new BuildingEllipseCull(ellipse));
                 node->setPreCompileGLObjects(false);
                 return node;
             });
@@ -143,7 +146,9 @@ protected:
         osg::ref_ptr<Session> session = new Session(map.get());
         osg::ref_ptr<FeatureProfile> features = new FeatureProfile(extent);
         FilterContext context(session.get(), features.get(), extent);
-        return GeometryCompiler().compile(buildings, style_, context);
+        auto mesh = GeometryCompiler().compile(buildings, style_, context);
+        if (mesh && ellipse_) mesh->addCullCallback(new BuildingEllipseCull(ellipse_));
+        return mesh;
     }
 
 private:
@@ -170,6 +175,7 @@ private:
     const Options originalOptions_;
     const QPainterPath localCoverage_;
     osg::ref_ptr<const osgEarth::Profile> profile_;
+    std::shared_ptr<const GroundDetailEllipse> ellipse_;
     osgEarth::Style style_;
     mutable QMutex metadataMutex_;
     mutable QDeadlineTimer refreshAfter_;

@@ -7,6 +7,7 @@
 #include "Map3DAssetLoader.h"
 #include "MapLayerRemoval.h"
 #include "EarthProjectionProfile.h"
+#include "GroundDetailEllipse.h"
 #include "OpenAerialMapImageLayer.h"
 #include "OnlineOsmLayer.h"
 #include "OnlineTerrainLayer.h"
@@ -49,6 +50,7 @@
 #include <osgEarth/SpatialReference>
 #include <osgEarth/TerrainEngineNode>
 #include <osgEarth/TerrainOptions>
+#include <osgEarth/TerrainTileNode>
 #include <osgEarth/VisibleLayer>
 #include <osgEarth/Viewpoint>
 #include <osgEarth/XYZ>
@@ -765,6 +767,7 @@ Map3DLayer mapLayerCategory(const osgEarth::Layer* layer)
 
 OsgEarthViewWidget::OsgEarthViewWidget(QWidget* parent, bool deferRendering)
     : QOpenGLWidget(parent)
+    , ground_detail_ellipse_(std::make_shared<Detail::GroundDetailEllipse>())
     , trajectory_layer_(std::make_unique<Trajectory3DLayer>())
     , aircraft_layer_(std::make_unique<Aircraft3DLayer>())
 {
@@ -1504,6 +1507,7 @@ bool OsgEarthViewWidget::applyEarthLoad(EarthLoadDiagnostics diagnostics,
     if (map_node_ != mapNode) online_terrain_timer_.stop();
     map_node_ = mapNode;
     configureHighResolutionTerrain(map_node_);
+    terrain_detail_callback_pending_ = true;
     earth_load_diagnostics_.layerSummaries.push_back(
         mapText(QStringLiteral("地形细节：可见区域优先的屏幕空间 LOD，%1 px 瓦片阈值，低视角自适应裁剪和细节级别。")).arg(kTerrainTilePixelSize));
     use_xihu_initial_view_ = useXihuInitialView;
@@ -1599,6 +1603,8 @@ bool OsgEarthViewWidget::applyLocal3DTilesLoad(Local3DTilesLoadDiagnostics diagn
     }
     local_3d_tiles_load_diagnostics_.clearedPreviousPreview = local_3d_tiles_node_.valid();
     if (local_3d_tiles_node_) root_->removeChild(local_3d_tiles_node_.get());
+    for (unsigned i = 0; i < node->getNumChildren(); ++i)
+        node->getChild(i)->addCullCallback(new Detail::BuildingEllipseCull(ground_detail_ellipse_));
     local_3d_tiles_node_ = std::move(node);
     root_->addChild(local_3d_tiles_node_.get());
     if (map_node_) removeLayerByName(map_node_->getMap(), Detail::OpenFreeMapBuildings::layerName);
@@ -1764,7 +1770,8 @@ void OsgEarthViewWidget::applyLayerVisibility(Map3DLayer layer)
             else if (!map->getLayerByName(Detail::OpenFreeMapBuildings::layerName))
             {
                 const auto* local = dynamic_cast<const Detail::LocalBuildingTiles*>(local_3d_tiles_node_.get());
-                map->addLayer(new Detail::OpenFreeMapBuildings(local ? local->coverage : QPainterPath{}));
+                map->addLayer(new Detail::OpenFreeMapBuildings(local ? local->coverage : QPainterPath{},
+                                                                ground_detail_ellipse_));
             }
         }
     }
@@ -2646,13 +2653,35 @@ void OsgEarthViewWidget::updateCameraProjectionForCurrentView()
         : (std::numeric_limits<double>::quiet_NaN)();
     const EarthProjectionProfile projectionProfile =
         earthProjectionProfile(rangeM, pitchDeg);
+    // A newly created globe opens its terrain engine during its first traversal.
+    if (terrain_detail_callback_pending_ && map_node_ && map_node_->getTerrainEngine())
+    {
+        map_node_->getTerrainEngine()->setComputeTilePixelSizeCallback(
+            [ellipse = ground_detail_ellipse_](osg::Node* node, osg::NodeVisitor&) {
+                if (!ellipse->intersects(node->getBound()))
+                {
+                    const auto* tile = dynamic_cast<const osgEarth::TerrainTile*>(node);
+                    // REX interprets one pixel as too small to subdivide and
+                    // nonpositive values as a request for native screen-space LOD.
+                    if (tile && tile->getKey().getLOD() >= kTerrainMinLevel) return 1.0f;
+                }
+                return -1.0f;
+            });
+        terrain_detail_callback_pending_ = false;
+    }
+    auto* manipulator = dynamic_cast<osgEarth::EarthManipulator*>(viewer_->getCameraManipulator());
+    if (manipulator && map_node_ && map_node_->isGeocentric())
+        ground_detail_ellipse_->update(map_node_->getMapSRS()->getEllipsoid(),
+                                       manipulator->getMatrix(), rangeM, pitchDeg);
+    else
+        *ground_detail_ellipse_ = {};
 
     osg::Camera* camera = viewer_->getCamera();
     const osg::Matrixd projection = osg::Matrixd::perspective(
         30.0,
         static_cast<double>(safeWidth) / static_cast<double>(safeHeight),
         kEarthProjectionNearPlaneM,
-        projectionProfile.farPlaneM);
+        (std::max)(projectionProfile.farPlaneM, ground_detail_ellipse_->requiredFarPlaneM));
     if (camera->getProjectionMatrix() != projection)
         camera->setProjectionMatrix(projection);
     camera->setComputeNearFarMode(osg::CullSettings::DO_NOT_COMPUTE_NEAR_FAR);

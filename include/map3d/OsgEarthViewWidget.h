@@ -41,6 +41,8 @@ class MapNode;
 
 namespace VaporView::Map3D {
 
+namespace Detail { struct GroundDetailEllipse; }
+
 enum class Map3DLayer
 {
     BaseMap,
@@ -300,6 +302,8 @@ private:
     bool mouse_dragged_since_press_ = false;
     QWidget* trajectory_info_card_ = nullptr;
     std::unique_ptr<osgViewer::Viewer> viewer_;
+    std::shared_ptr<Detail::GroundDetailEllipse> ground_detail_ellipse_;
+    bool terrain_detail_callback_pending_ = false;
     osg::ref_ptr<osgViewer::GraphicsWindowEmbedded> graphics_window_;
     osg::ref_ptr<osg::Group> root_;
     osg::ref_ptr<osg::MatrixTransform> overlay_transform_;

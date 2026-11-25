@@ -13,6 +13,10 @@
 #include <osgEarth/MapNode>
 #include <osgEarth/SpatialReference>
 #include <osgEarth/Threading>
+#include <osgEarth/EarthManipulator>
+#include <osgEarth/TerrainEngineNode>
+#include <osgEarth/TerrainTileNode>
+#include <osgViewer/View>
 
 #include <QApplication>
 #include <QDateTime>
@@ -75,6 +79,53 @@ bool waitUntil(const std::function<bool()>& predicate, int timeoutMs)
         QThread::msleep(5);
     }
     return predicate();
+}
+
+void checkObliqueTerrainPaging()
+{
+    using namespace VaporView::Map3D;
+    OsgEarthViewWidget widget;
+    widget.resize(1100, 720);
+    widget.show();
+    widget.startRendering();
+    widget.setFollowAircraft(false);
+    require(widget.loadOnlineGlobe(), QStringLiteral("initialize globe with a coarse background"));
+    for (auto layer : {Map3DLayer::Hydrography, Map3DLayer::RoadNetwork, Map3DLayer::Buildings3D,
+                       Map3DLayer::DigitalElevation, Map3DLayer::SatelliteImagery})
+        widget.setLayerVisible(layer, false);
+    // Open the REX engine, then render with the installed refinement callback.
+    widget.grabFramebuffer();
+    widget.grabFramebuffer();
+    for (auto* context : osg::GraphicsContext::getAllRegisteredGraphicsContexts())
+    for (auto* camera : context->getCameras())
+    {
+        auto* view = dynamic_cast<osgViewer::View*>(camera->getView());
+        auto* manip = view ? dynamic_cast<osgEarth::EarthManipulator*>(view->getCameraManipulator()) : nullptr;
+        if (!manip) continue;
+        auto* map = osgEarth::MapNode::findMapNode(view->getSceneData());
+        if (!map) continue;
+        auto* engine = dynamic_cast<osgEarth::TerrainEngineNode*>(map->getTerrainEngine());
+        if (!engine) continue;
+        const auto callback = engine->getComputeTilePixelSizeCallback();
+        require(bool(callback), QStringLiteral("production detail callback is installed"));
+        bool sawCoarse = false, sawNative = false;
+        engine->setComputeTilePixelSizeCallback([&](osg::Node* node, osg::NodeVisitor& visitor) {
+            const float pixels = callback(node, visitor);
+            const auto* tile = dynamic_cast<const osgEarth::TerrainTile*>(node);
+            if (tile && tile->getKey().getLOD() >= kTerrainMinLevel)
+            {
+                sawCoarse |= pixels > 0;
+                sawNative |= pixels <= 0;
+            }
+            return pixels;
+        });
+        manip->setViewpoint(osgEarth::Viewpoint("Beijing", 116.4, 39.9, 0, 0, -4, 50000), 0);
+        const bool passed = waitUntil([&] { widget.update(); return sawCoarse && sawNative; }, 14000);
+        engine->setComputeTilePixelSizeCallback(callback);
+        require(passed, QStringLiteral("real oblique viewport keeps both detail levels"));
+        return;
+    }
+    require(false, QStringLiteral("production map camera available"));
 }
 
 void checkHttpCache()
@@ -287,6 +338,7 @@ int main(int argc, char** argv)
         return 0;
     }
     checkHttpCache();
+    checkObliqueTerrainPaging();
     checkOnlineTerrainDeferral();
 
     if (!QFileInfo::exists(earthPath) || !QFileInfo::exists(tilesetPath))
