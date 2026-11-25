@@ -153,7 +153,20 @@ public:
     bool applyOpenAerialMapImagery();
     bool applyEsriWorldImagery(const QString& key);
     bool applyLocalSatelliteImagery(const QString& vrtPath);
+    void clearSelectedSatelliteImagery();
     QString activeSatelliteImagerySource() const;
+    void setBaseMapSource(const QString& source);
+    QString baseMapSource() const { return base_map_source_; }
+    void setDemSource(const QString& source);
+    QString demSource() const { return dem_source_; }
+    QString activeElevationSourceLabel() const;
+    void setOsmSource(const QString& source);
+    QString osmSource() const { return osm_source_; }
+    bool isOnlineOsmActive() const;
+    void setBuildingsSource(const QString& source);
+    QString buildingsSource() const { return buildings_source_; }
+    bool isOpenFreeMapBuildingsActive() const;
+    bool isCesiumTerrainActive() const;
     bool loadLocal3DTilesPreview(const QString& tilesetPath);
     void loadLocal3DTilesPreviewAsync(const QString& tilesetPath,
                                       std::function<void(bool)> finished);
@@ -321,6 +334,10 @@ private:
     TrackDataMode track_data_mode_ = TrackDataMode::LiveNavigation;
     QString height_reference_status_;
     QString esri_imagery_key_;
+    QString base_map_source_;
+    QString dem_source_;
+    QString osm_source_;
+    QString buildings_source_;
     std::unique_ptr<Trajectory3DLayer> trajectory_layer_;
     std::unique_ptr<Aircraft3DLayer> aircraft_layer_;
     std::array<bool, kMap3DLayerCount> layer_visibility_{};

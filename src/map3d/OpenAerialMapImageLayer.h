@@ -1,7 +1,9 @@
 #pragma once
 
+#include "map3d/Map3DLoadTracker.h"
 #include <osgEarth/ImageUtils>
 #include <osgEarth/Profile>
+#include <osgEarth/Progress>
 #include <osgEarth/XYZ>
 
 #include <algorithm>
@@ -72,7 +74,17 @@ public:
     osgEarth::GeoImage createImageImplementation(const osgEarth::TileKey& key,
                                                  osgEarth::ProgressCallback* progress) const override
     {
-        return maskOpenAerialMapNoData(XYZImageLayer::createImageImplementation(key, progress));
+        if (progress && progress->isCanceled()) return osgEarth::GeoImage::INVALID;
+        ScopedMapLoadTask loadTask(MapLoadCategory::Imagery);
+        auto image = XYZImageLayer::createImageImplementation(key, progress);
+        if (progress && progress->isCanceled())
+        {
+            loadTask.cancel();
+            return osgEarth::GeoImage::INVALID;
+        }
+        auto result = maskOpenAerialMapNoData(std::move(image));
+        loadTask.finish();
+        return result;
     }
 
     void postCreateImageImplementation(osgEarth::GeoImage& image, const osgEarth::TileKey&,

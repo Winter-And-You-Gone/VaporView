@@ -10,6 +10,7 @@
 #include <QMainWindow>
 #include <QString>
 #include <array>
+#include <cstdint>
 #include <deque>
 #include <memory>
 #include <vector>
@@ -17,9 +18,11 @@
 class QAction;
 class QComboBox;
 class QDialog;
+class QFrame;
 class QLabel;
 class QMenu;
 class QPlainTextEdit;
+class QProgressBar;
 class QProgressDialog;
 class QSlider;
 class QSpinBox;
@@ -91,6 +94,15 @@ private:
     void openEarthFile();
     void selectSatelliteImagerySource(const QString& source);
     void refreshSatelliteImageryMenu();
+    void selectBaseMapSource(const QString& source);
+    void refreshBaseMapSourceMenu();
+    void selectDemSource(const QString& source);
+    void refreshDemSourceMenu();
+    void selectOsmSource(const QString& source);
+    void refreshOsmSourceMenu();
+    void selectBuildingsSource(const QString& source);
+    void refreshBuildingsSourceMenu();
+    void refreshAllResourceSourceMenus();
     void loadLocal3DTilesPreview();
     bool loadConfiguredLocal3DTiles(bool showStatusMessage);
     void clearLocal3DTilesPreview();
@@ -144,6 +156,8 @@ private:
     void startSessionLoad(const QString& sessionDir, quint64 generation);
     void showMapNotice(const QString& text);
     void positionMapNotice();
+    void positionMapOverlays();
+    void updateLoadingProgressBubble(bool force = false);
     void syncCursorUnderPointer();
 
     OsgEarthViewWidget* view_ = nullptr;
@@ -153,6 +167,11 @@ private:
     QLabel* map_notice_label_ = nullptr;
     QTimer* map_notice_timer_ = nullptr;
     QElapsedTimer map_notice_clock_;
+    QFrame* map_loading_bubble_ = nullptr;
+    QLabel* map_loading_label_ = nullptr;
+    QProgressBar* map_loading_bar_ = nullptr;
+    QTimer* map_loading_timer_ = nullptr;
+    std::uint64_t last_loading_revision_ = 0;
     QStackedLayout* render_stack_ = nullptr;
     int headless_sample_count_ = 0;
     std::vector<VaporView::Geo::NavSample> headless_samples_;
@@ -181,6 +200,14 @@ private:
     QAction* load_aircraft_model_action_ = nullptr;
     QAction* reset_aircraft_model_action_ = nullptr;
     QMenu* local_imagery_menu_ = nullptr;
+    QAction* base_map_source_action_ = nullptr;
+    QMenu* base_map_source_menu_ = nullptr;
+    QAction* dem_source_action_ = nullptr;
+    QMenu* dem_source_menu_ = nullptr;
+    QAction* osm_source_action_ = nullptr;
+    QMenu* osm_source_menu_ = nullptr;
+    QAction* buildings_source_action_ = nullptr;
+    QMenu* buildings_source_menu_ = nullptr;
     VaporView::SingleLevelPopupMenu* layers_menu_ = nullptr;
     std::array<QAction*, kMap3DLayerCount> layer_actions_{};
     std::array<VaporView::SingleLevelPopupMenuRow*, kMap3DLayerCount> layer_rows_{};
@@ -208,6 +235,10 @@ private:
     MapDataManager map_data_manager_;
     MapDataSelection map_selection_;
     QString satellite_imagery_source_;
+    QString base_map_source_;
+    QString dem_source_;
+    QString osm_source_;
+    QString buildings_source_;
     VaporView::Geo::TrajectoryReplay replay_;
     TrackDataMode track_data_mode_ = TrackDataMode::Live;
     std::shared_ptr<const std::vector<VaporView::Geo::TrajectoryRenderSample>> replay_render_storage_;

@@ -3,6 +3,7 @@
 #include "geo/TrajectoryQuality.h"
 #include "geo/TrajectoryHeatmap.h"
 
+#include <osg/BlendFunc>
 #include <osg/Geometry>
 #include <osg/Geode>
 #include <osg/LineWidth>
@@ -30,9 +31,71 @@ constexpr int kMaxSolidSphereMarkers = 12000;
 constexpr int kIcosphereVertexCount = 42;
 constexpr int kIcosphereIndexCount = 240;
 constexpr double kTrajectorySphereRadiusM = 0.5;
-constexpr double kSelectedTrajectorySphereRadiusM = 1.0;
 constexpr unsigned int kHeatValueAttribute = 6;
 constexpr unsigned int kHeatValidAttribute = 7;
+constexpr unsigned int kSelectedHaloCornerAttribute = 8;
+
+const char* kSelectedHaloVertexShader = R"glsl(
+attribute vec2 vaporviewHaloCorner;
+uniform vec2 vaporviewViewport;
+uniform float vaporviewPointRadiusPx;
+uniform float vaporviewHaloHovered;
+uniform float vaporviewHaloDpr;
+varying vec2 vvLocalPx;
+void main()
+{
+    vec4 clip = ftransform();
+    float dpr = max(vaporviewHaloDpr, 1.0);
+    float outerPx = vaporviewPointRadiusPx + (vaporviewHaloHovered > 0.5 ? 10.5 : 7.5) * dpr;
+    vec2 offsetPx = vaporviewHaloCorner * outerPx;
+    vec2 safeViewport = max(vaporviewViewport, vec2(1.0, 1.0));
+    clip.xy += (offsetPx * 2.0 / safeViewport) * clip.w;
+    gl_Position = clip;
+    vvLocalPx = offsetPx;
+}
+)glsl";
+
+const char* kSelectedHaloFragmentShader = R"glsl(
+uniform float vaporviewPointRadiusPx;
+uniform float vaporviewHaloHovered;
+uniform float vaporviewHaloDpr;
+varying vec2 vvLocalPx;
+void main()
+{
+    float dist = length(vvLocalPx);
+    float dpr = max(vaporviewHaloDpr, 1.0);
+    float aa = 1.1 * dpr;
+    float hovered = vaporviewHaloHovered;
+    float innerStart = vaporviewPointRadiusPx + 0.8 * dpr;
+    float ringWidth = (hovered > 0.5 ? 2.4 : 1.8) * dpr;
+    float glowOuter = innerStart + ringWidth + (hovered > 0.5 ? 6.0 : 3.8) * dpr;
+    if (dist < innerStart - aa || dist > glowOuter)
+    {
+        discard;
+    }
+
+    float ringMask = smoothstep(innerStart - aa, innerStart + aa * 0.35, dist)
+        * (1.0 - smoothstep(innerStart + ringWidth - aa * 0.35, innerStart + ringWidth + aa, dist));
+    float glowMask = smoothstep(innerStart - aa * 0.4, innerStart + ringWidth * 0.5, dist)
+        * (1.0 - smoothstep(innerStart + ringWidth * 0.45, glowOuter, dist));
+
+    vec3 normalRing = vec3(1.0, 0.98, 0.90);
+    vec3 normalGlow = vec3(0.16, 0.56, 1.0);
+    vec3 hoverRing = vec3(1.0, 1.0, 1.0);
+    vec3 hoverGlow = vec3(0.06, 0.48, 1.0);
+
+    vec3 ringColor = mix(normalRing, hoverRing, hovered);
+    vec3 glowColor = mix(normalGlow, hoverGlow, hovered);
+    float glowStrength = mix(0.58, 0.90, hovered);
+    float alpha = clamp(ringMask * 0.96 + glowMask * glowStrength * (1.0 - ringMask), 0.0, 1.0);
+    if (alpha < 0.01)
+    {
+        discard;
+    }
+    vec3 color = mix(glowColor, ringColor, clamp(ringMask * 1.15, 0.0, 1.0));
+    gl_FragColor = vec4(color, alpha);
+}
+)glsl";
 
 const char* kHeatVertexShader = R"glsl(
 attribute float vaporviewHeatValue;
@@ -131,11 +194,6 @@ VaporView::Geo::TrajectoryRenderSample renderSampleFromNavSample(
     VaporView::Geo::TrajectoryRenderSample renderSample;
     renderSample.navigation = sample;
     return renderSample;
-}
-
-osg::Vec4 selectedMarkerColor()
-{
-    return osg::Vec4(1.0f, 0.48f, 0.02f, 1.0f);
 }
 
 bool finiteVec3(const osg::Vec3d& value)
@@ -243,6 +301,7 @@ void Trajectory3DLayer::clear()
     line_sample_flags_.clear();
     last_line_sample_index_ = -1;
     selected_sample_index_ = -1;
+    selected_marker_hovered_ = false;
     sphere_marker_stride_ = 1;
     segments_.clear();
     quality_stats_ = {};
@@ -596,6 +655,7 @@ void Trajectory3DLayer::setTrackPointSize(float size)
             segment.sphereGeometry->getOrCreateStateSet()->setAttributeAndModes(
                 new osg::Point(track_point_size_), osg::StateAttribute::ON);
     }
+    updateSelectedHaloUniforms();
 }
 
 float Trajectory3DLayer::trackPointSize() const
@@ -756,7 +816,43 @@ void Trajectory3DLayer::setSelectedSampleIndex(int sampleIndex)
         return;
     }
     selected_sample_index_ = sanitized;
+    if (selected_sample_index_ < 0)
+    {
+        selected_marker_hovered_ = false;
+    }
     updateSelectedMarkerGeometry();
+}
+
+void Trajectory3DLayer::setSelectedMarkerHovered(bool hovered)
+{
+    if (selected_marker_hovered_ == hovered)
+    {
+        return;
+    }
+    selected_marker_hovered_ = hovered;
+    updateSelectedHaloUniforms();
+}
+
+bool Trajectory3DLayer::selectedMarkerHovered() const
+{
+    return selected_marker_hovered_;
+}
+
+void Trajectory3DLayer::setViewportMetrics(int widthPx, int heightPx, float devicePixelRatio)
+{
+    const int safeWidth = (std::max)(1, widthPx);
+    const int safeHeight = (std::max)(1, heightPx);
+    const float safeDpr = (std::max)(1.0f, devicePixelRatio);
+    if (viewport_width_px_ == safeWidth
+        && viewport_height_px_ == safeHeight
+        && std::abs(viewport_dpr_ - safeDpr) <= 0.001f)
+    {
+        return;
+    }
+    viewport_width_px_ = safeWidth;
+    viewport_height_px_ = safeHeight;
+    viewport_dpr_ = safeDpr;
+    updateSelectedHaloUniforms();
 }
 
 osg::Node* Trajectory3DLayer::node()
@@ -1220,6 +1316,34 @@ void Trajectory3DLayer::configureSphereMarkerState(osg::Geometry& geometry)
     stateSet->setRenderBinDetails(1001, "RenderBin");
 }
 
+void Trajectory3DLayer::updateSelectedHaloUniforms()
+{
+    if (!selected_halo_program_.valid())
+    {
+        selected_halo_program_ = new osg::Program;
+        selected_halo_program_->addShader(
+            new osg::Shader(osg::Shader::VERTEX, kSelectedHaloVertexShader));
+        selected_halo_program_->addShader(
+            new osg::Shader(osg::Shader::FRAGMENT, kSelectedHaloFragmentShader));
+        selected_halo_program_->addBindAttribLocation("vaporviewHaloCorner",
+                                                      kSelectedHaloCornerAttribute);
+        selected_halo_viewport_uniform_ = new osg::Uniform(
+            "vaporviewViewport",
+            osg::Vec2(static_cast<float>(viewport_width_px_),
+                      static_cast<float>(viewport_height_px_)));
+        selected_halo_radius_uniform_ = new osg::Uniform("vaporviewPointRadiusPx", 4.0f);
+        selected_halo_hovered_uniform_ = new osg::Uniform("vaporviewHaloHovered", 0.0f);
+        selected_halo_dpr_uniform_ = new osg::Uniform("vaporviewHaloDpr", 1.0f);
+    }
+    selected_halo_viewport_uniform_->set(
+        osg::Vec2(static_cast<float>(viewport_width_px_),
+                  static_cast<float>(viewport_height_px_)));
+    selected_halo_radius_uniform_->set(
+        (std::max)(3.5f, track_point_size_ * 0.5f));
+    selected_halo_hovered_uniform_->set(selected_marker_hovered_ ? 1.0f : 0.0f);
+    selected_halo_dpr_uniform_->set(viewport_dpr_);
+}
+
 void Trajectory3DLayer::updateSelectedMarkerGeometry()
 {
     if (!selected_marker_geometry_.valid())
@@ -1229,23 +1353,51 @@ void Trajectory3DLayer::updateSelectedMarkerGeometry()
 
     selected_marker_geometry_->removePrimitiveSet(0, selected_marker_geometry_->getNumPrimitiveSets());
     osg::ref_ptr<osg::Vec3dArray> vertices = new osg::Vec3dArray;
-    osg::ref_ptr<osg::Vec4Array> colors = new osg::Vec4Array;
+    osg::ref_ptr<osg::Vec2Array> corners = new osg::Vec2Array;
     osg::ref_ptr<osg::DrawElementsUInt> indices =
         new osg::DrawElementsUInt(osg::PrimitiveSet::TRIANGLES);
 
     osg::Vec3d position;
     if (displayPositionForSample(selected_sample_index_, position))
     {
-        appendIcosphere(*vertices,
-                        *colors,
-                        *indices,
-                        position,
-                        kSelectedTrajectorySphereRadiusM,
-                        selectedMarkerColor());
+        vertices->reserve(4);
+        corners->reserve(4);
+        for (int i = 0; i < 4; ++i)
+        {
+            vertices->push_back(position);
+        }
+        corners->push_back(osg::Vec2(-1.0f, -1.0f));
+        corners->push_back(osg::Vec2(1.0f, -1.0f));
+        corners->push_back(osg::Vec2(1.0f, 1.0f));
+        corners->push_back(osg::Vec2(-1.0f, 1.0f));
+        const unsigned int quadIndices[] = {0u, 1u, 2u, 0u, 2u, 3u};
+        indices->insert(indices->end(), std::begin(quadIndices), std::end(quadIndices));
+
         selected_marker_geometry_->setVertexArray(vertices.get());
-        selected_marker_geometry_->setColorArray(colors.get(), osg::Array::BIND_PER_VERTEX);
+        selected_marker_geometry_->setVertexAttribArray(
+            kSelectedHaloCornerAttribute, corners.get(), osg::Array::BIND_PER_VERTEX);
         selected_marker_geometry_->addPrimitiveSet(indices.get());
-        configureSphereMarkerState(*selected_marker_geometry_);
+        selected_marker_geometry_->setUseDisplayList(false);
+        selected_marker_geometry_->setUseVertexBufferObjects(true);
+        selected_marker_geometry_->setUseVertexArrayObject(true);
+        selected_marker_geometry_->setDataVariance(osg::Object::DYNAMIC);
+        selected_marker_geometry_->setCullingActive(false);
+
+        updateSelectedHaloUniforms();
+        osg::StateSet* stateSet = selected_marker_geometry_->getOrCreateStateSet();
+        stateSet->setAttributeAndModes(selected_halo_program_.get(), osg::StateAttribute::ON);
+        stateSet->addUniform(selected_halo_viewport_uniform_.get());
+        stateSet->addUniform(selected_halo_radius_uniform_.get());
+        stateSet->addUniform(selected_halo_hovered_uniform_.get());
+        stateSet->addUniform(selected_halo_dpr_uniform_.get());
+        stateSet->setMode(GL_LIGHTING, osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE);
+        stateSet->setMode(GL_BLEND, osg::StateAttribute::ON | osg::StateAttribute::OVERRIDE);
+        stateSet->setAttributeAndModes(
+            new osg::BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE),
+            osg::StateAttribute::ON | osg::StateAttribute::OVERRIDE);
+        stateSet->setMode(GL_DEPTH_TEST, osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE);
+        stateSet->setMode(GL_CULL_FACE, osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE);
+        stateSet->setRenderBinDetails(1002, "RenderBin");
         if (geode_->getDrawableIndex(selected_marker_geometry_.get()) == geode_->getNumDrawables())
         {
             geode_->addDrawable(selected_marker_geometry_.get());
@@ -1254,7 +1406,8 @@ void Trajectory3DLayer::updateSelectedMarkerGeometry()
     else
     {
         selected_marker_geometry_->setVertexArray(vertices.get());
-        selected_marker_geometry_->setColorArray(colors.get(), osg::Array::BIND_PER_VERTEX);
+        selected_marker_geometry_->setVertexAttribArray(
+            kSelectedHaloCornerAttribute, corners.get(), osg::Array::BIND_PER_VERTEX);
         geode_->removeDrawable(selected_marker_geometry_.get());
     }
     selected_marker_geometry_->dirtyBound();

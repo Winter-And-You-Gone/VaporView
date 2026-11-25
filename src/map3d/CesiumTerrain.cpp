@@ -2,6 +2,7 @@
 #include "Map3DRuntime.h"
 #include "MapHttp.h"
 #include "OnlineTerrainLayer.h"
+#include "map3d/Map3DLoadTracker.h"
 
 #include <osgEarth/ElevationLayer>
 #include <osgEarth/Map>
@@ -198,14 +199,28 @@ private:
         const osgEarth::TileKey& key, osgEarth::ProgressCallback* progress) const override
     {
         const int z = int(key.getLOD()), x = int(key.getTileX());
-        if (z > 19 || shouldDeferDownload()) return {};
+        if (z > 19 || shouldDeferDownload() || (progress && progress->isCanceled())) return {};
+        ScopedMapLoadTask loadTask(MapLoadCategory::Dem);
         const int y = (1 << z) - 1 - int(key.getTileY());
         QByteArray rejected;
         for (int attempt = 0; attempt < 2; ++attempt)
         {
-            if (progress && progress->isCanceled()) return {};
+            if (progress && progress->isCanceled())
+            {
+                loadTask.cancel();
+                return {};
+            }
             const auto source = endpoint(progress, rejected);
-            if (source.bearer.isEmpty() || z > source.maxZoom) return {};
+            if (progress && progress->isCanceled())
+            {
+                loadTask.cancel();
+                return {};
+            }
+            if (source.bearer.isEmpty() || z > source.maxZoom)
+            {
+                loadTask.finish();
+                return {};
+            }
             if (z < source.availability.size())
             {
                 const auto ranges = source.availability.at(z).toArray();
@@ -213,22 +228,37 @@ private:
                     const auto r = value.toObject();
                     return x >= r.value("startX").toInt() && x <= r.value("endX").toInt()
                         && y >= r.value("startY").toInt() && y <= r.value("endY").toInt();
-                })) return {};
+                }))
+                {
+                    loadTask.finish();
+                    return {};
+                }
             }
             QString path = source.tileTemplate;
             path.replace("{z}", QString::number(z)).replace("{x}", QString::number(x)).replace("{y}", QString::number(y));
             const QUrl url = source.base.resolved(QUrl(path));
-            if (url.scheme() != source.base.scheme() || url.authority() != source.base.authority()) return {};
+            if (url.scheme() != source.base.scheme() || url.authority() != source.base.authority())
+            {
+                loadTask.finish();
+                return {};
+            }
             auto request = ionRequest(url, source.bearer);
             request.setRawHeader("Accept", "application/vnd.quantized-mesh");
             const auto tile = mapHttpGet(request, progress);
+            if (progress && progress->isCanceled())
+            {
+                loadTask.cancel();
+                return {};
+            }
             if (tile.status != 401)
             {
                 auto field = sampleMesh(tile.body);
+                loadTask.finish();
                 return field ? osgEarth::GeoHeightField(field.get(), key.getExtent()) : osgEarth::GeoHeightField::INVALID;
             }
             rejected = source.bearer;
         }
+        loadTask.finish();
         return {};
     }
 

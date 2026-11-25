@@ -16,6 +16,7 @@
 #include "TiandituImageLayer.h"
 #include <osgEarth/TerrainEngineNode>
 #include "Map3DRuntime.h"
+#include "map3d/Map3DLoadTracker.h"
 #include "map3d/TrackSampling.h"
 #include "map3d/Trajectory3DLayer.h"
 #include "shared/theme/AppTheme.h"
@@ -60,6 +61,7 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
+#include <QEnterEvent>
 #include <QFileInfo>
 #include <QFrame>
 #include <QHideEvent>
@@ -69,6 +71,10 @@
 #include <QLocale>
 #include <QMouseEvent>
 #include <QOpenGLContext>
+#include <QPainter>
+#include <QPainterPath>
+#include <QPaintEvent>
+#include <QPen>
 #include <QShowEvent>
 #include <QThread>
 #include <QVBoxLayout>
@@ -204,21 +210,32 @@ QString trajectoryHeightReferenceLabel(VaporView::Geo::HeightReference reference
 
 class TrajectorySampleInfoCard final : public QFrame {
 public:
+    static constexpr int kOuterMargin = 4;
+    static constexpr int kArrowHeight = 10;
+    static constexpr int kArrowHalfWidth = 9;
+    static constexpr qreal kCornerRadius = 10.0;
+
     explicit TrajectorySampleInfoCard(QWidget* parent)
         : QFrame(parent)
     {
         setObjectName(QStringLiteral("map3DTrajectoryInfoCard"));
         setAccessibleName(mapText(QStringLiteral("轨迹点详细信息")));
-        setAttribute(Qt::WA_TransparentForMouseEvents);
         setAttribute(Qt::WA_ShowWithoutActivating);
+        setAttribute(Qt::WA_TranslucentBackground, true);
+        setAttribute(Qt::WA_Hover, true);
+        setAutoFillBackground(false);
+        setFocusPolicy(Qt::NoFocus);
+        setMouseTracking(true);
         setProperty("billboardMode", QStringLiteral("screen-space"));
+        setProperty("pointerDirection", QStringLiteral("down"));
+        setProperty("cardHovered", false);
         setFrameShape(QFrame::NoFrame);
-        setMinimumWidth(kTrajectoryInfoCardWidth);
-        setMaximumWidth(kTrajectoryInfoCardWidth);
+        setMinimumWidth(kTrajectoryInfoCardWidth + kOuterMargin * 2);
+        setMaximumWidth(kTrajectoryInfoCardWidth + kOuterMargin * 2);
 
         layout_ = new QVBoxLayout(this);
         layout_->setSpacing(10);
-        layout_->setContentsMargins(16, 14, 16, 14);
+        updateLayoutMargins();
 
         auto* headerLayout = new QHBoxLayout;
         headerLayout->setContentsMargins(0, 0, 0, 0);
@@ -248,6 +265,11 @@ public:
         layout_->addWidget(details_label_);
         applyTheme(VaporView::Geo::FixQuality::Unknown);
         hide();
+    }
+
+    void setHoverChangedCallback(std::function<void(bool)> callback)
+    {
+        on_hover_changed_ = std::move(callback);
     }
 
     void setSample(int sampleIndex, const VaporView::Geo::NavSample& sample)
@@ -339,11 +361,13 @@ public:
                      + row(mapText(QStringLiteral("三维速度")), velocity)
                      + row(mapText(QStringLiteral("姿态")), attitude)
                      + row(QStringLiteral("ECEF"), ecef)));
+        updateLayoutMargins();
         layout_->activate();
-        resize(kTrajectoryInfoCardWidth, layout_->sizeHint().height());
+        resize(kTrajectoryInfoCardWidth + kOuterMargin * 2, layout_->sizeHint().height());
         setAccessibleDescription(
             QStringLiteral("%1，%2，%3")
                 .arg(title_label_->text(), position, quality_label_->text()));
+        update();
     }
 
     void refreshLanguage() { if (sample_index_ >= 0) setSample(sample_index_, sample_); }
@@ -355,51 +379,179 @@ public:
         const int x = std::clamp(qRound(anchor.x() - static_cast<qreal>(width()) / 2.0),
                                  kTrajectoryInfoCardScreenMargin,
                                  maxX);
-        constexpr int kAnchorGap = 18;
-        int y = qRound(anchor.y()) - height() - kAnchorGap;
-        if (y < kTrajectoryInfoCardScreenMargin)
+        constexpr int kPointClearance = 10;
+        const bool shouldPlaceBelow =
+            (qRound(anchor.y()) - height() - kPointClearance) < kTrajectoryInfoCardScreenMargin;
+        if (arrow_on_top_ != shouldPlaceBelow)
         {
-            y = qRound(anchor.y()) + kAnchorGap;
+            arrow_on_top_ = shouldPlaceBelow;
+            setProperty("pointerDirection",
+                        arrow_on_top_ ? QStringLiteral("up") : QStringLiteral("down"));
+            updateLayoutMargins();
+            layout_->activate();
+            resize(width(), layout_->sizeHint().height());
         }
+        int y = arrow_on_top_
+            ? (qRound(anchor.y()) + kPointClearance)
+            : (qRound(anchor.y()) - height() - kPointClearance);
         y = std::clamp(y,
                        kTrajectoryInfoCardScreenMargin,
                        (std::max)(kTrajectoryInfoCardScreenMargin,
                                   viewportSize.height() - height() - kTrajectoryInfoCardScreenMargin));
+        const qreal minArrowX = kOuterMargin + kCornerRadius + kArrowHalfWidth + 2.0;
+        const qreal maxArrowX =
+            (std::max)(minArrowX,
+                       static_cast<qreal>(width()) - kOuterMargin - kCornerRadius - kArrowHalfWidth - 2.0);
+        arrow_x_ = std::clamp(anchor.x() - static_cast<qreal>(x), minArrowX, maxArrowX);
+        setProperty("pointerTipOffsetX", arrow_x_);
         move(x, y);
         raise();
+        update();
     }
 
 protected:
     void changeEvent(QEvent* event) override
     {
         QFrame::changeEvent(event);
+        if (!event) return;
         if (event->type() == QEvent::LanguageChange) refreshLanguage();
+        else if (event->type() == QEvent::PaletteChange
+                 || event->type() == QEvent::ApplicationPaletteChange)
+        {
+            applyTheme(sample_.fixQuality);
+            update();
+        }
+    }
+
+    void enterEvent(QEnterEvent* event) override
+    {
+        QFrame::enterEvent(event);
+        setHovered(true);
+    }
+
+    void leaveEvent(QEvent* event) override
+    {
+        QFrame::leaveEvent(event);
+        setHovered(false);
+    }
+
+    void hideEvent(QHideEvent* event) override
+    {
+        setHovered(false);
+        QFrame::hideEvent(event);
+    }
+
+    void paintEvent(QPaintEvent*) override
+    {
+        const bool dark = VaporView::isDarkThemeEnabled();
+        const QColor surface = VaporView::appThemeColor(VaporView::AppThemeColor::SurfaceRaised, dark);
+        const QColor border = VaporView::appThemeColor(VaporView::AppThemeColor::BorderStrong, dark);
+        const QColor accent = VaporView::appThemeColor(VaporView::AppThemeColor::Primary, dark);
+
+        const qreal bodyTop = kOuterMargin + (arrow_on_top_ ? kArrowHeight : 0);
+        const qreal bodyHeight = (std::max)(2.0 * kCornerRadius + 2.0,
+                                            static_cast<qreal>(height() - 2 * kOuterMargin - kArrowHeight));
+        const QRectF body(kOuterMargin, bodyTop, width() - 2 * kOuterMargin, bodyHeight);
+        const qreal r = kCornerRadius;
+        const qreal ax = std::clamp(arrow_x_,
+                                    body.left() + r + kArrowHalfWidth + 1.0,
+                                    body.right() - r - kArrowHalfWidth - 1.0);
+
+        QPainterPath path;
+        path.moveTo(body.left() + r, body.top());
+        if (arrow_on_top_)
+        {
+            path.lineTo(ax - kArrowHalfWidth, body.top());
+            path.lineTo(ax, body.top() - kArrowHeight);
+            path.lineTo(ax + kArrowHalfWidth, body.top());
+        }
+        path.lineTo(body.right() - r, body.top());
+        path.arcTo(QRectF(body.right() - 2.0 * r, body.top(), 2.0 * r, 2.0 * r), 90.0, -90.0);
+        path.lineTo(body.right(), body.bottom() - r);
+        path.arcTo(QRectF(body.right() - 2.0 * r, body.bottom() - 2.0 * r, 2.0 * r, 2.0 * r), 0.0, -90.0);
+        if (!arrow_on_top_)
+        {
+            path.lineTo(ax + kArrowHalfWidth, body.bottom());
+            path.lineTo(ax, body.bottom() + kArrowHeight);
+            path.lineTo(ax - kArrowHalfWidth, body.bottom());
+        }
+        path.lineTo(body.left() + r, body.bottom());
+        path.arcTo(QRectF(body.left(), body.bottom() - 2.0 * r, 2.0 * r, 2.0 * r), -90.0, -90.0);
+        path.lineTo(body.left(), body.top() + r);
+        path.arcTo(QRectF(body.left(), body.top(), 2.0 * r, 2.0 * r), 180.0, -90.0);
+        path.closeSubpath();
+
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        if (hovered_)
+        {
+            QColor glow = accent;
+            glow.setAlpha(dark ? 95 : 65);
+            painter.setBrush(Qt::NoBrush);
+            painter.setPen(QPen(glow, 4.5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+            painter.drawPath(path);
+        }
+        painter.setBrush(surface);
+        painter.setPen(QPen(hovered_ ? accent : border,
+                            hovered_ ? 2.0 : 1.25,
+                            Qt::SolidLine,
+                            Qt::RoundCap,
+                            Qt::RoundJoin));
+        painter.drawPath(path);
     }
 
 private:
-    int sample_index_ = -1;
-    VaporView::Geo::NavSample sample_;
-    void applyTheme(VaporView::Geo::FixQuality quality)
+    void updateLayoutMargins()
     {
-        const bool dark = VaporView::isDarkThemeEnabled();
-        const QColor text = VaporView::appThemeColor(VaporView::AppThemeColor::Text, dark);
-        const QColor surface = VaporView::appThemeColor(VaporView::AppThemeColor::SurfaceRaised, dark);
-        const QColor border = VaporView::appThemeColor(VaporView::AppThemeColor::BorderStrong, dark);
-        const QColor accent = VaporView::appThemeColor(trajectoryFixQualityColor(quality), dark);
-        setStyleSheet(
-            QStringLiteral(
-                "QFrame#map3DTrajectoryInfoCard { background-color: %1; border: 1px solid %2; "
-                "border-radius: 10px; }"
-                "QFrame#map3DTrajectoryInfoCard QLabel { color: %3; background: transparent; border: none; }")
-                .arg(surface.name(QColor::HexRgb),
-                     border.name(QColor::HexRgb),
-                     text.name(QColor::HexRgb)));
-        quality_label_->setStyleSheet(
-            QStringLiteral("QLabel { color: %1; background: transparent; border: 1px solid %1; "
-                           "border-radius: 9px; padding: 2px 8px; }")
-                .arg(accent.name(QColor::HexRgb)));
+        if (!layout_) return;
+        const int top = 14 + kOuterMargin + (arrow_on_top_ ? kArrowHeight : 0);
+        const int bottom = 14 + kOuterMargin + (arrow_on_top_ ? 0 : kArrowHeight);
+        layout_->setContentsMargins(16 + kOuterMargin, top, 16 + kOuterMargin, bottom);
     }
 
+    void setHovered(bool hovered)
+    {
+        if (hovered_ == hovered) return;
+        hovered_ = hovered;
+        setProperty("cardHovered", hovered_);
+        update();
+        if (on_hover_changed_) on_hover_changed_(hovered_);
+    }
+
+    int sample_index_ = -1;
+    VaporView::Geo::NavSample sample_;
+    bool arrow_on_top_ = false;
+    bool hovered_ = false;
+    qreal arrow_x_ = kTrajectoryInfoCardWidth * 0.5 + kOuterMargin;
+    std::function<void(bool)> on_hover_changed_;
+
+    void applyTheme(VaporView::Geo::FixQuality quality)
+    {
+        if (applying_theme_) return;
+        applying_theme_ = true;
+        const bool dark = VaporView::isDarkThemeEnabled();
+        const QColor text = VaporView::appThemeColor(VaporView::AppThemeColor::Text, dark);
+        const QColor accent = VaporView::appThemeColor(trajectoryFixQualityColor(quality), dark);
+        const QString cardStyle = QStringLiteral(
+                "QFrame#map3DTrajectoryInfoCard { background: transparent; border: none; }"
+                "QFrame#map3DTrajectoryInfoCard QLabel { color: %1; background: transparent; border: none; }")
+                .arg(text.name(QColor::HexRgb));
+        if (styleSheet() != cardStyle)
+        {
+            setStyleSheet(cardStyle);
+        }
+        const QString badgeStyle = QStringLiteral(
+            "QLabel { color: %1; background: transparent; border: 1px solid %1; "
+            "border-radius: 9px; padding: 2px 8px; }")
+            .arg(accent.name(QColor::HexRgb));
+        if (quality_label_->styleSheet() != badgeStyle)
+        {
+            quality_label_->setStyleSheet(badgeStyle);
+        }
+        applying_theme_ = false;
+    }
+
+    bool applying_theme_ = false;
     QVBoxLayout* layout_ = nullptr;
     QLabel* title_label_ = nullptr;
     QLabel* quality_label_ = nullptr;
@@ -785,7 +937,15 @@ OsgEarthViewWidget::OsgEarthViewWidget(QWidget* parent, bool deferRendering)
     setMinimumSize(640, 420);
     setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true);
-    trajectory_info_card_ = new TrajectorySampleInfoCard(this);
+    auto* infoCard = new TrajectorySampleInfoCard(this);
+    infoCard->setHoverChangedCallback([this](bool hovered) {
+        if (trajectory_layer_)
+        {
+            trajectory_layer_->setSelectedMarkerHovered(hovered);
+            update();
+        }
+    });
+    trajectory_info_card_ = infoCard;
     online_terrain_timer_.setSingleShot(true);
     online_terrain_timer_.setInterval(500);
     connect(&online_terrain_timer_, &QTimer::timeout, this, [this] {
@@ -897,6 +1057,7 @@ void OsgEarthViewWidget::shutdown()
     ++earth_load_generation_;
     ++local_3d_tiles_load_generation_;
     ++aircraft_load_generation_;
+    Map3DLoadTracker::instance().interruptAll();
     cancelAsyncWatchers();
     QObject::disconnect(gl_context_destruction_connection_);
     setUpdatesEnabled(false);
@@ -1309,6 +1470,7 @@ bool OsgEarthViewWidget::applyTiandituSatelliteImagery(const QString& key)
         mapText(QStringLiteral("天地图源级别：%1–%2；不使用第 0 级占位图。"))
             .arg(layer->options().minLevel().get()).arg(layer->options().maxDataLevel().get()));
     const unsigned insertIndex = tiandituSatelliteInsertIndex(map);
+    Map3DLoadTracker::instance().interruptCategory(MapLoadCategory::Imagery);
     map->insertLayer(layer.get(), insertIndex);
     removeLayerByName(map, kOpenAerialMapLayerName);
     removeLayerByName(map, kEsriLayerName);
@@ -1343,6 +1505,7 @@ bool OsgEarthViewWidget::applyOpenAerialMapImagery()
         removeLayerByName(map, kOpenAerialMapLayerName);
         map->insertLayer(layer.get(), tiandituSatelliteInsertIndex(map));
     }
+    Map3DLoadTracker::instance().interruptCategory(MapLoadCategory::Imagery);
     removeLayerByName(map, kTiandituSatelliteLayerName);
     removeLayerByName(map, kEsriLayerName);
     applyLayerVisibility(Map3DLayer::SatelliteImagery);
@@ -1359,7 +1522,25 @@ bool OsgEarthViewWidget::applyEsriWorldImagery(const QString& key)
     auto* existing = dynamic_cast<osgEarth::XYZImageLayer*>(map->getLayerByName(kEsriLayerName));
     if (!existing || !existing->isOpen() || esri_imagery_key_ != trimmedKey)
     {
-        osg::ref_ptr<osgEarth::XYZImageLayer> layer = new osgEarth::XYZImageLayer;
+        class TrackedEsriImageLayer final : public osgEarth::XYZImageLayer
+        {
+        public:
+            osgEarth::GeoImage createImageImplementation(const osgEarth::TileKey& key,
+                                                         osgEarth::ProgressCallback* progress) const override
+            {
+                if (progress && progress->isCanceled()) return osgEarth::GeoImage::INVALID;
+                ScopedMapLoadTask loadTask(MapLoadCategory::Imagery);
+                auto image = osgEarth::XYZImageLayer::createImageImplementation(key, progress);
+                if (progress && progress->isCanceled())
+                {
+                    loadTask.cancel();
+                    return osgEarth::GeoImage::INVALID;
+                }
+                loadTask.finish();
+                return image;
+            }
+        };
+        osg::ref_ptr<osgEarth::XYZImageLayer> layer = new TrackedEsriImageLayer;
         layer->setName(kEsriLayerName);
         osgEarth::URIContext context;
         context.addHeader("Authorization", std::string("Bearer ") + trimmedKey.toStdString());
@@ -1374,6 +1555,7 @@ bool OsgEarthViewWidget::applyEsriWorldImagery(const QString& key)
         map->insertLayer(layer.get(), tiandituSatelliteInsertIndex(map));
         esri_imagery_key_ = trimmedKey;
     }
+    Map3DLoadTracker::instance().interruptCategory(MapLoadCategory::Imagery);
     removeLayerByName(map, kTiandituSatelliteLayerName);
     removeLayerByName(map, kOpenAerialMapLayerName);
     applyLayerVisibility(Map3DLayer::SatelliteImagery);
@@ -1400,12 +1582,141 @@ bool OsgEarthViewWidget::applyLocalSatelliteImagery(const QString& vrtPath)
         removeLayerByName(map, kSelectedLocalSatelliteLayerName);
         map->insertLayer(layer.get(), tiandituSatelliteInsertIndex(map));
     }
+    Map3DLoadTracker::instance().interruptCategory(MapLoadCategory::Imagery);
     removeLayerByName(map, kTiandituSatelliteLayerName);
     removeLayerByName(map, kOpenAerialMapLayerName);
     removeLayerByName(map, kEsriLayerName);
     applyLayerVisibility(Map3DLayer::SatelliteImagery);
     update();
     return true;
+}
+
+void OsgEarthViewWidget::clearSelectedSatelliteImagery()
+{
+    assertGuiThread(this, Q_FUNC_INFO);
+    Map3DLoadTracker::instance().interruptCategory(MapLoadCategory::Imagery);
+    if (shutdown_ || !map_node_ || !map_node_->getMap())
+        return;
+    osgEarth::Map* map = map_node_->getMap();
+    removeLayerByName(map, kTiandituSatelliteLayerName);
+    removeLayerByName(map, kOpenAerialMapLayerName);
+    removeLayerByName(map, kEsriLayerName);
+    removeLayerByName(map, kSelectedLocalSatelliteLayerName);
+    applyLayerVisibility(Map3DLayer::SatelliteImagery);
+    update();
+}
+
+void OsgEarthViewWidget::setBaseMapSource(const QString& source)
+{
+    assertGuiThread(this, Q_FUNC_INFO);
+    base_map_source_ = source;
+    if (shutdown_ || !map_node_ || !map_node_->getMap())
+        return;
+    applyLayerVisibility(Map3DLayer::BaseMap);
+}
+
+void OsgEarthViewWidget::setDemSource(const QString& source)
+{
+    assertGuiThread(this, Q_FUNC_INFO);
+    dem_source_ = source;
+    Map3DLoadTracker::instance().interruptCategory(MapLoadCategory::Dem);
+    if (shutdown_ || !map_node_ || !map_node_->getMap())
+        return;
+    auto* map = map_node_->getMap();
+    if (dem_source_ == QStringLiteral("online:cesium")
+        && !map->getLayerByName("Cesium World Terrain"))
+    {
+        if (Detail::addCesiumTerrainFallback(map))
+        {
+            earth_load_diagnostics_.cesiumTerrainConfigured = true;
+            if (auto* layer = map->getLayerByName("Cesium World Terrain"))
+                layer->open();
+        }
+    }
+    applyLayerVisibility(Map3DLayer::DigitalElevation);
+    std::vector<const osgEarth::Layer*> refresh;
+    osgEarth::ElevationLayerVector layers;
+    map->getLayers(layers);
+    for (const auto& layer : layers)
+    {
+        if (layer)
+        {
+            refresh.push_back(layer.get());
+        }
+    }
+    if (auto* pool = map->getElevationPool())
+        pool->setMap(map);
+    if (auto* engine = map_node_->getTerrainEngine())
+        engine->invalidateRegion(refresh, osgEarth::GeoExtent::INVALID, 0u, INT_MAX);
+    update();
+}
+
+QString OsgEarthViewWidget::activeElevationSourceLabel() const
+{
+    if (!map_node_ || !map_node_->getMap() || !layerVisible(Map3DLayer::DigitalElevation))
+        return {};
+    osgEarth::ElevationLayerVector layers;
+    map_node_->getMap()->getLayers(layers);
+    for (auto it = layers.rbegin(); it != layers.rend(); ++it)
+    {
+        const auto& layer = *it;
+        if (layer && layer->isOpen() && layer->getVisible())
+        {
+            return QString::fromStdString(layer->getName());
+        }
+    }
+    return {};
+}
+
+void OsgEarthViewWidget::setOsmSource(const QString& source)
+{
+    assertGuiThread(this, Q_FUNC_INFO);
+    osm_source_ = source;
+    Map3DLoadTracker::instance().interruptCategory(MapLoadCategory::Osm);
+    if (shutdown_ || !map_node_ || !map_node_->getMap())
+        return;
+    applyLayerVisibility(Map3DLayer::Hydrography);
+    applyLayerVisibility(Map3DLayer::RoadNetwork);
+}
+
+bool OsgEarthViewWidget::isOnlineOsmActive() const
+{
+    if (!map_node_ || !map_node_->getMap())
+        return false;
+    const auto* map = map_node_->getMap();
+    const auto* roads = dynamic_cast<const osgEarth::VisibleLayer*>(
+        map->getLayerByName(Detail::OnlineOsmLayer::roadsName));
+    const auto* water = dynamic_cast<const osgEarth::VisibleLayer*>(
+        map->getLayerByName(Detail::OnlineOsmLayer::waterName));
+    return (roads && roads->getVisible()) || (water && water->getVisible());
+}
+
+void OsgEarthViewWidget::setBuildingsSource(const QString& source)
+{
+    assertGuiThread(this, Q_FUNC_INFO);
+    buildings_source_ = source;
+    Map3DLoadTracker::instance().interruptCategory(MapLoadCategory::Buildings);
+    if (shutdown_)
+        return;
+    applyLayerVisibility(Map3DLayer::Buildings3D);
+}
+
+bool OsgEarthViewWidget::isOpenFreeMapBuildingsActive() const
+{
+    if (!map_node_ || !map_node_->getMap() || !layerVisible(Map3DLayer::Buildings3D))
+        return false;
+    const auto* layer = dynamic_cast<const osgEarth::VisibleLayer*>(
+        map_node_->getMap()->getLayerByName(Detail::OpenFreeMapBuildings::layerName));
+    return layer && layer->getVisible();
+}
+
+bool OsgEarthViewWidget::isCesiumTerrainActive() const
+{
+    if (!map_node_ || !map_node_->getMap() || !layerVisible(Map3DLayer::DigitalElevation))
+        return false;
+    const auto* layer = dynamic_cast<const osgEarth::VisibleLayer*>(
+        map_node_->getMap()->getLayerByName("Cesium World Terrain"));
+    return layer && layer->isOpen() && layer->getVisible();
 }
 
 QString OsgEarthViewWidget::activeSatelliteImagerySource() const
@@ -1440,17 +1751,24 @@ void OsgEarthViewWidget::loadEarthFileAsync(const QString& earthPath,
         return;
     }
     const quint64 generation = ++earth_load_generation_;
+    Map3DLoadTracker::instance().interruptCategory(MapLoadCategory::Earth);
+    auto loadTask = std::make_shared<ScopedMapLoadTask>(MapLoadCategory::Earth);
     earth_load_diagnostics_ = {};
     earth_load_diagnostics_.attempted = true;
     earth_load_diagnostics_.requestedPath = earthPath;
     auto* watcher = new QFutureWatcher<Detail::EarthAssetLoadResult>(this);
     registerAsyncWatcher(watcher);
     connect(watcher, &QFutureWatcher<Detail::EarthAssetLoadResult>::finished,
-            this, [this, watcher, generation, preserveCurrentEarthView, finished = std::move(finished)]() mutable {
+            this, [this, watcher, generation, preserveCurrentEarthView, loadTask, finished = std::move(finished)]() mutable {
         unregisterAsyncWatcher(watcher);
         watcher->deleteLater();
-        if (shutdown_ || generation != earth_load_generation_) return;
+        if (shutdown_ || generation != earth_load_generation_)
+        {
+            loadTask->cancel();
+            return;
+        }
         if (watcher->isCanceled() || watcher->future().resultCount()==0) {
+            loadTask->cancel();
             if (finished) finished(false);
             return;
         }
@@ -1460,6 +1778,7 @@ void OsgEarthViewWidget::loadEarthFileAsync(const QString& earthPath,
                                            result.mapNode,
                                            result.useXihuInitialView,
                                            preserveCurrentEarthView);
+        loadTask->finish();
         if (finished) finished(loaded);
     });
     watcher->setFuture(QtConcurrent::run([earthPath]() {
@@ -1563,6 +1882,7 @@ void OsgEarthViewWidget::loadLocal3DTilesPreviewAsync(
         return;
     }
     const quint64 generation = ++local_3d_tiles_load_generation_;
+    auto loadTask = std::make_shared<ScopedMapLoadTask>(MapLoadCategory::Buildings);
     pending_local_tiles_path_ = tilesetPath;
     applyLayerVisibility(Map3DLayer::Buildings3D);
     local_3d_tiles_load_diagnostics_ = {};
@@ -1571,18 +1891,24 @@ void OsgEarthViewWidget::loadLocal3DTilesPreviewAsync(
     auto* watcher = new QFutureWatcher<Detail::Local3DTilesAssetLoadResult>(this);
     registerAsyncWatcher(watcher);
     connect(watcher, &QFutureWatcher<Detail::Local3DTilesAssetLoadResult>::finished,
-            this, [this, watcher, generation, finished = std::move(finished)]() mutable {
+            this, [this, watcher, generation, loadTask, finished = std::move(finished)]() mutable {
         unregisterAsyncWatcher(watcher);
         watcher->deleteLater();
-        if (shutdown_ || generation != local_3d_tiles_load_generation_) return;
+        if (shutdown_ || generation != local_3d_tiles_load_generation_)
+        {
+            loadTask->cancel();
+            return;
+        }
         pending_local_tiles_path_.clear();
         if (watcher->isCanceled() || watcher->future().resultCount()==0) {
+            loadTask->cancel();
             applyLayerVisibility(Map3DLayer::Buildings3D);
             if (finished) finished(false);
             return;
         }
         const Detail::Local3DTilesAssetLoadResult result = watcher->result();
         const bool loaded = applyLocal3DTilesLoad(result.diagnostics, result.node);
+        loadTask->finish();
         if (finished) finished(loaded);
     });
     watcher->setFuture(QtConcurrent::run([tilesetPath]() {
@@ -1704,9 +2030,30 @@ void OsgEarthViewWidget::setLayerVisible(Map3DLayer layer, bool visible)
         return;
     }
     layer_visibility_[index] = visible;
-    if (layer == Map3DLayer::FlightElements && !visible)
+    if (!visible)
     {
-        clearTrajectorySampleSelection();
+        switch (layer)
+        {
+        case Map3DLayer::SatelliteImagery:
+            Map3DLoadTracker::instance().interruptCategory(MapLoadCategory::Imagery);
+            break;
+        case Map3DLayer::DigitalElevation:
+            Map3DLoadTracker::instance().interruptCategory(MapLoadCategory::Dem);
+            break;
+        case Map3DLayer::Hydrography:
+        case Map3DLayer::RoadNetwork:
+            if (!layerVisible(Map3DLayer::Hydrography) && !layerVisible(Map3DLayer::RoadNetwork))
+                Map3DLoadTracker::instance().interruptCategory(MapLoadCategory::Osm);
+            break;
+        case Map3DLayer::Buildings3D:
+            Map3DLoadTracker::instance().interruptCategory(MapLoadCategory::Buildings);
+            break;
+        case Map3DLayer::FlightElements:
+            clearTrajectorySampleSelection();
+            break;
+        default:
+            break;
+        }
     }
     applyLayerVisibility(layer);
 }
@@ -1765,20 +2112,38 @@ void OsgEarthViewWidget::applyLayerVisibility(Map3DLayer layer)
     if (layer == Map3DLayer::SatelliteImagery) applyLayerVisibility(Map3DLayer::BaseMap);
     if (layer == Map3DLayer::Buildings3D)
     {
+        const bool manualLocalOnly = buildings_source_ == QStringLiteral("local:osg_tiles");
+        const bool manualOnlineOnly = buildings_source_ == QStringLiteral("online:openfreemap");
         if (local_3d_tiles_node_)
         {
-            local_3d_tiles_node_->setNodeMask(visible ? ~0u : 0u);
+            local_3d_tiles_node_->setNodeMask(visible && !manualOnlineOnly ? ~0u : 0u);
         }
-        if (map_node_ && earth_load_diagnostics_.onlineOsmAvailable)
+        if (map_node_ && (earth_load_diagnostics_.onlineOsmAvailable || manualOnlineOnly))
         {
             auto* map = map_node_->getMap();
-            if (!visible || (!local_3d_tiles_node_ && !pending_local_tiles_path_.isEmpty()))
-                removeLayerByName(map, Detail::OpenFreeMapBuildings::layerName);
-            else if (!map->getLayerByName(Detail::OpenFreeMapBuildings::layerName))
+            const bool wantOnline = visible && !manualLocalOnly
+                && (manualOnlineOnly || local_3d_tiles_node_ || pending_local_tiles_path_.isEmpty());
+            if (!wantOnline)
             {
+                removeLayerByName(map, Detail::OpenFreeMapBuildings::layerName);
+            }
+            else
+            {
+                auto* existing = dynamic_cast<Detail::OpenFreeMapBuildings*>(
+                    map->getLayerByName(Detail::OpenFreeMapBuildings::layerName));
                 const auto* local = dynamic_cast<const Detail::LocalBuildingTiles*>(local_3d_tiles_node_.get());
-                map->addLayer(new Detail::OpenFreeMapBuildings(local ? local->coverage : QPainterPath{},
-                                                                ground_detail_ellipse_));
+                const bool wantCoverageMask = !manualOnlineOnly && local && !local->coverage.isEmpty();
+                if (existing && existing->hasLocalCoverage() != wantCoverageMask)
+                {
+                    removeLayerByName(map, Detail::OpenFreeMapBuildings::layerName);
+                    existing = nullptr;
+                }
+                if (!existing)
+                {
+                    map->addLayer(new Detail::OpenFreeMapBuildings(
+                        wantCoverageMask ? local->coverage : QPainterPath{},
+                        ground_detail_ellipse_));
+                }
             }
         }
     }
@@ -1797,35 +2162,122 @@ void OsgEarthViewWidget::applyLayerVisibility(Map3DLayer layer)
     else if (map_node_ && map_node_->getMap())
     {
         auto* map = map_node_->getMap();
-        if (earth_load_diagnostics_.onlineOsmAvailable
-            && (layer == Map3DLayer::Hydrography || layer == Map3DLayer::RoadNetwork))
+        if ((layer == Map3DLayer::Hydrography || layer == Map3DLayer::RoadNetwork)
+            && (earth_load_diagnostics_.onlineOsmAvailable || !osm_source_.isEmpty()))
         {
             const bool roads = layer == Map3DLayer::RoadNetwork;
             const char* name = roads ? Detail::OnlineOsmLayer::roadsName : Detail::OnlineOsmLayer::waterName;
             auto* offline = dynamic_cast<osgEarth::ImageLayer*>(
                 map->getLayerByName(roads ? "OSM roads" : "OSM water fill"));
+            const bool manualLocal = osm_source_ == QStringLiteral("local:osm");
+            const bool manualOnline = osm_source_ == QStringLiteral("online:osm");
+            if (manualLocal)
+            {
+                removeLayerByName(map, name);
+                if (offline) offline->setVisible(visible);
+                update();
+                return;
+            }
             if (offline) offline->setVisible(false);
             if (!visible)
-                removeLayerByName(map, name);
-            else if (!map->getLayerByName(name))
             {
-                osg::ref_ptr<Detail::OnlineOsmLayer> overlay = new Detail::OnlineOsmLayer(roads, offline);
-                auto* roadLayer = map->getLayerByName(Detail::OnlineOsmLayer::roadsName);
-                if (!roads && roadLayer)
-                    map->insertLayer(overlay.get(), map->getIndexOfLayer(roadLayer));
-                else
-                    map->addLayer(overlay.get());
+                removeLayerByName(map, name);
+            }
+            else
+            {
+                const bool allowFallback = !manualOnline;
+                auto* existing = dynamic_cast<Detail::OnlineOsmLayer*>(map->getLayerByName(name));
+                if (existing && existing->allowsOfflineFallback() != allowFallback)
+                {
+                    removeLayerByName(map, name);
+                    existing = nullptr;
+                }
+                if (!existing)
+                {
+                    osg::ref_ptr<Detail::OnlineOsmLayer> overlay =
+                        new Detail::OnlineOsmLayer(roads, offline, allowFallback);
+                    auto* roadLayer = map->getLayerByName(Detail::OnlineOsmLayer::roadsName);
+                    if (!roads && roadLayer)
+                        map->insertLayer(overlay.get(), map->getIndexOfLayer(roadLayer));
+                    else
+                        map->addLayer(overlay.get());
+                }
             }
             update();
             return;
         }
+        if (layer == Map3DLayer::BaseMap && base_map_source_ == QStringLiteral("builtin:globe")
+            && !map->getLayerByName("Globe background"))
+        {
+            osg::ref_ptr<osgEarth::Contrib::DecalImageLayer> background = new osgEarth::Contrib::DecalImageLayer;
+            background->setName("Globe background");
+            background->options().maxDataLevel() = 0u;
+            osg::ref_ptr<osg::Image> pixel = osgEarth::ImageUtils::createOnePixelImage(osg::Vec4(0.22f, 0.25f, 0.28f, 1.0f));
+            background->addDecal("background", background->getProfile()->getExtent(), pixel.get());
+            background->open();
+            map->insertLayer(background.get(), 0);
+        }
         osgEarth::LayerVector layers;
         map_node_->getMap()->getLayers(layers);
+        bool hasOpenNaturalEarth = false;
+        if (layer == Map3DLayer::BaseMap)
+        {
+            for (const osg::ref_ptr<osgEarth::Layer>& candidate : layers)
+            {
+                if (candidate && candidate->isOpen()
+                    && QString::fromStdString(candidate->getName()).contains(QStringLiteral("natural earth"), Qt::CaseInsensitive))
+                {
+                    hasOpenNaturalEarth = true;
+                    break;
+                }
+            }
+        }
         for (const osg::ref_ptr<osgEarth::Layer>& candidate : layers)
         {
             auto* visibleLayer = dynamic_cast<osgEarth::VisibleLayer*>(candidate.get());
             if (visibleLayer && mapLayerCategory(candidate.get()) == layer)
             {
+                if (layer == Map3DLayer::DigitalElevation && !dem_source_.isEmpty())
+                {
+                    const QString layerName = QString::fromStdString(candidate->getName());
+                    bool matches = false;
+                    if (dem_source_ == QStringLiteral("local:copernicus"))
+                        matches = layerName.contains(QStringLiteral("Copernicus"), Qt::CaseInsensitive)
+                            && layerName != QStringLiteral("Online Copernicus GLO-30");
+                    else if (dem_source_ == QStringLiteral("local:srtm"))
+                        matches = layerName.contains(QStringLiteral("SRTM"), Qt::CaseInsensitive);
+                    else if (dem_source_ == QStringLiteral("online:copernicus"))
+                        matches = layerName == QStringLiteral("Online Copernicus GLO-30");
+                    else if (dem_source_ == QStringLiteral("online:cesium"))
+                        matches = layerName == QStringLiteral("Cesium World Terrain");
+                    else if (dem_source_ == QStringLiteral("builtin:etopo2022"))
+                        matches = layerName == QLatin1String(kGlobalBaseDemLayerName);
+                    visibleLayer->setVisible(visible && matches);
+                    continue;
+                }
+                if (layer == Map3DLayer::BaseMap)
+                {
+                    const QString layerName = QString::fromStdString(candidate->getName());
+                    const bool isGlobeBg = layerName == QStringLiteral("Globe background");
+                    const bool isNaturalEarth = layerName.contains(QStringLiteral("natural earth"), Qt::CaseInsensitive);
+                    const bool competingBase = onlineSatellite && candidate.get() != online
+                        && dynamic_cast<osgEarth::ImageLayer*>(candidate.get()) && !showBaseForOpenAerialMap;
+                    if (base_map_source_ == QStringLiteral("builtin:globe"))
+                    {
+                        visibleLayer->setVisible(visible && !competingBase && isGlobeBg);
+                        continue;
+                    }
+                    if (base_map_source_ == QStringLiteral("local:natural_earth"))
+                    {
+                        visibleLayer->setVisible(visible && !competingBase && isNaturalEarth);
+                        continue;
+                    }
+                    if (isGlobeBg && hasOpenNaturalEarth)
+                    {
+                        visibleLayer->setVisible(false);
+                        continue;
+                    }
+                }
                 const bool competingImagery = onlineSatellite && candidate.get() != online
                     && dynamic_cast<osgEarth::ImageLayer*>(candidate.get())
                     && (layer == Map3DLayer::SatelliteImagery
@@ -2629,6 +3081,10 @@ void OsgEarthViewWidget::updateCameraViewport(int w, int h)
     const int safeWidth = (std::max)(1, static_cast<int>(std::lround(w * dpr)));
     const int safeHeight = (std::max)(1, static_cast<int>(std::lround(h * dpr)));
     framebuffer_size_ = QSize(safeWidth, safeHeight);
+    if (trajectory_layer_)
+    {
+        trajectory_layer_->setViewportMetrics(safeWidth, safeHeight, static_cast<float>(dpr));
+    }
 
     if (graphics_window_)
     {

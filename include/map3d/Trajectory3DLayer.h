@@ -92,6 +92,9 @@ public:
         double screenY,
         double maxDistancePx) const;
     void setSelectedSampleIndex(int sampleIndex);
+    void setSelectedMarkerHovered(bool hovered);
+    bool selectedMarkerHovered() const;
+    void setViewportMetrics(int widthPx, int heightPx, float devicePixelRatio);
     osg::Node* node();
     const osg::Node* node() const;
 
@@ -118,6 +121,7 @@ private:
     void configureGeometryState(osg::Geometry& geometry);
     void configureSphereMarkerState(osg::Geometry& geometry);
     void updateSelectedMarkerGeometry();
+    void updateSelectedHaloUniforms();
     void appendSegment();
     void trimToVisibleLimit();
     void removeOldestSample();
@@ -182,6 +186,15 @@ private:
     osg::ref_ptr<osg::Uniform> heat_maximum_uniform_;
     osg::ref_ptr<osg::Uniform> heat_palette_uniform_;
     bool heat_palette_texture_dirty_ = true;
+    osg::ref_ptr<osg::Program> selected_halo_program_;
+    osg::ref_ptr<osg::Uniform> selected_halo_viewport_uniform_;
+    osg::ref_ptr<osg::Uniform> selected_halo_radius_uniform_;
+    osg::ref_ptr<osg::Uniform> selected_halo_hovered_uniform_;
+    osg::ref_ptr<osg::Uniform> selected_halo_dpr_uniform_;
+    bool selected_marker_hovered_ = false;
+    int viewport_width_px_ = 1280;
+    int viewport_height_px_ = 720;
+    float viewport_dpr_ = 1.0f;
     bool track_line_visible_ = true;
     bool track_points_visible_ = true;
     float track_line_width_ = 5.0f;

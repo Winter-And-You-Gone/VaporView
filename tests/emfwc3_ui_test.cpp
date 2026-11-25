@@ -23,6 +23,7 @@
 #include <QTimer>
 #include <QToolButton>
 #include <QMessageBox>
+#include <limits>
 #include <QTemporaryDir>
 #include <QSettings>
 #include <QVBoxLayout>
@@ -266,6 +267,27 @@ int main(int argc, char **argv)
         const QSize homeWindowSize = window.size();
         window.resize(3000, 850);
         until("wide motion controls return to one row", [&] { return sameHomeRow(homeTarget, homeGo); });
+        {
+            auto *epsilonPanel = find<QWidget>(window, "epsilonPanel");
+            auto *epsilonGroup = epsilonPanel->parentWidget();
+            const auto epsilonSubcards = epsilonPanel->findChildren<QFrame *>(QStringLiteral("epsilonSectionCard"));
+            check(!epsilonSubcards.isEmpty(), "epsilon navigation card has section subcards");
+            int epsTop = (std::numeric_limits<int>::max)(), epsBottom = 0;
+            for (auto *card : epsilonSubcards) {
+                const QRect r(card->mapTo(epsilonGroup, QPoint()), card->size());
+                epsTop = std::min(epsTop, r.top());
+                epsBottom = std::max(epsBottom, r.bottom());
+            }
+            const QRect emRect = homeBounds(homeEmCard);
+            const QRect stepperRect = homeBounds(homeStepper);
+            const int epsInnerHeight = epsBottom - epsTop + 1;
+            const int motionInnerHeight = stepperRect.bottom() - emRect.top() + 1;
+            check(std::abs(epsInnerHeight - motionInnerHeight) <= 4 &&
+                  std::abs(emRect.top() - epsTop) <= 2 &&
+                  homeCard->height() - stepperRect.bottom() <= 8 &&
+                  epsilonGroup->height() - epsBottom <= 8,
+                  "navigation and motion subcards align in total height with no excess bottom whitespace");
+        }
         window.resize(homeWindowSize);
         QApplication::processEvents();
         auto *homeTitle = find<QLabel>(*homeEmCard, "epsilonSectionLabel");

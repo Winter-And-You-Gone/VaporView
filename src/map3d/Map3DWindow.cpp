@@ -16,6 +16,8 @@
 #include "shared/theme/SingleLevelPopupMenu.h"
 #include "geo/TrajectoryQuality.h"
 #include "Map3DRuntime.h"
+#include "CesiumTerrain.h"
+#include "map3d/Map3DLoadTracker.h"
 #include "map3d/OsgEarthViewWidget.h"
 #include "map3d/MapResourceDialog.h"
 #include "map3d/MapResourceManager.h"
@@ -881,6 +883,54 @@ QString replayStateLabel(const VaporView::Geo::TrajectoryReplay& replay)
     return mapText(QStringLiteral("已暂停"));
 }
 
+class MapLoadingProgressBubble final : public QFrame {
+public:
+    explicit MapLoadingProgressBubble(QWidget* parent = nullptr)
+        : QFrame(parent)
+    {
+        setFrameShape(QFrame::NoFrame);
+    }
+
+protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        const bool dark = VaporView::isDarkThemeEnabled();
+        QColor bg = VaporView::appThemeColor(VaporView::AppThemeColor::SurfaceRaised, dark);
+        bg.setAlpha(dark ? 236 : 242);
+        QColor border = VaporView::appThemeColor(VaporView::AppThemeColor::BorderStrong, dark);
+        border.setAlpha(dark ? 190 : 225);
+
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        QPainterPath path;
+        path.addRoundedRect(QRectF(rect()).adjusted(0.75, 0.75, -0.75, -0.75), 10.0, 10.0);
+        painter.fillPath(path, bg);
+        painter.setPen(QPen(border, 1.0));
+        painter.drawPath(path);
+    }
+};
+
+class MapNoticeBubbleLabel final : public QLabel {
+public:
+    explicit MapNoticeBubbleLabel(QWidget* parent = nullptr)
+        : QLabel(parent)
+    {
+    }
+
+protected:
+    void paintEvent(QPaintEvent* event) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        QPainterPath path;
+        path.addRoundedRect(QRectF(rect()).adjusted(0.75, 0.75, -0.75, -0.75), 8.0, 8.0);
+        painter.fillPath(path, QColor(45, 45, 48, 236));
+        painter.setPen(QPen(QColor(85, 85, 90, 220), 1.0));
+        painter.drawPath(path);
+        QLabel::paintEvent(event);
+    }
+};
+
 } // namespace
 
 Map3DWindow::Map3DWindow(QWidget* parent)
@@ -929,9 +979,11 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         render_stack_->setCurrentWidget(render_placeholder_label_);
         setCentralWidget(renderHost);
     }
-    map_notice_label_ = new QLabel(centralWidget());
+    map_notice_label_ = new MapNoticeBubbleLabel(centralWidget());
     map_notice_label_->setObjectName(QStringLiteral("map3DNoticeBubble"));
     map_notice_label_->setAttribute(Qt::WA_TransparentForMouseEvents);
+    map_notice_label_->setAttribute(Qt::WA_TranslucentBackground);
+    map_notice_label_->setAutoFillBackground(false);
     map_notice_label_->setWordWrap(true);
     map_notice_label_->setAlignment(Qt::AlignCenter);
     map_notice_label_->hide();
@@ -939,6 +991,32 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     map_notice_timer_->setSingleShot(true);
     map_notice_timer_->setInterval(4500);
     connect(map_notice_timer_, &QTimer::timeout, map_notice_label_, &QLabel::hide);
+
+    map_loading_bubble_ = new MapLoadingProgressBubble(centralWidget());
+    map_loading_bubble_->setObjectName(QStringLiteral("map3DLoadingProgressBubble"));
+    map_loading_bubble_->setAttribute(Qt::WA_TransparentForMouseEvents);
+    map_loading_bubble_->setAttribute(Qt::WA_TranslucentBackground);
+    map_loading_bubble_->setAutoFillBackground(false);
+    auto* loadingLayout = new QVBoxLayout(map_loading_bubble_);
+    loadingLayout->setContentsMargins(12, 8, 12, 8);
+    loadingLayout->setSpacing(6);
+    map_loading_label_ = new QLabel(map_loading_bubble_);
+    map_loading_label_->setObjectName(QStringLiteral("map3DLoadingProgressLabel"));
+    map_loading_label_->setWordWrap(false);
+    loadingLayout->addWidget(map_loading_label_);
+    map_loading_bar_ = new QProgressBar(map_loading_bubble_);
+    map_loading_bar_->setObjectName(QStringLiteral("map3DLoadingProgressBar"));
+    map_loading_bar_->setTextVisible(false);
+    map_loading_bar_->setFixedHeight(6);
+    map_loading_bar_->setMinimumWidth(160);
+    map_loading_bar_->setRange(0, 100);
+    loadingLayout->addWidget(map_loading_bar_);
+    map_loading_bubble_->hide();
+    map_loading_timer_ = new QTimer(this);
+    map_loading_timer_->setInterval(80);
+    connect(map_loading_timer_, &QTimer::timeout, this, [this]() { updateLoadingProgressBubble(false); });
+
+    if (centralWidget()) centralWidget()->installEventFilter(this);
     status_label_->setObjectName(QStringLiteral("map3DStatusLabel"));
 
     QToolBar* toolbar = addToolBar(QStringLiteral("3D Map"));
@@ -987,6 +1065,10 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     });
     QSettings settings = map3DSettings();
     satellite_imagery_source_ = settings.value(QStringLiteral("satelliteImagerySource")).toString();
+    base_map_source_ = settings.value(QStringLiteral("baseMapSource")).toString();
+    dem_source_ = settings.value(QStringLiteral("demSource")).toString();
+    osm_source_ = settings.value(QStringLiteral("osmSource")).toString();
+    buildings_source_ = settings.value(QStringLiteral("buildingsSource")).toString();
     max_visible_samples_ = sanitizeMaxVisibleSamples(settings.value(QStringLiteral("maxVisibleSamples"), 200000).toInt());
     heat_metric_ = heatMetricFromComboIndex(settings.value(QStringLiteral("heatMetric"), 0).toInt());
     heat_palette_ = heatPaletteFromComboIndex(settings.value(QStringLiteral("heatPalette"), 0).toInt());
@@ -1290,6 +1372,27 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     resourcesMenu->setTitle(mapText(QStringLiteral("地图资源")));
     moreMenu->addMenu(resourcesMenu);
     local_imagery_menu_->setParent(resourcesMenu, local_imagery_menu_->windowFlags());
+
+    base_map_source_menu_ = new MapOptionsMenu(resourcesMenu);
+    base_map_source_menu_->setTitle(mapText(QStringLiteral("基础底图")));
+    base_map_source_menu_->setObjectName(QStringLiteral("map3DBaseMapSourceMenu"));
+    connect(base_map_source_menu_, &QMenu::aboutToShow, this, &Map3DWindow::refreshBaseMapSourceMenu);
+
+    dem_source_menu_ = new MapOptionsMenu(resourcesMenu);
+    dem_source_menu_->setTitle(mapText(QStringLiteral("高程地形 (DEM)")));
+    dem_source_menu_->setObjectName(QStringLiteral("map3DDemSourceMenu"));
+    connect(dem_source_menu_, &QMenu::aboutToShow, this, &Map3DWindow::refreshDemSourceMenu);
+
+    osm_source_menu_ = new MapOptionsMenu(resourcesMenu);
+    osm_source_menu_->setTitle(mapText(QStringLiteral("OSM 道路与水系")));
+    osm_source_menu_->setObjectName(QStringLiteral("map3DOsmSourceMenu"));
+    connect(osm_source_menu_, &QMenu::aboutToShow, this, &Map3DWindow::refreshOsmSourceMenu);
+
+    buildings_source_menu_ = new MapOptionsMenu(resourcesMenu);
+    buildings_source_menu_->setTitle(mapText(QStringLiteral("三维建筑")));
+    buildings_source_menu_->setObjectName(QStringLiteral("map3DBuildingsSourceMenu"));
+    connect(buildings_source_menu_, &QMenu::aboutToShow, this, &Map3DWindow::refreshBuildingsSourceMenu);
+
     auto* modelMenu = new MapOptionsMenu(moreMenu);
     modelMenu->setTitle(mapText(QStringLiteral("飞机模型")));
     moreMenu->addMenu(modelMenu);
@@ -1301,8 +1404,22 @@ Map3DWindow::Map3DWindow(QWidget* parent)
                             reloadBestMapAction, map_resources_action_})
     {
         toolbar->removeAction(action);
-        resourcesMenu->addAction(action);
     }
+    resourcesMenu->addAction(mapFilesAction);
+    resourcesMenu->addAction(map_resources_action_);
+    resourcesMenu->addAction(loadEarthAction);
+    resourcesMenu->addAction(reloadBestMapAction);
+    base_map_source_action_ = resourcesMenu->addMenu(base_map_source_menu_);
+    base_map_source_action_->setObjectName(QStringLiteral("map3DBaseMapSourceAction"));
+    resourcesMenu->addAction(local_imagery_action_);
+    dem_source_action_ = resourcesMenu->addMenu(dem_source_menu_);
+    dem_source_action_->setObjectName(QStringLiteral("map3DDemSourceAction"));
+    osm_source_action_ = resourcesMenu->addMenu(osm_source_menu_);
+    osm_source_action_->setObjectName(QStringLiteral("map3DOsmSourceAction"));
+    buildings_source_action_ = resourcesMenu->addMenu(buildings_source_menu_);
+    buildings_source_action_->setObjectName(QStringLiteral("map3DBuildingsSourceAction"));
+    resourcesMenu->addAction(local_3d_tiles_action_);
+    resourcesMenu->addAction(clear_local_3d_tiles_action_);
     for (QAction* action : {load_aircraft_model_action_, reset_aircraft_model_action_})
     {
         toolbar->removeAction(action);
@@ -1383,7 +1500,7 @@ void Map3DWindow::showMapNotice(const QString& text)
     if (map_notice_clock_.isValid() && map_notice_clock_.elapsed() < 15000) return;
     map_notice_clock_.start();
     map_notice_label_->setStyleSheet(QStringLiteral(
-        "QLabel { background: #2d2d30; color: white; border: 1px solid #55555a; border-radius: 8px; padding: 8px 14px; }"));
+        "QLabel { background: transparent; color: white; border: none; padding: 8px 14px; }"));
     map_notice_label_->setText(text);
     positionMapNotice();
     map_notice_label_->show();
@@ -1393,22 +1510,118 @@ void Map3DWindow::showMapNotice(const QString& text)
 
 void Map3DWindow::positionMapNotice()
 {
-    if (!map_notice_label_ || !centralWidget()) return;
-    map_notice_label_->setMaximumWidth((std::max)(100, centralWidget()->width() - 24));
+    if (!map_notice_label_) return;
+    QWidget* host = map_notice_label_->parentWidget();
+    if (!host) host = centralWidget();
+    if (!host) return;
+    map_notice_label_->setMaximumWidth((std::max)(100, host->width() - 24));
     map_notice_label_->adjustSize();
-    map_notice_label_->move((centralWidget()->width() - map_notice_label_->width()) / 2, 12);
+    map_notice_label_->move((host->width() - map_notice_label_->width()) / 2, 12);
+}
+
+void Map3DWindow::positionMapOverlays()
+{
+    positionMapNotice();
+    if (map_loading_bubble_)
+    {
+        QWidget* host = map_loading_bubble_->parentWidget();
+        if (!host) host = centralWidget();
+        if (host)
+        {
+            map_loading_bubble_->setMaximumWidth((std::max)(180, host->width() - 32));
+            map_loading_bubble_->adjustSize();
+            map_loading_bubble_->move((std::max)(12, host->width() - map_loading_bubble_->width() - 16), 12);
+            if (map_loading_bubble_->isVisible())
+            {
+                map_loading_bubble_->raise();
+            }
+        }
+    }
+    if (auto* controls = findChild<QWidget*>(QStringLiteral("map3DCornerControls")))
+    {
+        QWidget* host = controls->parentWidget();
+        if (!host) host = centralWidget();
+        if (host)
+        {
+            controls->move((std::max)(0, host->width() - controls->width() - 16),
+                           (std::max)(0, host->height() - controls->height() - 16));
+            controls->raise();
+        }
+    }
+}
+
+void Map3DWindow::updateLoadingProgressBubble(bool force)
+{
+    if (!map_loading_bubble_ || !map_loading_label_ || !map_loading_bar_)
+    {
+        return;
+    }
+    const MapLoadProgressSnapshot snapshot = Map3DLoadTracker::instance().snapshot();
+    if (!force && snapshot.revision == last_loading_revision_)
+    {
+        return;
+    }
+    last_loading_revision_ = snapshot.revision;
+    if (!snapshot.active)
+    {
+        if (map_loading_bubble_->isVisible())
+        {
+            map_loading_bubble_->hide();
+        }
+        return;
+    }
+
+    QStringList names;
+    const auto addNameIfActive = [&](MapLoadCategory category, const QString& label) {
+        if (snapshot.activeByCategory[static_cast<std::size_t>(category)] > 0)
+        {
+            names.push_back(mapText(label));
+        }
+    };
+    addNameIfActive(MapLoadCategory::Earth, QStringLiteral("地图场景"));
+    addNameIfActive(MapLoadCategory::Imagery, QStringLiteral("卫星影像"));
+    addNameIfActive(MapLoadCategory::Dem, QStringLiteral("高程地形"));
+    addNameIfActive(MapLoadCategory::Osm, QStringLiteral("OSM 矢量"));
+    addNameIfActive(MapLoadCategory::Buildings, QStringLiteral("三维建筑"));
+    const QString resourceText = names.isEmpty()
+        ? mapText(QStringLiteral("地图资源"))
+        : names.join(mapText(QStringLiteral("、")));
+
+    if (snapshot.totalTasks > 1)
+    {
+        const int percent = snapshot.percent();
+        if (map_loading_bar_->minimum() != 0 || map_loading_bar_->maximum() != 100)
+        {
+            map_loading_bar_->setRange(0, 100);
+        }
+        map_loading_bar_->setValue(percent);
+        map_loading_label_->setText(
+            mapText(QStringLiteral("正在加载 %1 (%2/%3 · %4%)"))
+                .arg(resourceText)
+                .arg(snapshot.completedTasks)
+                .arg(snapshot.totalTasks)
+                .arg(percent));
+    }
+    else
+    {
+        if (map_loading_bar_->minimum() != 0 || map_loading_bar_->maximum() != 0)
+        {
+            map_loading_bar_->setRange(0, 0);
+        }
+        map_loading_label_->setText(mapText(QStringLiteral("正在加载 %1…")).arg(resourceText));
+    }
+
+    if (!map_loading_bubble_->isVisible())
+    {
+        map_loading_bubble_->show();
+    }
+    positionMapOverlays();
 }
 
 void Map3DWindow::resizeEvent(QResizeEvent* event)
 {
     QMainWindow::resizeEvent(event);
-    positionMapNotice();
-    if (auto* controls = findChild<QWidget*>(QStringLiteral("map3DCornerControls")))
-    {
-        controls->move(centralWidget()->width() - controls->width() - 16,
-                       centralWidget()->height() - controls->height() - 16);
-        controls->raise();
-    }
+    positionMapOverlays();
 }
 
 Map3DWindow::~Map3DWindow()
@@ -1486,6 +1699,10 @@ void Map3DWindow::applyCurrentControlsToView()
     {
         view_->setLayerVisible(static_cast<Map3DLayer>(index), layer_visibility_[index]);
     }
+    view_->setBaseMapSource(base_map_source_);
+    view_->setDemSource(dem_source_);
+    view_->setOsmSource(osm_source_);
+    view_->setBuildingsSource(buildings_source_);
 }
 
 void Map3DWindow::startRendering()
@@ -1523,10 +1740,14 @@ void Map3DWindow::startRendering()
     view_->installEventFilter(this);
     viewLayout->addWidget(view_);
     render_stack_->addWidget(render_host_);
-    map_notice_label_->setParent(render_host_);
+    map_notice_label_->setParent(view_);
+    if (map_loading_bubble_)
+    {
+        map_loading_bubble_->setParent(view_);
+    }
     if (auto* controls = findChild<QWidget*>(QStringLiteral("map3DCornerControls")))
     {
-        controls->setParent(render_host_);
+        controls->setParent(view_);
     }
     configureViewSignals();
     // Showing the native GL child under a stationary pointer can leave a
@@ -1538,14 +1759,22 @@ void Map3DWindow::startRendering()
         render_stack_->setCurrentWidget(render_placeholder_label_);
         render_host_->hide();
         render_placeholder_label_->show();
+        if (map_notice_label_)
+        {
+            map_notice_label_->setParent(centralWidget());
+        }
+        if (map_loading_bubble_)
+        {
+            map_loading_bubble_->setParent(centralWidget());
+            map_loading_bubble_->hide();
+        }
         if (auto* controls = findChild<QWidget*>(QStringLiteral("map3DCornerControls")))
         {
             controls->setParent(centralWidget());
             controls->show();
             controls->raise();
-            controls->move(centralWidget()->width() - controls->width() - 16,
-                           centralWidget()->height() - controls->height() - 16);
         }
+        positionMapOverlays();
         statusBar()->showMessage(reason);
     });
     view_->startRendering();
@@ -1560,6 +1789,7 @@ void Map3DWindow::startRendering()
         controls->show();
         controls->raise();
     }
+    positionMapOverlays();
     applyCurrentControlsToView();
     if (track_data_mode_ == TrackDataMode::Live && !live_samples_.empty())
     {
@@ -1605,6 +1835,8 @@ void Map3DWindow::createLayerMenu(QToolBar* toolbar)
 
     auto* controls = new QWidget(centralWidget());
     controls->setObjectName(QStringLiteral("map3DCornerControls"));
+    controls->setAttribute(Qt::WA_TranslucentBackground);
+    controls->setAutoFillBackground(false);
     auto* layout = new QVBoxLayout(controls);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(8);
@@ -1820,6 +2052,7 @@ void Map3DWindow::refreshLayerMenuTheme()
     if (auto* controls = findChild<QWidget*>(QStringLiteral("map3DCornerControls")))
     {
         controls->setStyleSheet(applyAppThemeTokens(QStringLiteral(
+            "QWidget#map3DCornerControls { background: transparent; border: none; }"
             "QToolButton { background: @vv-surface; color: @vv-text; border: 1px solid @vv-border; border-radius: 8px; padding: 0px; }"
             "QToolButton:hover { background: @vv-primary-subtle; border-color: @vv-primary; }"
             "QToolButton:pressed { background: @vv-primary-subtle-pressed; }"
@@ -1827,6 +2060,15 @@ void Map3DWindow::refreshLayerMenuTheme()
         controls->findChild<QToolButton*>(QStringLiteral("map3DLocateButton"))->setIcon(
             map3DIcon(QStringLiteral("locate-fixed"), appThemeColor(AppThemeColor::ToolbarBlue, dark)));
         controls->raise();
+    }
+    if (map_loading_bubble_)
+    {
+        map_loading_bubble_->setStyleSheet(applyAppThemeTokens(QStringLiteral(
+            "QFrame#map3DLoadingProgressBubble { background: transparent; border: none; }"
+            "QLabel#map3DLoadingProgressLabel { background: transparent; color: @vv-text; font-size: 12px; font-weight: 500; }"
+            "QProgressBar#map3DLoadingProgressBar { background: @vv-surface-alt; border: none; border-radius: 3px; }"
+            "QProgressBar#map3DLoadingProgressBar::chunk { background: @vv-primary; border-radius: 3px; }"), dark));
+        map_loading_bubble_->update();
     }
     const QIcon checkIcon = map3DIcon(QStringLiteral("check"),
                                      appThemeColor(AppThemeColor::MenuCheckText, dark));
@@ -2521,6 +2763,29 @@ void Map3DWindow::selectSatelliteImagerySource(const QString& source)
     const QString previous = satellite_imagery_source_;
     const bool wasVisible = layerVisible(Map3DLayer::SatelliteImagery);
     satellite_imagery_source_ = source;
+    if (source.isEmpty())
+    {
+        if (view_)
+        {
+            view_->clearSelectedSatelliteImagery();
+        }
+        tianditu_satellite_imagery_loaded_ = false;
+        resetAutomaticSentinel2Imagery();
+        if (view_ && view_->hasEarthMap() && layerVisible(Map3DLayer::SatelliteImagery))
+        {
+            applyConfiguredTiandituSatelliteImagery(false);
+            if (sentinel2_auto_load_timer_ && !tianditu_satellite_imagery_loaded_ && !isSentinel2ImageryActive())
+            {
+                sentinel2_auto_load_timer_->start();
+            }
+        }
+        QSettings settings = map3DSettings();
+        VaporView::setPersistentSetting(settings, QStringLiteral("satelliteImagerySource"), source);
+        refreshSatelliteImageryMenu();
+        updateStatus(nullptr, true);
+        statusBar()->showMessage(mapText(QStringLiteral("已恢复卫星影像自动选择。")), 5000);
+        return;
+    }
     if (!wasVisible) setLayerVisible(Map3DLayer::SatelliteImagery, true, false);
     if (view_ && view_->hasEarthMap() && !applySelectedSatelliteImagery(true))
     {
@@ -2533,6 +2798,129 @@ void Map3DWindow::selectSatelliteImagerySource(const QString& source)
     QSettings settings = map3DSettings();
     VaporView::setPersistentSetting(settings, QStringLiteral("satelliteImagerySource"), source);
     refreshSatelliteImageryMenu();
+}
+
+void Map3DWindow::selectBaseMapSource(const QString& source)
+{
+    if (VaporView::settingsWritesSuspended())
+    {
+        statusBar()->showMessage(mapText(QStringLiteral("[界面测试] 已模拟影像模板加载；未访问外部资源。")), 6000);
+        refreshBaseMapSourceMenu();
+        return;
+    }
+    base_map_source_ = source;
+    if (!source.isEmpty() && !layerVisible(Map3DLayer::BaseMap))
+    {
+        setLayerVisible(Map3DLayer::BaseMap, true, false);
+    }
+    if (view_)
+    {
+        view_->setBaseMapSource(base_map_source_);
+    }
+    QSettings settings = map3DSettings();
+    VaporView::setPersistentSetting(settings, QStringLiteral("baseMapSource"), base_map_source_);
+    refreshBaseMapSourceMenu();
+    refreshLayerMenuAvailability();
+    updateStatus(nullptr, true);
+    const QString label = source.isEmpty() ? mapText(QStringLiteral("自动（默认）"))
+        : source == QStringLiteral("local:natural_earth") ? mapText(QStringLiteral("本地 · Natural Earth"))
+        : mapText(QStringLiteral("内置 · 纯色地球底图"));
+    statusBar()->showMessage(mapText(QStringLiteral("已切换基础底图源：%1")).arg(label), 5000);
+}
+
+void Map3DWindow::selectDemSource(const QString& source)
+{
+    if (VaporView::settingsWritesSuspended())
+    {
+        statusBar()->showMessage(mapText(QStringLiteral("[界面测试] 已模拟影像模板加载；未访问外部资源。")), 6000);
+        refreshDemSourceMenu();
+        return;
+    }
+    dem_source_ = source;
+    if (!source.isEmpty() && !layerVisible(Map3DLayer::DigitalElevation))
+    {
+        setLayerVisible(Map3DLayer::DigitalElevation, true, false);
+    }
+    if (view_)
+    {
+        view_->setDemSource(dem_source_);
+        const QString activeDem = view_->activeElevationSourceLabel();
+        if (!activeDem.isEmpty())
+        {
+            map_selection_.diagnostics.selectedDemLayerAvailable = true;
+            map_selection_.diagnostics.selectedElevationSource = activeDem;
+        }
+    }
+    QSettings settings = map3DSettings();
+    VaporView::setPersistentSetting(settings, QStringLiteral("demSource"), dem_source_);
+    refreshDemSourceMenu();
+    refreshLayerMenuAvailability();
+    refreshDiagnosticsText();
+    updateStatus(nullptr, true);
+    const QString label = source.isEmpty() ? mapText(QStringLiteral("自动（默认）"))
+        : source == QStringLiteral("local:copernicus") ? mapText(QStringLiteral("本地 · Copernicus DEM GLO-30"))
+        : source == QStringLiteral("local:srtm") ? mapText(QStringLiteral("本地 · SRTM"))
+        : source == QStringLiteral("online:copernicus") ? mapText(QStringLiteral("在线 · Copernicus GLO-30"))
+        : source == QStringLiteral("online:cesium") ? mapText(QStringLiteral("在线 · Cesium World Terrain"))
+        : mapText(QStringLiteral("内置 · 全球粗 DEM (ETOPO 2022)"));
+    statusBar()->showMessage(mapText(QStringLiteral("已切换高程地形源：%1")).arg(label), 5000);
+}
+
+void Map3DWindow::selectOsmSource(const QString& source)
+{
+    if (VaporView::settingsWritesSuspended())
+    {
+        statusBar()->showMessage(mapText(QStringLiteral("[界面测试] 已模拟影像模板加载；未访问外部资源。")), 6000);
+        refreshOsmSourceMenu();
+        return;
+    }
+    osm_source_ = source;
+    if (view_)
+    {
+        view_->setOsmSource(osm_source_);
+    }
+    QSettings settings = map3DSettings();
+    VaporView::setPersistentSetting(settings, QStringLiteral("osmSource"), osm_source_);
+    refreshOsmSourceMenu();
+    refreshLayerMenuAvailability();
+    updateStatus(nullptr, true);
+    const QString label = source.isEmpty() ? mapText(QStringLiteral("自动（默认）"))
+        : source == QStringLiteral("online:osm") ? mapText(QStringLiteral("在线 · OpenStreetMap 矢量"))
+        : mapText(QStringLiteral("本地 · OSM GeoPackage"));
+    statusBar()->showMessage(mapText(QStringLiteral("已切换 OSM 数据源：%1")).arg(label), 5000);
+}
+
+void Map3DWindow::selectBuildingsSource(const QString& source)
+{
+    if (VaporView::settingsWritesSuspended())
+    {
+        statusBar()->showMessage(mapText(QStringLiteral("[界面测试] 已模拟本地 3D 建筑加载；未读取外部资源。")), 6000);
+        refreshBuildingsSourceMenu();
+        return;
+    }
+    buildings_source_ = source;
+    if (!source.isEmpty() && !layerVisible(Map3DLayer::Buildings3D))
+    {
+        setLayerVisible(Map3DLayer::Buildings3D, true, false);
+    }
+    if (view_)
+    {
+        view_->setBuildingsSource(buildings_source_);
+        if (source == QStringLiteral("local:osg_tiles") && !view_->hasLocal3DTilesPreview()
+            && map_selection_.diagnostics.local3DTilesTilesetValid)
+        {
+            loadConfiguredLocal3DTiles(false);
+        }
+    }
+    QSettings settings = map3DSettings();
+    VaporView::setPersistentSetting(settings, QStringLiteral("buildingsSource"), buildings_source_);
+    refreshBuildingsSourceMenu();
+    refreshLayerMenuAvailability();
+    updateStatus(nullptr, true);
+    const QString label = source.isEmpty() ? mapText(QStringLiteral("自动（默认）"))
+        : source == QStringLiteral("local:osg_tiles") ? mapText(QStringLiteral("本地 · OSG 三维建筑"))
+        : mapText(QStringLiteral("在线 · OpenFreeMap 三维建筑"));
+    statusBar()->showMessage(mapText(QStringLiteral("已切换三维建筑源：%1")).arg(label), 5000);
 }
 
 void Map3DWindow::maybeLoadSentinel2ImageryForRange(double rangeM)
@@ -3276,6 +3664,10 @@ bool Map3DWindow::eventFilter(QObject* watched, QEvent* event)
     {
         syncCursorUnderPointer();
     }
+    if ((watched == view_ || watched == centralWidget()) && event->type() == QEvent::Resize)
+    {
+        positionMapOverlays();
+    }
     if (watched == this && event->type() == QEvent::WindowActivate)
     {
         syncCursorUnderPointer();
@@ -3333,7 +3725,8 @@ void Map3DWindow::refreshLanguage()
         QEvent languageChange(QEvent::LanguageChange);
         QCoreApplication::sendEvent(card, &languageChange);
     }
-    refreshSatelliteImageryMenu();
+    refreshAllResourceSourceMenus();
+    updateLoadingProgressBubble(true);
     latest_track_source_ = mapRenderedText(latest_track_source_, english);
     latest_camera_note_ = mapRenderedText(latest_camera_note_, english);
     updateMapModeUi();
@@ -3405,15 +3798,14 @@ void Map3DWindow::showEvent(QShowEvent* event)
     {
         controls->show();
         controls->raise();
-        QTimer::singleShot(0, this, [this]() {
-            if (auto* corner = findChild<QWidget*>(QStringLiteral("map3DCornerControls")))
-            {
-                corner->move(centralWidget()->width() - corner->width() - 16,
-                             centralWidget()->height() - corner->height() - 16);
-                corner->raise();
-            }
-        });
     }
+    positionMapOverlays();
+    QTimer::singleShot(0, this, &Map3DWindow::positionMapOverlays);
+    if (map_loading_timer_ && !map_loading_timer_->isActive())
+    {
+        map_loading_timer_->start();
+    }
+    updateLoadingProgressBubble(true);
     refreshLayerMenuTheme();
     refreshLayerMenuAvailability();
     if (sentinel2_auto_load_timer_
@@ -3435,6 +3827,10 @@ void Map3DWindow::showEvent(QShowEvent* event)
 
 void Map3DWindow::hideEvent(QHideEvent* event)
 {
+    if (map_loading_timer_)
+    {
+        map_loading_timer_->stop();
+    }
     if (sentinel2_auto_load_timer_)
     {
         sentinel2_auto_load_timer_->stop();
@@ -3655,13 +4051,12 @@ void Map3DWindow::setMapSelection(const MapDataSelection& selection)
     {
         auto& diagnostics = map_selection_.diagnostics;
         diagnostics.selectedDemLayerAvailable = true;
-        diagnostics.selectedElevationSource = view_->earthLoadDiagnostics().openElevationLayerName;
-        if (diagnostics.selectedElevationSource != QStringLiteral("Online Copernicus GLO-30"))
-            diagnostics.selectedElevationSource += QStringLiteral(" → Online Copernicus GLO-30");
-        if (view_->earthLoadDiagnostics().cesiumTerrainConfigured)
-            diagnostics.selectedElevationSource += QStringLiteral(" → Cesium World Terrain");
+        const QString activeDem = view_->activeElevationSourceLabel();
+        diagnostics.selectedElevationSource = !activeDem.isEmpty()
+            ? activeDem
+            : view_->earthLoadDiagnostics().openElevationLayerName;
     }
-    refreshSatelliteImageryMenu();
+    refreshAllResourceSourceMenus();
     if (local_3d_tiles_action_)
     {
         const bool enabled = map_selection_.diagnostics.local3DTilesTilesetValid;
@@ -3685,6 +4080,19 @@ void Map3DWindow::refreshSatelliteImageryMenu()
     local_imagery_action_->setText(title);
     local_imagery_action_->setEnabled(true);
 
+    auto* autoImagery = local_imagery_menu_->findChild<QAction*>(QStringLiteral("map3DAutoImageryAction"));
+    if (!autoImagery)
+    {
+        autoImagery = local_imagery_menu_->addAction(QString());
+        autoImagery->setObjectName(QStringLiteral("map3DAutoImageryAction"));
+        autoImagery->setCheckable(true);
+        connect(autoImagery, &QAction::triggered, this, [this]() {
+            selectSatelliteImagerySource(QString());
+        });
+    }
+    autoImagery->setText(mapText(QStringLiteral("自动（默认）")));
+    autoImagery->setChecked(satellite_imagery_source_.isEmpty());
+
     auto* online = local_imagery_menu_->findChild<QAction*>(QStringLiteral("map3DOnlineImagery_tianditu"));
     if (!online)
     {
@@ -3699,8 +4107,7 @@ void Map3DWindow::refreshSatelliteImageryMenu()
     online->setText(mapText(onlineAvailable ? QStringLiteral("在线 · 天地图卫星")
                                            : QStringLiteral("在线 · 天地图卫星（未配置 Key）")));
     online->setEnabled(onlineAvailable);
-    online->setChecked(satellite_imagery_source_ == QStringLiteral("online:tianditu")
-                       || (satellite_imagery_source_.isEmpty() && tianditu_satellite_imagery_loaded_));
+    online->setChecked(satellite_imagery_source_ == QStringLiteral("online:tianditu"));
 
     auto* openAerialMap = local_imagery_menu_->findChild<QAction*>(QStringLiteral("map3DOnlineImagery_openaerialmap"));
     if (!openAerialMap)
@@ -3773,10 +4180,177 @@ void Map3DWindow::refreshSatelliteImageryMenu()
         action->setText(mapText(available ? QStringLiteral("本地 · %1")
                                         : QStringLiteral("本地 · %1（缺少数据）")).arg(name));
         action->setEnabled(available);
-        action->setChecked(satellite_imagery_source_ == QStringLiteral("local:") + option.key
-                           || (satellite_imagery_source_.isEmpty() && option.key == QStringLiteral("sentinel2")
-                               && !tianditu_satellite_imagery_loaded_ && isSentinel2ImageryActive()));
+        action->setChecked(satellite_imagery_source_ == QStringLiteral("local:") + option.key);
     }
+}
+
+void Map3DWindow::refreshBaseMapSourceMenu()
+{
+    if (!base_map_source_menu_ || !base_map_source_action_) return;
+    const QString title = mapText(QStringLiteral("基础底图"));
+    base_map_source_menu_->setTitle(title);
+    base_map_source_action_->setText(title);
+
+    const auto ensureAction = [&](const QString& objName, const QString& source) {
+        auto* action = base_map_source_menu_->findChild<QAction*>(objName);
+        if (!action)
+        {
+            action = base_map_source_menu_->addAction(QString());
+            action->setObjectName(objName);
+            action->setCheckable(true);
+            connect(action, &QAction::triggered, this, [this, source]() {
+                selectBaseMapSource(source);
+            });
+        }
+        action->setChecked(base_map_source_ == source);
+        return action;
+    };
+
+    ensureAction(QStringLiteral("map3DBaseMapSource_auto"), QString())
+        ->setText(mapText(QStringLiteral("自动（默认）")));
+    auto* naturalEarth = ensureAction(QStringLiteral("map3DBaseMapSource_local_natural_earth"),
+                                      QStringLiteral("local:natural_earth"));
+    const bool neAvailable = map_selection_.diagnostics.naturalEarthAvailable;
+    naturalEarth->setText(mapText(neAvailable ? QStringLiteral("本地 · Natural Earth")
+                                              : QStringLiteral("本地 · Natural Earth（缺少数据）")));
+    naturalEarth->setEnabled(neAvailable);
+    ensureAction(QStringLiteral("map3DBaseMapSource_builtin_globe"), QStringLiteral("builtin:globe"))
+        ->setText(mapText(QStringLiteral("内置 · 纯色地球底图")));
+}
+
+void Map3DWindow::refreshDemSourceMenu()
+{
+    if (!dem_source_menu_ || !dem_source_action_) return;
+    const QString title = mapText(QStringLiteral("高程地形 (DEM)"));
+    dem_source_menu_->setTitle(title);
+    dem_source_action_->setText(title);
+
+    const auto ensureAction = [&](const QString& objName, const QString& source) {
+        auto* action = dem_source_menu_->findChild<QAction*>(objName);
+        if (!action)
+        {
+            action = dem_source_menu_->addAction(QString());
+            action->setObjectName(objName);
+            action->setCheckable(true);
+            connect(action, &QAction::triggered, this, [this, source]() {
+                selectDemSource(source);
+            });
+        }
+        action->setChecked(dem_source_ == source);
+        return action;
+    };
+
+    ensureAction(QStringLiteral("map3DDemSource_auto"), QString())
+        ->setText(mapText(QStringLiteral("自动（默认）")));
+
+    auto* localCopernicus = ensureAction(QStringLiteral("map3DDemSource_local_copernicus"),
+                                         QStringLiteral("local:copernicus"));
+    const bool copernicusAvailable = map_selection_.diagnostics.copernicusDemAvailable;
+    localCopernicus->setText(mapText(copernicusAvailable ? QStringLiteral("本地 · Copernicus DEM GLO-30")
+                                                         : QStringLiteral("本地 · Copernicus DEM GLO-30（缺少数据）")));
+    localCopernicus->setEnabled(copernicusAvailable);
+
+    auto* localSrtm = ensureAction(QStringLiteral("map3DDemSource_local_srtm"),
+                                   QStringLiteral("local:srtm"));
+    const bool srtmAvailable = map_selection_.diagnostics.srtmDemAvailable;
+    localSrtm->setText(mapText(srtmAvailable ? QStringLiteral("本地 · SRTM")
+                                             : QStringLiteral("本地 · SRTM（缺少数据）")));
+    localSrtm->setEnabled(srtmAvailable);
+
+    ensureAction(QStringLiteral("map3DDemSource_online_copernicus"), QStringLiteral("online:copernicus"))
+        ->setText(mapText(QStringLiteral("在线 · Copernicus GLO-30")));
+
+    auto* onlineCesium = ensureAction(QStringLiteral("map3DDemSource_online_cesium"),
+                                      QStringLiteral("online:cesium"));
+    const bool cesiumAvailable = !Detail::configuredCesiumToken().isEmpty();
+    onlineCesium->setText(mapText(cesiumAvailable ? QStringLiteral("在线 · Cesium World Terrain")
+                                                  : QStringLiteral("在线 · Cesium World Terrain（未配置 Token）")));
+    onlineCesium->setEnabled(cesiumAvailable);
+
+    auto* builtinEtopo = ensureAction(QStringLiteral("map3DDemSource_builtin_etopo2022"),
+                                      QStringLiteral("builtin:etopo2022"));
+    const bool etopoAvailable = !firstExistingMap3DFile(
+        map3DRuntimeRootCandidates(), {QString::fromLatin1(kGlobalBaseDemRelativePath)}).isEmpty();
+    builtinEtopo->setText(mapText(etopoAvailable ? QStringLiteral("内置 · 全球粗 DEM (ETOPO 2022)")
+                                                 : QStringLiteral("内置 · 全球粗 DEM (ETOPO 2022)（缺少数据）")));
+    builtinEtopo->setEnabled(etopoAvailable);
+}
+
+void Map3DWindow::refreshOsmSourceMenu()
+{
+    if (!osm_source_menu_ || !osm_source_action_) return;
+    const QString title = mapText(QStringLiteral("OSM 道路与水系"));
+    osm_source_menu_->setTitle(title);
+    osm_source_action_->setText(title);
+
+    const auto ensureAction = [&](const QString& objName, const QString& source) {
+        auto* action = osm_source_menu_->findChild<QAction*>(objName);
+        if (!action)
+        {
+            action = osm_source_menu_->addAction(QString());
+            action->setObjectName(objName);
+            action->setCheckable(true);
+            connect(action, &QAction::triggered, this, [this, source]() {
+                selectOsmSource(source);
+            });
+        }
+        action->setChecked(osm_source_ == source);
+        return action;
+    };
+
+    ensureAction(QStringLiteral("map3DOsmSource_auto"), QString())
+        ->setText(mapText(QStringLiteral("自动（默认）")));
+    ensureAction(QStringLiteral("map3DOsmSource_online_osm"), QStringLiteral("online:osm"))
+        ->setText(mapText(QStringLiteral("在线 · OpenStreetMap 矢量")));
+    auto* localOsm = ensureAction(QStringLiteral("map3DOsmSource_local_osm"), QStringLiteral("local:osm"));
+    const bool localOsmAvailable = map_selection_.diagnostics.osmRoadsAvailable
+        || map_selection_.diagnostics.osmWaterAvailable;
+    localOsm->setText(mapText(localOsmAvailable ? QStringLiteral("本地 · OSM GeoPackage")
+                                                : QStringLiteral("本地 · OSM GeoPackage（缺少数据）")));
+    localOsm->setEnabled(localOsmAvailable);
+}
+
+void Map3DWindow::refreshBuildingsSourceMenu()
+{
+    if (!buildings_source_menu_ || !buildings_source_action_) return;
+    const QString title = mapText(QStringLiteral("三维建筑"));
+    buildings_source_menu_->setTitle(title);
+    buildings_source_action_->setText(title);
+
+    const auto ensureAction = [&](const QString& objName, const QString& source) {
+        auto* action = buildings_source_menu_->findChild<QAction*>(objName);
+        if (!action)
+        {
+            action = buildings_source_menu_->addAction(QString());
+            action->setObjectName(objName);
+            action->setCheckable(true);
+            connect(action, &QAction::triggered, this, [this, source]() {
+                selectBuildingsSource(source);
+            });
+        }
+        action->setChecked(buildings_source_ == source);
+        return action;
+    };
+
+    ensureAction(QStringLiteral("map3DBuildingsSource_auto"), QString())
+        ->setText(mapText(QStringLiteral("自动（默认）")));
+    auto* localOsg = ensureAction(QStringLiteral("map3DBuildingsSource_local_osg"),
+                                  QStringLiteral("local:osg_tiles"));
+    const bool localOsgAvailable = map_selection_.diagnostics.local3DTilesTilesetValid;
+    localOsg->setText(mapText(localOsgAvailable ? QStringLiteral("本地 · OSG 三维建筑")
+                                                : QStringLiteral("本地 · OSG 三维建筑（缺少数据）")));
+    localOsg->setEnabled(localOsgAvailable);
+    ensureAction(QStringLiteral("map3DBuildingsSource_online_openfreemap"), QStringLiteral("online:openfreemap"))
+        ->setText(mapText(QStringLiteral("在线 · OpenFreeMap 三维建筑")));
+}
+
+void Map3DWindow::refreshAllResourceSourceMenus()
+{
+    refreshBaseMapSourceMenu();
+    refreshSatelliteImageryMenu();
+    refreshDemSourceMenu();
+    refreshOsmSourceMenu();
+    refreshBuildingsSourceMenu();
 }
 
 int Map3DWindow::currentTrackSampleCount() const
@@ -3936,10 +4510,6 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool for
     {
         text += mapText(QStringLiteral(" | 质量 %1")).arg(qualityStatsSummary(qualityStats));
     }
-    if (heat_legend_label_)
-    {
-        text += mapText(QStringLiteral(" | 热力 %1")).arg(heat_legend_label_->text());
-    }
     text += mapText(QStringLiteral(" | 来源 %1")).arg(latest_track_source_.isEmpty() ? mapText(QStringLiteral("无")) : latest_track_source_);
     if (!latest_camera_note_.isEmpty())
     {
@@ -3981,10 +4551,22 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool for
         {
             text += mapText(QStringLiteral(" | 影像 OpenAerialMap（覆盖因地区而异）"));
         }
-        text += QStringLiteral(" | DEM %1 | OSM %2")
-                    .arg(selectedDemLabel(map_selection_.diagnostics),
-                         latest_earth_load_.onlineOsmAvailable ? mapText(QStringLiteral("在线矢量"))
-                                                               : selectedOsmLabel(map_selection_.diagnostics));
+        QString demLabel = view_ ? view_->activeElevationSourceLabel() : QString();
+        if (demLabel.isEmpty())
+        {
+            demLabel = selectedDemLabel(map_selection_.diagnostics);
+        }
+        const int arrowIdx = demLabel.indexOf(QStringLiteral("→"));
+        if (arrowIdx >= 0)
+        {
+            demLabel = demLabel.left(arrowIdx).trimmed();
+        }
+        const QString osmLabel = osm_source_ == QStringLiteral("local:osm")
+            ? mapText(QStringLiteral("本地矢量"))
+            : (latest_earth_load_.onlineOsmAvailable || (view_ && view_->isOnlineOsmActive())
+                   ? mapText(QStringLiteral("在线矢量"))
+                   : selectedOsmLabel(map_selection_.diagnostics));
+        text += QStringLiteral(" | DEM %1 | OSM %2").arg(demLabel, osmLabel);
     }
     if (view_)
     {
@@ -4042,8 +4624,8 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool for
     status_label_->setText(text);
     if (cesium_attribution_)
     {
-        const QString credit = view_ && latest_earth_load_.cesiumTerrainConfigured
-            && layerVisible(Map3DLayer::DigitalElevation) ? view_->cesiumTerrainCredit(false) : QString();
+        const QString credit = view_ && view_->isCesiumTerrainActive()
+            ? view_->cesiumTerrainCredit(false) : QString();
         if (credit != cesium_attribution_->text())
         {
             cesium_attribution_->setText(credit);
@@ -4053,13 +4635,12 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool for
     }
     if (osm_attribution_)
     {
-        const bool buildings = view_ && latest_earth_load_.onlineOsmAvailable && layerVisible(Map3DLayer::Buildings3D);
+        const bool buildings = view_ && view_->isOpenFreeMapBuildingsActive();
         const QString credit = (buildings ? QStringLiteral("<a href=\"https://openfreemap.org/\">OpenFreeMap</a> · "
             "<a href=\"https://openmaptiles.org/\">© OpenMapTiles</a> · ") : QString())
             + QStringLiteral("<a href=\"https://www.openstreetmap.org/copyright\">© OpenStreetMap contributors</a>");
         if (osm_attribution_->text() != credit) osm_attribution_->setText(credit);
-        osm_attribution_->setVisible(view_ && latest_earth_load_.onlineOsmAvailable
-            && (buildings || layerVisible(Map3DLayer::RoadNetwork) || layerVisible(Map3DLayer::Hydrography)));
+        osm_attribution_->setVisible(view_ && (buildings || view_->isOnlineOsmActive()));
     }
 }
 

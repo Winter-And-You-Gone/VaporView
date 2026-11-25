@@ -2,6 +2,7 @@
 
 #include "Map3DRuntime.h"
 #include "OnlineTerrainLayer.h"
+#include "map3d/Map3DLoadTracker.h"
 #include <osgEarth/Cache>
 #include <osgEarth/ElevationLayer>
 #include <osgEarth/Progress>
@@ -90,6 +91,7 @@ private:
 
         if (shouldDeferDownload()) return {};
 
+        ScopedMapLoadTask loadTask(MapLoadCategory::Dem);
         // Copernicus registers heights at pixel centres. The first sample of
         // each COG is on its north-west corner. Include the half-pixel overlap.
         constexpr double latMargin = 0.5 / 3600.0;
@@ -103,7 +105,11 @@ private:
         {
             for (int lon = int(std::floor(extent.xMin())); lon <= east; ++lon)
             {
-                if (progress && progress->isCanceled()) return {};
+                if (progress && progress->isCanceled())
+                {
+                    loadTask.cancel();
+                    return {};
+                }
                 auto dataset = openCell(lat, lon);
                 if (dataset)
                 {
@@ -113,7 +119,11 @@ private:
                 else complete = false;
             }
         }
-        if (handles.empty()) return {};
+        if (handles.empty())
+        {
+            loadTask.finish();
+            return {};
+        }
 
         // The outer height samples sit on the tile edges; GDAL takes pixel-edge bounds.
         const int size = int(getTileSize());
@@ -130,14 +140,27 @@ private:
         args.AddString(CPLSPrintf("%.9g", double(NO_DATA_VALUE)));
         std::unique_ptr<GDALWarpAppOptions, decltype(&GDALWarpAppOptionsFree)> warp(
             GDALWarpAppOptionsNew(args.List(), nullptr), GDALWarpAppOptionsFree);
-        if (!warp) return {};
+        if (!warp)
+        {
+            loadTask.finish();
+            return {};
+        }
         GDALWarpAppOptionsSetProgress(warp.get(), [](double, const char*, void* data) {
             auto* callback = static_cast<ProgressCallback*>(data);
             return callback && callback->isCanceled() ? FALSE : TRUE;
         }, progress);
         GDALDatasetUniquePtr tile(GDALDataset::FromHandle(
             GDALWarp("", nullptr, int(handles.size()), handles.data(), warp.get(), nullptr)));
-        if (!tile || (progress && progress->isCanceled())) return {};
+        if (progress && progress->isCanceled())
+        {
+            loadTask.cancel();
+            return {};
+        }
+        if (!tile)
+        {
+            loadTask.finish();
+            return {};
+        }
 
         osg::ref_ptr<osg::HeightField> field = new osg::HeightField;
         field->allocate(size, size);
@@ -145,9 +168,18 @@ private:
         // GDAL rows start in the north; osgEarth height fields start in the south.
         if (tile->GetRasterBand(1)->RasterIO(GF_Read, 0, 0, size, size,
                 heights.data() + size * (size - 1), size, size, GDT_Float32,
-                sizeof(float), -static_cast<GSpacing>(size * sizeof(float)), nullptr) != CE_None) return {};
-        if (std::all_of(heights.begin(), heights.end(), [](float h) { return h == NO_DATA_VALUE; })) return {};
+                sizeof(float), -static_cast<GSpacing>(size * sizeof(float)), nullptr) != CE_None)
+        {
+            loadTask.finish();
+            return {};
+        }
+        if (std::all_of(heights.begin(), heights.end(), [](float h) { return h == NO_DATA_VALUE; }))
+        {
+            loadTask.finish();
+            return {};
+        }
         if (complete && cache_) cache_->write(cacheKey, field.get(), getReadOptions());
+        loadTask.finish();
         return GeoHeightField(field.get(), extent);
     }
 

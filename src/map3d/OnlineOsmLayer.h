@@ -12,6 +12,7 @@
 
 #include <QDateTime>
 #include "MapHttp.h"
+#include "map3d/Map3DLoadTracker.h"
 #include <QString>
 #include <memory>
 
@@ -23,8 +24,10 @@ public:
     static constexpr auto roadsName = "Online OSM roads";
     static constexpr auto waterName = "Online OSM water";
 
-    OnlineOsmLayer(bool roads, osgEarth::ImageLayer* offline)
-        : ImageLayer(&options_, &originalOptions_), roads_(roads), offline_(offline),
+    OnlineOsmLayer(bool roads, osgEarth::ImageLayer* offline, bool allowOfflineFallback = true)
+        : ImageLayer(&options_, &originalOptions_), roads_(roads),
+          offline_(allowOfflineFallback ? offline : nullptr),
+          allowOfflineFallback_(allowOfflineFallback),
           base_(qEnvironmentVariable("VAPORVIEW_OSM_VECTOR_BASE_URL",
                 QStringLiteral("https://vector.openstreetmap.org/shortbread_v1")).toStdString())
     {
@@ -46,18 +49,35 @@ public:
         fillStyle_.getOrCreate<PolygonSymbol>()->fill()->color() = Color("#3f86b980");
     }
 
+    bool allowsOfflineFallback() const { return allowOfflineFallback_; }
+
     osgEarth::GeoImage createImageImplementation(const osgEarth::TileKey& key,
                                                   osgEarth::ProgressCallback* progress) const override
     {
         using namespace osgEarth;
+        if (progress && progress->isCanceled()) return GeoImage::INVALID;
+        ScopedMapLoadTask loadTask(MapLoadCategory::Osm);
         const TileKey source = key.getLOD() > 14 ? key.createAncestorKey(14) : key;
         const std::string url = base_ + "/" + std::to_string(source.getLOD()) + "/"
             + std::to_string(source.getTileX()) + "/" + std::to_string(source.getTileY()) + ".mvt";
         FeatureList features;
         const bool loaded = readFeatures(url, source, progress, features);
-        if (progress && progress->isCanceled()) return GeoImage::INVALID;
+        if (progress && progress->isCanceled())
+        {
+            loadTask.cancel();
+            return GeoImage::INVALID;
+        }
         if (!loaded)
-            return offline_ && offline_->isOpen() ? offline_->createImage(key, progress) : GeoImage::INVALID;
+        {
+            auto fallback = offline_ && offline_->isOpen() ? offline_->createImage(key, progress) : GeoImage::INVALID;
+            if (progress && progress->isCanceled())
+            {
+                loadTask.cancel();
+                return GeoImage::INVALID;
+            }
+            loadTask.finish();
+            return fallback;
+        }
 
         FeatureList polygons, lines;
         for (const auto& feature : features)
@@ -73,6 +93,12 @@ public:
         FilterContext context;
         raster.render(polygons, fillStyle_, context);
         raster.render(lines, lineStyle_, context);
+        if (progress && progress->isCanceled())
+        {
+            loadTask.cancel();
+            return GeoImage::INVALID;
+        }
+        loadTask.finish();
         return raster.finalize();
     }
 
@@ -121,6 +147,7 @@ private:
     const Options originalOptions_;
     bool roads_;
     osg::ref_ptr<osgEarth::ImageLayer> offline_;
+    bool allowOfflineFallback_ = true;
     std::string base_;
     osg::ref_ptr<osgEarth::CacheBin> tiles_;
     osgEarth::Style lineStyle_, fillStyle_;

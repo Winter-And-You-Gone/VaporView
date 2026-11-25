@@ -1055,8 +1055,11 @@ void MainWindow::updateResponsiveHomeLayout()
     {
         const int preferredTcpWaveHeight = state_->tcp_wave_panel_->preferredPanelHeight();
         const bool useExpandedTcpWaveHeight = state_->tcp_wave_panel_->usesExpandedPanelHeight();
+        const int expandedMinimumHeight = state_->tcp_wave_panel_->isFpgaMode()
+            ? kTcpWaveCardMinHeight
+            : (compact ? kCompactTcpWaveCardMinHeight : kTcpWaveCardMinHeight);
         const int tcpWaveMinimumHeight = std::max(
-            useExpandedTcpWaveHeight ? (compact ? kCompactTcpWaveCardMinHeight : kTcpWaveCardMinHeight) : preferredTcpWaveHeight,
+            useExpandedTcpWaveHeight ? expandedMinimumHeight : preferredTcpWaveHeight,
             preferredTcpWaveHeight);
         state_->tcp_wave_group_->setFixedHeight(tcpWaveMinimumHeight);
     }
@@ -1333,6 +1336,7 @@ void MainWindow::updateResponsiveHomeLayout()
     };
 
     clearFixedHeight(state_->epsilon_group_);
+    clearFixedHeight(state_->home_motion_card_);
     clearFixedHeight(state_->home_sensor_column_);
     clearFixedHeight(state_->sensor_row_widget_);
     if (!preserveDataCardHeight)

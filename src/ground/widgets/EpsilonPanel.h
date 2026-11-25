@@ -827,8 +827,8 @@ private:
         {
             setCardsExpandable(true);
             // Keep the two status cards touching while they fill the row.
-            section_cards_.at(0)->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-            section_cards_.at(1)->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+            section_cards_.at(0)->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+            section_cards_.at(1)->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
             cards_layout_->setColumnMinimumWidth(0, widths.at(0));
             cards_layout_->setColumnMinimumWidth(1, widths.at(1));
             cards_layout_->setColumnStretch(0, std::max(1, widths.at(0)));
@@ -989,8 +989,7 @@ private:
         addField(positionGrid, row++, 0, QStringLiteral("dop"), QStringLiteral("HDOP/VDOP:"), QStringLiteral("HDOP/VDOP:"), kEpsilonPositionValueColumnWidth);
 
         updateCardGridLayout(true);
-        layout->addLayout(cards_layout_, 0);
-        layout->addStretch(1);
+        layout->addLayout(cards_layout_, 1);
     }
 
     QLabel *rate_label_;

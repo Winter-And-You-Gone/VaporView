@@ -23,16 +23,17 @@ HomeMotionPanel::HomeMotionPanel(MotionControlPage *motionPage, QComboBox *chann
       channel_combo_(channelCombo), port_combo_(portCombo)
 {
     setObjectName(QStringLiteral("homeMotionPanel"));
+    setProperty("styleSheetManagedHeight", true);
     auto *layout = new QVBoxLayout(this);
-    layout->setContentsMargins(12, 8, 12, 10);
-    layout->setSpacing(6);
+    layout->setContentsMargins(8, 4, 8, 6);
+    layout->setSpacing(4);
     // The grid can wrap, so its current one-row width must not constrain the card.
     layout->setSizeConstraint(QLayout::SetNoConstraint);
 
     fields_ = new QGridLayout;
     auto *fields = fields_;
     fields->setHorizontalSpacing(6);
-    fields->setVerticalSpacing(6);
+    fields->setVerticalSpacing(4);
     position_label_ = new QLabel(this);
     fields->addWidget(position_label_, 0, 0);
     position_ = new QLabel(this);
@@ -57,7 +58,6 @@ HomeMotionPanel::HomeMotionPanel(MotionControlPage *motionPage, QComboBox *chann
     fields->addWidget(configure_, 0, 7);
     fields->setColumnStretch(8, 1);
     layout->addLayout(fields);
-    layout->addStretch();
 
     connect(stop_, &QPushButton::clicked, this, [this] {
         if (session_->isUiTestMode() || !VaporView::settingsWritesSuspended())
@@ -142,7 +142,8 @@ void HomeMotionPanel::updateControlsLayout()
         singleRowWidth += QWidgetItem(control).minimumSize().width();
 
     const bool wrap = width() < singleRowWidth;
-    if (wrap != controls_wrapped_)
+    const bool wrappedChanged = wrap != controls_wrapped_;
+    if (wrappedChanged)
     {
         controls_wrapped_ = wrap;
         for (QWidget *control : controls)
@@ -156,7 +157,17 @@ void HomeMotionPanel::updateControlsLayout()
         updateGeometry();
     }
     // The layout leaves width unconstrained for wrapping, but both rows need their full minimum height.
-    setMinimumHeight(layout()->minimumSize().height());
+    const int previousMinHeight = minimumHeight();
+    const int nextMinHeight = layout()->minimumSize().height();
+    if (nextMinHeight != previousMinHeight)
+    {
+        setMinimumHeight(nextMinHeight);
+        updateGeometry();
+    }
+    if (wrappedChanged || nextMinHeight != previousMinHeight)
+    {
+        emit layoutHeightChanged();
+    }
 }
 
 void HomeMotionPanel::refresh()

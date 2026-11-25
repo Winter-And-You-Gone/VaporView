@@ -2,6 +2,7 @@
 
 #include "MapHttp.h"
 #include "GroundDetailEllipse.h"
+#include "map3d/Map3DLoadTracker.h"
 #include <osgEarth/AltitudeSymbol>
 #include <osgEarth/ExtrusionSymbol>
 #include <osgEarth/FilterContext>
@@ -55,6 +56,7 @@ public:
     }
 
     const osgEarth::Profile* getProfile() const override { return profile_.get(); }
+    bool hasLocalCoverage() const { return !localCoverage_.isEmpty(); }
 
 protected:
     void create() override
@@ -110,13 +112,32 @@ protected:
         if (localCoverage_.contains(rect)) return {};
         const bool nearLocal = localCoverage_.intersects(rect);
 
+        ScopedMapLoadTask loadTask(MapLoadCategory::Buildings);
         QString url = tileTemplate(progress);
-        if (url.isEmpty() || (progress && progress->isCanceled())) return {};
+        if (progress && progress->isCanceled())
+        {
+            loadTask.cancel();
+            return {};
+        }
+        if (url.isEmpty())
+        {
+            loadTask.finish();
+            return {};
+        }
         url.replace("{z}", QString::number(sourceLevel)).replace("{x}", QString::number(key.getTileX()))
             .replace("{y}", QString::number(key.getTileY()));
         const auto tile = mapHttpGet(QNetworkRequest(QUrl(url)), progress);
+        if (progress && progress->isCanceled())
+        {
+            loadTask.cancel();
+            return {};
+        }
         FeatureList decoded, buildings;
-        if (tile.body.isEmpty() || !MVT::readTile(tile.body.toStdString(), key, decoded, {"building"})) return {};
+        if (tile.body.isEmpty() || !MVT::readTile(tile.body.toStdString(), key, decoded, {"building"}))
+        {
+            loadTask.finish();
+            return {};
+        }
         for (auto& feature : decoded)
         {
             auto* shape = feature->getGeometry();
@@ -142,12 +163,22 @@ protected:
             feature->set("wall_height", height);
             buildings.push_back(feature);
         }
-        if (buildings.empty() || (progress && progress->isCanceled())) return {};
+        if (progress && progress->isCanceled())
+        {
+            loadTask.cancel();
+            return {};
+        }
+        if (buildings.empty())
+        {
+            loadTask.finish();
+            return {};
+        }
         osg::ref_ptr<Session> session = new Session(map.get());
         osg::ref_ptr<FeatureProfile> features = new FeatureProfile(extent);
         FilterContext context(session.get(), features.get(), extent);
         auto mesh = GeometryCompiler().compile(buildings, style_, context);
         if (mesh && ellipse_) mesh->addCullCallback(new BuildingEllipseCull(ellipse_));
+        loadTask.finish();
         return mesh;
     }
 

@@ -10,6 +10,7 @@
 #include <QByteArray>
 #include <QDateTime>
 #include <QElapsedTimer>
+#include <QGroupBox>
 #include <QHostAddress>
 #include <QImage>
 #include <QLabel>
@@ -735,6 +736,55 @@ void testFpgaWaveDisplaySelection()
     clickRow(defaultView);
     checkPlots(60);
     panel.setWaterCalibration("cal-a", "sample.vcal", "ppmv", false, {});
+    auto *calFileLabel = panel.findChild<QLabel *>(QStringLiteral("waterCalibrationFileLabel"));
+    QPushButton *calButton = nullptr;
+    for (auto *btn : panel.findChildren<QPushButton *>(QStringLiteral("compactTcpButton"))) {
+        if (btn->property("waterCalibrationButton").toBool()) {
+            calButton = btn;
+            break;
+        }
+    }
+    require(calButton && calFileLabel, "water concentration card has separate calibration button and file label");
+    panel.setEnglish(false);
+    require(calButton->text() == QStringLiteral("定标文件")
+                && calFileLabel->text() == QStringLiteral("：sample.vcal"),
+            "calibration button keeps fixed label while filename displays beside it in Chinese");
+    panel.setEnglish(true);
+    require(calButton->text() == QStringLiteral("Calibration File")
+                && calFileLabel->text() == QStringLiteral(": sample.vcal"),
+            "calibration button and filename label translate cleanly in English");
+    panel.setWaterCalibration({}, {}, {}, false, {});
+    require(calButton->text() == QStringLiteral("Calibration File")
+                && calFileLabel->text() == QStringLiteral(": Not selected"),
+            "clearing calibration shows unselected text beside the button");
+    panel.setEnglish(false);
+    panel.setWaterCalibration("cal-a", "sample.vcal", "ppmv", false, {});
+
+    // Verify sub-card title bar height and top inset stay identical across compact/default and wide/maximized sizes.
+    const auto collectHeaderMetrics = [&panel]() {
+        QList<std::pair<int, int>> metrics;
+        for (auto *box : panel.findChildren<QGroupBox *>(QStringLiteral("sensorGroupBox"))) {
+            if (!box->isVisibleTo(&panel)) continue;
+            auto *bar = box->findChild<QWidget *>(QStringLiteral("sectionTitleBar"), Qt::FindDirectChildrenOnly);
+            if (!bar) continue;
+            metrics.append(std::make_pair(bar->geometry().top(), bar->height()));
+        }
+        return metrics;
+    };
+    panel.setCompactLayout(true);
+    panel.resize(1200, 560);
+    QApplication::processEvents();
+    const auto compactHeaders = collectHeaderMetrics();
+    panel.setCompactLayout(false);
+    panel.resize(1860, 460);
+    QApplication::processEvents();
+    const auto wideHeaders = collectHeaderMetrics();
+    require(!compactHeaders.isEmpty() && compactHeaders == wideHeaders,
+            "sub-card title bar height and top position stay invariant between default and maximized sizes");
+    for (const auto &entry : compactHeaders) {
+        require(entry.first <= 4 && entry.second == compactHeaders.first().second,
+                "every sub-card title bar stays pinned to the card top with uniform height");
+    }
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     panel.appendWaterSample(0, "one", now, 12.5, 30.0);
     panel.appendWaterSample(0, "one", now, 12.5, 30.0);

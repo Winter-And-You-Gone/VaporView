@@ -134,7 +134,7 @@ public:
         {
             // A zero system menu delay would close a branch as soon as the
             // pointer crosses another row on its way into the child menu.
-            return hint == SH_Menu_SubMenuSloppyCloseTimeout ? std::max(value, 500) : 0;
+            return hint == SH_Menu_SubMenuSloppyCloseTimeout ? std::max(value, 800) : 0;
         }
         return value;
     }

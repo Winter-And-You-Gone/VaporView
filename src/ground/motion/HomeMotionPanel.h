@@ -26,6 +26,7 @@ public:
 
 signals:
     void openConfigurationRequested();
+    void layoutHeightChanged();
 
 protected:
     void resizeEvent(QResizeEvent *event) override;

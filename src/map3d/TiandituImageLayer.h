@@ -1,5 +1,6 @@
 #pragma once
 
+#include "map3d/Map3DLoadTracker.h"
 #include <osg/Image>
 #include <osgEarth/XYZ>
 #include <osgEarth/Progress>
@@ -58,14 +59,22 @@ public:
     osgEarth::GeoImage createImageImplementation(const osgEarth::TileKey& key,
                                                 osgEarth::ProgressCallback* progress) const override
     {
+        if (progress && progress->isCanceled()) return osgEarth::GeoImage::INVALID;
+        ScopedMapLoadTask loadTask(MapLoadCategory::Imagery);
         ++requests;
         auto image = osgEarth::XYZImageLayer::createImageImplementation(key, progress);
-        if (progress && progress->isCanceled()) return osgEarth::GeoImage::INVALID;
+        if (progress && progress->isCanceled())
+        {
+            loadTask.cancel();
+            return osgEarth::GeoImage::INVALID;
+        }
         if (!image.valid() || isTiandituNoImageryTile(image.getImage()))
         {
             ++failures;
+            loadTask.finish();
             return osgEarth::GeoImage::INVALID;
         }
+        loadTask.finish();
         return image;
     }
 

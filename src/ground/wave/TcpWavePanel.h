@@ -53,6 +53,7 @@ public:
     bool usesExpandedPanelHeight() const;
     void setRemoteSkyMode(bool enabled);
     void setFpgaMode(bool enabled);
+    bool isFpgaMode() const { return fpga_mode_; }
     void setFpgaAcquisitionState(bool available, bool busy, bool acquiring, bool rawEnabled);
     void setFpgaWaveform(quint16 source, const QVector<QVector<double>> &samples,
                          const QStringList &components, const QString &detail, quint32 totalPoints, bool preview = false);
@@ -253,6 +254,7 @@ private:
     QLabel *water_profile_title_ = nullptr;
     QLabel *water_profile_axes_ = nullptr;
     QPushButton *water_calibration_button_ = nullptr;
+    QLabel *water_calibration_file_label_ = nullptr;
     PeakTrendPlotWidget *water_concentration_plot_ = nullptr;
     WaterProfilePlotWidget *water_profile_plot_ = nullptr;
     QString water_calibration_key_, water_calibration_name_, water_unit_, water_calibration_detail_;

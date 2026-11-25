@@ -773,29 +773,36 @@ int main()
     selectionLayer.setSelectedSampleIndex(1);
     require(selectionLayer.selectedSampleIndex() == 1, "trajectory stores selected sample index");
     require(selectionGeode->getNumDrawables() == 3,
-            "selected sample adds a highlighted solid sphere drawable");
-    auto* selectedSphereGeometry = dynamic_cast<osg::Geometry*>(selectionGeode->getDrawable(2));
-    require(selectedSphereGeometry != nullptr
-                && selectedSphereGeometry->getVertexArray() != nullptr
-                && selectedSphereGeometry->getVertexArray()->getNumElements() == 42,
-            "selected sample uses the same smooth icosphere mesh");
-    const auto* selectedSphereVertices =
-        dynamic_cast<const osg::Vec3dArray*>(selectedSphereGeometry->getVertexArray());
+            "selected sample adds a halo ring drawable without enlarging the point");
+    auto* selectedHaloGeometry = dynamic_cast<osg::Geometry*>(selectionGeode->getDrawable(2));
+    require(selectedHaloGeometry != nullptr
+                && selectedHaloGeometry->getVertexArray() != nullptr
+                && selectedHaloGeometry->getVertexArray()->getNumElements() == 4
+                && !selectedHaloGeometry->isCullingActive(),
+            "selected sample uses a screen-space quad halo ring centered on the sample");
+    const auto* selectedHaloVertices =
+        dynamic_cast<const osg::Vec3dArray*>(selectedHaloGeometry->getVertexArray());
     osg::Vec3d selectedPosition;
     require(selectionLayer.displayPositionForSample(1, selectedPosition)
                 && nearlyEqual(selectedPosition.x(), 0.5)
                 && nearlyEqual(selectedPosition.y(), 1.0)
                 && nearlyEqual(selectedPosition.z(), 10.0),
             "selected sample display position is available for picking");
-    require(selectedSphereVertices != nullptr
-                && nearlyEqual((selectedSphereVertices->front() - selectedPosition).length(),
-                               1.0,
+    require(selectedHaloVertices != nullptr
+                && nearlyEqual((selectedHaloVertices->front() - selectedPosition).length(),
+                               0.0,
                                1.0e-9),
-            "selected sphere keeps a one-metre highlight radius");
+            "selected halo ring stays anchored directly at the original sample position");
+    require(!selectionLayer.selectedMarkerHovered(),
+            "selected halo ring starts unhovered");
+    selectionLayer.setSelectedMarkerHovered(true);
+    require(selectionLayer.selectedMarkerHovered(),
+            "selected halo ring tracks popup hover highlight state");
     selectionLayer.setSelectedSampleIndex(-1);
     require(selectionLayer.selectedSampleIndex() == -1
+                && !selectionLayer.selectedMarkerHovered()
                 && selectionGeode->getNumDrawables() == 2,
-            "clearing selection removes the highlighted sphere drawable");
+            "clearing selection removes the halo ring drawable and resets hover state");
 
     layer.clear();
     require(layer.sampleCount() == 0, "clear removes samples");

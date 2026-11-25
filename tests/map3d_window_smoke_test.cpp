@@ -6,6 +6,7 @@
 #include "shared/theme/AppTheme.h"
 #include "geo/GeoTypes.h"
 #include "map3d/Map3DWindow.h"
+#include "map3d/Map3DLoadTracker.h"
 #include "map3d/MapResourceDialog.h"
 #include "map3d/Map3DRuntime.h"
 #include "map3d/EarthProjectionProfile.h"
@@ -821,6 +822,120 @@ int main(int argc, char** argv)
     require(!resourcesMenu->geometry().intersects(imageryMenu->geometry()),
             "third level menu does not cover its parent menu or arrow");
     require(!imageryMenu->toolTipsVisible(), "imagery menu does not show obstructing tooltips");
+    auto* autoImagery = window.findChild<QAction*>(QStringLiteral("map3DAutoImageryAction"));
+    require(autoImagery && autoImagery->isCheckable() && autoImagery->isChecked()
+                && autoImagery->text() == QStringLiteral("自动（默认）"),
+            "imagery menu defaults to automatic selection");
+
+    auto* baseMapMenu = window.findChild<QMenu*>(QStringLiteral("map3DBaseMapSourceMenu"));
+    auto* demMenu = window.findChild<QMenu*>(QStringLiteral("map3DDemSourceMenu"));
+    auto* osmMenu = window.findChild<QMenu*>(QStringLiteral("map3DOsmSourceMenu"));
+    auto* buildingsMenu = window.findChild<QMenu*>(QStringLiteral("map3DBuildingsSourceMenu"));
+    require(baseMapMenu && demMenu && osmMenu && buildingsMenu,
+            "all map resources expose manual source selector submenus under Map Resources");
+    for (QMenu* subMenu : {baseMapMenu, demMenu, osmMenu, buildingsMenu})
+    {
+        QMetaObject::invokeMethod(subMenu, "aboutToShow", Qt::DirectConnection);
+        require(!subMenu->actions().isEmpty() && subMenu->actions().first()->isCheckable()
+                    && subMenu->actions().first()->isChecked()
+                    && subMenu->actions().first()->text() == QStringLiteral("自动（默认）"),
+                "each resource source submenu defaults to Auto");
+    }
+    auto* demOnlineCopernicus = window.findChild<QAction*>(QStringLiteral("map3DDemSource_online_copernicus"));
+    auto* osmOnline = window.findChild<QAction*>(QStringLiteral("map3DOsmSource_online_osm"));
+    auto* buildingsOnline = window.findChild<QAction*>(QStringLiteral("map3DBuildingsSource_online_openfreemap"));
+    auto* baseGlobe = window.findChild<QAction*>(QStringLiteral("map3DBaseMapSource_builtin_globe"));
+    require(demOnlineCopernicus && demOnlineCopernicus->isEnabled()
+                && osmOnline && osmOnline->isEnabled()
+                && buildingsOnline && buildingsOnline->isEnabled()
+                && baseGlobe && baseGlobe->isEnabled(),
+            "manual data source options are enabled when available");
+    demOnlineCopernicus->trigger();
+    osmOnline->trigger();
+    buildingsOnline->trigger();
+    baseGlobe->trigger();
+    require(demOnlineCopernicus->isChecked() && osmOnline->isChecked()
+                && buildingsOnline->isChecked() && baseGlobe->isChecked(),
+            "manual data source choices can be selected and become checked");
+    // Restore automatic defaults and initial layer state so later assertions start clean.
+    baseMapMenu->actions().first()->trigger();
+    demMenu->actions().first()->trigger();
+    osmMenu->actions().first()->trigger();
+    buildingsMenu->actions().first()->trigger();
+    actionByName(window, QStringLiteral("map3DLayer_buildings3D"))->setChecked(false);
+    require(baseMapMenu->actions().first()->isChecked()
+                && demMenu->actions().first()->isChecked()
+                && osmMenu->actions().first()->isChecked()
+                && buildingsMenu->actions().first()->isChecked(),
+            "clearing manual overrides restores automatic degradation defaults");
+
+    auto* cornerControls = window.findChild<QWidget*>(QStringLiteral("map3DCornerControls"));
+    require(cornerControls && cornerControls->testAttribute(Qt::WA_TranslucentBackground)
+                && !cornerControls->autoFillBackground()
+                && cornerControls->styleSheet().contains(QStringLiteral("background: transparent")),
+            "floating corner controls use transparent backing over the map");
+
+    auto* mapStatus = statusLabel(window);
+    require(mapStatus
+                && !mapStatus->text().contains(QStringLiteral("热力"))
+                && !mapStatus->text().contains(QStringLiteral("湿度"))
+                && !mapStatus->text().contains(QStringLiteral("温度"))
+                && !mapStatus->text().contains(QStringLiteral("→")),
+            "bottom status bar excludes unrelated telemetry and fallback degradation chains");
+
+    auto* loadingBubble = window.findChild<QWidget*>(QStringLiteral("map3DLoadingProgressBubble"));
+    auto* loadingLabel = window.findChild<QLabel*>(QStringLiteral("map3DLoadingProgressLabel"));
+    auto* loadingBar = window.findChild<QProgressBar*>(QStringLiteral("map3DLoadingProgressBar"));
+    require(loadingBubble && loadingLabel && loadingBar && !loadingBubble->isVisible(),
+            "top-right map loading progress bubble starts hidden");
+    {
+        VaporView::Map3D::ScopedMapLoadTask osmTask(VaporView::Map3D::MapLoadCategory::Osm);
+        VaporView::Map3D::ScopedMapLoadTask demTask(VaporView::Map3D::MapLoadCategory::Dem);
+        demTask.finish();
+        QElapsedTimer waitTimer;
+        waitTimer.start();
+        while (!loadingBubble->isVisible() && waitTimer.elapsed() < 500)
+        {
+            QCoreApplication::processEvents();
+            QThread::msleep(15);
+        }
+        require(loadingBubble->isVisible()
+                    && loadingLabel->text().contains(QStringLiteral("OSM"))
+                    && loadingLabel->text().contains(QStringLiteral("50%"))
+                    && loadingBar->value() == 50
+                    && loadingBubble->geometry().left() > window.centralWidget()->width() / 2
+                    && loadingBubble->geometry().top() <= 24,
+                "loading bubble displays resource progress in the top-right corner");
+        // Interruption / cancellation must hide the bubble immediately.
+        osmTask.cancel();
+        waitTimer.restart();
+        while (loadingBubble->isVisible() && waitTimer.elapsed() < 500)
+        {
+            QCoreApplication::processEvents();
+            QThread::msleep(15);
+        }
+        require(!loadingBubble->isVisible(),
+                "interrupted map resource load disappears immediately");
+    }
+    {
+        VaporView::Map3D::ScopedMapLoadTask demTask(VaporView::Map3D::MapLoadCategory::Dem);
+        QElapsedTimer waitTimer;
+        waitTimer.start();
+        while (!loadingBubble->isVisible() && waitTimer.elapsed() < 500)
+        {
+            QCoreApplication::processEvents();
+            QThread::msleep(15);
+        }
+        require(loadingBubble->isVisible(), "single active load shows loading bubble");
+        demTask.finish();
+        waitTimer.restart();
+        while (loadingBubble->isVisible() && waitTimer.elapsed() < 500)
+        {
+            QCoreApplication::processEvents();
+            QThread::msleep(15);
+        }
+        require(!loadingBubble->isVisible(), "completed map resource load disappears immediately");
+    }
     for (QAction* action : imageryMenu->actions())
         require(!qobject_cast<QWidgetAction*>(action), "imagery submenu uses native menu rows");
     QHelpEvent tooltipEvent(QEvent::ToolTip, QPoint(20, 20), imageryMenu->mapToGlobal(QPoint(20, 20)));

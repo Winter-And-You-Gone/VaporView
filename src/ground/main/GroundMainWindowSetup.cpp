@@ -2580,6 +2580,8 @@ void MainWindow::setupCentralWidget()
     homeEmMotorCard->findChild<QWidget *>(QStringLiteral("homeEmMotorBody"))->layout()->addWidget(state_->home_motion_panel_);
     connect(state_->home_motion_panel_, &VaporView::Ground::Motion::HomeMotionPanel::openConfigurationRequested,
             state_->device_config_nav_btn_, &QPushButton::click);
+    connect(state_->home_motion_panel_, &VaporView::Ground::Motion::HomeMotionPanel::layoutHeightChanged,
+            this, &MainWindow::queueResponsiveHomeLayoutRefresh);
     connect(state_->motion_page_->session(), &VaporView::Ground::Motion::EmFwc3Session::stateChanged,
             this, &MainWindow::updateHomeDeviceStatusCapsules);
     connect(state_->motion_page_, &VaporView::Ground::Motion::MotionControlPage::portChanged,
@@ -5549,15 +5551,15 @@ void MainWindow::setupDataPanels()
     motionTitleLayout->addStretch();
     motionLayout->addWidget(motionTitleBar);
     auto *subcards = new QVBoxLayout;
-    subcards->setContentsMargins(8, 8, 8, 8);
-    subcards->setSpacing(8);
-    motionLayout->addLayout(subcards);
-    motionLayout->addStretch();
+    subcards->setContentsMargins(2, 2, 2, 2);
+    subcards->setSpacing(4);
+    motionLayout->addLayout(subcards, 1);
     state_->home_motion_subcards_layout_ = subcards;
 
     auto *emMotorCard = new QFrame(state_->home_motion_card_);
     emMotorCard->setObjectName(QStringLiteral("homeEmMotorCard"));
     emMotorCard->setProperty("epsilonSubcard", true);
+    emMotorCard->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     auto *emMotorLayout = new QHBoxLayout(emMotorCard);
     emMotorLayout->setContentsMargins(2, 2, 2, 2);
     emMotorLayout->setSpacing(2);
@@ -5576,7 +5578,7 @@ void MainWindow::setupDataPanels()
     emMotorLayout->addWidget(emMotorBody, 1);
     auto *emMotorConnectionRow = new QWidget(emMotorBody);
     auto *emMotorConnectionLayout = new QHBoxLayout(emMotorConnectionRow);
-    emMotorConnectionLayout->setContentsMargins(6, 4, 6, 0);
+    emMotorConnectionLayout->setContentsMargins(8, 4, 8, 0);
     emMotorConnectionLayout->setSpacing(8);
     auto *motionChannelCombo = createSingleLevelPopupComboBox(emMotorConnectionRow, false, true);
     motionChannelCombo->setObjectName(QStringLiteral("homeMotionChannelCombo"));
@@ -5612,7 +5614,7 @@ void MainWindow::setupDataPanels()
     motionConnection->setAlignment(Qt::AlignVCenter | Qt::AlignRight);
     emMotorConnectionLayout->addWidget(motionConnection, 0, Qt::AlignVCenter | Qt::AlignRight);
     emMotorBodyLayout->addWidget(emMotorConnectionRow);
-    subcards->addWidget(emMotorCard);
+    subcards->addWidget(emMotorCard, 1);
     sensorColumnLayout->addWidget(state_->home_motion_card_, 1);
     state_->sensor_card_splitter_->addWidget(state_->home_sensor_column_);
 

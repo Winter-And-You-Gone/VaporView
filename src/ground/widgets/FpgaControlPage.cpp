@@ -877,6 +877,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout, QVB
             auto *homeCard = new QFrame(homeMotionLayout->parentWidget());
             homeCard->setObjectName(QStringLiteral("homeStepperMotorCard"));
             homeCard->setProperty("epsilonSubcard", true);
+            homeCard->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
             auto *homeRow = new QHBoxLayout(homeCard);
             homeRow->setContentsMargins(2, 2, 2, 2);
             homeRow->setSpacing(2);
@@ -890,8 +891,8 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout, QVB
             auto *homeBody = new QWidget(homeCard);
             homeBody->setObjectName(QStringLiteral("homeStepperMotorBody"));
             auto *grid = new QGridLayout(homeBody);
-            grid->setContentsMargins(6, 6, 6, 6);
-            grid->setSpacing(6);
+            grid->setContentsMargins(8, 4, 8, 6);
+            grid->setSpacing(4);
             auto *homeStatus = new QLabel(homeBody);
             homeStatus->setObjectName(QStringLiteral("fpgaMotorSafetyStatus"));
             homeStatus->setWordWrap(true);
@@ -926,7 +927,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout, QVB
             grid->setColumnStretch(0, 1);
             grid->setColumnStretch(1, 1);
             homeRow->addWidget(homeBody, 1);
-            homeMotionLayout->addWidget(homeCard);
+            homeMotionLayout->addWidget(homeCard, 1);
             motorViews_.append({homeCard, homeStatus, homeProgress, nullptr, nullptr});
             homeMotorStop_ = homeStop;
         }
