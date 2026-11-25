@@ -184,6 +184,54 @@ try
         measurement.value("unit") == QLatin1String("native") && measurement.value("frameSequence").toInt() == 6,
         "HTTP returns the same native-peak measurement");
 
+    const auto previewEvent = [&](MsgType type, const QByteArray& payload, quint16 seq) {
+        aircraft->write(codec.encodeFrame(type, payload, seq, 3200));
+        require(waitUntil([&] { return events.last().value("frameSequence").toInt() == seq; }),
+                "preview frame reaches browser stream");
+        return events.last();
+    };
+    DownsampledWaveform tcp;
+    tcp.channel_id = 2;
+    tcp.x_start = 2.5f;
+    tcp.x_step = .5f;
+    tcp.original_point_count = tcp.downsampled_point_count = 3;
+    tcp.samples = {-4, 0, 8};
+    auto preview = previewEvent(MsgType::WaveformDownsampled, TelemetryCodec::serializeDownsampledWaveform(tcp), 41);
+    require(preview.value("source") == "tcp" && preview.value("points").toArray() == QJsonArray{-4, 0, 8} &&
+            preview.value("xStep").toDouble() == .5, "TCP sample amplitudes and spacing are preserved");
+
+    FpgaWave::CompletedStream raw;
+    raw.source = 0x20;
+    raw.message = 0x1000;
+    raw.schema = 2;
+    raw.format = 0;
+    raw.adcBits = 24;
+    raw.bytesPerPoint = 4;
+    raw.rate = 100;
+    raw.totalPoints = 3;
+    raw.complete = true;
+    raw.signed32Samples = {-100, 0, 50};
+    preview = previewEvent(MsgType::FpgaWaveformPreview, FpgaRemote::encodeWaveformPreview(raw), 42);
+    require(preview.value("source") == "fpga" && preview.value("valid").toBool() &&
+            preview.value("points").toArray() == QJsonArray{-100, 0, 50}, "signed ADC preview reaches WS");
+
+    FpgaSensor::Reading internal;
+    internal.source = 0x43;
+    internal.validity = {true, true, true, true};
+    internal.pressurePa = 101325;
+    auto reading = previewEvent(MsgType::FpgaSensor, FpgaRemote::encodeSensor(internal, 3300), 43);
+    require(reading.value("device") == "BMP390" && reading.value("pressureHpa").toDouble() == 1013.25,
+            "FPGA internal pressure uses hPa");
+    internal.source = 0x44;
+    internal.temperatureC = 0;
+    internal.humidityPct = 38;
+    reading = previewEvent(MsgType::InternalEnvironment, FpgaRemote::encodeSensor(internal, 3400), 44);
+    require(reading.value("device") == "SHT45" && reading.value("temperatureC") == QJsonValue(0) &&
+            reading.value("humidityPercent").toDouble() == 38, "direct internal readings include valid zero");
+    internal.validity.crc = false;
+    reading = previewEvent(MsgType::InternalEnvironment, FpgaRemote::encodeSensor(internal, 3500), 45);
+    require(reading.value("temperatureC").isNull(), "invalid internal sample clears the reading");
+
     TelemetryBasic basic;
     basic.host_time_us = 1794614400000000ULL;
     basic.validity_flags = BasicHasTemperature | BasicHasHumidity | BasicHasPressure | BasicHasPosition | BasicHasLidar;

@@ -122,6 +122,8 @@ function renderStatus(status, updateReadings = true) {
   show("session-name", hasStatus ? label(status.sessionName || null) : "—");
   fpgaConnected = hasStatus && Array.isArray(status.devices) &&
     status.devices.some((device) => device.device === 8 && device.state === 3);
+  if (!linkConnected) dashboard.clear();
+  else if (hasStatus && !fpgaConnected) dashboard.clearFpga();
   const devices = element("device-rows");
   const visibleDevices = hasStatus && Array.isArray(status.devices)
     ? status.devices.filter((device) => Object.hasOwn(deviceNames, device.device)) : [];
@@ -144,9 +146,15 @@ function renderSensors(sensors) {
     ["temperature", sensors?.temperatureC, 2, "°C"],
     ["humidity", sensors?.humidityPercent, 2, "% RH"],
     ["pressure", sensors?.pressureHpa, 2, "hPa"],
-    ["latitude", sensors?.latitudeDeg, 6, "°", "纬度 "],
-    ["longitude", sensors?.longitudeDeg, 6, "°", "经度 "],
-    ["altitude", sensors?.heightM, 2, "m", "高度 "],
+    ["latitude", sensors?.latitudeDeg, 6, "°"],
+    ["longitude", sensors?.longitudeDeg, 6, "°"],
+    ["altitude", sensors?.heightM, 2, "m"],
+    ["ecef-x", sensors?.ecefX, 2, "m"],
+    ["ecef-y", sensors?.ecefY, 2, "m"],
+    ["ecef-z", sensors?.ecefZ, 2, "m"],
+    ["satellites", sensors?.satellites, 0, "颗"],
+    ["hacc", sensors?.horizontalAccuracyM, 2, "m"],
+    ["vacc", sensors?.verticalAccuracyM, 2, "m"],
     ["distance", sensors?.lidarDistanceM, 2, "m"],
   ];
   for (const [id, value, precision, unit, prefix = ""] of readings) {
@@ -371,6 +379,8 @@ function disconnectStream(text = "已断开，可重新连接", tone = "") {
     clearTimeout(active.timeout);
     active.socket?.close();
   }
+  dashboard.clear();
+  renderSensors(null);
   show("stream-state", text, tone);
   scheduleTrend();
   syncButtons();
@@ -403,6 +413,8 @@ function connectStream() {
       if (stream !== active) return;
       try {
         const message = JSON.parse(event.data);
+        if (message.kind === "waveform") { dashboard.waveform(message); return; }
+        if (message.kind === "internalEnvironment") { dashboard.internal(message); return; }
         const eventNames = { status: "状态", measurement: "峰值", sensors: "传感器" };
         if (!Object.hasOwn(eventNames, message.kind)) return;
         show("stream-event", `${eventNames[message.kind]} #${label(message.sequence)}`);

@@ -79,8 +79,8 @@ async function verifySensorPanel(page, events, online) {
   const fields = [
     ["temperature", "temperatureC", 2, " °C"], ["humidity", "humidityPercent", 2, " % RH"],
     ["pressure", "pressureHpa", 2, " hPa"], ["distance", "lidarDistanceM", 2, " m"],
-    ["latitude", "latitudeDeg", 6, " °", "纬度 "], ["longitude", "longitudeDeg", 6, " °", "经度 "],
-    ["altitude", "heightM", 2, " m", "高度 "],
+    ["latitude", "latitudeDeg", 6, " °"], ["longitude", "longitudeDeg", 6, " °"],
+    ["altitude", "heightM", 2, " m"],
   ];
   const sensors = await waitFor("sensor readings and time from the same SkyCore frame", async () => {
     const display = await page.evaluate((ids) => ({
@@ -191,6 +191,8 @@ async function verify(rawOrigin, sessionRoot) {
     await waitText(page, "#gateway-state", "可达");
     await waitText(page, "#link-state", "已连接");
 
+    assert(await page.locator("#home-view").isVisible());
+    await page.locator('nav a[href="#gateway"]').click();
     await command(page, "#command-status", 10);
     const first = await waitStream(page, connections, 0);
     await waitText(page, "#telemetry-state", "已收到");
@@ -210,7 +212,13 @@ async function verify(rawOrigin, sessionRoot) {
       const events = second.events.filter((event) => event.kind === "measurement" && event.source === "fpga-cycle-feature" && event.valid);
       return events.length >= measurementLimit && events.slice(0, measurementLimit);
     });
+    await page.locator('nav a[href="#home"]').click();
     await verifySensorPanel(page, second.events, true);
+    await page.waitForFunction(() => [...document.querySelectorAll("#fpga-plots canvas")].some(c => Number(c.dataset.points) > 0));
+    assert(second.events.some(e => e.kind === "waveform" && e.source === "fpga" && e.points.length));
+    if (process.env.VAPORVIEW_TEST_BROWSER_SCREENSHOT)
+      await page.screenshot({ path: process.env.VAPORVIEW_TEST_BROWSER_SCREENSHOT, fullPage: true });
+    await page.locator('nav a[href="#gateway"]').click();
     await verifyDeviceTable(page);
     assert(!second.invalidEvent);
     for (let i = 1; i < second.events.length; ++i) {
@@ -274,10 +282,6 @@ async function verify(rawOrigin, sessionRoot) {
     await page.setViewportSize({ width: 390, height: 844 });
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "phone has no page-level horizontal overflow");
     await page.setViewportSize({ width: 1260, height: 980 });
-    if (process.env.VAPORVIEW_TEST_BROWSER_SCREENSHOT) {
-      await page.locator("#measurement-details summary").click();
-      await page.screenshot({ path: process.env.VAPORVIEW_TEST_BROWSER_SCREENSHOT, fullPage: true });
-    }
     await page.locator("#disconnect-stream").click();
     await waitFor("closing second WS connection", () => second.closed);
     await checkGatewayLayout(browser, origin.href);

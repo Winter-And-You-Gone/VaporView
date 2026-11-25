@@ -5,55 +5,64 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>VaporView 地面网关</title>
   <link rel="stylesheet" href="/style.css">
+  <script src="/dashboard.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
-  <main>
-    <header class="masthead">
-      <div>
-        <div class="product">VaporView</div>
-        <h1>地面网关</h1>
-      </div>
-      <span id="gateway-origin" class="mono"></span>
-    </header>
-
-    <dl class="status-grid" aria-label="网关和遥测状态">
-      <div><dt>HTTP 网关</dt><dd id="gateway-state">等待查询</dd></div>
-      <div><dt>机地数传</dt><dd id="link-state">未知</dd></div>
-      <div><dt>SkyCore 状态</dt><dd id="telemetry-state">未知</dd></div>
-      <div><dt>设备标识</dt><dd id="device-id" tabindex="0" class="mono">—</dd></div>
-      <div><dt>录制</dt><dd id="recording-state">—</dd></div>
-      <div><dt>Session</dt><dd id="session-name" tabindex="0" class="mono">—</dd></div>
-    </dl>
-
-    <section class="panel readings-panel" aria-labelledby="readings-title">
-      <div class="section-head">
-        <h2 id="readings-title">传感器读数</h2>
-        <time id="reading-time" class="reading-time mono" tabindex="0">等待测量</time>
-      </div>
-      <div class="readings-grid">
-        <section class="reading" aria-labelledby="reading-temperature-title">
-          <h3 id="reading-temperature-title">温湿度</h3>
-          <p id="reading-temperature" tabindex="0" class="reading-value mono">—</p>
-          <p id="reading-humidity" tabindex="0" class="reading-value mono">—</p>
+  <header class="masthead"><strong>VaporView</strong><h1>地面网关</h1><span id="gateway-origin" class="mono"></span></header>
+  <main class="shell">
+    <nav aria-label="页面"><a href="#home" aria-current="page">首页</a><a href="#gateway">网关调试</a></nav>
+    <div class="content">
+      <div class="page-head"><h2 id="page-title">数据首页</h2><time id="reading-time" class="mono" tabindex="0">等待测量</time></div>
+      <div class="desktop">
+        <div id="home-view">
+          <div class="sensor-columns">
+            <section class="panel"><h2>环境测量</h2>
+              <section class="instrument"><h3>HC2A · 环境温湿度</h3><dl><div><dt>温度</dt><dd id="reading-temperature" class="reading-value">—</dd></div>
+<div><dt>相对湿度</dt><dd id="reading-humidity" class="reading-value">—</dd></div></dl></section>
+              <section class="instrument"><h3>PTB210 / SDFM300</h3><dl><div><dt>环境气压</dt><dd id="reading-pressure" class="reading-value">—</dd></div>
+<div><dt>激光测距</dt><dd id="reading-distance" class="reading-value">—</dd></div></dl></section>
+              <section class="instrument"><h3>SHT45 / BMP390 · 机内环境</h3><dl><div><dt>机内温度</dt><dd id="reading-internal-temperature" class="reading-value">—</dd></div>
+<div><dt>机内湿度</dt><dd id="reading-internal-humidity" class="reading-value">—</dd></div>
+<div><dt>机内气压</dt><dd id="reading-internal-pressure" class="reading-value">—</dd></div></dl></section>
+            </section>
+            <section class="panel"><h2>EPSILON 三维定位</h2>
+              <section class="instrument"><h3>大地坐标</h3><dl><div><dt>纬度</dt><dd id="reading-latitude" class="reading-value">—</dd></div>
+<div><dt>经度</dt><dd id="reading-longitude" class="reading-value">—</dd></div>
+<div><dt>高度</dt><dd id="reading-altitude" class="reading-value">—</dd></div></dl></section>
+              <section class="instrument"><h3>地心地固坐标 · ECEF</h3><dl><div><dt>X</dt><dd id="reading-ecef-x" class="reading-value">—</dd></div>
+<div><dt>Y</dt><dd id="reading-ecef-y" class="reading-value">—</dd></div>
+<div><dt>Z</dt><dd id="reading-ecef-z" class="reading-value">—</dd></div></dl></section>
+              <section class="instrument"><h3>定位质量</h3><dl><div><dt>卫星数</dt><dd id="reading-satellites" class="reading-value">—</dd></div>
+<div><dt>水平精度</dt><dd id="reading-hacc" class="reading-value">—</dd></div>
+<div><dt>垂直精度</dt><dd id="reading-vacc" class="reading-value">—</dd></div></dl></section>
+            </section>
+          </div>
+          <section class="panel waves"><div class="section-head"><h2>实时波形</h2><label>来源 <select id="wave-source"><option value="fpga">FPGA · ADC / DLIA</option><option value="tcp">TCP 波形</option></select></label></div>
+            <div class="wave-grid" id="fpga-plots"><figure><figcaption>ADC · 0x20<span id="legend-32"></span></figcaption><canvas id="wave-32" role="img" aria-label="ADC · 0x20波形"></canvas><div class="wave-caption" id="info-32">等待预览帧</div></figure><figure><figcaption>ADC · 0x21<span id="legend-33"></span></figcaption><canvas id="wave-33" role="img" aria-label="ADC · 0x21波形"></canvas><div class="wave-caption" id="info-33">等待预览帧</div></figure><figure><figcaption>DLIA · 816 nm<span id="legend-49"></span></figcaption><canvas id="wave-49" role="img" aria-label="DLIA · 816 nm波形"></canvas><div class="wave-caption" id="info-49">等待预览帧</div></figure><figure><figcaption>DLIA · 1368 nm<span id="legend-48"></span></figcaption><canvas id="wave-48" role="img" aria-label="DLIA · 1368 nm波形"></canvas><div class="wave-caption" id="info-48">等待预览帧</div></figure></div>
+            <div id="tcp-plots" hidden><label>通道 <select id="tcp-channel" disabled><option>等待通道</option></select></label><figure><figcaption>TCP 采样<span id="legend-tcp"></span></figcaption><canvas id="wave-tcp" role="img" aria-label="TCP 采样波形"></canvas><div class="wave-caption" id="info-tcp">等待预览帧</div></figure></div>
+          </section>
+        </div>
+        <aside class="sidebar">
+          <section class="panel"><h2>记录状态</h2><dl class="summary-list">
+            <dt>录制</dt><dd id="recording-state">—</dd><dt>Session</dt><dd id="session-name">—</dd>
+          </dl></section>
+          <section class="panel"><h2>连接状态</h2><dl class="summary-list">
+            <dt>HTTP 网关</dt><dd id="gateway-state">等待查询</dd><dt>机地数传</dt><dd id="link-state">未知</dd>
+            <dt>SkyCore</dt><dd id="telemetry-state">未知</dd><dt>设备标识</dt><dd id="device-id">—</dd>
+            <dt>实时订阅</dt><dd id="stream-state" role="status">等待连接</dd>
+          </dl></section>
+          <section class="panel" aria-labelledby="device-title">
+          <h2 id="device-title">设备状态</h2>
+          <div class="table-wrap device-table" tabindex="0" aria-label="设备状态表">
+            <table>
+              <thead><tr><th scope="col">设备</th><th scope="col">状态</th><th scope="col">接收</th><th scope="col">错误</th><th scope="col">错误码</th></tr></thead>
+              <tbody id="device-rows"><tr><td colspan="5">暂无设备状态</td></tr></tbody>
+            </table>
+          </div>
         </section>
-        <section class="reading" aria-labelledby="reading-pressure-title">
-          <h3 id="reading-pressure-title">气压</h3>
-          <p id="reading-pressure" tabindex="0" class="reading-value mono">—</p>
-        </section>
-        <section class="reading" aria-labelledby="reading-position-title">
-          <h3 id="reading-position-title">定位</h3>
-          <p id="reading-latitude" tabindex="0" class="reading-value mono">—</p>
-          <p id="reading-longitude" tabindex="0" class="reading-value mono">—</p>
-          <p id="reading-altitude" tabindex="0" class="reading-value mono">—</p>
-        </section>
-        <section class="reading" aria-labelledby="reading-range-title">
-          <h3 id="reading-range-title">激光测距</h3>
-          <p id="reading-distance" tabindex="0" class="reading-value mono">—</p>
-        </section>
-      </div>
-    </section>
-
+        </aside>
+      <div id="gateway-view" hidden>
     <div class="workspace-grid">
       <section class="panel stream" aria-labelledby="stream-title">
         <div class="section-head">
@@ -65,7 +74,6 @@
             <button id="disconnect-stream" type="button" disabled>断开</button>
           </div>
         </div>
-        <p id="stream-state" tabindex="0" class="feedback" role="status">未连接</p>
         <div class="trend-toolbar">
           <label for="trend-channel">通道</label>
           <select id="trend-channel" disabled><option>等待测量通道</option></select>
@@ -112,15 +120,6 @@
           </dl>
           <button id="command-check" type="button" disabled>查询当前命令回执</button>
         </section>
-        <section class="panel" aria-labelledby="device-title">
-          <h2 id="device-title">设备状态</h2>
-          <div class="table-wrap device-table" tabindex="0" aria-label="设备状态表">
-            <table>
-              <thead><tr><th scope="col">设备</th><th scope="col">状态</th><th scope="col">接收</th><th scope="col">错误</th><th scope="col">错误码</th></tr></thead>
-              <tbody id="device-rows"><tr><td colspan="5">暂无设备状态</td></tr></tbody>
-            </table>
-          </div>
-        </section>
       </aside>
     </div>
 
@@ -134,6 +133,10 @@
           </table>
         </div>
       </details>
+    </div>
+
+      </div>
+      </div>
     </div>
   </main>
 </body>

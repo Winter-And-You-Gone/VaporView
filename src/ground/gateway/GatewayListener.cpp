@@ -126,7 +126,11 @@ QJsonObject sensorFields(const TelemetryBasic& basic)
             {"humidityPercent", reading(BasicHasHumidity, basic.humidity_percent)},
             {"pressureHpa", reading(BasicHasPressure, basic.pressure_hpa)},
             {"latitudeDeg", position(basic.latitude_deg)}, {"longitudeDeg", position(basic.longitude_deg)},
-            {"heightM", position(basic.height_m)}, {"lidarDistanceM", reading(BasicHasLidar, basic.lidar_distance_m)}};
+            {"heightM", position(basic.height_m)}, {"lidarDistanceM", reading(BasicHasLidar, basic.lidar_distance_m)},
+            {"ecefX", reading(BasicHasEcef, basic.ecef_x_m)}, {"ecefY", reading(BasicHasEcef, basic.ecef_y_m)},
+            {"ecefZ", reading(BasicHasEcef, basic.ecef_z_m)}, {"satellites", reading(BasicHasGnssQuality, basic.gnss_satellites)},
+            {"horizontalAccuracyM", reading(BasicHasGnssQuality, basic.hacc_m)},
+            {"verticalAccuracyM", reading(BasicHasGnssQuality, basic.vacc_m)}};
 }
 
 // Bound kernel buffering before Qt hands the transport to a WebSocket.
@@ -171,7 +175,9 @@ QString GatewayListenerConfig::validationError() const
 void GatewayListenerIngress::enqueue(const TelemetryFrame& frame)
 {
     if (frame.type != MsgType::TelemetryBasic && frame.type != MsgType::TelemetryStatus &&
-        frame.type != MsgType::WaveformFeature && frame.type != MsgType::FpgaCycleFeature) return;
+        frame.type != MsgType::WaveformFeature && frame.type != MsgType::FpgaCycleFeature &&
+        frame.type != MsgType::WaveformDownsampled && frame.type != MsgType::FpgaWaveformPreview &&
+        frame.type != MsgType::InternalEnvironment && frame.type != MsgType::FpgaSensor) return;
     const auto size = frame.payload.size() + 64;
     QMutexLocker lock(&mutex);
     if (frame.type == MsgType::TelemetryBasic)
@@ -237,6 +243,9 @@ QString GatewayListener::start()
     });
     server_->route("/app.js", Method::Get, [] {
         return webResource(":/gateway-web/app.js", "text/javascript; charset=utf-8");
+    });
+    server_->route("/dashboard.js", Method::Get, [] {
+        return webResource(":/gateway-web/dashboard.js", "text/javascript; charset=utf-8");
     });
     server_->route("/style.css", Method::Get, [] {
         return webResource(":/gateway-web/style.css", "text/css; charset=utf-8");
@@ -430,6 +439,62 @@ void GatewayListener::drain()
             const auto fields = statusFields(status);
             for (auto it = fields.constBegin(); it != fields.constEnd(); ++it) status_.insert(it.key(), it.value());
             auto message = statusMessage();
+            publish(message);
+        }
+        else if (frame.type == MsgType::FpgaWaveformPreview || frame.type == MsgType::WaveformDownsampled)
+        {
+            if (!connected_ || subscribers_.isEmpty()) continue;
+            auto message = frameFields(frame);
+            message.insert("kind", "waveform");
+            if (frame.type == MsgType::FpgaWaveformPreview)
+            {
+                FpgaWave::CompletedStream wave;
+                if (!FpgaRemote::parseWaveformPreview(frame.payload, wave)) continue;
+                message.insert("source", "fpga");
+                message.insert("channel", wave.source);
+                message.insert("cycleId", qint64(wave.cycleId));
+                message.insert("stride", qint64(wave.previewStride));
+                message.insert("xStart", 0);
+                message.insert("xStep", qint64(wave.previewStride));
+                message.insert("valid", wave.complete && !wave.partial && !wave.overflow && !wave.continuityError);
+                // Keep the preview's signed ADC words and per-point IQ/harmonic availability.
+                message.insert("points", QJsonDocument::fromJson(frame.payload).object().value("points"));
+            }
+            else
+            {
+                DownsampledWaveform wave;
+                if (!TelemetryCodec::parseDownsampledWaveform(frame.payload, wave)) continue;
+                const qsizetype step = qMax<qsizetype>(1, (wave.samples.size() + 511) / 512);
+                QJsonArray samples;
+                for (qsizetype i = 0; i < wave.samples.size(); i += step) samples.append(finiteValue(wave.samples[i]));
+                message.insert("source", "tcp");
+                message.insert("channel", wave.channel_id);
+                message.insert("xStart", finiteValue(wave.x_start));
+                message.insert("xStep", finiteValue(double(wave.x_step) * step));
+                message.insert("valid", !samples.isEmpty());
+                message.insert("points", samples);
+            }
+            publish(message);
+        }
+        else if (frame.type == MsgType::InternalEnvironment || frame.type == MsgType::FpgaSensor)
+        {
+            if (!connected_ || subscribers_.isEmpty()) continue;
+            FpgaSensor::Reading sensor;
+            if (!FpgaRemote::parseSensor(frame.payload, sensor)) continue;
+            const bool bmp = sensor.source == 0x43 && sensor.kind == FpgaSensor::SensorKind::Bmp390;
+            const bool sht = sensor.source == 0x44 && sensor.kind == FpgaSensor::SensorKind::Sht45;
+            if (!bmp && !sht) continue;
+            const auto& quality = sensor.validity;
+            const auto value = [&](const std::optional<double>& reading, double divisor = 1.0) {
+                return reading && quality.structure && quality.crc && quality.deviceOnline && quality.measurement
+                    ? finiteValue(*reading / divisor) : QJsonValue(QJsonValue::Null);
+            };
+            auto message = frameFields(frame);
+            message.insert("kind", "internalEnvironment");
+            message.insert("device", bmp ? "BMP390" : "SHT45");
+            message.insert("temperatureC", value(sensor.temperatureC));
+            message.insert("humidityPercent", value(sensor.humidityPct));
+            message.insert("pressureHpa", value(sensor.pressurePa, 100));
             publish(message);
         }
         else if (frame.type == MsgType::WaveformFeature)

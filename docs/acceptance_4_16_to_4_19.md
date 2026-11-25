@@ -148,3 +148,9 @@ Windows Release 通过 `cmake --build build/Release --config Release --parallel 
 现场待填写 A.18 与 A.19 的项目包括目标操作系统与硬件版本、实采 Session 标识、外部测试机及网络、测试时段、对应导出文件和命令记录。SDK 1.1.0 的 Windows x64 交付包与匹配的 Qt Base 源码归档已在本机生成或取得，原始记录、证书及本机生成物由现场单独保管。
 
 本次核验的 `VaporView-Session-SDK-1.1.0-windows-x64.zip` 的 SHA-256 为 `3fce465818c4337d95d5316f29787f645811b5860854d377b266ce082a413eec`。同目录的 Qt Base 6.10.1 源码归档 SHA-256 为 `5a6226f7e23db51fdc3223121eba53f3f5447cf0cc4d6cb82a3a2df7a65d265d`，已与 Qt 发布的校验值核对。
+
+### 2026-11-25 · 4.19 网关数据首页
+
+首页按地面端排列环境测量、EPSILON 三维定位和实时波形。浏览器通过同源 WebSocket 订阅 SkyCore 的采样预览；峰值和命令回执保留在网关调试页。
+
+本机 Release 使用模拟 SkyCore、正式地面主窗口和网关、真实 Chromium 验证两路 DLIA 曲线、遥测读数、五种命令的最终回执，以及录制期间 5 条峰值与 SkyCore CSV 的对应关系。1260 px 和 390 px 两种宽度下，从空值切换至长文本和满表时，首页及调试页的定位点与总高度变化均为 0 px。监听器集成测试另外注入已知 ADC、TCP、BMP390 和 SHT45 帧，核对有符号幅值、采样间距、Pa 到 hPa 换算、有效零值和坏帧清空。上述记录属于软件链路验证，现场实物传感器与 FPGA 板卡仍待验收。

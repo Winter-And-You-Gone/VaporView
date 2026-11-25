@@ -2,6 +2,7 @@
     <qresource prefix="/gateway-web">
         <file alias="index.html">web/index.html</file>
         <file alias="app.js">web/app.js</file>
+        <file alias="dashboard.js">web/dashboard.js</file>
         <file alias="style.css">web/style.css</file>
     </qresource>
 </RCC>
