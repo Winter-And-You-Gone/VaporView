@@ -38,6 +38,7 @@
 #include <osgEarth/EarthManipulator>
 #include <osgEarth/DecalLayer>
 #include <osgEarth/ElevationLayer>
+#include <osgEarth/ElevationPool>
 #include <osgEarth/GDAL>
 #include <osgEarth/GeoData>
 #include <osgEarth/GLUtils>
@@ -466,9 +467,10 @@ void configureHighResolutionTerrain(osgEarth::MapNode* mapNode)
 
     osgEarth::TerrainOptionsAPI terrainOptions = mapNode->getTerrainOptions();
     terrainOptions.setLODMethod(osgEarth::LODMethod::SCREEN_SPACE);
+    terrainOptions.setTileSize(33);
     terrainOptions.setTilePixelSize(kTerrainTilePixelSize);
     terrainOptions.setScreenSpaceError(0.0f);
-    terrainOptions.setHeightFieldSkirtRatio(0.05f);
+    terrainOptions.setHeightFieldSkirtRatio(0.02f);
     terrainOptions.setProgressive(false);
     terrainOptions.setConcurrency(12u);
     terrainOptions.setMorphImagery(false);
@@ -785,7 +787,7 @@ OsgEarthViewWidget::OsgEarthViewWidget(QWidget* parent, bool deferRendering)
     setMouseTracking(true);
     trajectory_info_card_ = new TrajectorySampleInfoCard(this);
     online_terrain_timer_.setSingleShot(true);
-    online_terrain_timer_.setInterval(4000);
+    online_terrain_timer_.setInterval(500);
     connect(&online_terrain_timer_, &QTimer::timeout, this, [this] {
         if (!map_node_ || shutdown_) return;
         auto* map = map_node_->getMap();
@@ -803,6 +805,10 @@ OsgEarthViewWidget::OsgEarthViewWidget(QWidget* parent, bool deferRendering)
         }
         if (!refresh.empty())
         {
+            // Flush ElevationPool's L2/LUT and recompute its layer-revision hash
+            // so tiles built while online DEM was deferred re-query 30 m data.
+            if (auto* pool = map->getElevationPool())
+                pool->setMap(map);
             // Reload just elevation. The current imagery stays on screen.
             if (auto* engine = map_node_->getTerrainEngine())
                 engine->invalidateRegion(refresh, osgEarth::GeoExtent::INVALID, kTerrainMinLevel, INT_MAX);
@@ -2659,13 +2665,11 @@ void OsgEarthViewWidget::updateCameraProjectionForCurrentView()
     {
         map_node_->getTerrainEngine()->setComputeTilePixelSizeCallback(
             [ellipse = ground_detail_ellipse_](osg::Node* node, osg::NodeVisitor&) {
-                if (!ellipse->intersects(node->getBound()))
-                {
-                    const auto* tile = dynamic_cast<const osgEarth::TerrainTile*>(node);
-                    // REX interprets one pixel as too small to subdivide and
-                    // nonpositive values as a request for native screen-space LOD.
-                    if (tile && tile->getKey().getLOD() >= kTerrainMinLevel) return 1.0f;
-                }
+                const auto* tile = dynamic_cast<const osgEarth::TerrainTile*>(node);
+                // REX interprets one pixel as too small to subdivide and
+                // nonpositive values as a request for native screen-space LOD.
+                if (tile && tile->getKey().getLOD() >= ellipse->maxAllowedLod(node->getBound(), kTerrainMinLevel))
+                    return 1.0f;
                 return -1.0f;
             });
         terrain_detail_callback_pending_ = false;
