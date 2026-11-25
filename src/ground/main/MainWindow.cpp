@@ -848,9 +848,11 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
     {
         QTimer::singleShot(0, this, [this]() { reflowDeviceTelemetryData(); });
     }
-    if (eventType == QEvent::Resize && state_->data_telemetry_link_summary_layout_ &&
-        watched == state_->data_telemetry_link_summary_layout_->parent() &&
-        static_cast<QResizeEvent *>(event)->size().width() != static_cast<QResizeEvent *>(event)->oldSize().width())
+    const bool widthChanged = eventType == QEvent::Resize &&
+        static_cast<QResizeEvent *>(event)->size().width() != static_cast<QResizeEvent *>(event)->oldSize().width();
+    if ((widthChanged && state_->data_telemetry_link_summary_layout_ &&
+         watched == state_->data_telemetry_link_summary_layout_->parent()) ||
+        ((widthChanged || eventType == QEvent::LayoutRequest) && watched->property("homeLaserOverviewTitleBar").toBool()))
     {
         QTimer::singleShot(0, this, [this]() { updateConfigCardHeightForSourceMode(); });
     }

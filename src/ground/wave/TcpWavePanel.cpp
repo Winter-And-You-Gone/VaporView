@@ -80,6 +80,7 @@ constexpr int kTcpControlHeight = 36;
 constexpr int kTcpButtonHeight = kTcpControlHeight;
 constexpr int kTcpCompactButtonTextPadding = 56;
 constexpr int kTcpTitleBarHeight = kTcpControlHeight + 4;
+constexpr int kTcpMainTitleBarHeight = kTcpControlHeight + 8;
 constexpr int kTcpTitleBarPrimarySpacing = 10;
 constexpr int kWaveDisplayIconSize = 28;
 constexpr int kWaveDisplayIconInnerSize = 22;
@@ -492,6 +493,8 @@ QWidget *createSectionTitleCluster(QWidget *parent,
     updateSectionTitleIcon(iconLabel, VaporView::isDarkThemeEnabled());
     layout->addWidget(iconLabel, 0, Qt::AlignVCenter);
 
+    cluster->setProperty("fontMetricsManagedWidth", true);
+    titleLabel->setProperty("fontMetricsManagedWidth", true);
     titleLabel->setParent(cluster);
     VaporView::configureSelectableCardTitle(titleLabel);
     titleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
@@ -542,7 +545,8 @@ public:
         if (!text().isEmpty())
         {
             const QFontMetrics metrics(font());
-            size.rwidth() = std::max(size.width(), metrics.horizontalAdvance(text()) + 8);
+            size.rwidth() = std::max({size.width(), metrics.horizontalAdvance(text()) + 8,
+                                      metrics.tightBoundingRect(text()).width() + 8});
             size.rheight() = std::max(size.height(), metrics.height());
         }
         if (inline_icon_visible_)
@@ -558,15 +562,14 @@ public:
         return sizeHint();
     }
 
-    void refreshFixedWidth()
+    void refreshTitleGeometry()
     {
         setFixedWidth(sizeHint().width());
-        if (QWidget *cluster = parentWidget())
+        if (QWidget *cluster = parentWidget(); cluster && cluster->property("fontMetricsManagedWidth").toBool())
         {
-            cluster->setFixedWidth(cluster->sizeHint().width());
-            cluster->updateGeometry();
+            cluster->layout()->invalidate();
+            cluster->setFixedWidth(cluster->layout()->sizeHint().width());
         }
-        updateGeometry();
         refreshTooltipAnchor();
     }
 
@@ -648,7 +651,8 @@ protected:
             refreshTooltipAnchor();
             break;
         case QEvent::FontChange:
-            refreshFixedWidth();
+        case QEvent::StyleChange:
+            refreshTitleGeometry();
             break;
         default:
             break;
@@ -1873,7 +1877,7 @@ void TcpWavePanel::setupUi()
 
     auto *topControlsBar = new QWidget(this);
     topControlsBar->setObjectName("sectionTitleBar");
-    topControlsBar->setFixedHeight(kTcpTitleBarHeight);
+    topControlsBar->setFixedHeight(kTcpMainTitleBarHeight);
     top_controls_layout_ = new QHBoxLayout(topControlsBar);
     top_controls_layout_->setContentsMargins(8, 2, 8, 2);
     top_controls_layout_->setSpacing(0);
@@ -2268,7 +2272,7 @@ void TcpWavePanel::setEnglish(bool english)
         panel_title_label_->setText(english ? "Wave Monitor" : "波形监控");
         if (auto *titleLabel = dynamic_cast<WaveDisplayTitleLabel *>(panel_title_label_))
         {
-            titleLabel->refreshFixedWidth();
+            titleLabel->refreshTitleGeometry();
         }
     }
     updateWaveDisplayModeTexts();

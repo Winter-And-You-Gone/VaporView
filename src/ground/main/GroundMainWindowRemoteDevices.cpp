@@ -961,6 +961,20 @@ void MainWindow::updateConfigCardHeightForSourceMode()
         minimumHeight = std::max(minimumHeight, cardLayout->totalSizeHint().height());
     }
 
+    if (state_->temperature_overview_panel_ && state_->temperature_overview_inline_title_lbl_)
+    {
+        auto *status = state_->temperature_overview_panel_->titleStatusWidget();
+        auto *title = state_->temperature_overview_inline_title_lbl_->parentWidget();
+        auto *bar = title->parentWidget();
+        auto *titleLayout = qobject_cast<QBoxLayout *>(bar->layout());
+        const QMargins margins = titleLayout->contentsMargins();
+        const int inlineWidth = std::max(title->minimumWidth(), title->sizeHint().width()) +
+            std::max(status->minimumWidth(), status->sizeHint().width()) +
+            titleLayout->spacing() + margins.left() + margins.right();
+        titleLayout->setDirection(bar->contentsRect().width() < inlineWidth
+            ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight);
+    }
+
     const auto naturalCardHeight = [](QWidget *card) {
         return card ? std::max(card->minimumSizeHint().height(), card->sizeHint().height()) : 0;
     };

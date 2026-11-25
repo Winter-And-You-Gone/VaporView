@@ -5738,8 +5738,11 @@ void MainWindow::setupDataPanels()
 
     auto *temperatureOverviewTitleBar = new QWidget(state_->temperature_overview_group_);
     temperatureOverviewTitleBar->setObjectName("sectionTitleBar");
-    temperatureOverviewTitleBar->setFixedHeight(kMainPageTitleBarHeight);
-    auto *temperatureOverviewTitleLayout = new QHBoxLayout(temperatureOverviewTitleBar);
+    temperatureOverviewTitleBar->setMinimumHeight(kMainPageTitleBarHeight);
+    temperatureOverviewTitleBar->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+    temperatureOverviewTitleBar->setProperty("homeLaserOverviewTitleBar", true);
+    temperatureOverviewTitleBar->installEventFilter(this);
+    auto *temperatureOverviewTitleLayout = new QBoxLayout(QBoxLayout::LeftToRight, temperatureOverviewTitleBar);
     temperatureOverviewTitleLayout->setContentsMargins(8, 2, 8, 2);
     temperatureOverviewTitleLayout->setSpacing(8);
     QWidget *temperatureOverviewTitleCluster = nullptr;
@@ -5751,8 +5754,7 @@ void MainWindow::setupDataPanels()
         ? QStringLiteral("Laser Driver Temperature Overview")
         : QStringLiteral("激光驱动温控概览"));
     temperatureOverviewTitleCluster->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    temperatureOverviewTitleLayout->addWidget(temperatureOverviewTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    temperatureOverviewTitleLayout->addStretch(1);
+    temperatureOverviewTitleLayout->addWidget(temperatureOverviewTitleCluster, 1, Qt::AlignVCenter | Qt::AlignLeft);
     temperatureOverviewLayout->addWidget(temperatureOverviewTitleBar);
 
     state_->temperature_overview_panel_ = createTemperatureControllerOverviewPanel(state_->temperature_overview_group_);
