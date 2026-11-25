@@ -9,6 +9,7 @@
 #include "EarthProjectionProfile.h"
 #include "OpenAerialMapImageLayer.h"
 #include "OnlineOsmLayer.h"
+#include "OnlineTerrainLayer.h"
 #include "OpenFreeMapBuildings.h"
 #include "CesiumTerrain.h"
 #include "TiandituImageLayer.h"
@@ -126,7 +127,9 @@ constexpr const char* kSelectedLocalSatelliteLayerName = "VaporView selected loc
 constexpr const char* kTiandituBrowserUserAgent =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36";
-constexpr float kTerrainTilePixelSize = 128.0f;
+// Match the native imagery tile width so each zoom step requests only the
+// detail the viewport can display.
+constexpr int kTerrainTilePixelSize = 256;
 constexpr int kTrajectoryInfoCardWidth = 380;
 constexpr int kTrajectoryInfoCardScreenMargin = 8;
 
@@ -464,6 +467,7 @@ void configureHighResolutionTerrain(osgEarth::MapNode* mapNode)
     terrainOptions.setTilePixelSize(kTerrainTilePixelSize);
     terrainOptions.setScreenSpaceError(0.0f);
     terrainOptions.setProgressive(false);
+    terrainOptions.setConcurrency(12u);
     terrainOptions.setMorphImagery(false);
     mapNode->setScreenSpaceError(0.0f);
 
@@ -776,6 +780,30 @@ OsgEarthViewWidget::OsgEarthViewWidget(QWidget* parent, bool deferRendering)
     setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true);
     trajectory_info_card_ = new TrajectorySampleInfoCard(this);
+    online_terrain_timer_.setSingleShot(true);
+    online_terrain_timer_.setInterval(4000);
+    connect(&online_terrain_timer_, &QTimer::timeout, this, [this] {
+        if (!map_node_ || shutdown_) return;
+        auto* map = map_node_->getMap();
+        std::vector<const osgEarth::Layer*> refresh;
+        osgEarth::ElevationLayerVector layers;
+        map->getLayers(layers);
+        for (const auto& layer : layers)
+        {
+            if (auto* online = dynamic_cast<Detail::OnlineTerrainLayer*>(layer.get());
+                online && online->resumeDownloads() && online->isOpen())
+            {
+                online->dirty();
+                refresh.push_back(online);
+            }
+        }
+        if (!refresh.empty())
+        {
+            // Reload just elevation. The current imagery stays on screen.
+            if (auto* engine = map_node_->getTerrainEngine())
+                engine->invalidateRegion(refresh, osgEarth::GeoExtent::INVALID, kTerrainMinLevel, INT_MAX);
+        }
+    });
     frameTimer_.setSingleShot(true);
     frameTimer_.setTimerType(Qt::PreciseTimer);
     frameTimer_.setInterval(0);
@@ -1205,6 +1233,25 @@ void OsgEarthViewWidget::loadEarthFilePreservingViewAsync(const QString& earthPa
     loadEarthFileAsync(earthPath, true, std::move(finished));
 }
 
+void OsgEarthViewWidget::prioritizeSatelliteImagery()
+{
+    if (!map_node_ || !layerVisible(Map3DLayer::DigitalElevation) ||
+        !layerVisible(Map3DLayer::SatelliteImagery)) return;
+    auto* map = map_node_->getMap();
+    if (!map->getLayerByName(kTiandituSatelliteLayerName)) return;
+    if (!online_terrain_timer_.isActive())
+    {
+        osgEarth::ElevationLayerVector layers;
+        map->getLayers(layers);
+        for (const auto& layer : layers)
+        {
+            if (auto* online = dynamic_cast<Detail::OnlineTerrainLayer*>(layer.get()))
+                online->deferDownloads();
+        }
+    }
+    online_terrain_timer_.start();
+}
+
 bool OsgEarthViewWidget::applyTiandituSatelliteImagery(const QString& key)
 {
     assertGuiThread(this, Q_FUNC_INFO);
@@ -1268,6 +1315,7 @@ bool OsgEarthViewWidget::applyTiandituSatelliteImagery(const QString& key)
         ++earth_load_diagnostics_.openLayerCount;
     }
     applyLayerVisibility(Map3DLayer::SatelliteImagery);
+    prioritizeSatelliteImagery();
     update();
     return true;
 }
@@ -1453,10 +1501,11 @@ bool OsgEarthViewWidget::applyEarthLoad(EarthLoadDiagnostics diagnostics,
     const bool replacedPreviousNode = earth_node_.valid();
     if (earth_node_) root_->removeChild(earth_node_.get());
     earth_node_ = std::move(node);
+    if (map_node_ != mapNode) online_terrain_timer_.stop();
     map_node_ = mapNode;
     configureHighResolutionTerrain(map_node_);
     earth_load_diagnostics_.layerSummaries.push_back(
-        mapText(QStringLiteral("地形细节：可见区域优先的屏幕空间 LOD，128 px 瓦片阈值，低视角自适应裁剪和细节级别。")));
+        mapText(QStringLiteral("地形细节：可见区域优先的屏幕空间 LOD，%1 px 瓦片阈值，低视角自适应裁剪和细节级别。")).arg(kTerrainTilePixelSize));
     use_xihu_initial_view_ = useXihuInitialView;
     if (replacedPreviousNode)
     {
@@ -2361,6 +2410,7 @@ void OsgEarthViewWidget::mouseMoveEvent(QMouseEvent* event)
     if (graphics_window_)
     {
         const qreal dpr = std::max<qreal>(1.0, devicePixelRatioF());
+        if (event->buttons() != Qt::NoButton) prioritizeSatelliteImagery();
         graphics_window_->getEventQueue()->mouseMotion(
             static_cast<float>(event->position().x() * dpr),
             static_cast<float>(event->position().y() * dpr));
@@ -2381,6 +2431,7 @@ void OsgEarthViewWidget::wheelEvent(QWheelEvent* event)
     initializeSceneIfNeeded();
     if (graphics_window_ && event->angleDelta().y() != 0)
     {
+        prioritizeSatelliteImagery();
         const osgGA::GUIEventAdapter::ScrollingMotion motion =
             event->angleDelta().y() > 0
                 ? osgGA::GUIEventAdapter::SCROLL_UP
@@ -2753,6 +2804,7 @@ void OsgEarthViewWidget::setLookAt(const osg::Vec3d& center, double distanceM)
         osgEarth::EarthManipulator* manipulator = ensureEarthManipulator(viewer_.get());
         if (wgs84 && manipulator && focalPoint.fromWorld(wgs84, center))
         {
+            prioritizeSatelliteImagery();
             manipulator->setViewpoint(
                 osgEarth::Viewpoint("Map target",
                                     focalPoint.x(),

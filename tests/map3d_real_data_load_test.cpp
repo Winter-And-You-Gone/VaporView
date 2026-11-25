@@ -5,6 +5,7 @@
 #include "../src/map3d/MapHttp.h"
 #include "../src/map3d/Map3DRuntime.h"
 #include "../src/map3d/OpenFreeMapBuildings.h"
+#include "../src/map3d/OnlineCopernicusLayer.h"
 
 #include <osgEarth/ElevationLayer>
 #include <osgEarth/ElevationPool>
@@ -119,6 +120,24 @@ void checkHttpCache()
             QStringLiteral("expired tile conditionally validated and reused after 304"));
     require(get("expired").body == "updated" && requests == 4 && conditional,
             QStringLiteral("changed tile replaced after revalidation"));
+}
+
+void checkOnlineTerrainDeferral()
+{
+    using namespace VaporView::Map3D;
+    initializeMap3DRuntime();
+    osg::ref_ptr<osgEarth::Map> map = new osgEarth::Map;
+    osg::ref_ptr<Detail::OnlineCopernicusLayer> layer = new Detail::OnlineCopernicusLayer;
+    map->addLayer(layer);
+    require(layer->isOpen(), QStringLiteral("online terrain opens"));
+    layer->deferDownloads();
+    require(!layer->resumeDownloads(), QStringLiteral("camera movement without any misses needs no reload"));
+    layer->deferDownloads();
+    const auto key = layer->getProfile()->createTileKey(116.397, 39.908, 12);
+    require(!layer->createHeightField(key).valid(), QStringLiteral("uncached terrain yields to imagery"));
+    layer->deferDownloads();
+    require(layer->resumeDownloads() && !layer->resumeDownloads(),
+            QStringLiteral("repeated movement preserves the miss and schedules exactly one terrain refresh"));
 }
 
 void checkTerrainLevels(osgEarth::Map* map)
@@ -268,6 +287,7 @@ int main(int argc, char** argv)
         return 0;
     }
     checkHttpCache();
+    checkOnlineTerrainDeferral();
 
     if (!QFileInfo::exists(earthPath) || !QFileInfo::exists(tilesetPath))
     {

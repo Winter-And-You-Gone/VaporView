@@ -1,6 +1,7 @@
 #include "CesiumTerrain.h"
 #include "Map3DRuntime.h"
 #include "MapHttp.h"
+#include "OnlineTerrainLayer.h"
 
 #include <osgEarth/ElevationLayer>
 #include <osgEarth/Map>
@@ -119,11 +120,11 @@ QNetworkRequest ionRequest(QUrl url, const QByteArray& token)
     return request;
 }
 
-class CesiumTerrain final : public osgEarth::ElevationLayer
+class CesiumTerrain final : public OnlineTerrainLayer
 {
 public:
     explicit CesiumTerrain(QByteArray token)
-        : ElevationLayer(&options_, &originalOptions_), token_(std::move(token))
+        : OnlineTerrainLayer(&options_, &originalOptions_), token_(std::move(token))
     {
         ElevationLayer::init();
         setName(layerName);
@@ -197,7 +198,7 @@ private:
         const osgEarth::TileKey& key, osgEarth::ProgressCallback* progress) const override
     {
         const int z = int(key.getLOD()), x = int(key.getTileX());
-        if (z > 19) return {};
+        if (z > 19 || shouldDeferDownload()) return {};
         const int y = (1 << z) - 1 - int(key.getTileY());
         QByteArray rejected;
         for (int attempt = 0; attempt < 2; ++attempt)

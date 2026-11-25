@@ -338,7 +338,7 @@ inline const QHash<QString, QString>& mapLanguageCatalog() {
         {QStringLiteral("天地图源级别：%1–%2；不使用第 0 级占位图。"), QStringLiteral("Tianditu source levels: %1-%2; level 0 placeholder excluded.")},
         {QStringLiteral("天地图卫星影像已添加到图层索引 %1%2。"), QStringLiteral("Tianditu Satellite imagery added at layer index %1%2.")},
         {QStringLiteral("场景根节点尚未初始化。"), QStringLiteral("Scene root is not initialized.")},
-        {QStringLiteral("地形细节：可见区域优先的屏幕空间 LOD，128 px 瓦片阈值，低视角自适应裁剪和细节级别。"), QStringLiteral("Terrain detail: visible-first screen-space LOD, 128 px tile threshold, low-angle adaptive clipping and LOD.")},
+        {QStringLiteral("地形细节：可见区域优先的屏幕空间 LOD，%1 px 瓦片阈值，低视角自适应裁剪和细节级别。"), QStringLiteral("Terrain detail: visible-first screen-space LOD, %1 px tile threshold, low-angle adaptive clipping and LOD.")},
         {QStringLiteral("已替换原地图场景。"), QStringLiteral("Replaced previous Earth scene.")},
         {QStringLiteral("已应用 WGS84 椭球高。"), QStringLiteral("WGS84 ellipsoid height applied.")},
         {QStringLiteral("基础地理底图"), QStringLiteral("Geographic base map")},

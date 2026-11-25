@@ -228,6 +228,7 @@ private:
     void initializeSceneIfNeeded();
     void updateCameraViewport(int w, int h);
     void updateCameraProjectionForCurrentView();
+    void prioritizeSatelliteImagery();
     void loadDefaultAircraftModelIfAvailable();
     void loadEarthFileAsync(const QString& earthPath,
                             bool preserveCurrentEarthView,
@@ -267,6 +268,7 @@ private:
     void releaseGlObjectsForContextDestruction();
 
     QTimer frameTimer_;
+    QTimer online_terrain_timer_;
     QElapsedTimer present_clock_;
     QElapsedTimer performance_publish_clock_;
     QElapsedTimer camera_activity_clock_;
