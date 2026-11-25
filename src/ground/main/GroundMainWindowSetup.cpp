@@ -5558,7 +5558,7 @@ void MainWindow::setupDataPanels()
     auto *emMotorLayout = new QHBoxLayout(emMotorCard);
     emMotorLayout->setContentsMargins(2, 2, 2, 2);
     emMotorLayout->setSpacing(2);
-    auto *emMotorTitle = new QLabel(QStringLiteral("EM-\nFWC3"), emMotorCard);
+    auto *emMotorTitle = new QLabel(epsilonSideTitleText(QStringLiteral("衰减片电机")), emMotorCard);
     emMotorTitle->setObjectName(QStringLiteral("epsilonSectionLabel"));
     emMotorTitle->setAlignment(Qt::AlignCenter);
     emMotorTitle->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Expanding);

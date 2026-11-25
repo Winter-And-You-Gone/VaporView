@@ -143,8 +143,14 @@ int main(int argc, char **argv)
               !homeStepper->findChild<QDoubleSpinBox *>(), "offline home presets are disabled and have no inputs");
         auto *homeStepperBody = find<QWidget>(*homeStepper, "homeStepperMotorBody");
         auto *homeStepperStatus = find<QLabel>(*homeStepperBody, "fpgaMotorSafetyStatus");
-        check(homeStepperStatus->geometry().top() < find<QLabel>(*homeStepperBody, "fpgaMotorProgress")->geometry().top(),
-              "stepper safety status sits at the top of the home subcard body");
+        auto *homeStepperState = find<QLabel>(*homeStepperBody, "homeStepperMotorState");
+        check(homeStepperState->isVisible() && homeStepperState->text() == QStringLiteral("未连接") &&
+              homeStepperStatus->geometry().top() == homeStepperState->geometry().top() &&
+              homeStepperStatus->geometry().right() < homeStepperState->geometry().left() &&
+              !find<QLabel>(*homeStepperBody, "fpgaMotorProgress")->isVisible(),
+              "offline state sits at the right of the safety status without reserving a progress row");
+        auto titleText = find<QLabel>(*homeEmCard, "epsilonSectionLabel")->text();
+        check(titleText.remove(QLatin1Char('\n')) == QStringLiteral("衰减片电机"), "the EM subcard uses the attenuator motor title");
         auto *homePort = find<QComboBox>(*homeCard, "homeMotionPort");
         auto *homeAction = find<QToolButton>(*homeCard, "homeMotionActionButton");
         auto *overview = find<QWidget>(window, "homeOverviewDeviceGrid");

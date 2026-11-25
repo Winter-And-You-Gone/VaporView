@@ -4537,6 +4537,8 @@ void requireHomeSensorColumnLayout(MainWindow& window)
     if (motionRect.left() > epsilonRect.right()) {
         require(splitter->indexOf(environment) < 0 && std::abs(epsilonRect.top() - motionRect.top()) <= 2,
                 "navigation and motion share a row only when environment is in the overview");
+        require(std::abs(epsilonRect.bottom() - motionRect.bottom()) <= 2,
+                "side-by-side navigation and motion cards match in height");
     } else {
         require(std::abs(epsilonRect.left() - motionRect.left()) <= 2 &&
                     std::abs(epsilonRect.right() - motionRect.right()) <= 2 && motionRect.top() > epsilonRect.bottom(),

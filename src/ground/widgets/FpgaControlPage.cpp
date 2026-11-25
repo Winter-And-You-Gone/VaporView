@@ -815,7 +815,12 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout, QVB
             auto *homeStatus = new QLabel(homeBody);
             homeStatus->setObjectName(QStringLiteral("fpgaMotorSafetyStatus"));
             homeStatus->setWordWrap(true);
-            grid->addWidget(homeStatus, 0, 0, 1, 2);
+            auto *statusRow = new QHBoxLayout;
+            statusRow->addWidget(homeStatus, 1);
+            homeMotorState_ = new QLabel(homeBody);
+            homeMotorState_->setObjectName(QStringLiteral("homeStepperMotorState"));
+            statusRow->addWidget(homeMotorState_, 0, Qt::AlignRight | Qt::AlignTop);
+            grid->addLayout(statusRow, 0, 0, 1, 2);
             auto *homeProgress = new QLabel(homeBody);
             homeProgress->setObjectName(QStringLiteral("fpgaMotorProgress"));
             homeProgress->setWordWrap(true);
@@ -1061,11 +1066,15 @@ void FpgaControlPage::updateMotorProgress() {
     } else {
         message = english_ ? motorResultEn_ : motorResultZh_;
     }
+    if (homeMotorState_) {
+        const QString state = !ready_ ? text("未连接", "Offline")
+            : message.isEmpty() ? text("空闲", "Idle") : QString();
+        if (homeMotorState_->text() != state) homeMotorState_->setText(state);
+        if (homeMotorState_->isHidden() != state.isEmpty()) homeMotorState_->setVisible(!state.isEmpty());
+    }
     for (const auto &view : motorViews_) {
-        const QString display = !view.frequency && message.isEmpty()
-            ? (ready_ ? text("空闲", "Idle") : text("未连接", "Offline")) : message;
-        if (view.progress->text() != display) view.progress->setText(display);
-        if (view.progress->isHidden() != display.isEmpty()) view.progress->setVisible(!display.isEmpty());
+        if (view.progress->text() != message) view.progress->setText(message);
+        if (view.progress->isHidden() != message.isEmpty()) view.progress->setVisible(!message.isEmpty());
     }
 }
 void FpgaControlPage::updateActions(){
@@ -1234,7 +1243,7 @@ void FpgaControlPage::setTransportConnected(bool connected){
 void FpgaControlPage::setConnectionState(bool ready,bool busy,const QString &detail){
     const bool lost=ready_&&!ready;ready_=ready;if(ready_)connected_=true;busy_=busy;connectionDetail_=detail;
     if(!ready_)motorLeaseRequested_=false;
-    if(!ready_ && motorPhase_!=MotorPhase::Idle) {motorPhase_=MotorPhase::Unconfirmed;motorMoveClock_.invalidate();updateMotorProgress();}
+    if(!ready_ && motorPhase_!=MotorPhase::Idle) {motorPhase_=MotorPhase::Unconfirmed;motorMoveClock_.invalidate();}
     status_->setText(ready?text("已连接","Connected"):connected_?text("已连接未就绪 · 禁止写操作","Connected, not ready · Writes disabled"):text("离线","Offline"));
     if (backend_->currentData().toString() == QLatin1String(VaporView::Ground::Devices::FpgaVirtualTcpBackend))
         status_->setText(text("虚拟 FPGA TCP · ", "Virtual FPGA TCP · ") + status_->text());
@@ -1242,6 +1251,7 @@ void FpgaControlPage::setConnectionState(bool ready,bool busy,const QString &det
         status_->setText(text("协议模拟 · ","Protocol simulation · ")+status_->text());
     status_->setText(status_->text()+(busy?text(" · 正在处理"," · Working"):QString())+(detail.isEmpty()?QString():" · "+detail));
     status_->setToolTip(status_->text());
+    updateMotorProgress();
     updateCaptureStatus();
     if(lost){
         for(auto it=latestReadings_.cbegin();it!=latestReadings_.cend();++it)historicalReadings_.insert(it.key());
