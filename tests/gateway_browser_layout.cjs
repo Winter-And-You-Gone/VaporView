@@ -13,6 +13,10 @@ async function checkGatewayLayout(browser, origin) {
       for (const view of ["home", "gateway"]) {
         await page.goto(new URL("#" + view, origin).href);
         await page.reload();
+        const tops = await page.locator(".sensor-columns > .panel").evaluateAll(cards =>
+          cards.map(card => Math.round(card.getBoundingClientRect().top)));
+        assert.equal(tops.length, 3);
+        assert.equal(new Set(tops).size, width >= 701 ? 1 : 3, "three cards share a desktop row and stack on phones");
         const shifts = await page.evaluate(async () => {
           await document.fonts.ready;
           document.querySelector("#measurement-details").open = true;

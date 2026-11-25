@@ -8,7 +8,16 @@ const trendCanvas = element("peak-trend");
 const trendDurationUs = 60_000_000n;
 const trendChannels = new Map();
 const deviceNames = { 1: "EPSILON", 2: "PTB", 3: "HC2A", 4: "激光雷达", 5: "TCP 波形", 8: "FPGA", 9: "BMP390", 10: "SHT45" };
-const deviceStates = ["已禁用", "未连接", "连接中", "已连接", "故障", "重连中"];
+const telemetryStates = ["disabled", "disconnected", "connecting", "connected", "error", "reconnecting"];
+const deviceStates = {disabled: "未启用", disconnected: "未连接", connecting: "连接中",
+  connected: "已连接", error: "故障", warning: "数据异常", reconnecting: "重连中",
+  disconnecting: "断开中", unknown: "未知"};
+
+function displayDeviceState(node, state) {
+  const key = Object.hasOwn(deviceStates, state) ? state : "unknown";
+  node.dataset.state = key;
+  node.textContent = deviceStates[key];
+}
 const apiErrors = {
   "invalid-command": "命令参数格式无效",
   "expired-or-expiry-out-of-range": "命令期限无效，请核对地面机与浏览器时钟",
@@ -47,6 +56,7 @@ let stream = null;
 let currentCommand = null;
 let linkConnected = false;
 let fpgaConnected = false;
+let fpgaState = "unknown";
 let fpgaAvailable = false;
 let recordingBusy = false;
 let latestTrendTime = null;
@@ -139,6 +149,7 @@ function renderStatus(status, updateReadings = true) {
   recordingBusy = hasStatus && status.recordingState !== 0;
   fpgaConnected = hasStatus && Array.isArray(status.devices) &&
     status.devices.some((device) => device.device === 8 && device.state === 3);
+  fpgaState = hasStatus && linkConnected ? telemetryStates[status.devices?.find(d => d.device === 8)?.state] : "unknown";
   if (!linkConnected) dashboard.clear();
   else if (hasStatus && !fpgaConnected) dashboard.clearFpga();
   const devices = element("device-rows");
@@ -152,8 +163,8 @@ function renderStatus(status, updateReadings = true) {
   for (const device of visibleDevices) {
     const row = devices.insertRow();
     appendCells(row, [deviceNames[device.device],
-      deviceStates[device.state] ?? `状态 ${label(device.state)}`, device.receivedCount, device.errorCount, device.errorCode]);
-    row.cells[1].dataset.tone = device.state === 3 ? "good" : device.state === 4 ? "error" : "";
+      "", device.receivedCount, device.errorCount, device.errorCode]);
+    displayDeviceState(row.cells[1], telemetryStates[device.state]);
   }
 }
 
@@ -561,7 +572,7 @@ async function sendCommand(commandId, operation, targetDevice, fromHome = false)
 
 function renderControls(controls) {
   const host = element("home-controls");
-  const items = [...controls, {key: "fpga", name: "机载 FPGA", connected: fpgaConnected,
+  const items = [...controls, {key: "fpga", name: "机载 FPGA", connected: fpgaConnected, state: fpgaState,
     enabled: linkConnected && fpgaAvailable && !recordingBusy}];
   const keys = new Set(items.map(item => item.key));
   for (const row of [...host.children]) if (!keys.has(row.dataset.key)) row.remove();
@@ -575,8 +586,7 @@ function renderControls(controls) {
     }
     const [name, state, button] = row.children;
     name.textContent = item.name;
-    state.textContent = item.connected ? "已连接" : item.enabled ? "未连接" : "未就绪";
-    state.dataset.tone = item.connected ? "good" : "";
+    displayDeviceState(state, item.state);
     row.title = item.detail || "";
     button.textContent = item.connected ? "断开" : "连接";
     button.setAttribute("aria-label", button.textContent + item.name);
@@ -589,7 +599,7 @@ function renderControls(controls) {
 
 async function refreshOperations() {
   try {
-    const details = element("transfer-details").open && !element("gateway-view").hidden;
+    const details = element("transfer-details").open;
     const op = await request("/api/v1/operations" + (details ? "?payload=1" : ""));
     renderControls(op.controls);
     if (!currentCommand?.fromHome) show("device-feedback", "连接状态来自地面端");
@@ -607,6 +617,7 @@ async function refreshOperations() {
     }
   } catch (error) {
     for (const button of element("home-controls").querySelectorAll("button")) button.dataset.ready = "false";
+    for (const state of element("home-controls").querySelectorAll("[data-state]")) displayDeviceState(state, "unknown");
     syncButtons();
     show("device-feedback", error.message);
     show("out-state", error.message);

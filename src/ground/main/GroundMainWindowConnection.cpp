@@ -838,6 +838,15 @@ void MainWindow::updateHomeDeviceStatusCapsules()
             displayState = warning.isEmpty() ? QStringLiteral("connected") : QStringLiteral("warning");
         }
         const QString deviceName = homeDeviceDisplayName(device, state_->is_english_);
+        QString connectionState = displayState;
+        if (channelEnabled) {
+            if (state == VaporView::DeviceState::Error) connectionState = QStringLiteral("error");
+            else if (state == VaporView::DeviceState::Reconnecting) connectionState = QStringLiteral("reconnecting");
+            else if (connecting) connectionState = QStringLiteral("connecting");
+            else if (spinnerActive) connectionState = state_->home_device_disconnecting_.contains(device)
+                ? QStringLiteral("disconnecting") : QStringLiteral("connecting");
+        }
+        setDynamicPropertyIfChanged(label, "connectionState", connectionState);
         setLabelTextIfChanged(label, deviceName);
         bool labelStyleChanged = false;
         labelStyleChanged |= setDynamicPropertyIfChanged(label, "connected", displayConnected);

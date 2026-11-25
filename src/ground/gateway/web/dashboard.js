@@ -23,12 +23,8 @@ const dashboard = (() => {
   source.addEventListener("change", () => { chosenSource = true; setSource(); });
   tcp.addEventListener("change", paintLater);
   function navigate() {
-    const debug = location.hash === "#gateway";
-    byId("home-view").hidden = debug;
-    byId("gateway-view").hidden = !debug;
-    byId("page-title").textContent = debug ? "网关调试" : "数据首页";
     for (const a of document.querySelectorAll("nav a")) {
-      if (a.hash === (debug ? "#gateway" : "#home")) a.setAttribute("aria-current", "page");
+      if (a.hash === (location.hash || "#home")) a.setAttribute("aria-current", "location");
       else a.removeAttribute("aria-current");
     }
     paintLater();
@@ -125,7 +121,6 @@ const dashboard = (() => {
   }
   function paint() {
     animation = 0;
-    if (byId("home-view").hidden) return;
     if (source.value === "fpga") fpgaChannels.forEach(id => plot(id, "fpga/" + id));
     else plot("tcp", "tcp/" + tcp.value);
   }

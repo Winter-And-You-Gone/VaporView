@@ -21,9 +21,10 @@ nav a[aria-current] { background:var(--blue); color:white; }
 .page-head h2 { font-size:21px; }
 #reading-time { color:var(--muted); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .desktop { display:grid; grid-template-columns:minmax(0,1fr) clamp(232px,21vw,330px); gap:12px; align-items:start; }
-#home-view, #gateway-view { grid-column:1; grid-row:1; min-width:0; }
+.workspace-grid { min-width:0; }
 .sidebar { display:grid; grid-column:2; grid-row:1; gap:12px; min-width:0; }
-.sensor-columns,.wave-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.sensor-columns { display:grid; grid-template-columns:minmax(0,1.6fr) repeat(2,minmax(0,1fr)); gap:12px; margin-bottom:12px; }
+.wave-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
 .panel { min-width:0; padding:12px 15px; }
 .panel h2 { font-size:16px; border-bottom:1px solid var(--line); padding-bottom:9px; }
 .instrument { padding:9px 0 0; }
@@ -122,11 +123,18 @@ tbody tr:nth-child(even) td { background: #f3f8fa; }
   .panel { padding:10px; }
 }
 
-.device-controls,.transfer-panel { margin-bottom:12px; }
-.control-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,225px),1fr)); gap:6px 12px; height:170px; overflow:auto; align-content:start; padding-top:8px; }
+.transfer-panel { margin-top:12px; }
+.control-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,201px),1fr)); gap:4px 12px; height:224px; overflow:auto; align-content:start; padding-top:8px; }
 .control-grid>div { display:grid; grid-template-columns:minmax(0,1fr) auto auto; align-items:center; gap:5px; min-height:32px; }
 .control-grid strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.control-grid span { font-size:12px; color:var(--muted); }
+.control-grid span { font-size:12px; }
+[data-state] { color:#555e6a; font-weight:600; }
+[data-state]::before { content:""; display:inline-block; width:.55em; height:.55em; margin-inline-end:.35em; border-radius:50%; background:currentColor; }
+[data-state="connected"] { color:#087349; }
+[data-state="disconnected"] { color:#65516e; }
+[data-state="connecting"],[data-state="reconnecting"],[data-state="disconnecting"] { color:#145da6; }
+[data-state="warning"] { color:#955300; }
+[data-state="error"] { color:#b2272c; }
 .control-grid button { padding:3px 8px; }
 #device-feedback { height:2.8em; overflow:auto; margin:5px 0 0; color:var(--muted); }
 .transfer-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(175px,1fr)); gap:6px; margin:8px 0; }

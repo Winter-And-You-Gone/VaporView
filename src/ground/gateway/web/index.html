@@ -11,17 +11,16 @@
 <body>
   <header class="masthead"><strong>VaporView</strong><h1>地面网关</h1><span id="gateway-origin" class="mono"></span></header>
   <main class="shell">
-    <nav aria-label="页面"><a href="#home" aria-current="page">首页</a><a href="#gateway">网关调试</a></nav>
+    <nav aria-label="页面"><a href="#home" aria-current="page">首页</a><a href="#peaks">峰值趋势</a><a href="#gateway">网关调试</a></nav>
     <div class="content">
-      <div class="page-head"><h2 id="page-title">数据首页</h2><time id="reading-time" class="mono" tabindex="0">等待测量</time></div>
-      <div class="desktop">
-        <div id="home-view">
+      <div class="page-head" id="home"><h2 id="page-title">数据首页</h2><time id="reading-time" class="mono" tabindex="0">等待测量</time></div>
+      <div id="home-view">
+        <div class="sensor-columns">
           <section class="panel device-controls" aria-labelledby="control-heading">
             <h2 id="control-heading">设备连接</h2>
             <div id="home-controls" class="control-grid" aria-label="设备连接操作"></div>
             <p id="device-feedback" role="status">正在读取地面端设备状态</p>
           </section>
-          <div class="sensor-columns">
             <section class="panel"><h2>环境测量</h2>
               <section class="instrument"><h3>HC2A · 环境温湿度</h3><dl><div><dt>温度</dt><dd id="reading-temperature" class="reading-value">—</dd></div>
 <div><dt>相对湿度</dt><dd id="reading-humidity" class="reading-value">—</dd></div></dl></section>
@@ -42,46 +41,10 @@
 <div><dt>水平精度</dt><dd id="reading-hacc" class="reading-value">—</dd></div>
 <div><dt>垂直精度</dt><dd id="reading-vacc" class="reading-value">—</dd></div></dl></section>
             </section>
-          </div>
-          <section class="panel waves"><div class="section-head"><h2>实时波形</h2><label>来源 <select id="wave-source"><option value="fpga">FPGA · ADC / DLIA</option><option value="tcp">TCP 波形</option></select></label></div>
-            <div class="wave-grid" id="fpga-plots"><figure><figcaption>ADC · 0x20<span id="legend-32"></span></figcaption><canvas id="wave-32" role="img" aria-label="ADC · 0x20波形"></canvas><div class="wave-caption" id="info-32">等待预览帧</div></figure><figure><figcaption>ADC · 0x21<span id="legend-33"></span></figcaption><canvas id="wave-33" role="img" aria-label="ADC · 0x21波形"></canvas><div class="wave-caption" id="info-33">等待预览帧</div></figure><figure><figcaption>DLIA · 816 nm<span id="legend-49"></span></figcaption><canvas id="wave-49" role="img" aria-label="DLIA · 816 nm波形"></canvas><div class="wave-caption" id="info-49">等待预览帧</div></figure><figure><figcaption>DLIA · 1368 nm<span id="legend-48"></span></figcaption><canvas id="wave-48" role="img" aria-label="DLIA · 1368 nm波形"></canvas><div class="wave-caption" id="info-48">等待预览帧</div></figure></div>
-            <div id="tcp-plots" hidden><label>通道 <select id="tcp-channel" disabled><option>等待通道</option></select></label><figure><figcaption>TCP 采样<span id="legend-tcp"></span></figcaption><canvas id="wave-tcp" role="img" aria-label="TCP 采样波形"></canvas><div class="wave-caption" id="info-tcp">等待预览帧</div></figure></div>
-          </section>
         </div>
-        <aside class="sidebar">
-          <section class="panel"><h2>记录状态</h2><dl class="summary-list">
-            <dt>录制</dt><dd id="recording-state">—</dd><dt>Session</dt><dd id="session-name">—</dd>
-          </dl></section>
-          <section class="panel"><h2>连接状态</h2><dl class="summary-list">
-            <dt>HTTP 网关</dt><dd id="gateway-state">等待查询</dd><dt>机地数传</dt><dd id="link-state">未知</dd>
-            <dt>SkyCore</dt><dd id="telemetry-state">未知</dd><dt>设备标识</dt><dd id="device-id">—</dd>
-            <dt>实时订阅</dt><dd id="stream-state" role="status">等待连接</dd>
-          </dl></section>
-          <section class="panel" aria-labelledby="device-title">
-          <h2 id="device-title">设备状态</h2>
-          <div class="table-wrap device-table" tabindex="0" aria-label="设备状态表">
-            <table>
-              <thead><tr><th scope="col">设备</th><th scope="col">状态</th><th scope="col">接收</th><th scope="col">错误</th><th scope="col">错误码</th></tr></thead>
-              <tbody id="device-rows"><tr><td colspan="5">暂无设备状态</td></tr></tbody>
-            </table>
-          </div>
-        </section>
-        </aside>
-      <div id="gateway-view" hidden>
-        <section class="panel transfer-panel"><h2>出站转发与 Session 同步</h2>
-          <dl class="transfer-stats">
-            <div><dt>接收端</dt><dd id="out-endpoint">—</dd></div>
-            <div><dt>转发状态</dt><dd id="out-state">等待读取</dd></div>
-            <div><dt>待上传缓存</dt><dd id="out-queue">—</dd></div>
-            <div><dt>Session 队列与进度</dt><dd id="out-job">—</dd></div>
-            <div><dt>上次同步结果</dt><dd id="out-last">—</dd></div>
-          </dl>
-          <details id="transfer-details"><summary>最近 HTTP 请求与出站遥测载荷</summary>
-            <pre id="out-events">暂无请求</pre><pre id="out-payload">暂无出站遥测</pre>
-          </details>
-        </section>
-    <div class="workspace-grid">
-      <section class="panel stream" aria-labelledby="stream-title">
+        <div class="desktop">
+          <div class="workspace-grid">
+      <section class="panel stream" id="peaks" aria-labelledby="stream-title">
         <div class="section-head">
           <h2 id="stream-title">实时峰值趋势</h2>
           <div class="actions">
@@ -112,6 +75,55 @@
         <p id="api-feedback" tabindex="0" class="feedback" role="status"></p>
         <p id="latest-measurement" tabindex="0" class="latest" role="status">HTTP 最新测量 · 尚未查询</p>
       </section>
+          <section class="panel waves"><div class="section-head"><h2>实时波形</h2><label>来源 <select id="wave-source"><option value="fpga">FPGA · ADC / DLIA</option><option value="tcp">TCP 波形</option></select></label></div>
+            <div class="wave-grid" id="fpga-plots"><figure><figcaption>ADC · 0x20<span id="legend-32"></span></figcaption><canvas id="wave-32" role="img" aria-label="ADC · 0x20波形"></canvas><div class="wave-caption" id="info-32">等待预览帧</div></figure><figure><figcaption>ADC · 0x21<span id="legend-33"></span></figcaption><canvas id="wave-33" role="img" aria-label="ADC · 0x21波形"></canvas><div class="wave-caption" id="info-33">等待预览帧</div></figure><figure><figcaption>DLIA · 816 nm<span id="legend-49"></span></figcaption><canvas id="wave-49" role="img" aria-label="DLIA · 816 nm波形"></canvas><div class="wave-caption" id="info-49">等待预览帧</div></figure><figure><figcaption>DLIA · 1368 nm<span id="legend-48"></span></figcaption><canvas id="wave-48" role="img" aria-label="DLIA · 1368 nm波形"></canvas><div class="wave-caption" id="info-48">等待预览帧</div></figure></div>
+            <div id="tcp-plots" hidden><label>通道 <select id="tcp-channel" disabled><option>等待通道</option></select></label><figure><figcaption>TCP 采样<span id="legend-tcp"></span></figcaption><canvas id="wave-tcp" role="img" aria-label="TCP 采样波形"></canvas><div class="wave-caption" id="info-tcp">等待预览帧</div></figure></div>
+          </section>
+    <div class="panel measurement-panel">
+      <details class="measurement-details" id="measurement-details">
+        <summary>实时明细 · 最近 50 条</summary>
+        <div class="table-wrap stream-table" tabindex="0" aria-label="实时测量表">
+          <table>
+            <thead><tr><th scope="col">事件序号</th><th scope="col">帧序号</th><th scope="col">来源</th><th scope="col">通道</th><th scope="col">峰值</th><th scope="col">UTC 时间</th><th scope="col">质量位</th></tr></thead>
+            <tbody id="measurement-rows"><tr><td colspan="7">等待实时测量</td></tr></tbody>
+          </table>
+        </div>
+      </details>
+    </div>
+          </div>
+        <aside class="sidebar">
+          <section class="panel"><h2>记录状态</h2><dl class="summary-list">
+            <dt>录制</dt><dd id="recording-state">—</dd><dt>Session</dt><dd id="session-name">—</dd>
+          </dl></section>
+          <section class="panel"><h2>连接状态</h2><dl class="summary-list">
+            <dt>HTTP 网关</dt><dd id="gateway-state">等待查询</dd><dt>机地数传</dt><dd id="link-state">未知</dd>
+            <dt>SkyCore</dt><dd id="telemetry-state">未知</dd><dt>设备标识</dt><dd id="device-id">—</dd>
+            <dt>实时订阅</dt><dd id="stream-state" role="status">等待连接</dd>
+          </dl></section>
+          <section class="panel" aria-labelledby="device-title">
+          <h2 id="device-title">设备状态</h2>
+          <div class="table-wrap device-table" tabindex="0" aria-label="设备状态表">
+            <table>
+              <thead><tr><th scope="col">设备</th><th scope="col">状态</th><th scope="col">接收</th><th scope="col">错误</th><th scope="col">错误码</th></tr></thead>
+              <tbody id="device-rows"><tr><td colspan="5">暂无设备状态</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+        </aside>
+        </div>
+        <div id="gateway">
+        <section class="panel transfer-panel"><h2>出站转发与 Session 同步</h2>
+          <dl class="transfer-stats">
+            <div><dt>接收端</dt><dd id="out-endpoint">—</dd></div>
+            <div><dt>转发状态</dt><dd id="out-state">等待读取</dd></div>
+            <div><dt>待上传缓存</dt><dd id="out-queue">—</dd></div>
+            <div><dt>Session 队列与进度</dt><dd id="out-job">—</dd></div>
+            <div><dt>上次同步结果</dt><dd id="out-last">—</dd></div>
+          </dl>
+          <details id="transfer-details"><summary>最近 HTTP 请求与出站遥测载荷</summary>
+            <pre id="out-events">暂无请求</pre><pre id="out-payload">暂无出站遥测</pre>
+          </details>
+        </section>
       <aside class="operations">
         <section class="panel" aria-labelledby="command-title">
           <h2 id="command-title">SkyCore 命令</h2>
@@ -138,21 +150,7 @@
           <button id="command-check" type="button" disabled>查询当前命令回执</button>
         </section>
       </aside>
-    </div>
-
-    <div class="panel measurement-panel">
-      <details class="measurement-details" id="measurement-details">
-        <summary>实时明细 · 最近 50 条</summary>
-        <div class="table-wrap stream-table" tabindex="0" aria-label="实时测量表">
-          <table>
-            <thead><tr><th scope="col">事件序号</th><th scope="col">帧序号</th><th scope="col">来源</th><th scope="col">通道</th><th scope="col">峰值</th><th scope="col">UTC 时间</th><th scope="col">质量位</th></tr></thead>
-            <tbody id="measurement-rows"><tr><td colspan="7">等待实时测量</td></tr></tbody>
-          </table>
         </div>
-      </details>
-    </div>
-
-      </div>
       </div>
     </div>
   </main>

@@ -52,6 +52,7 @@ void MainWindow::initializeGateway()
         for (const auto& control : controls()) {
             if (!control.label || !control.button || control.label->isHidden()) continue;
             rows.append(QJsonObject{{"key", control.key}, {"name", control.label->text()},
+                {"state", control.label->property(control.key == "motion" ? "state" : "connectionState").toString()},
                 {"connected", control.label->property("connected").toBool()}, {"enabled", ready(control)},
                 {"detail", control.label->accessibleDescription()}});
         }

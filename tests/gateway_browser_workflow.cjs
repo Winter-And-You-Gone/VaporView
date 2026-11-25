@@ -192,6 +192,19 @@ async function verify(rawOrigin, sessionRoot) {
     await waitText(page, "#link-state", "已连接");
 
     assert(await page.locator("#home-view").isVisible());
+    assert(await page.locator("#home-view #peak-trend").isVisible(), "peak trend is on the initial dashboard");
+    assert(await page.locator("#home-view #measurement-details summary").isVisible());
+    const colors = await page.evaluate(() => {
+      const sample = document.createElement("span");
+      document.querySelector("#home-controls").append(sample);
+      try {
+        return ["connected", "disconnected", "connecting", "warning", "error", "disabled"].map(state => {
+          displayDeviceState(sample, state);
+          return getComputedStyle(sample).color;
+        });
+      } finally { sample.remove(); }
+    });
+    assert.equal(new Set(colors).size, colors.length, "connection, warning and fault states have distinct colors");
     await page.locator('nav a[href="#gateway"]').click();
     await waitText(page, "#out-state", "未启用");
     await page.locator('nav a[href="#home"]').click();
@@ -208,7 +221,8 @@ async function verify(rawOrigin, sessionRoot) {
         assert.equal(accepted.targetDevice, key);
         assert.equal(accepted.skyCommandId, commandId);
         await waitText(page, "#device-feedback", "已确认设备状态");
-        await row.getByText(state, {exact: true}).waitFor();
+        if (commandId === 22) await row.getByText(state, {exact: true}).waitFor();
+        else await row.locator('[data-state="connected"], [data-state="warning"]').waitFor();
       }
       console.log("Desktop device disconnected and reconnected:", key);
     }
