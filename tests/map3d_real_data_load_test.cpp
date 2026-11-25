@@ -196,16 +196,54 @@ void checkTerrainLevels(osgEarth::Map* map)
     osgEarth::ElevationLayerVector layers;
     map->getLayers(layers);
     require(!layers.empty(), QStringLiteral("built-in map has elevation layers"));
-    const auto distantKey = map->getProfile()->createTileKey(120.07, 30.2, 7);
+    const auto distantKey = map->getProfile()->createTileKey(90.0, 31.5, 7);
+    const osgEarth::ElevationLayer* baseDem = nullptr;
     for (const auto& layer : layers)
     {
-        require(layer->getMinLevel() == 8 && !layer->getBestAvailableTileKey(distantKey).valid(),
-                QStringLiteral("DEM starts at level 8: %1").arg(QString::fromStdString(layer->getName())));
+        if (layer->getName() == VaporView::Map3D::kGlobalBaseDemLayerName)
+        {
+            baseDem = layer.get();
+            require(layer->getMinLevel() == 0,
+                    QStringLiteral("global coarse base DEM starts at level 0"));
+            continue;
+        }
+        require(layer->getMinLevel() == VaporView::Map3D::kTerrainMinLevel
+                    && !layer->getBestAvailableTileKey(distantKey).valid(),
+                QStringLiteral("high-res DEM starts at level 8: %1").arg(QString::fromStdString(layer->getName())));
     }
+    require(baseDem && layers.front().get() == baseDem,
+            QStringLiteral("global coarse base DEM sits at index 0 as the lowest-priority fallback"));
     osg::ref_ptr<osg::HeightField> field = new osg::HeightField;
-    field->allocate(257, 257); // Match the terrain renderer's elevation grid.
-    require(!layers.populateHeightField(field, nullptr, distantKey, nullptr, osgEarth::INTERP_BILINEAR, nullptr),
-            QStringLiteral("level 7 skips the entire elevation stack"));
+    field->allocate(65, 65);
+    std::fill(field->getHeightList().begin(), field->getHeightList().end(), NO_DATA_VALUE);
+    require(layers.populateHeightField(field, nullptr, distantKey, nullptr, osgEarth::INTERP_BILINEAR, nullptr),
+            QStringLiteral("level 7 resolves terrain from the bundled global coarse base DEM"));
+    require(field->getHeight(32, 32) > 4000.0f,
+            QStringLiteral("level 7 Tibetan Plateau tile already sits above 4000 m instead of 0 m"));
+
+    const auto oceanKey = map->getProfile()->createTileKey(-150.0, 30.0, 7);
+    std::fill(field->getHeightList().begin(), field->getHeightList().end(), NO_DATA_VALUE);
+    require(layers.populateHeightField(field, nullptr, oceanKey, nullptr, osgEarth::INTERP_BILINEAR, nullptr)
+                && std::abs(field->getHeight(32, 32)) < 1.0f,
+            QStringLiteral("level 7 ocean tile stays at sea level"));
+
+    // Deferring online terrain while panning must still resolve high-altitude terrain from the global base DEM.
+    for (const auto& layer : layers)
+    {
+        if (auto* online = dynamic_cast<VaporView::Map3D::Detail::OnlineTerrainLayer*>(layer.get()))
+            online->deferDownloads();
+    }
+    const auto deferredKey = map->getProfile()->createTileKey(86.925, 28.0, 12);
+    std::fill(field->getHeightList().begin(), field->getHeightList().end(), NO_DATA_VALUE);
+    require(layers.populateHeightField(field, nullptr, deferredKey, nullptr, osgEarth::INTERP_BILINEAR, nullptr),
+            QStringLiteral("deferred level 12 tile falls back to the global coarse base DEM"));
+    require(field->getHeight(32, 32) > 4000.0f,
+            QStringLiteral("deferred level 12 Himalayan tile avoids dropping to 0 m"));
+    for (const auto& layer : layers)
+    {
+        if (auto* online = dynamic_cast<VaporView::Map3D::Detail::OnlineTerrainLayer*>(layer.get()))
+            online->resumeDownloads();
+    }
 }
 
 void checkLiveBuildings(const QString& tilesetPath)
@@ -277,9 +315,10 @@ void checkLiveTerrain(const QString& earth, bool blockCopernicus)
     checkTerrainLevels(map);
     osgEarth::ElevationLayerVector layers;
     map->getLayers(layers);
-    require(layers.size() >= 3 && layers.front()->getName() == "Cesium World Terrain"
-                && layers[1]->getName() == "Online Copernicus GLO-30",
-            QStringLiteral("sampling order is local, online Copernicus, then Cesium"));
+    require(layers.size() >= 4 && layers.front()->getName() == VaporView::Map3D::kGlobalBaseDemLayerName
+                && layers[1]->getName() == "Cesium World Terrain"
+                && layers[2]->getName() == "Online Copernicus GLO-30",
+            QStringLiteral("sampling order is local, online Copernicus, Cesium, then global coarse base DEM"));
     // An entire tile inside the Xihu DEM must resolve without contacting ion.
     const auto sample = [&](double lon, double lat, unsigned level) {
         const auto key = map->getProfile()->createTileKey(lon, lat, level);

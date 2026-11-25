@@ -468,6 +468,7 @@ void configureHighResolutionTerrain(osgEarth::MapNode* mapNode)
     terrainOptions.setLODMethod(osgEarth::LODMethod::SCREEN_SPACE);
     terrainOptions.setTilePixelSize(kTerrainTilePixelSize);
     terrainOptions.setScreenSpaceError(0.0f);
+    terrainOptions.setHeightFieldSkirtRatio(0.05f);
     terrainOptions.setProgressive(false);
     terrainOptions.setConcurrency(12u);
     terrainOptions.setMorphImagery(false);

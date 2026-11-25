@@ -14,7 +14,13 @@ resources/maps/terrain/
     srtm.vrt
 ```
 
-The built-in 3D maps display imagery on the globe at osgEarth tile levels 0–7. Terrain sampling starts at level 8, so distant views do not request online elevation. The map samples local Copernicus DEM GLO-30 first, then local SRTM, and fills gaps from the public [Copernicus DEM GLO-30 collection on AWS](https://registry.opendata.aws/copernicus-dem/). GDAL reads the visible area from cloud-optimized GeoTIFFs over HTTPS without an account or key.
+The built-in 3D maps bundle a compact global coarse DEM (`resources/maps/terrain/global/etopo2022_global_coarse.tif`, adapted from public-domain NOAA NCEI ETOPO 2022) at osgEarth tile levels 0 onward so global views (levels 0–7) show real relief without online requests and level 8+ tiles fall back smoothly while online DEM downloads are deferred or unavailable. High-resolution DEM sampling starts at level 8: the map samples local Copernicus DEM GLO-30 first, then local SRTM, and fills gaps from the public [Copernicus DEM GLO-30 collection on AWS](https://registry.opendata.aws/copernicus-dem/). GDAL reads the visible area from cloud-optimized GeoTIFFs over HTTPS without an account or key.
+
+To regenerate the bundled global coarse DEM from NOAA ETOPO 2022 60s surface data:
+
+```powershell
+python scripts/prepare-global-coarse-dem.py
+```
 
 The osgEarth disk cache stores successfully assembled GLO-30 tiles for offline reuse at the same zoom. A cached tile stays in use until the cache is cleared. Install regional DEM files in the directories above for offline terrain from level 8 onward.
 

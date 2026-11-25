@@ -220,6 +220,28 @@ if(WIN32)
 endif()
 
 if(VAPORVIEW_BUILD_GROUND)
+set(GLOBAL_BASE_DEM_FILE
+    ${CMAKE_SOURCE_DIR}/resources/maps/terrain/global/etopo2022_global_coarse.tif
+)
+set(GLOBAL_BASE_DEM_SYNC_CMD)
+set(GLOBAL_BASE_DEM_POST_BUILD_CMD)
+set(GLOBAL_BASE_DEM_DEPENDS)
+if(EXISTS "${GLOBAL_BASE_DEM_FILE}")
+    set(GLOBAL_BASE_DEM_SYNC_CMD
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/resources/maps/terrain/global
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${GLOBAL_BASE_DEM_FILE}
+            ${CMAKE_BINARY_DIR}/resources/maps/terrain/global/etopo2022_global_coarse.tif
+    )
+    set(GLOBAL_BASE_DEM_POST_BUILD_CMD
+        COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:VaporView>/resources/maps/terrain/global
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${GLOBAL_BASE_DEM_FILE}
+            $<TARGET_FILE_DIR:VaporView>/resources/maps/terrain/global/etopo2022_global_coarse.tif
+    )
+    set(GLOBAL_BASE_DEM_DEPENDS ${GLOBAL_BASE_DEM_FILE})
+endif()
+
 add_custom_target(VaporViewRuntimeResources ALL
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/resources
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -237,7 +259,8 @@ add_custom_target(VaporViewRuntimeResources ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_SOURCE_DIR}/resources/VaproViewLOGO
         ${CMAKE_BINARY_DIR}/resources/VaproViewLOGO
-    DEPENDS ${NAV_RESOURCES} ${LUCIDE_RESOURCES}
+    ${GLOBAL_BASE_DEM_SYNC_CMD}
+    DEPENDS ${NAV_RESOURCES} ${LUCIDE_RESOURCES} ${GLOBAL_BASE_DEM_DEPENDS}
     COMMENT "Synchronizing VaporView runtime resources"
 )
 add_dependencies(VaporView VaporViewRuntimeResources)
@@ -259,6 +282,7 @@ add_custom_command(TARGET VaporView POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_SOURCE_DIR}/resources/VaproViewLOGO
         $<TARGET_FILE_DIR:VaporView>/resources/VaproViewLOGO
+    ${GLOBAL_BASE_DEM_POST_BUILD_CMD}
     COMMENT "Copying resources to build directory"
 )
 

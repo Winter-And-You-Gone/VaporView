@@ -79,6 +79,11 @@ done
 for directory in lucide VaproViewLOGO; do
     [[ -d "$resource_root/$directory" ]] && cp -a "$resource_root/$directory" "$stage_dir/resources/"
 done
+if [[ -f "$repo_root/resources/maps/terrain/global/etopo2022_global_coarse.tif" ]]; then
+    mkdir -p "$stage_dir/resources/maps/terrain/global"
+    cp "$repo_root/resources/maps/terrain/global/etopo2022_global_coarse.tif" \
+       "$stage_dir/resources/maps/terrain/global/"
+fi
 
 for shared in gdal proj proj4; do
     [[ -d "$build_dir/share/$shared" ]] && mkdir -p "$stage_dir/share" && cp -a "$build_dir/share/$shared" "$stage_dir/share/"

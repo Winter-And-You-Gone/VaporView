@@ -6,6 +6,9 @@
 namespace VaporView::Map3D {
 
 inline constexpr unsigned kTerrainMinLevel = 8;
+inline constexpr auto kGlobalBaseDemRelativePath =
+    "resources/maps/terrain/global/etopo2022_global_coarse.tif";
+inline constexpr auto kGlobalBaseDemLayerName = "Global Base DEM (ETOPO 2022)";
 
 QStringList map3DRuntimeRootCandidates();
 QString map3DDownloadedMapRoot();

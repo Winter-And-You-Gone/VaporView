@@ -84,6 +84,8 @@ __pycache__/
 /resources/maps/natural_earth/*/Read_me.txt
 /resources/maps/natural_earth/codex_download*
 /resources/maps/terrain/**/*.tif
+!/resources/maps/terrain/global/
+!/resources/maps/terrain/global/etopo2022_global_coarse.tif
 /resources/maps/terrain/**/*.tiff
 /resources/maps/terrain/**/*.vrt
 /resources/maps/terrain/**/*.zip

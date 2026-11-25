@@ -228,6 +228,12 @@ foreach ($directoryName in @("lucide", "VaproViewLOGO")) {
 if (Test-Path -LiteralPath (Join-Path $stageDir "resources\maps")) {
     Remove-VerifiedDirectory (Join-Path $stageDir "resources\maps") $stageDir
 }
+$globalBaseDemSource = Join-Path $repoRoot "resources\maps\terrain\global\etopo2022_global_coarse.tif"
+if (Test-Path -LiteralPath $globalBaseDemSource -PathType Leaf) {
+    $globalBaseDemDestination = Join-Path $resourceDestination "maps\terrain\global"
+    New-Item -ItemType Directory -Force -Path $globalBaseDemDestination | Out-Null
+    Copy-Item -LiteralPath $globalBaseDemSource -Destination $globalBaseDemDestination -Force
+}
 
 $driversSource = Join-Path $repoRoot "packaging\ifw\drivers"
 Copy-DirectoryContents $driversSource (Join-Path $stageDir "drivers")

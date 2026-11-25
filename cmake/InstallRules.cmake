@@ -21,3 +21,10 @@ install(FILES
 install(DIRECTORY "${CMAKE_SOURCE_DIR}/resources/lucide"
     DESTINATION resources
 )
+
+if(EXISTS "${CMAKE_SOURCE_DIR}/resources/maps/terrain/global/etopo2022_global_coarse.tif")
+    install(FILES
+        "${CMAKE_SOURCE_DIR}/resources/maps/terrain/global/etopo2022_global_coarse.tif"
+        DESTINATION resources/maps/terrain/global
+    )
+endif()

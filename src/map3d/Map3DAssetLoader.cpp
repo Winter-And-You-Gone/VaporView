@@ -217,6 +217,27 @@ void configureBuiltInTerrain(osgEarth::Map* map, EarthLoadDiagnostics& diagnosti
         diagnostics.openElevationLayerName = QString::fromLatin1(OnlineCopernicusLayer::name);
     diagnostics.onlineCopernicusConfigured = true;
     diagnostics.cesiumTerrainConfigured = addCesiumTerrainFallback(map);
+
+    const QString globalBaseDemPath = firstExistingMap3DFile(
+        map3DRuntimeRootCandidates(),
+        {QString::fromLatin1(kGlobalBaseDemRelativePath)});
+    if (!globalBaseDemPath.isEmpty())
+    {
+        osg::ref_ptr<osgEarth::GDALElevationLayer> baseDem = new osgEarth::GDALElevationLayer;
+        baseDem->setName(kGlobalBaseDemLayerName);
+        baseDem->setAttribution("Global coarse terrain adapted from NOAA NCEI ETOPO 2022 (Public Domain)");
+        baseDem->setTileSize(65);
+        baseDem->setMinLevel(0);
+        // Keep maxDataLevel covering high zooms so osgEarth's populateHeightField
+        // treats the bundled base DEM as a real fallback instead of bailing out on
+        // LOD 5-7 or deferred/failed LOD 8+ online terrain tiles. Higher-priority
+        // layers are loaded lazily first and bypass this layer whenever they resolve.
+        baseDem->setMaxDataLevel(19);
+        baseDem->setURL(osgEarth::URI(QDir::fromNativeSeparators(globalBaseDemPath).toStdString()));
+        // Index 0 has the lowest priority: it supplies LOD 0-7 globally without
+        // online traffic and cushions LOD 8+ tiles while online DEM is deferred or unavailable.
+        map->insertLayer(baseDem.get(), 0);
+    }
 }
 
 EarthAssetLoadResult loadEarthAsset(const QString& earthPath)
