@@ -24,6 +24,7 @@
 #include <QTemporaryDir>
 #include <QThread>
 #include <QWidget>
+#include <QStatusBar>
 #include <QWindow>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -267,11 +268,39 @@ int main(int argc, char** argv)
             QStringLiteral("3D map starts the real renderer without closing the window"));
     require(view->isRenderingStarted(),
             QStringLiteral("3D map activates osgEarth automatically when opened"));
+    auto* mapMainWindow = qobject_cast<VaporView::Map3D::Map3DWindow*>(mapWindow);
+    require(mapMainWindow && mapMainWindow->statusBar() && !mapMainWindow->statusBar()->isSizeGripEnabled(),
+            QStringLiteral("3D map status bar disables its duplicate diagonal size grip"));
 #ifdef Q_OS_WIN
     const HCURSOR canvasCursor = GetCursor();
     SetCursor(previousCursor);
     require(QApplication::widgetAt(QCursor::pos()) == view && canvasCursor == LoadCursor(nullptr, IDC_ARROW),
             QStringLiteral("first map render restores the native arrow under a stationary pointer without a click"));
+    require(mapWindow->windowHandle() && mapWindow->windowHandle()->cursor().shape() == Qt::ArrowCursor,
+            QStringLiteral("top-level QWindow cursor is reset alongside the native cursor"));
+
+    // Simulate a stale diagonal resize cursor before reopening the hidden map window.
+    mapWindow->hide();
+    processEventsFor(100);
+    if (mapWindow->windowHandle())
+        mapWindow->windowHandle()->setCursor(Qt::SizeFDiagCursor);
+    SetCursor(LoadCursor(nullptr, IDC_SIZENWSE));
+    mapAction->trigger();
+    processEventsFor(150);
+    require(QApplication::widgetAt(QCursor::pos()) == view
+                && GetCursor() == LoadCursor(nullptr, IDC_ARROW)
+                && mapWindow->windowHandle()->cursor().shape() == Qt::ArrowCursor,
+            QStringLiteral("reopening the 3D map window clears a stale diagonal resize cursor"));
+
+    // Simulate entering the native GL canvas right after leaving a corner resize handle.
+    mapWindow->windowHandle()->setCursor(Qt::SizeFDiagCursor);
+    SetCursor(LoadCursor(nullptr, IDC_SIZENWSE));
+    QEvent enterEvent(QEvent::Enter);
+    QCoreApplication::sendEvent(view, &enterEvent);
+    require(GetCursor() == LoadCursor(nullptr, IDC_ARROW)
+                && mapWindow->windowHandle()->cursor().shape() == Qt::ArrowCursor,
+            QStringLiteral("entering the 3D canvas clears a cached diagonal resize cursor"));
+    SetCursor(previousCursor);
 #endif
     require(!view->framebufferSize().isEmpty(),
             QStringLiteral("3D map initializes an OpenGL framebuffer after rendering starts"));

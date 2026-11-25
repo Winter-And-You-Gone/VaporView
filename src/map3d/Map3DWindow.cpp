@@ -74,6 +74,7 @@
 #include <QFormLayout>
 #include <QWidget>
 #include <QWidgetAction>
+#include <QWindow>
 #include <QSvgRenderer>
 #include <QFutureWatcher>
 #include <QtConcurrent/QtConcurrentRun>
@@ -922,6 +923,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         render_placeholder_label_->setWordWrap(true);
         render_placeholder_label_->setText(
             mapText(QStringLiteral("正在检查并启动 3D 渲染…")));
+        render_placeholder_label_->setCursor(Qt::ArrowCursor);
 
         render_stack_->addWidget(render_placeholder_label_);
         render_stack_->setCurrentWidget(render_placeholder_label_);
@@ -1344,6 +1346,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     VaporView::addWidgetToCustomTitleBar(this, map_mode_button_);
     updateMapModeUi();
 
+    statusBar()->setSizeGripEnabled(false);
     statusBar()->addPermanentWidget(status_label_, 1);
     osm_attribution_ = new QLabel(QStringLiteral("<a href=\"https://www.openstreetmap.org/copyright\">© OpenStreetMap contributors</a>"), this);
     osm_attribution_->setObjectName(QStringLiteral("map3DOsmAttribution"));
@@ -1506,6 +1509,8 @@ void Map3DWindow::startRendering()
     // Create GL only after the loading state has painted. Its native child
     // owns RHI composition, so enabling GL does not recreate the raster window.
     render_host_ = new QWidget;
+    render_host_->setCursor(Qt::ArrowCursor);
+    render_host_->installEventFilter(this);
 #ifdef Q_OS_WIN
     render_host_->setAttribute(Qt::WA_DontCreateNativeAncestors);
     render_host_->setAttribute(Qt::WA_NativeWindow);
@@ -1514,6 +1519,8 @@ void Map3DWindow::startRendering()
     viewLayout->setContentsMargins(0, 0, 0, 0);
     view_ = new OsgEarthViewWidget(render_host_, true);
     view_->setObjectName(QStringLiteral("map3DView"));
+    view_->setCursor(Qt::ArrowCursor);
+    view_->installEventFilter(this);
     viewLayout->addWidget(view_);
     render_stack_->addWidget(render_host_);
     map_notice_label_->setParent(render_host_);
@@ -1522,16 +1529,10 @@ void Map3DWindow::startRendering()
         controls->setParent(render_host_);
     }
     configureViewSignals();
-#ifdef Q_OS_WIN
-    // Showing the native GL child under a stationary pointer can leave the
-    // previous window's resize cursor on screen until the next mouse event.
-    connect(view_, &QOpenGLWidget::frameSwapped, this, [this] {
-        if (!QApplication::overrideCursor() && !QWidget::mouseGrabber()
-            && QApplication::widgetAt(QCursor::pos()) == view_) {
-            SetCursor(LoadCursor(nullptr, IDC_ARROW));
-        }
-    }, Qt::SingleShotConnection);
-#endif
+    // Showing the native GL child under a stationary pointer can leave a
+    // previous window's or resize handle's diagonal resize cursor cached.
+    connect(view_, &QOpenGLWidget::frameSwapped, this, &Map3DWindow::syncCursorUnderPointer,
+            Qt::SingleShotConnection);
     connect(view_, &OsgEarthViewWidget::renderingFailed, this, [this](const QString& reason) {
         render_placeholder_label_->setText(mapText(QStringLiteral("3D 渲染已停止：%1\n可关闭窗口或查看地图文件状态。")).arg(reason));
         render_stack_->setCurrentWidget(render_placeholder_label_);
@@ -1553,6 +1554,7 @@ void Map3DWindow::startRendering()
         return;
     }
     render_stack_->setCurrentWidget(render_host_);
+    syncCursorUnderPointer();
     if (auto* controls = findChild<QWidget*>(QStringLiteral("map3DCornerControls")))
     {
         controls->show();
@@ -3270,6 +3272,14 @@ bool Map3DWindow::eventFilter(QObject* watched, QEvent* event)
             if (isVisible() && !view_) startRendering();
         });
     }
+    if ((watched == render_host_ || watched == view_) && event->type() == QEvent::Enter)
+    {
+        syncCursorUnderPointer();
+    }
+    if (watched == this && event->type() == QEvent::WindowActivate)
+    {
+        syncCursorUnderPointer();
+    }
     if (watched == qApp && event->type() == QEvent::DynamicPropertyChange
         && static_cast<QDynamicPropertyChangeEvent*>(event)->propertyName() == "vaporViewEnglish")
         refreshLanguage();
@@ -3344,9 +3354,53 @@ void Map3DWindow::changeEvent(QEvent* event)
     }
 }
 
+void Map3DWindow::syncCursorUnderPointer()
+{
+    if (!isVisible() || QApplication::overrideCursor() || QWidget::mouseGrabber())
+    {
+        return;
+    }
+
+    QWidget* under = QApplication::widgetAt(QCursor::pos());
+    if (!under || (under != this && !isAncestorOf(under)))
+    {
+        return;
+    }
+    if (under->property("customTitleBarResizeHandle").toBool())
+    {
+        return;
+    }
+
+    const QCursor desired = under->cursor();
+    if (QWindow* topWindow = windowHandle())
+    {
+        if (desired.shape() == Qt::ArrowCursor)
+        {
+            topWindow->unsetCursor();
+        }
+        else if (topWindow->cursor().shape() != desired.shape())
+        {
+            topWindow->setCursor(desired);
+        }
+    }
+    if (render_host_ && render_host_->windowHandle()
+        && (under == render_host_ || render_host_->isAncestorOf(under)))
+    {
+        render_host_->windowHandle()->setCursor(desired);
+    }
+#ifdef Q_OS_WIN
+    if (desired.shape() == Qt::ArrowCursor)
+    {
+        SetCursor(LoadCursor(nullptr, IDC_ARROW));
+    }
+#endif
+}
+
 void Map3DWindow::showEvent(QShowEvent* event)
 {
     QMainWindow::showEvent(event);
+    syncCursorUnderPointer();
+    QTimer::singleShot(0, this, &Map3DWindow::syncCursorUnderPointer);
     if (auto* controls = findChild<QWidget*>(QStringLiteral("map3DCornerControls")))
     {
         controls->show();

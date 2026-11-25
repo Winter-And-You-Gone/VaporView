@@ -144,6 +144,7 @@ private:
     void startSessionLoad(const QString& sessionDir, quint64 generation);
     void showMapNotice(const QString& text);
     void positionMapNotice();
+    void syncCursorUnderPointer();
 
     OsgEarthViewWidget* view_ = nullptr;
     QWidget* render_host_ = nullptr;

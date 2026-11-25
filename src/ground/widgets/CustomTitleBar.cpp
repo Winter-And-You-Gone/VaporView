@@ -374,7 +374,8 @@ protected:
                 refreshTheme();
             }
             else if (event->type() == QEvent::WindowStateChange ||
-                     event->type() == QEvent::Resize)
+                     event->type() == QEvent::Resize ||
+                     event->type() == QEvent::Show)
             {
                 updateMaximizeButton();
                 updateResizeHandles();
@@ -430,16 +431,29 @@ protected:
                 }
             }
 
-            if (handle->property("customTitleBarResizeHandle").toBool() &&
-                event->type() == QEvent::MouseButtonPress)
+            if (handle->property("customTitleBarResizeHandle").toBool())
             {
-                auto *mouseEvent = static_cast<QMouseEvent *>(event);
-                if (mouseEvent->button() == Qt::LeftButton && window_ && window_->windowHandle())
+                if (event->type() == QEvent::Leave || event->type() == QEvent::HoverLeave)
                 {
-                    const auto edgeValue = handle->property("customTitleBarResizeEdges").toInt();
-                    const Qt::Edges edges(static_cast<Qt::Edges::Int>(edgeValue));
-                    window_->windowHandle()->startSystemResize(edges);
-                    return true;
+                    if (window_ && window_->windowHandle() && !QApplication::overrideCursor() && !QWidget::mouseGrabber())
+                    {
+                        QWidget *under = QApplication::widgetAt(QCursor::pos());
+                        if (!under || !under->property("customTitleBarResizeHandle").toBool())
+                        {
+                            window_->windowHandle()->unsetCursor();
+                        }
+                    }
+                }
+                else if (event->type() == QEvent::MouseButtonPress)
+                {
+                    auto *mouseEvent = static_cast<QMouseEvent *>(event);
+                    if (mouseEvent->button() == Qt::LeftButton && window_ && window_->windowHandle())
+                    {
+                        const auto edgeValue = handle->property("customTitleBarResizeEdges").toInt();
+                        const Qt::Edges edges(static_cast<Qt::Edges::Int>(edgeValue));
+                        window_->windowHandle()->startSystemResize(edges);
+                        return true;
+                    }
                 }
             }
         }
