@@ -1577,29 +1577,37 @@ void FpgaDeviceController::executeOperation(const QJsonObject& request)
     const quint16 source=quint16(request.value("source").toInt());
     auto command=[&](quint16 message,quint16 target,QVector<quint32> words){Step s;s.kind=Kind::Management;s.address=message;s.source=target;s.values=words;steps_.push_back(s);};
     if(op=="time")command(13,2,{action,value});
-    else if(op=="motor") {
+    else if(op=="motor" || op=="motor_config") {
         if(registers_.value(0x6700)!=0x00470200) {fail(QStringLiteral("DM422 模块版本不匹配。"));return;}
-        if(action==4 && value==1) {
+        const bool presetMove = op=="motor" && request.contains("frequency");
+        if(op=="motor_config" || presetMove) {
+            motorOwnerEnabled_=false;
+            waitFor(0x6708,8,0);write(0x6704,0);verify(0x6704,0);
+            const auto frequency=quint32(request.value("frequency").toDouble());
+            write(0x6714,frequency);
+            // Integer divider reads the actual frequency, rounded down.
+            read(0x6714);verify(0x6730,4);
+            callback([this,frequency] {
+                const quint32 clock=session_->capabilities().timeClockHz;
+                const quint32 halfPeriod=(clock+2*frequency-1)/(2*frequency);
+                if(!halfPeriod || registers_.value(0x6714)!=clock/(2*halfPeriod))
+                    fail(QStringLiteral("DM422 实际频率读回与固定占空比分频结果不符。"));
+            });
+        }
+        if(presetMove || (action==4 && value==1)) {
             write(0x0004,registers_.value(4)|1u);
             verify(0x0004,registers_.value(4)|1u);
             command(12,0x47,{5,0});
         }
-        command(12,0x47,{action,value});
-        if(action==4) {verify(0x6704,value);callback([this,value]{motorOwnerEnabled_=value!=0;});}
-    }
-    else if(op=="motor_config") {
-        motorOwnerEnabled_=false;
-        waitFor(0x6708,8,0);write(0x6704,0);verify(0x6704,0);
-        const auto frequency=quint32(request.value("frequency").toDouble());
-        write(0x6714,frequency);
-        // Integer divider reads the actual frequency, rounded down.
-        read(0x6714);verify(0x6730,4);
-        callback([this,frequency] {
-            const quint32 clock=session_->capabilities().timeClockHz;
-            const quint32 halfPeriod=(clock+2*frequency-1)/(2*frequency);
-            if(!halfPeriod || registers_.value(0x6714)!=clock/(2*halfPeriod))
-                fail(QStringLiteral("DM422 实际频率读回与固定占空比分频结果不符。"));
-        });
+        if(presetMove) {
+            command(12,0x47,{4,1});
+            verify(0x6704,1);
+            callback([this]{motorOwnerEnabled_=true;});
+        }
+        if(op=="motor") {
+            command(12,0x47,{action,value});
+            if(action==4) {verify(0x6704,value);callback([this,value]{motorOwnerEnabled_=value!=0;});}
+        }
     } else if(op=="channel_acquisition") {
         const int channel=request.value("channel").toInt();const quint32 mask=1u<<(16+channel);
         if(request.value("enabled").toBool() && !enableUpload())return;

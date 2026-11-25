@@ -146,6 +146,7 @@ private:
         QDoubleSpinBox *steps;
     };
     QList<MotorView> motorViews_;
+    QAbstractButton *homeMotorStop_ = nullptr;
     QVector<QWidget*> onlineControls_;
     QMap<quint32, QLabel*> hardwareLabels_;
     QMap<quint32,QDoubleSpinBox*> sensorParameterInputs_;

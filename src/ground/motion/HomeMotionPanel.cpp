@@ -142,19 +142,21 @@ void HomeMotionPanel::updateControlsLayout()
         singleRowWidth += QWidgetItem(control).minimumSize().width();
 
     const bool wrap = width() < singleRowWidth;
-    if (wrap == controls_wrapped_)
-        return;
-
-    controls_wrapped_ = wrap;
-    for (QWidget *control : controls)
-        fields_->removeWidget(control);
-    fields_->setColumnStretch(4, wrap ? 1 : 0);
-    fields_->setColumnStretch(8, wrap ? 0 : 1);
-    for (int i = 0; i < static_cast<int>(controls.size()); ++i)
-        fields_->addWidget(controls[i], wrap && i >= 4 ? 1 : 0, wrap ? i % 4 : i);
-    fields_->invalidate();
-    layout()->invalidate();
-    updateGeometry();
+    if (wrap != controls_wrapped_)
+    {
+        controls_wrapped_ = wrap;
+        for (QWidget *control : controls)
+            fields_->removeWidget(control);
+        fields_->setColumnStretch(4, wrap ? 1 : 0);
+        fields_->setColumnStretch(8, wrap ? 0 : 1);
+        for (int i = 0; i < static_cast<int>(controls.size()); ++i)
+            fields_->addWidget(controls[i], wrap && i >= 4 ? 1 : 0, wrap ? i % 4 : i);
+        fields_->invalidate();
+        layout()->invalidate();
+        updateGeometry();
+    }
+    // The layout leaves width unconstrained for wrapping, but both rows need their full minimum height.
+    setMinimumHeight(layout()->minimumSize().height());
 }
 
 void HomeMotionPanel::refresh()

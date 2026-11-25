@@ -600,6 +600,10 @@ int main(int argc, char **argv)
         auto *steps = stepperCard->findChild<QDoubleSpinBox *>(QStringLiteral("fpgaMotorSteps"));
         require(status && status->isVisible() && title && title->text() == QStringLiteral("步进电机") && steps,
                 "the title bar contains the motor title and live safety status");
+        require(title->geometry().right() < status->geometry().left() &&
+                status->geometry().right() < showReadbacks->geometry().left() &&
+                showReadbacks->text() == QStringLiteral("查看寄存器"),
+                "title, safety status and compact register toggle appear in order on the same row");
         steps->setValue(-120);
         showReadbacks->click();
         require(showReadbacks->isChecked() && readback->isVisible() && !stepper->isVisible() && !steps->isVisible() && status->isVisible(),

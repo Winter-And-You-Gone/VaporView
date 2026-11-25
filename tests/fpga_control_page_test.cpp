@@ -145,6 +145,52 @@ void motorMotionGuard() {
     moving(14);require(progress->text().contains("progress is unknown")&&!run->isEnabled(),"pre-existing device motion is locked and never given an invented estimate");idle(14);
 }
 }
+void motorPresets() {
+    const std::array<const char *, 4> names{"fpgaMotorInFrequency", "fpgaMotorInSteps",
+                                           "fpgaMotorOutFrequency", "fpgaMotorOutSteps"};
+    const std::array<int, 4> defaults{200, 2000, 200, -2000};
+    const std::array<int, 4> edited{250, 1750, 125, -900};
+    {
+        QWidget home;
+        auto *layout = new QVBoxLayout(&home);
+        FpgaControlPage page(nullptr, nullptr, layout);
+        QJsonObject request;
+        int requests = 0;
+        QObject::connect(&page, &FpgaControlPage::operationRequested, &page, [&](const QJsonObject &value) {
+            request = value;
+            ++requests;
+        });
+        for (size_t i = 0; i < names.size(); ++i) {
+            auto *input = page.findChild<QDoubleSpinBox *>(names[i]);
+            require(input && input->value() == defaults[i], "both home presets start with their specified defaults");
+            input->setValue(edited[i]);
+        }
+        require(requests == 0, "editing a preset does not send an FPGA command");
+        page.setConnectionState(true, false);
+        const auto expectMove = [&](const char *name, int frequency, int pulses) {
+            auto *button = home.findChild<QPushButton *>(name);
+            require(button && button->isEnabled(), "home preset available on a ready FPGA");
+            button->click();
+            require(request.value("op") == "motor" && request.value("frequency").toInt() == frequency &&
+                    request.value("value").toInt() == pulses && request.value("action").toInt() == 1,
+                    "home sends the independently configured frequency and signed pulse count");
+            require(!home.findChild<QPushButton *>("fpgaMotorMoveIn")->isEnabled() &&
+                    !home.findChild<QPushButton *>("fpgaMotorMoveOut")->isEnabled(), "pending preset locks both moves");
+            auto *stop = home.findChild<QPushButton *>("fpgaMotorDisable");
+            require(stop && stop->isEnabled(), "home retains explicit stop and disable during a pending move");
+            stop->click();
+            page.finishMotorOperation(request, true);
+            page.setConnectionState(true, false);
+        };
+        expectMove("fpgaMotorMoveIn", edited[0], edited[1]);
+        expectMove("fpgaMotorMoveOut", edited[2], edited[3]);
+        require(requests == 4, "each preset and stop sends exactly one request");
+    }
+    FpgaControlPage reopened;
+    for (size_t i = 0; i < names.size(); ++i)
+        require(reopened.findChild<QDoubleSpinBox *>(names[i])->value() == edited[i], "both presets survive reopening");
+}
+
 int main(int argc,char **argv) {
     QApplication app(argc,argv);
 #ifdef Q_OS_WIN
@@ -156,6 +202,7 @@ int main(int argc,char **argv) {
     VaporView::setAppStyleSheet(VaporView::startupAppThemeStyleSheet(false));
     motorQueuedCancellation();
     motorMotionGuard();
+    motorPresets();
     {
         FpgaControlPage page;
         page.setConnectionState(true,false);

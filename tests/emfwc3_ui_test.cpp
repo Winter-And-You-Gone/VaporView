@@ -127,20 +127,24 @@ int main(int argc, char **argv)
         auto *configPlus = find<QPushButton>(*page, "emFwc3Plus2");
         auto *homeCard = find<QWidget>(window, "homeMotionCard");
         auto *homeEmCard = find<QWidget>(*homeCard, "homeEmMotorCard");
-        auto *homeStepper = find<QWidget>(*homeCard, "fpgaSectionCard");
-        auto *homeHeader = homeEmCard->findChild<QWidget *>(QStringLiteral("sectionTitleBar"), Qt::FindDirectChildrenOnly);
+        auto *homeStepper = find<QWidget>(*homeCard, "homeStepperMotorCard");
+        auto *homeEmBody = find<QWidget>(*homeEmCard, "homeEmMotorBody");
         check(homeEmCard->isAncestorOf(homeMotion) && homeEmCard->isVisible() && homeStepper->isVisible() &&
               homeEmCard->mapTo(homeCard, QPoint(0, homeEmCard->height())).y() <= homeStepper->mapTo(homeCard, QPoint()).y(),
               "Home stacks separate EM-FWC3 and stepper cards in the motion card");
-        auto *homeStepperRun = find<QPushButton>(*homeStepper, "fpgaMotorRun");
-        auto *homeSteps = find<QDoubleSpinBox>(*homeStepper, "fpgaMotorSteps");
-        auto *deviceMotion = find<QWidget>(window, "deviceMotionCard");
-        auto *deviceSteps = find<QDoubleSpinBox>(*deviceMotion, "fpgaMotorSteps");
-        check(!homeStepperRun->isEnabled(), "the home stepper is disabled while the FPGA is offline");
-        homeSteps->setValue(-123);
-        check(deviceSteps->value() == -123, "home stepper edits reach device configuration");
-        deviceSteps->setValue(40);
-        check(homeSteps->value() == 40, "device configuration edits reach the home stepper");
+        for (auto *subcard : {homeEmCard, homeStepper}) {
+            auto *title = find<QLabel>(*subcard, "epsilonSectionLabel");
+            check(subcard->property("epsilonSubcard").toBool() && title->text().contains(QLatin1Char('\n')) &&
+                  title->geometry().left() < subcard->width() / 2,
+                  "motion subcards use the navigation card treatment with multiline titles on the left");
+        }
+        check(!find<QPushButton>(*homeStepper, "fpgaMotorMoveIn")->isEnabled() &&
+              !find<QPushButton>(*homeStepper, "fpgaMotorMoveOut")->isEnabled() &&
+              !homeStepper->findChild<QDoubleSpinBox *>(), "offline home presets are disabled and have no inputs");
+        auto *homeStepperBody = find<QWidget>(*homeStepper, "homeStepperMotorBody");
+        auto *homeStepperStatus = find<QLabel>(*homeStepperBody, "fpgaMotorSafetyStatus");
+        check(homeStepperStatus->geometry().top() < find<QLabel>(*homeStepperBody, "fpgaMotorProgress")->geometry().top(),
+              "stepper safety status sits at the top of the home subcard body");
         auto *homePort = find<QComboBox>(*homeCard, "homeMotionPort");
         auto *homeAction = find<QToolButton>(*homeCard, "homeMotionActionButton");
         auto *overview = find<QWidget>(window, "homeOverviewDeviceGrid");
@@ -155,8 +159,8 @@ int main(int argc, char **argv)
         auto *homeHome = find<QPushButton>(*homeMotion, "homeMotionHome");
         auto *configForward = find<QPushButton>(*page, "emFwc3Forward1");
         auto *configReverse = find<QPushButton>(*page, "emFwc3Reverse1");
-        check(homeHeader && homeHeader->isAncestorOf(homePort) && homeHeader->isAncestorOf(homeAction) &&
-              homeHeader->isAncestorOf(homeConnection), "home serial, combined connection action and status belong to the title bar");
+        check(homeEmBody->isAncestorOf(homePort) && homeEmBody->isAncestorOf(homeAction) &&
+              homeEmBody->isAncestorOf(homeConnection), "home serial, connection action and status belong to the card body");
         check(!homeCard->findChild<QToolButton *>(QStringLiteral("homeMotionConnect")) &&
               !homeCard->findChild<QToolButton *>(QStringLiteral("homeMotionDisconnect")),
               "home card exposes only one connection action");
@@ -169,7 +173,7 @@ int main(int argc, char **argv)
                   !button->accessibleName().isEmpty(), "home connection actions use labeled accessible icons without visible text");
         for (const char *removed : {"homeMotionForward", "homeMotionReverse", "homeMotionStep", "homeMotionMinus", "homeMotionPlus"})
             check(!homeMotion->findChild<QWidget *>(QString::fromLatin1(removed)), "home card omits continuous and step controls");
-        check(homeHeader && homeHeader->isAncestorOf(homeSelector) && homeSelector->isHidden(),
+        check(homeEmBody->isAncestorOf(homeSelector) && homeSelector->isHidden(),
               "home channel selector stays hidden without removing its routing code");
         check(homeSelector->count() == 3 && homeSelector->currentIndex() == 0,
               "home controls default to channel one and retain internal multi-channel support");
@@ -248,12 +252,12 @@ int main(int argc, char **argv)
         until("wide motion controls return to one row", [&] { return sameHomeRow(homeTarget, homeGo); });
         window.resize(homeWindowSize);
         QApplication::processEvents();
-        auto *homeTitle = find<QLabel>(*homeHeader, "sectionTitleLabel");
+        auto *homeTitle = find<QLabel>(*homeEmCard, "epsilonSectionLabel");
         check(homeBounds(homeTitle).right() < homeBounds(homePort).left() &&
               homeBounds(homePort).right() < homeBounds(homeAction).left() &&
               homeBounds(homeAction).right() < homeBounds(homeConnection).left() &&
               homeConnection->alignment().testFlag(Qt::AlignRight),
-              "title, COM port and action align left with status on the right");
+              "vertical title precedes the body, with connection status on the right");
         check(cemFpmCount() == 3, "SDK always receives fixed CEM-FPM types while retaining its three-channel interface");
         check(homeStop->isEnabled() && homeConnection->text().contains(QStringLiteral("已连接")),
               "home panel follows the device page's connected session");
