@@ -9,6 +9,7 @@
 #include <osgEarth/PagedNode>
 #include <osgEarth/PolygonSymbol>
 #include <osgEarth/Progress>
+#include <osgEarth/SimplePager>
 #include <osgEarth/TiledModelLayer>
 #include <QDeadlineTimer>
 #include <QJsonArray>
@@ -74,8 +75,21 @@ protected:
         };
         if (_root->getNumChildren() == 1 && !dynamic_cast<BuildingPagingManager*>(_root->getChild(0)))
         {
+            auto* pager = dynamic_cast<osgEarth::Util::SimplePager*>(_root->getChild(0));
+            if (!pager) return;
+            // osgEarth's asynchronous GL precompile retains the cull visitor by
+            // raw pointer. It can outlive the view on reload. Draw the meshes
+            // with the active context once they have merged instead.
+            pager->setCreatePagedNodeFunction([](const osgEarth::TileKey&) {
+                auto* node = new osgEarth::Util::PagedNode2;
+                node->setPreCompileGLObjects(false);
+                return node;
+            });
+            // The base layer built its root nodes before installing the factory.
+            pager->removeChildren(0, pager->getNumChildren());
+            pager->build();
             osg::ref_ptr<BuildingPagingManager> manager = new BuildingPagingManager;
-            manager->addChild(_root->getChild(0));
+            manager->addChild(pager);
             _root->setChild(0, manager.get());
         }
     }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Map3DRuntime.h"
+#include "OnlineTerrainLayer.h"
 #include <osgEarth/Cache>
 #include <osgEarth/ElevationLayer>
 #include <osgEarth/Progress>
@@ -21,13 +22,13 @@
 
 namespace VaporView::Map3D::Detail {
 
-class OnlineCopernicusLayer final : public osgEarth::ElevationLayer
+class OnlineCopernicusLayer final : public OnlineTerrainLayer
 {
 public:
     static constexpr auto name = "Online Copernicus GLO-30";
 
     OnlineCopernicusLayer()
-        : ElevationLayer(&options_, &originalOptions_)
+        : OnlineTerrainLayer(&options_, &originalOptions_)
     {
         ElevationLayer::init();
         setName(name);
@@ -86,6 +87,8 @@ private:
             if (auto* field = cached.get<osg::HeightField>())
                 return GeoHeightField(field, extent);
         }
+
+        if (shouldDeferDownload()) return {};
 
         // Copernicus registers heights at pixel centres. The first sample of
         // each COG is on its north-west corner. Include the half-pixel overlap.
