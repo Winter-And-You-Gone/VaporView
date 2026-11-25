@@ -13,6 +13,17 @@ const deviceStates = {disabled: "未启用", disconnected: "未连接", connecti
   connected: "已连接", error: "故障", warning: "数据异常", reconnecting: "重连中",
   disconnecting: "断开中", unknown: "未知"};
 
+function cssVar(name, fallback) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+}
+
+function updateHeaderChip(pillId, textId, text, tone = "") {
+  const pill = element(pillId);
+  const labelNode = element(textId);
+  if (pill) pill.dataset.tone = tone;
+  if (labelNode) labelNode.textContent = text;
+}
+
 function displayDeviceState(node, state) {
   const key = Object.hasOwn(deviceStates, state) ? state : "unknown";
   node.dataset.state = key;
@@ -66,6 +77,13 @@ function show(id, text, tone = "") {
   const target = element(id);
   target.textContent = text;
   target.dataset.tone = tone;
+  if (id === "link-state") {
+    updateHeaderChip("header-link-pill", "header-link-text",
+      text === "已连接" ? "数传已连接" : text === "未连接" ? "数传未连接" : "链路" + text, tone);
+  } else if (id === "stream-state") {
+    updateHeaderChip("header-stream-pill", "header-stream-text",
+      text.includes("WS 已连接") ? "WS 实时订阅" : text.includes("正在连接") ? "WS 连接中" : "WS 已断开", tone);
+  }
   if (currentCommand?.fromHome && (id === "command-feedback" || id === "command-result")) {
     const result = element("command-result").textContent;
     const feedback = element("device-feedback");
@@ -143,7 +161,9 @@ function renderStatus(status, updateReadings = true) {
   if (updateReadings) renderSensors(linkConnected ? status.sensors : null);
   const hasStatus = status.telemetryAvailable === true;
   show("telemetry-state", hasStatus ? "已收到" : "暂无状态", hasStatus ? "good" : "");
-  show("recording-state", hasStatus ? (["停止", "记录中", "暂停"][status.recordingState] ?? label(status.recordingState)) : "—");
+  const recText = hasStatus ? (["停止", "记录中", "暂停"][status.recordingState] ?? label(status.recordingState)) : "—";
+  const recTone = hasStatus ? (status.recordingState === 1 ? "good" : status.recordingState === 2 ? "warning" : "") : "";
+  show("recording-state", recText, recTone);
   show("session-name", hasStatus ? label(status.sessionName || null) : "—");
   fpgaAvailable = hasStatus && status.devices?.some(d => d.device === 8 && d.state !== 0);
   recordingBusy = hasStatus && status.recordingState !== 0;
@@ -290,7 +310,14 @@ function drawTrend() {
   const context = trendCanvas.getContext("2d");
   context.setTransform(scale, 0, 0, scale, 0, 0);
   context.clearRect(0, 0, width, height);
-  context.font = "11px Consolas, monospace";
+  context.font = "11px 'Cascadia Mono', Consolas, monospace";
+
+  const gridColor = cssVar("--chart-grid", "#ebe7dd");
+  const axisColor = cssVar("--chart-axis", "#d4cec0");
+  const textColor = cssVar("--chart-text", "#747066");
+  const validColor = cssVar("--chart-valid", "#d97757");
+  const markedColor = cssVar("--chart-marked", "#c06e14");
+  const invalidColor = cssVar("--chart-invalid", "#bf3b2b");
 
   const end = latestTrendTime;
   const start = end === null ? null : end - trendDurationUs;
@@ -318,49 +345,73 @@ function drawTrend() {
   const margin = high === low ? Math.max(Math.abs(low) * .05, 1e-9) : (high - low) * .08;
   const minimum = low - margin;
   const span = high + margin - minimum;
-  const left = 69, right = width - 19, top = 24, bottom = height - 32;
+  const left = 68, right = width - 18, top = 24, bottom = height - 32;
   const x = (time) => left + Number(time - start) / Number(trendDurationUs) * (right - left);
   const y = (value) => bottom - (value - minimum) / span * (bottom - top);
-  context.fillStyle = "#3c6572";
-  context.fillText("native", 9, 15);
-  context.strokeStyle = "#dbe9ed";
+
+  context.fillStyle = textColor;
+  context.fillText("native", 10, 15);
+  context.strokeStyle = gridColor;
+  context.setLineDash([3, 3]);
   context.beginPath();
   for (let grid = 0; grid <= 4; grid++) {
-    const row = top + grid * (bottom - top) / 4;
-    context.moveTo(left, row);
-    context.lineTo(right, row);
-    if (valid.length) context.fillText(Number((minimum + span * (1 - grid / 4)).toPrecision(4)).toString(), 8, row + 4, left - 15);
+    const row = Math.round(top + grid * (bottom - top) / 4) + 0.5;
+    if (grid > 0 && grid < 4) {
+      context.moveTo(left, row);
+      context.lineTo(right, row);
+    }
+    if (valid.length) context.fillText(Number((minimum + span * (1 - grid / 4)).toPrecision(4)).toString(), 8, row + 4, left - 14);
   }
   for (let tick = 0; tick <= 4; tick++) {
-    const column = left + tick * (right - left) / 4;
-    context.moveTo(column, top);
-    context.lineTo(column, bottom);
+    const column = Math.round(left + tick * (right - left) / 4) + 0.5;
+    if (tick > 0 && tick < 4) {
+      context.moveTo(column, top);
+      context.lineTo(column, bottom);
+    }
     if (start !== null && (width >= 440 || tick % 2 === 0)) {
       const time = utcTime(String(start + BigInt(tick) * (trendDurationUs / 4n))).slice(11, 19);
-      context.fillText(time, Math.min(column - 25, width - 56), height - 13);
+      context.textAlign = tick === 0 ? "left" : tick === 4 ? "right" : "center";
+      context.fillText(time, tick === 0 ? left : tick === 4 ? right : column, height - 12);
     }
   }
+  context.textAlign = "left";
   context.stroke();
+  context.setLineDash([]);
+
+  context.strokeStyle = axisColor;
+  context.strokeRect(Math.round(left) + 0.5, Math.round(top) + 0.5,
+    Math.round(right - left), Math.round(bottom - top));
+
+  if (!points.length) {
+    context.font = "12px 'Segoe UI', 'Microsoft YaHei UI', sans-serif";
+    context.fillStyle = textColor;
+    context.textAlign = "center";
+    context.fillText("等待实时峰值数据", (left + right) / 2, (top + bottom) / 2 + 4);
+    context.textAlign = "left";
+    return;
+  }
+
   // Mark each observation at its own timestamp without interpolating missing samples.
   for (const point of points) {
     const column = x(point.time);
     if (point.value === null) {
-      context.strokeStyle = "#a64e42";
+      context.strokeStyle = invalidColor;
+      context.lineWidth = 1.6;
       context.beginPath();
       context.moveTo(column, bottom + 3);
-      context.lineTo(column, bottom + 9);
+      context.lineTo(column, bottom + 10);
       context.stroke();
       continue;
     }
     const row = y(point.value);
     if (point.quality === 0) {
-      context.fillStyle = "#007d81";
+      context.fillStyle = validColor;
       context.beginPath();
-      context.arc(column, row, 2, 0, 2 * Math.PI);
+      context.arc(column, row, 2.5, 0, 2 * Math.PI);
       context.fill();
     } else {
-      context.fillStyle = "#a65a0c";
-      context.fillRect(column - 2, row - 2, 5, 5);
+      context.fillStyle = markedColor;
+      context.fillRect(column - 2.5, row - 2.5, 5, 5);
     }
   }
 }
@@ -576,7 +627,9 @@ function renderControls(controls) {
     enabled: linkConnected && fpgaAvailable && !recordingBusy}];
   const keys = new Set(items.map(item => item.key));
   for (const row of [...host.children]) if (!keys.has(row.dataset.key)) row.remove();
+  let connectedCount = 0;
   for (const item of items) {
+    if (item.connected) connectedCount += 1;
     let row = [...host.children].find(child => child.dataset.key === item.key);
     if (!row) {
       row = document.createElement("div");
@@ -589,11 +642,14 @@ function renderControls(controls) {
     displayDeviceState(state, item.state);
     row.title = item.detail || "";
     button.textContent = item.connected ? "断开" : "连接";
+    button.dataset.action = item.connected ? "disconnect" : "connect";
     button.setAttribute("aria-label", button.textContent + item.name);
     button.dataset.ready = String(item.enabled);
     button.onclick = () => sendCommand(item.connected ? 22 : 21, button.textContent + item.name,
       item.key === "fpga" ? undefined : item.key, true);
   }
+  const badge = element("device-online-count");
+  if (badge) badge.textContent = `${connectedCount} / ${items.length}`;
   syncButtons();
 }
 
@@ -629,6 +685,7 @@ async function refreshOperations() {
 show("gateway-origin", location.host);
 void refreshOperations();
 trendChannel.addEventListener("change", scheduleTrend);
+window.addEventListener("vaporview-theme-change", scheduleTrend);
 new ResizeObserver(scheduleTrend).observe(trendCanvas);
 element("refresh-status").addEventListener("click", refreshStatus);
 element("refresh-latest").addEventListener("click", refreshLatest);

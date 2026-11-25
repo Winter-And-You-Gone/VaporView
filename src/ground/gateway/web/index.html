@@ -9,147 +9,451 @@
   <script src="/app.js" defer></script>
 </head>
 <body>
-  <header class="masthead"><strong>VaporView</strong><h1>地面网关</h1><span id="gateway-origin" class="mono"></span></header>
+  <header class="masthead">
+    <div class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 1254 1254" width="26" height="26" fill="currentColor">
+        <path d="M629 618 L589 679 L570 715 L563 740 L563 763 L568 782 L574 794 L579 801 L590 812 L599 818 L611 823 L619 825 L640 825 L649 823 L659 819 L670 812 L681 801 L687 792 L695 773 L697 764 L697 757 L698 756 L698 745 L697 744 L697 736 L695 727 L690 712 L681 693 L666 669 L633 622 Z M674 717 L678 724 L682 740 L682 760 L680 769 L675 781 L668 791 L655 802 L640 808 L627 809 L626 808 L628 806 L640 799 L651 788 L661 773 L665 765 L671 746 L672 736 L673 735 L673 718 Z M324 577 L628 1036 L932 578 L834 578 L629 928 L426 579 Z M726 382 L709 387 L693 396 L679 409 L669 423 L660 443 L651 481 L651 485 L644 505 L638 517 L625 536 L598 567 L589 580 L581 595 L574 619 L574 627 L573 628 L574 642 L581 628 L591 614 L613 592 L649 563 L666 545 L679 526 L687 508 L692 489 L693 473 L694 472 L694 445 L695 444 L695 437 L698 423 L702 412 L711 397 Z M692 259 L688 270 L679 284 L666 299 L635 327 L618 345 L607 360 L598 378 L594 391 L593 402 L592 403 L592 426 L593 427 L594 438 L599 454 L604 464 L611 474 L610 457 L611 456 L612 442 L618 422 L624 409 L639 386 L677 341 L689 320 L693 308 L696 293 L696 276 Z" fill-rule="evenodd"/>
+        <circle cx="648.21" cy="214.11" r="19.47"/>
+        <circle cx="547.85" cy="435.66" r="19.34"/>
+        <circle cx="749.32" cy="488.23" r="18.6"/>
+      </svg>
+    </div>
+    <div class="brand-titles">
+      <strong>VaporView</strong>
+      <h1>地面网关</h1>
+    </div>
+    <div class="masthead-meta">
+      <span id="header-link-pill" class="header-chip" data-tone="">
+        <span class="chip-dot" aria-hidden="true"></span>
+        <span id="header-link-text">链路未知</span>
+      </span>
+      <span id="header-stream-pill" class="header-chip" data-tone="">
+        <span class="chip-dot" aria-hidden="true"></span>
+        <span id="header-stream-text">等待订阅</span>
+      </span>
+      <span id="gateway-origin" class="mono origin-chip"></span>
+      <button id="theme-toggle" type="button" class="icon-btn" aria-label="切换浅色或深色主题" title="切换浅色 / 深色主题">
+        <svg class="icon-moon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+        </svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="4"/>
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
   <main class="shell">
-    <nav aria-label="页面"><a href="#home" aria-current="page">首页</a><a href="#peaks">峰值趋势</a><a href="#gateway">网关调试</a></nav>
+    <nav aria-label="页面">
+      <a href="#home" aria-current="page">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect width="18" height="18" x="3" y="3" rx="2"/>
+          <path d="M17 12h-2l-2 5-2-10-2 5H7"/>
+        </svg>
+        <span>首页</span>
+      </a>
+      <a href="#peaks">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 3v16a2 2 0 0 0 2 2h16"/>
+          <path d="m19 9-5 5-4-4-3 3"/>
+        </svg>
+        <span>峰值</span>
+      </a>
+      <a href="#waves">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2 13a2 2 0 0 0 2-2V7a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0V4a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0v-4a2 2 0 0 1 2-2"/>
+        </svg>
+        <span>波形</span>
+      </a>
+      <a href="#gateway">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect width="20" height="8" x="2" y="2" rx="2" ry="2"/>
+          <rect width="20" height="8" x="2" y="14" rx="2" ry="2"/>
+          <line x1="6" x2="6.01" y1="6" y2="6"/>
+          <line x1="6" x2="6.01" y1="18" y2="18"/>
+        </svg>
+        <span>网关</span>
+      </a>
+    </nav>
+
     <div class="content">
-      <div class="page-head" id="home"><h2 id="page-title">数据首页</h2><time id="reading-time" class="mono" tabindex="0">等待测量</time></div>
+      <div class="page-head" id="home">
+        <div class="page-head-title">
+          <h2 id="page-title">数据首页</h2>
+          <span class="page-subtitle">实时遥测监控 · 逐设备控制 · 网关调试</span>
+        </div>
+        <time id="reading-time" class="mono reading-badge" tabindex="0">等待测量</time>
+      </div>
+
       <div id="home-view">
         <div class="sensor-columns">
           <section class="panel device-controls" aria-labelledby="control-heading">
-            <h2 id="control-heading">设备连接</h2>
+            <div class="card-head">
+              <div class="card-title-group">
+                <span class="card-icon tone-accent" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 22v-5"/>
+                    <path d="M9 8V2"/>
+                    <path d="M15 8V2"/>
+                    <path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/>
+                  </svg>
+                </span>
+                <h2 id="control-heading">设备连接</h2>
+              </div>
+              <span id="device-online-count" class="card-badge mono">0 / 0</span>
+            </div>
             <div id="home-controls" class="control-grid" aria-label="设备连接操作"></div>
             <p id="device-feedback" role="status">正在读取地面端设备状态</p>
           </section>
-            <section class="panel"><h2>环境测量</h2>
-              <section class="instrument"><h3>HC2A · 环境温湿度</h3><dl><div><dt>温度</dt><dd id="reading-temperature" class="reading-value">—</dd></div>
-<div><dt>相对湿度</dt><dd id="reading-humidity" class="reading-value">—</dd></div></dl></section>
-              <section class="instrument"><h3>PTB210 / SDFM300</h3><dl><div><dt>环境气压</dt><dd id="reading-pressure" class="reading-value">—</dd></div>
-<div><dt>激光测距</dt><dd id="reading-distance" class="reading-value">—</dd></div></dl></section>
-              <section class="instrument"><h3>SHT45 / BMP390 · 机内环境</h3><dl><div><dt>机内温度</dt><dd id="reading-internal-temperature" class="reading-value">—</dd></div>
-<div><dt>机内湿度</dt><dd id="reading-internal-humidity" class="reading-value">—</dd></div>
-<div><dt>机内气压</dt><dd id="reading-internal-pressure" class="reading-value">—</dd></div></dl></section>
-            </section>
-            <section class="panel"><h2>EPSILON 三维定位</h2>
-              <section class="instrument"><h3>大地坐标</h3><dl><div><dt>纬度</dt><dd id="reading-latitude" class="reading-value">—</dd></div>
-<div><dt>经度</dt><dd id="reading-longitude" class="reading-value">—</dd></div>
-<div><dt>高度</dt><dd id="reading-altitude" class="reading-value">—</dd></div></dl></section>
-              <section class="instrument"><h3>地心地固坐标 · ECEF</h3><dl><div><dt>X</dt><dd id="reading-ecef-x" class="reading-value">—</dd></div>
-<div><dt>Y</dt><dd id="reading-ecef-y" class="reading-value">—</dd></div>
-<div><dt>Z</dt><dd id="reading-ecef-z" class="reading-value">—</dd></div></dl></section>
-              <section class="instrument"><h3>定位质量</h3><dl><div><dt>卫星数</dt><dd id="reading-satellites" class="reading-value">—</dd></div>
-<div><dt>水平精度</dt><dd id="reading-hacc" class="reading-value">—</dd></div>
-<div><dt>垂直精度</dt><dd id="reading-vacc" class="reading-value">—</dd></div></dl></section>
-            </section>
-        </div>
-        <div class="desktop">
-          <div class="workspace-grid">
-      <section class="panel stream" id="peaks" aria-labelledby="stream-title">
-        <div class="section-head">
-          <h2 id="stream-title">实时峰值趋势</h2>
-          <div class="actions">
-            <button id="refresh-status" type="button">查询状态</button>
-            <button id="refresh-latest" type="button">查询最新测量</button>
-            <button id="connect-stream" type="button" class="primary" disabled>重新连接 WS</button>
-            <button id="disconnect-stream" type="button" disabled>断开</button>
-          </div>
-        </div>
-        <div class="trend-toolbar">
-          <label for="trend-channel">通道</label>
-          <select id="trend-channel" disabled><option>等待测量通道</option></select>
-          <span id="trend-window" class="mono">最近 60 秒 · UTC</span>
-        </div>
-        <dl class="trend-reading" aria-label="当前通道最新测量">
-          <div><dt>最新峰值</dt><dd id="trend-latest-value" tabindex="0" class="mono">—</dd></div>
-          <div><dt>单位</dt><dd id="trend-latest-unit" class="mono">native</dd></div>
-          <div><dt>质量</dt><dd id="trend-latest-quality">等待测量</dd></div>
-          <div><dt>采样时间（UTC）</dt><dd class="mono"><time id="trend-sample-time">—</time></dd></div>
-        </dl>
-        <canvas id="peak-trend" role="img" aria-label="按通道显示最近 60 秒的 native 峰值，横轴为 UTC" aria-describedby="trend-summary"></canvas>
-        <p id="trend-summary" class="hint" data-points="0" data-quality-marked="0" data-invalid="0">等待有效峰值</p>
-        <ul class="trend-legend" aria-label="趋势图图例"><li>有效峰值</li><li>有质量标记的峰值</li><li>无有效峰值</li></ul>
-        <dl class="stream-meta">
-          <div><dt>最近事件</dt><dd id="stream-event">—</dd></div>
-          <div><dt>入口累计丢帧</dt><dd id="stream-dropped" class="mono">—</dd></div>
-        </dl>
-        <p id="api-feedback" tabindex="0" class="feedback" role="status"></p>
-        <p id="latest-measurement" tabindex="0" class="latest" role="status">HTTP 最新测量 · 尚未查询</p>
-      </section>
-          <section class="panel waves"><div class="section-head"><h2>实时波形</h2><label>来源 <select id="wave-source"><option value="fpga">FPGA · ADC / DLIA</option><option value="tcp">TCP 波形</option></select></label></div>
-            <div class="wave-grid" id="fpga-plots"><figure><figcaption>ADC · 0x20<span id="legend-32"></span></figcaption><canvas id="wave-32" role="img" aria-label="ADC · 0x20波形"></canvas><div class="wave-caption" id="info-32">等待预览帧</div></figure><figure><figcaption>ADC · 0x21<span id="legend-33"></span></figcaption><canvas id="wave-33" role="img" aria-label="ADC · 0x21波形"></canvas><div class="wave-caption" id="info-33">等待预览帧</div></figure><figure><figcaption>DLIA · 816 nm<span id="legend-49"></span></figcaption><canvas id="wave-49" role="img" aria-label="DLIA · 816 nm波形"></canvas><div class="wave-caption" id="info-49">等待预览帧</div></figure><figure><figcaption>DLIA · 1368 nm<span id="legend-48"></span></figcaption><canvas id="wave-48" role="img" aria-label="DLIA · 1368 nm波形"></canvas><div class="wave-caption" id="info-48">等待预览帧</div></figure></div>
-            <div id="tcp-plots" hidden><label>通道 <select id="tcp-channel" disabled><option>等待通道</option></select></label><figure><figcaption>TCP 采样<span id="legend-tcp"></span></figcaption><canvas id="wave-tcp" role="img" aria-label="TCP 采样波形"></canvas><div class="wave-caption" id="info-tcp">等待预览帧</div></figure></div>
-          </section>
-    <div class="panel measurement-panel">
-      <details class="measurement-details" id="measurement-details">
-        <summary>实时明细 · 最近 50 条</summary>
-        <div class="table-wrap stream-table" tabindex="0" aria-label="实时测量表">
-          <table>
-            <thead><tr><th scope="col">事件序号</th><th scope="col">帧序号</th><th scope="col">来源</th><th scope="col">通道</th><th scope="col">峰值</th><th scope="col">UTC 时间</th><th scope="col">质量位</th></tr></thead>
-            <tbody id="measurement-rows"><tr><td colspan="7">等待实时测量</td></tr></tbody>
-          </table>
-        </div>
-      </details>
-    </div>
-          </div>
-        <aside class="sidebar">
-          <section class="panel"><h2>记录状态</h2><dl class="summary-list">
-            <dt>录制</dt><dd id="recording-state">—</dd><dt>Session</dt><dd id="session-name">—</dd>
-          </dl></section>
-          <section class="panel"><h2>连接状态</h2><dl class="summary-list">
-            <dt>HTTP 网关</dt><dd id="gateway-state">等待查询</dd><dt>机地数传</dt><dd id="link-state">未知</dd>
-            <dt>SkyCore</dt><dd id="telemetry-state">未知</dd><dt>设备标识</dt><dd id="device-id">—</dd>
-            <dt>实时订阅</dt><dd id="stream-state" role="status">等待连接</dd>
-          </dl></section>
-          <section class="panel" aria-labelledby="device-title">
-          <h2 id="device-title">设备状态</h2>
-          <div class="table-wrap device-table" tabindex="0" aria-label="设备状态表">
-            <table>
-              <thead><tr><th scope="col">设备</th><th scope="col">状态</th><th scope="col">接收</th><th scope="col">错误</th><th scope="col">错误码</th></tr></thead>
-              <tbody id="device-rows"><tr><td colspan="5">暂无设备状态</td></tr></tbody>
-            </table>
-          </div>
-        </section>
-        </aside>
-        </div>
-        <div id="gateway">
-        <section class="panel transfer-panel"><h2>出站转发与 Session 同步</h2>
-          <dl class="transfer-stats">
-            <div><dt>接收端</dt><dd id="out-endpoint">—</dd></div>
-            <div><dt>转发状态</dt><dd id="out-state">等待读取</dd></div>
-            <div><dt>待上传缓存</dt><dd id="out-queue">—</dd></div>
-            <div><dt>Session 队列与进度</dt><dd id="out-job">—</dd></div>
-            <div><dt>上次同步结果</dt><dd id="out-last">—</dd></div>
-          </dl>
-          <details id="transfer-details"><summary>最近 HTTP 请求与出站遥测载荷</summary>
-            <pre id="out-events">暂无请求</pre><pre id="out-payload">暂无出站遥测</pre>
-          </details>
-        </section>
-      <aside class="operations">
-        <section class="panel" aria-labelledby="command-title">
-          <h2 id="command-title">SkyCore 命令</h2>
-          <div class="actions">
-            <button id="command-status" data-command="10" type="button" disabled>读取状态</button>
-            <button id="command-start" data-command="1" type="button" disabled>启动／恢复记录</button>
-            <button id="command-stop" data-command="3" type="button" disabled>停止记录</button>
-          </div>
-          <section class="fpga-controls" aria-labelledby="fpga-controls-title">
-            <h3 id="fpga-controls-title">机载 FPGA</h3>
-            <div class="actions">
-              <button id="command-fpga-connect" data-command="21" type="button" disabled>连接 FPGA</button>
-              <button id="command-fpga-disconnect" data-command="22" type="button" disabled>断开 FPGA</button>
+
+          <section class="panel env-panel">
+            <div class="card-head">
+              <div class="card-title-group">
+                <span class="card-icon tone-good" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m8 3 4 8 5-5 5 15H2L8 3z"/>
+                  </svg>
+                </span>
+                <h2>环境测量</h2>
+              </div>
+              <span class="card-badge">气象 · 机内</span>
+            </div>
+            <div class="instrument-stack">
+              <section class="instrument">
+                <h3>HC2A · 环境温湿度</h3>
+                <dl>
+                  <div><dt>温度</dt><dd id="reading-temperature" class="reading-value">—</dd></div>
+                  <div><dt>相对湿度</dt><dd id="reading-humidity" class="reading-value">—</dd></div>
+                </dl>
+              </section>
+              <section class="instrument">
+                <h3>PTB210 / SDFM300</h3>
+                <dl>
+                  <div><dt>环境气压</dt><dd id="reading-pressure" class="reading-value">—</dd></div>
+                  <div><dt>激光测距</dt><dd id="reading-distance" class="reading-value">—</dd></div>
+                </dl>
+              </section>
+              <section class="instrument">
+                <h3>SHT45 / BMP390 · 机内环境</h3>
+                <dl>
+                  <div><dt>机内温度</dt><dd id="reading-internal-temperature" class="reading-value">—</dd></div>
+                  <div><dt>机内湿度</dt><dd id="reading-internal-humidity" class="reading-value">—</dd></div>
+                  <div><dt>机内气压</dt><dd id="reading-internal-pressure" class="reading-value">—</dd></div>
+                </dl>
+              </section>
             </div>
           </section>
-          <p id="command-feedback" tabindex="0" class="feedback" role="status">等待下发</p>
-          <dl class="command-detail">
-            <dt>操作</dt><dd id="command-operation">—</dd>
-            <dt>命令 ID</dt><dd id="command-id" tabindex="0" class="mono">—</dd>
-            <dt>受理</dt><dd id="command-accepted">—</dd>
-            <dt>最终回执</dt><dd id="command-result">—</dd>
-            <dt>Session ID</dt><dd id="command-session" tabindex="0" class="mono">—</dd>
-          </dl>
-          <button id="command-check" type="button" disabled>查询当前命令回执</button>
-        </section>
-      </aside>
+
+          <section class="panel epsilon-panel">
+            <div class="card-head">
+              <div class="card-title-group">
+                <span class="card-icon tone-info" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/>
+                    <path d="M2 12h20"/>
+                  </svg>
+                </span>
+                <h2>EPSILON 三维定位</h2>
+              </div>
+              <span class="card-badge">GNSS · INS</span>
+            </div>
+            <div class="instrument-stack">
+              <section class="instrument">
+                <h3>大地坐标</h3>
+                <dl>
+                  <div><dt>纬度</dt><dd id="reading-latitude" class="reading-value">—</dd></div>
+                  <div><dt>经度</dt><dd id="reading-longitude" class="reading-value">—</dd></div>
+                  <div><dt>高度</dt><dd id="reading-altitude" class="reading-value">—</dd></div>
+                </dl>
+              </section>
+              <section class="instrument">
+                <h3>地心地固坐标 · ECEF</h3>
+                <dl>
+                  <div><dt>X</dt><dd id="reading-ecef-x" class="reading-value">—</dd></div>
+                  <div><dt>Y</dt><dd id="reading-ecef-y" class="reading-value">—</dd></div>
+                  <div><dt>Z</dt><dd id="reading-ecef-z" class="reading-value">—</dd></div>
+                </dl>
+              </section>
+              <section class="instrument">
+                <h3>定位质量</h3>
+                <dl>
+                  <div><dt>卫星数</dt><dd id="reading-satellites" class="reading-value">—</dd></div>
+                  <div><dt>水平精度</dt><dd id="reading-hacc" class="reading-value">—</dd></div>
+                  <div><dt>垂直精度</dt><dd id="reading-vacc" class="reading-value">—</dd></div>
+                </dl>
+              </section>
+            </div>
+          </section>
+        </div>
+
+        <div class="desktop">
+          <div class="workspace-grid">
+            <section class="panel stream" id="peaks" aria-labelledby="stream-title">
+              <div class="card-head section-head">
+                <div class="card-title-group">
+                  <span class="card-icon tone-accent" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M3 3v16a2 2 0 0 0 2 2h16"/>
+                      <path d="m19 9-5 5-4-4-3 3"/>
+                    </svg>
+                  </span>
+                  <h2 id="stream-title">实时峰值趋势</h2>
+                </div>
+                <div class="actions">
+                  <button id="refresh-status" type="button">查询状态</button>
+                  <button id="refresh-latest" type="button">查询最新测量</button>
+                  <button id="connect-stream" type="button" class="primary" disabled>重新连接 WS</button>
+                  <button id="disconnect-stream" type="button" disabled>断开</button>
+                </div>
+              </div>
+
+              <div class="trend-toolbar">
+                <label for="trend-channel">通道</label>
+                <select id="trend-channel" disabled><option>等待测量通道</option></select>
+                <span id="trend-window" class="mono">最近 60 秒 · UTC</span>
+              </div>
+
+              <dl class="trend-reading" aria-label="当前通道最新测量">
+                <div><dt>最新峰值</dt><dd id="trend-latest-value" tabindex="0" class="mono">—</dd></div>
+                <div><dt>单位</dt><dd id="trend-latest-unit" class="mono">native</dd></div>
+                <div><dt>质量</dt><dd id="trend-latest-quality">等待测量</dd></div>
+                <div><dt>采样时间（UTC）</dt><dd class="mono"><time id="trend-sample-time">—</time></dd></div>
+              </dl>
+
+              <canvas id="peak-trend" role="img" aria-label="按通道显示最近 60 秒的 native 峰值，横轴为 UTC" aria-describedby="trend-summary"></canvas>
+
+              <div class="trend-caption-bar">
+                <p id="trend-summary" class="hint" data-points="0" data-quality-marked="0" data-invalid="0">等待有效峰值</p>
+                <ul class="trend-legend" aria-label="趋势图图例">
+                  <li>有效峰值</li>
+                  <li>有质量标记的峰值</li>
+                  <li>无有效峰值</li>
+                </ul>
+              </div>
+
+              <dl class="stream-meta">
+                <div><dt>最近事件</dt><dd id="stream-event">—</dd></div>
+                <div><dt>入口累计丢帧</dt><dd id="stream-dropped" class="mono">—</dd></div>
+              </dl>
+
+              <p id="api-feedback" tabindex="0" class="feedback" role="status"></p>
+              <p id="latest-measurement" tabindex="0" class="latest" role="status">HTTP 最新测量 · 尚未查询</p>
+            </section>
+
+            <section class="panel waves" id="waves">
+              <div class="card-head section-head">
+                <div class="card-title-group">
+                  <span class="card-icon tone-info" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M2 13a2 2 0 0 0 2-2V7a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0V4a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0v-4a2 2 0 0 1 2-2"/>
+                    </svg>
+                  </span>
+                  <h2>实时波形</h2>
+                </div>
+                <label class="inline-select"><span>来源</span> <select id="wave-source"><option value="fpga">FPGA · ADC / DLIA</option><option value="tcp">TCP 波形</option></select></label>
+              </div>
+              <div class="wave-grid" id="fpga-plots">
+                <figure>
+                  <figcaption>ADC · 0x20<span id="legend-32"></span></figcaption>
+                  <canvas id="wave-32" role="img" aria-label="ADC · 0x20波形"></canvas>
+                  <div class="wave-caption" id="info-32">等待预览帧</div>
+                </figure>
+                <figure>
+                  <figcaption>ADC · 0x21<span id="legend-33"></span></figcaption>
+                  <canvas id="wave-33" role="img" aria-label="ADC · 0x21波形"></canvas>
+                  <div class="wave-caption" id="info-33">等待预览帧</div>
+                </figure>
+                <figure>
+                  <figcaption>DLIA · 816 nm<span id="legend-49"></span></figcaption>
+                  <canvas id="wave-49" role="img" aria-label="DLIA · 816 nm波形"></canvas>
+                  <div class="wave-caption" id="info-49">等待预览帧</div>
+                </figure>
+                <figure>
+                  <figcaption>DLIA · 1368 nm<span id="legend-48"></span></figcaption>
+                  <canvas id="wave-48" role="img" aria-label="DLIA · 1368 nm波形"></canvas>
+                  <div class="wave-caption" id="info-48">等待预览帧</div>
+                </figure>
+              </div>
+              <div id="tcp-plots" hidden>
+                <label class="inline-select tcp-channel-select"><span>通道</span> <select id="tcp-channel" disabled><option>等待通道</option></select></label>
+                <figure>
+                  <figcaption>TCP 采样<span id="legend-tcp"></span></figcaption>
+                  <canvas id="wave-tcp" role="img" aria-label="TCP 采样波形"></canvas>
+                  <div class="wave-caption" id="info-tcp">等待预览帧</div>
+                </figure>
+              </div>
+            </section>
+
+            <div class="panel measurement-panel">
+              <details class="measurement-details" id="measurement-details">
+                <summary>实时明细 · 最近 50 条</summary>
+                <div class="table-wrap stream-table" tabindex="0" aria-label="实时测量表">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th scope="col">事件序号</th>
+                        <th scope="col">帧序号</th>
+                        <th scope="col">来源</th>
+                        <th scope="col">通道</th>
+                        <th scope="col">峰值</th>
+                        <th scope="col">UTC 时间</th>
+                        <th scope="col">质量位</th>
+                      </tr>
+                    </thead>
+                    <tbody id="measurement-rows"><tr><td colspan="7">等待实时测量</td></tr></tbody>
+                  </table>
+                </div>
+              </details>
+            </div>
+          </div>
+
+          <aside class="sidebar">
+            <section class="panel recording-card">
+              <div class="card-head">
+                <div class="card-title-group">
+                  <span class="card-icon tone-accent" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+                    </svg>
+                  </span>
+                  <h2>记录状态</h2>
+                </div>
+              </div>
+              <dl class="summary-list">
+                <dt>录制</dt><dd id="recording-state">—</dd>
+                <dt>Session</dt><dd id="session-name" class="mono">—</dd>
+              </dl>
+            </section>
+
+            <section class="panel link-card">
+              <div class="card-head">
+                <div class="card-title-group">
+                  <span class="card-icon tone-good" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                    </svg>
+                  </span>
+                  <h2>连接状态</h2>
+                </div>
+              </div>
+              <dl class="summary-list">
+                <dt>HTTP 网关</dt><dd id="gateway-state">等待查询</dd>
+                <dt>机地数传</dt><dd id="link-state">未知</dd>
+                <dt>SkyCore</dt><dd id="telemetry-state">未知</dd>
+                <dt>设备标识</dt><dd id="device-id" class="mono">—</dd>
+                <dt>实时订阅</dt><dd id="stream-state" role="status">等待连接</dd>
+              </dl>
+            </section>
+
+            <section class="panel device-health-card" aria-labelledby="device-title">
+              <div class="card-head">
+                <div class="card-title-group">
+                  <span class="card-icon tone-neutral" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <rect width="16" height="16" x="4" y="4" rx="2"/>
+                      <rect width="6" height="6" x="9" y="9" rx="1"/>
+                      <path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 2v2M9 20v2"/>
+                    </svg>
+                  </span>
+                  <h2 id="device-title">设备状态</h2>
+                </div>
+              </div>
+              <div class="table-wrap device-table" tabindex="0" aria-label="设备状态表">
+                <table>
+                  <thead>
+                    <tr>
+                      <th scope="col">设备</th>
+                      <th scope="col">状态</th>
+                      <th scope="col">接收</th>
+                      <th scope="col">错误</th>
+                      <th scope="col">错误码</th>
+                    </tr>
+                  </thead>
+                  <tbody id="device-rows"><tr><td colspan="5">暂无设备状态</td></tr></tbody>
+                </table>
+              </div>
+            </section>
+          </aside>
+        </div>
+
+        <div id="gateway" class="gateway-grid">
+          <section class="panel transfer-panel">
+            <div class="card-head">
+              <div class="card-title-group">
+                <span class="card-icon tone-info" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect width="20" height="8" x="2" y="2" rx="2" ry="2"/>
+                    <rect width="20" height="8" x="2" y="14" rx="2" ry="2"/>
+                    <line x1="6" x2="6.01" y1="6" y2="6"/>
+                    <line x1="6" x2="6.01" y1="18" y2="18"/>
+                  </svg>
+                </span>
+                <h2>出站转发与 Session 同步</h2>
+              </div>
+              <span class="card-badge">Gateway v1</span>
+            </div>
+            <dl class="transfer-stats">
+              <div><dt>接收端</dt><dd id="out-endpoint" class="mono">—</dd></div>
+              <div><dt>转发状态</dt><dd id="out-state">等待读取</dd></div>
+              <div><dt>待上传缓存</dt><dd id="out-queue" class="mono">—</dd></div>
+              <div><dt>Session 队列与进度</dt><dd id="out-job">—</dd></div>
+              <div><dt>上次同步结果</dt><dd id="out-last">—</dd></div>
+            </dl>
+            <details id="transfer-details">
+              <summary>最近 HTTP 请求与出站遥测载荷</summary>
+              <div class="debug-pre-group">
+                <pre id="out-events">暂无请求</pre>
+                <pre id="out-payload">暂无出站遥测</pre>
+              </div>
+            </details>
+          </section>
+
+          <aside class="operations">
+            <section class="panel" aria-labelledby="command-title">
+              <div class="card-head">
+                <div class="card-title-group">
+                  <span class="card-icon tone-accent" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="4" x2="4" y1="21" y2="14"/>
+                      <line x1="4" x2="4" y1="10" y2="3"/>
+                      <line x1="12" x2="12" y1="21" y2="12"/>
+                      <line x1="12" x2="12" y1="8" y2="3"/>
+                      <line x1="20" x2="20" y1="21" y2="16"/>
+                      <line x1="20" x2="20" y1="12" y2="3"/>
+                      <line x1="2" x2="6" y1="14" y2="14"/>
+                      <line x1="10" x2="14" y1="8" y2="8"/>
+                      <line x1="18" x2="22" y1="16" y2="16"/>
+                    </svg>
+                  </span>
+                  <h2 id="command-title">SkyCore 命令</h2>
+                </div>
+              </div>
+              <div class="actions command-actions">
+                <button id="command-status" data-command="10" type="button" disabled>读取状态</button>
+                <button id="command-start" data-command="1" type="button" class="primary" disabled>启动／恢复记录</button>
+                <button id="command-stop" data-command="3" type="button" class="danger-outline" disabled>停止记录</button>
+              </div>
+              <section class="fpga-controls" aria-labelledby="fpga-controls-title">
+                <h3 id="fpga-controls-title">机载 FPGA</h3>
+                <div class="actions">
+                  <button id="command-fpga-connect" data-command="21" type="button" disabled>连接 FPGA</button>
+                  <button id="command-fpga-disconnect" data-command="22" type="button" disabled>断开 FPGA</button>
+                </div>
+              </section>
+              <p id="command-feedback" tabindex="0" class="feedback" role="status">等待下发</p>
+              <dl class="command-detail">
+                <dt>操作</dt><dd id="command-operation">—</dd>
+                <dt>命令 ID</dt><dd id="command-id" tabindex="0" class="mono">—</dd>
+                <dt>受理</dt><dd id="command-accepted">—</dd>
+                <dt>最终回执</dt><dd id="command-result">—</dd>
+                <dt>Session ID</dt><dd id="command-session" tabindex="0" class="mono">—</dd>
+              </dl>
+              <button id="command-check" type="button" class="full-btn" disabled>查询当前命令回执</button>
+            </section>
+          </aside>
         </div>
       </div>
     </div>

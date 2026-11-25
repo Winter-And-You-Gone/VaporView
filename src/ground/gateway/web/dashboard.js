@@ -5,13 +5,43 @@ const dashboard = (() => {
   const byId = (id) => document.getElementById(id);
   const waves = new Map();
   const fpgaChannels = [32, 33, 49, 48];
-  const colors = ["#286bc3", "#b65314", "#008277", "#864ba6"];
   const source = byId("wave-source");
   const tcp = byId("tcp-channel");
   const internalTimers = new Map();
   const maxAge = 4000;
   let chosenSource = false;
   let animation = 0;
+
+  function themeVar(name, fallback) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+  }
+
+  function applyTheme(theme) {
+    document.documentElement.dataset.theme = theme;
+    const toggle = byId("theme-toggle");
+    if (toggle) {
+      toggle.setAttribute("aria-pressed", String(theme === "dark"));
+      toggle.title = theme === "dark" ? "切换到浅色主题" : "切换到深色主题";
+    }
+    paintLater();
+    window.dispatchEvent(new CustomEvent("vaporview-theme-change"));
+  }
+
+  try {
+    const saved = localStorage.getItem("vaporview-gateway-theme");
+    if (saved === "dark" || saved === "light") document.documentElement.dataset.theme = saved;
+  } catch { /* ignore restricted storage */ }
+
+  const themeToggle = byId("theme-toggle");
+  if (themeToggle) {
+    themeToggle.setAttribute("aria-pressed", String(document.documentElement.dataset.theme === "dark"));
+    themeToggle.addEventListener("click", () => {
+      const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+      try { localStorage.setItem("vaporview-gateway-theme", next); } catch { /* ignore */ }
+      applyTheme(next);
+    });
+  }
+
   function paintLater() {
     if (!animation) animation = requestAnimationFrame(paint);
   }
@@ -56,23 +86,42 @@ const dashboard = (() => {
 
   function plot(id, key) {
     const canvas = byId("wave-" + id);
-    if (!canvas.clientWidth) return;
+    if (!canvas || !canvas.clientWidth) return;
     const w = canvas.clientWidth, h = canvas.clientHeight, scale = window.devicePixelRatio || 1;
     const ctx = canvas.getContext("2d");
     if (canvas.width !== Math.round(w * scale)) canvas.width = Math.round(w * scale);
     if (canvas.height !== Math.round(h * scale)) canvas.height = Math.round(h * scale);
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
     ctx.clearRect(0, 0, w, h);
-    const left = 55, right = w - 12, top = 12, bottom = h - 22;
+
+    const gridColor = themeVar("--chart-grid", "#ebe7dd");
+    const axisColor = themeVar("--chart-axis", "#d4cec0");
+    const textColor = themeVar("--chart-text", "#747066");
+    const colors = [
+      themeVar("--chart-c0", "#d97757"),
+      themeVar("--chart-c1", "#3b6fa0"),
+      themeVar("--chart-c2", "#3d7d59"),
+      themeVar("--chart-c3", "#895c98"),
+    ];
+
+    const left = 54, right = w - 12, top = 12, bottom = h - 22;
     ctx.lineWidth = 1;
-    ctx.strokeStyle = "#dae2eb";
+    ctx.strokeStyle = gridColor;
+    ctx.setLineDash([3, 3]);
     ctx.beginPath();
-    for (let i = 0; i <= 4; ++i) {
-      const y = top + (bottom - top) * i / 4, x = left + (right - left) * i / 4;
+    for (let i = 1; i < 4; ++i) {
+      const y = Math.round(top + (bottom - top) * i / 4) + 0.5;
+      const x = Math.round(left + (right - left) * i / 4) + 0.5;
       ctx.moveTo(left, y); ctx.lineTo(right, y);
       ctx.moveTo(x, top); ctx.lineTo(x, bottom);
     }
     ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.strokeStyle = axisColor;
+    ctx.strokeRect(Math.round(left) + 0.5, Math.round(top) + 0.5,
+      Math.round(right - left), Math.round(bottom - top));
+
     const entry = waves.get(key);
     const frame = entry?.frame;
     const curves = frame?.valid && frame.points.length ? series(frame) : [];
@@ -83,27 +132,35 @@ const dashboard = (() => {
     canvas.dataset.points = String(valid.length);
     if (!valid.length) {
       info.textContent = frame ? "当前预览帧无有效波形" : "等待预览帧";
+      ctx.font = "11px 'Segoe UI', 'Microsoft YaHei UI', sans-serif";
+      ctx.fillStyle = textColor;
+      ctx.textAlign = "center";
+      ctx.fillText(frame ? "无有效波形" : "等待预览帧", (left + right) / 2, (top + bottom) / 2 + 4);
+      ctx.textAlign = "left";
       return;
     }
     let lo = Math.min(...valid), hi = Math.max(...valid);
     if (hi === lo) { lo -= 1; hi += 1; }
-    ctx.font = "11px Consolas, monospace";
-    ctx.fillStyle = "#53677b";
-    ctx.fillText(Number(hi.toPrecision(4)), 2, top + 4, left - 5);
-    ctx.fillText(Number(lo.toPrecision(4)), 2, bottom, left - 5);
+    ctx.font = "11px 'Cascadia Mono', Consolas, monospace";
+    ctx.fillStyle = textColor;
+    ctx.fillText(Number(hi.toPrecision(4)), 4, top + 6, left - 8);
+    ctx.fillText(Number(lo.toPrecision(4)), 4, bottom, left - 8);
     if (Number.isFinite(frame.xStart) && Number.isFinite(frame.xStep)) {
       ctx.fillText(Number(frame.xStart.toPrecision(5)), left, h - 5);
       ctx.textAlign = "right";
       ctx.fillText(Number((frame.xStart + (frame.points.length - 1) * frame.xStep).toPrecision(6)), right, h - 5);
       ctx.textAlign = "left";
     }
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
     curves.forEach(([name, values], c) => {
+      const color = colors[c % colors.length];
       const label = document.createElement("span");
       label.textContent = name;
-      label.style.color = colors[c];
+      label.style.color = color;
       legend.append(label);
-      ctx.strokeStyle = colors[c];
-      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.75;
       ctx.beginPath();
       let connected = false;
       values.forEach((v, i) => {
@@ -111,7 +168,7 @@ const dashboard = (() => {
         const x = left + i / Math.max(1, values.length - 1) * (right - left);
         const y = bottom - (v - lo) / (hi - lo) * (bottom - top);
         if (connected) ctx.lineTo(x, y);
-        else { ctx.moveTo(x, y); ctx.lineTo(x + .6, y); }
+        else { ctx.moveTo(x, y); ctx.lineTo(x + 0.6, y); }
         connected = true;
       });
       ctx.stroke();
