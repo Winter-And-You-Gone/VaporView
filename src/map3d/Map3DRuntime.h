@@ -5,6 +5,8 @@
 
 namespace VaporView::Map3D {
 
+inline constexpr unsigned kTerrainMinLevel = 8;
+
 QStringList map3DRuntimeRootCandidates();
 QString map3DDownloadedMapRoot();
 QString map3DProjectDataDirectory();

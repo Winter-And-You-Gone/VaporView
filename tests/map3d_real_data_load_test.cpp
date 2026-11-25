@@ -119,6 +119,23 @@ void checkHttpCache()
             QStringLiteral("changed tile replaced after revalidation"));
 }
 
+void checkTerrainLevels(osgEarth::Map* map)
+{
+    osgEarth::ElevationLayerVector layers;
+    map->getLayers(layers);
+    require(!layers.empty(), QStringLiteral("built-in map has elevation layers"));
+    const auto distantKey = map->getProfile()->createTileKey(120.07, 30.2, 7);
+    for (const auto& layer : layers)
+    {
+        require(layer->getMinLevel() == 8 && !layer->getBestAvailableTileKey(distantKey).valid(),
+                QStringLiteral("DEM starts at level 8: %1").arg(QString::fromStdString(layer->getName())));
+    }
+    osg::ref_ptr<osg::HeightField> field = new osg::HeightField;
+    field->allocate(257, 257); // Match the terrain renderer's elevation grid.
+    require(!layers.populateHeightField(field, nullptr, distantKey, nullptr, osgEarth::INTERP_BILINEAR, nullptr),
+            QStringLiteral("level 7 skips the entire elevation stack"));
+}
+
 void checkLiveTerrain(const QString& earth, bool blockCopernicus)
 {
     // Only GDAL's remote file reader is affected. The local DEM and ion's Qt
@@ -130,14 +147,15 @@ void checkLiveTerrain(const QString& earth, bool blockCopernicus)
     auto scene = VaporView::Map3D::Detail::loadEarthAsset(earth);
     require(scene.mapNode && scene.diagnostics.cesiumTerrainConfigured, QStringLiteral("configured terrain stack"));
     auto* map = scene.mapNode->getMap();
+    checkTerrainLevels(map);
     osgEarth::ElevationLayerVector layers;
     map->getLayers(layers);
     require(layers.size() >= 3 && layers.front()->getName() == "Cesium World Terrain"
                 && layers[1]->getName() == "Online Copernicus GLO-30",
             QStringLiteral("sampling order is local, online Copernicus, then Cesium"));
     // An entire tile inside the Xihu DEM must resolve without contacting ion.
-    const auto sample = [&](double lon, double lat) {
-        const auto key = map->getProfile()->createTileKey(lon, lat, 12);
+    const auto sample = [&](double lon, double lat, unsigned level) {
+        const auto key = map->getProfile()->createTileKey(lon, lat, level);
         osg::ref_ptr<osg::HeightField> hf = new osg::HeightField;
         hf->allocate(65, 65);
         std::fill(hf->getHeightList().begin(), hf->getHeightList().end(), NO_DATA_VALUE);
@@ -145,11 +163,13 @@ void checkLiveTerrain(const QString& earth, bool blockCopernicus)
                 QStringLiteral("terrain tile has data"));
         return hf;
     };
-    const float xihu = sample(120.07, 30.2)->getHeight(32, 32);
+    const float xihu = sample(120.07, 30.2, 12)->getHeight(32, 32);
     require(xihu > 0 && VaporView::Map3D::Detail::cesiumTerrainCredit(map, false).isEmpty(),
             QStringLiteral("local DEM used before ion authentication"));
     // This Himalayan tile straddles the boundary between two one-degree COGs.
-    const auto mountainTile = sample(86.925, 28.0);
+    require(sample(86.925, 28.0, 8)->getHeight(32, 32) > 3000,
+            QStringLiteral("Himalayan terrain begins at level 8"));
+    const auto mountainTile = sample(86.925, 28.0, 12);
     const auto& heights = mountainTile->getHeightList();
     const float mountain = mountainTile->getHeight(32, 32);
     const bool usedCesium = !VaporView::Map3D::Detail::cesiumTerrainCredit(map, false).isEmpty();
@@ -203,6 +223,7 @@ int main(int argc, char** argv)
         require(asset.mapNode && asset.mapNode->getMap()
                     && asset.diagnostics.openElevationLayerName == QStringLiteral("Copernicus DEM GLO-30"),
                 QStringLiteral("local imagery opens the real DEM data source"));
+        checkTerrainLevels(asset.mapNode->getMap());
         auto* pool = asset.mapNode->getMap()->getElevationPool();
         const auto* wgs84 = osgEarth::SpatialReference::get("wgs84");
         require(pool && wgs84, QStringLiteral("imagery scene exposes an elevation sampler"));

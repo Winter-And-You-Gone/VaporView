@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Map3DRuntime.h"
 #include <osgEarth/Cache>
 #include <osgEarth/ElevationLayer>
 #include <osgEarth/Progress>
@@ -33,8 +34,7 @@ public:
         setAttribution("Terrain adapted from the Copernicus DEM. © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018, provided under COPERNICUS by the European Union and ESA");
         setProfile(osgEarth::Profile::create(osgEarth::Profile::GLOBAL_GEODETIC));
         setTileSize(65);
-        // A globe-scale request would open thousands of one-degree GeoTIFFs.
-        setMinLevel(8);
+        setMinLevel(kTerrainMinLevel);
         setMaxDataLevel(14);
         setCachePolicy(osgEarth::CachePolicy::NO_CACHE);
         if (auto* cache = osgEarth::Registry::instance()->getDefaultCache())

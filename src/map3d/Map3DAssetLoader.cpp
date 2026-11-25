@@ -196,6 +196,7 @@ void configureBuiltInTerrain(osgEarth::Map* map, EarthLoadDiagnostics& diagnosti
         if (!QFileInfo(path).isFile() || configuredName.contains(name, Qt::CaseInsensitive)) return;
         osg::ref_ptr<osgEarth::GDALElevationLayer> layer = new osgEarth::GDALElevationLayer;
         layer->setName(name);
+        layer->setMinLevel(kTerrainMinLevel);
         layer->setURL(osgEarth::URI(QDir::fromNativeSeparators(path).toStdString()));
         if (highestPriority) map->addLayer(layer.get());
         else map->insertLayer(layer.get(), 0);
@@ -205,7 +206,11 @@ void configureBuiltInTerrain(osgEarth::Map* map, EarthLoadDiagnostics& diagnosti
     osgEarth::ElevationLayerVector layers;
     map->getLayers(layers);
     for (const auto& layer : layers)
+    {
+        // The earth file may already supply a local DEM.
+        if (layer->getMinLevel() < kTerrainMinLevel) layer->setMinLevel(kTerrainMinLevel);
         if (layer->isOpen()) diagnostics.openElevationLayerName = QString::fromStdString(layer->getName());
+    }
     map->insertLayer(new OnlineCopernicusLayer, 0);
     if (diagnostics.openElevationLayerName.isEmpty())
         diagnostics.openElevationLayerName = QString::fromLatin1(OnlineCopernicusLayer::name);

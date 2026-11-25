@@ -1,4 +1,5 @@
 #include "CesiumTerrain.h"
+#include "Map3DRuntime.h"
 #include "MapHttp.h"
 
 #include <osgEarth/ElevationLayer>
@@ -128,6 +129,7 @@ public:
         setName(layerName);
         setProfile(osgEarth::Profile::create(osgEarth::Profile::GLOBAL_GEODETIC));
         setTileSize(gridSize);
+        setMinLevel(kTerrainMinLevel);
         setMaxDataLevel(19);
         setCachePolicy(osgEarth::CachePolicy::NO_CACHE);
     }
@@ -143,7 +145,7 @@ private:
     {
         auto status = ElevationLayer::openImplementation();
         if (status.isOK())
-            addDataExtent(osgEarth::DataExtent(getProfile()->getExtent(), 0, getMaxDataLevel()));
+            addDataExtent(osgEarth::DataExtent(getProfile()->getExtent(), getMinLevel(), getMaxDataLevel()));
         return status;
     }
 
