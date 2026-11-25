@@ -443,7 +443,7 @@ QString layerDescription(Map3DLayer layer)
     case Map3DLayer::RoadNetwork:
         return mapText(QStringLiteral("道路与交通网络要素"));
     case Map3DLayer::Buildings3D:
-        return mapText(QStringLiteral("本地原生 OSG 三维建筑叠加层"));
+        return mapText(QStringLiteral("优先显示本地建筑，覆盖范围外放大到街区后按需加载 OpenFreeMap 建筑"));
     case Map3DLayer::FlightElements:
         return mapText(QStringLiteral("飞行轨迹、采样点与飞行器模型"));
     case Map3DLayer::Count:
@@ -755,13 +755,6 @@ MapDataSelection selectionForLightweightStartup(const MapDataSelection& discover
         diagnostics.selectedElevationSource = copernicus ? QStringLiteral("Copernicus DEM") : QStringLiteral("SRTM");
     }
     return selection;
-}
-
-bool shouldAutoLoadLocal3DTiles(const MapDataSelection& selection)
-{
-    return selection.diagnostics.real3DLocalReady
-        && QFileInfo(selection.earthFile).fileName().compare(
-               QStringLiteral("vaporview_real3d_local.earth"), Qt::CaseInsensitive) == 0;
 }
 
 void configureMenuRow(VaporView::SingleLevelPopupMenuRow* row, int minimumWidth = 250)
@@ -1706,7 +1699,7 @@ void Map3DWindow::setLayerVisible(Map3DLayer layer, bool visible, bool announce)
     {
         view_->setLayerVisible(layer, visible);
         if (visible && (layer == Map3DLayer::RoadNetwork || layer == Map3DLayer::Hydrography
-                        || layer == Map3DLayer::DigitalElevation)
+                        || layer == Map3DLayer::DigitalElevation || layer == Map3DLayer::Buildings3D)
             && map_selection_.mode == MapDataMode::LocalGridOnly && !view_->hasEarthMap()
             && view_->isRenderingStarted() && !VaporView::settingsWritesSuspended() && view_->loadOnlineGlobe())
         {
@@ -1883,7 +1876,8 @@ void Map3DWindow::refreshLayerMenuAvailability()
                     || map_selection_.diagnostics.selectedOsmLayersAvailable;
                 break;
             case Map3DLayer::Buildings3D:
-                available = map_selection_.diagnostics.local3DTilesTilesetValid;
+                available = map_selection_.diagnostics.local3DTilesTilesetValid
+                    || map_selection_.mode == MapDataMode::LocalGridOnly;
                 break;
             case Map3DLayer::FlightElements:
                 available = true;
@@ -2352,11 +2346,12 @@ void Map3DWindow::loadInitialEarthFile()
     {
         if (view_ && startupSelection.mode == MapDataMode::LocalGridOnly
             && (layerVisible(Map3DLayer::RoadNetwork) || layerVisible(Map3DLayer::Hydrography)
-                || layerVisible(Map3DLayer::DigitalElevation))
+                || layerVisible(Map3DLayer::DigitalElevation) || layerVisible(Map3DLayer::Buildings3D))
             && (view_->hasEarthMap() || view_->loadOnlineGlobe()))
         {
             latest_earth_load_ = view_->earthLoadDiagnostics();
             setMapSelection(startupSelection);
+            if (startupSelection.diagnostics.local3DTilesTilesetValid) loadConfiguredLocal3DTiles(false);
             applySelectedSatelliteImagery(false);
             return;
         }
@@ -2390,7 +2385,7 @@ void Map3DWindow::loadInitialEarthFile()
                     setMapSelection(startupSelection);
                     QSettings settings = map3DSettings();
                     VaporView::setPersistentSetting(settings, QStringLiteral("lastEarthFile"), fallbackPath);
-                    if (layerVisible(Map3DLayer::Buildings3D) && shouldAutoLoadLocal3DTiles(startupSelection))
+                    if (startupSelection.diagnostics.local3DTilesTilesetValid)
                     {
                         loadConfiguredLocal3DTiles(false);
                     }
@@ -2423,7 +2418,7 @@ void Map3DWindow::loadInitialEarthFile()
         resetAutomaticSentinel2Imagery();
         QSettings settings = map3DSettings();
         VaporView::setPersistentSetting(settings, QStringLiteral("lastEarthFile"), initialPath);
-        if (layerVisible(Map3DLayer::Buildings3D) && shouldAutoLoadLocal3DTiles(activeSelection))
+        if (activeSelection.diagnostics.local3DTilesTilesetValid)
         {
             loadConfiguredLocal3DTiles(false);
         }
@@ -2789,6 +2784,8 @@ bool Map3DWindow::loadConfiguredLocal3DTiles(bool showStatusMessage)
         return false;
     }
 
+    if (!showStatusMessage && view_->pendingLocal3DTilesPath() == diagnostics.local3DTilesTilesetPath)
+        return true;
     if (showStatusMessage)
     {
         statusBar()->showMessage(mapText(QStringLiteral("正在后台加载本地 3D 建筑...")));
@@ -2929,7 +2926,7 @@ void Map3DWindow::reloadBestLocalMap()
         }
         setMapSelection(selection);
         resetAutomaticSentinel2Imagery();
-        if (selection.diagnostics.real3DLocalReady)
+        if (selection.diagnostics.local3DTilesTilesetValid)
         {
             loadConfiguredLocal3DTiles(false);
         }
@@ -4001,8 +3998,15 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool for
         cesium_attribution_->setVisible(!credit.isEmpty());
     }
     if (osm_attribution_)
+    {
+        const bool buildings = view_ && latest_earth_load_.onlineOsmAvailable && layerVisible(Map3DLayer::Buildings3D);
+        const QString credit = (buildings ? QStringLiteral("<a href=\"https://openfreemap.org/\">OpenFreeMap</a> · "
+            "<a href=\"https://openmaptiles.org/\">© OpenMapTiles</a> · ") : QString())
+            + QStringLiteral("<a href=\"https://www.openstreetmap.org/copyright\">© OpenStreetMap contributors</a>");
+        if (osm_attribution_->text() != credit) osm_attribution_->setText(credit);
         osm_attribution_->setVisible(view_ && latest_earth_load_.onlineOsmAvailable
-            && (layerVisible(Map3DLayer::RoadNetwork) || layerVisible(Map3DLayer::Hydrography)));
+            && (buildings || layerVisible(Map3DLayer::RoadNetwork) || layerVisible(Map3DLayer::Hydrography)));
+    }
 }
 
 } // namespace VaporView::Map3D

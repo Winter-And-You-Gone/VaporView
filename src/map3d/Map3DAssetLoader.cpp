@@ -13,6 +13,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
+#include <QtMath>
 
 #include <osg/Geometry>
 #include <osg/Geode>
@@ -330,7 +331,8 @@ Local3DTilesAssetLoadResult loadLocal3DTilesAsset(const QString& tilesetPath)
         return result;
     }
 
-    osg::ref_ptr<osg::Group> tilesRoot = new osg::Group;
+    osg::ref_ptr<LocalBuildingTiles> tilesRoot = new LocalBuildingTiles;
+    tilesRoot->coverage.setFillRule(Qt::WindingFill);
     tilesRoot->setName("VaporView local building tiles");
     bool traversalExceeded = false;
     const QString tilesetDirectory = info.absolutePath();
@@ -371,6 +373,7 @@ Local3DTilesAssetLoadResult loadLocal3DTilesAsset(const QString& tilesetPath)
             return;
         }
         ++diagnostics.tileCount;
+        const int previousCount = diagnostics.loadedPayloadCount;
         if (tile.value(QStringLiteral("content")).isObject())
         {
             loadContent(tile.value(QStringLiteral("content")).toObject());
@@ -381,6 +384,13 @@ Local3DTilesAssetLoadResult loadLocal3DTilesAsset(const QString& tilesetPath)
             {
                 loadContent(content.toObject());
             }
+        }
+        const auto region = tile.value("boundingVolume").toObject().value("region").toArray();
+        if (diagnostics.loadedPayloadCount > previousCount && region.size() == 6)
+        {
+            const QRectF bounds(QPointF(qRadiansToDegrees(region[0].toDouble()), qRadiansToDegrees(region[1].toDouble())),
+                                QPointF(qRadiansToDegrees(region[2].toDouble()), qRadiansToDegrees(region[3].toDouble())));
+            if (bounds.isValid()) tilesRoot->coverage.addRect(bounds);
         }
         for (const QJsonValue& child : tile.value(QStringLiteral("children")).toArray())
         {
@@ -405,6 +415,35 @@ Local3DTilesAssetLoadResult loadLocal3DTilesAsset(const QString& tilesetPath)
                   .arg(diagnostics.payloadCount)
                   .arg(diagnostics.warnings.constFirst());
         return result;
+    }
+    // The generator assigns buildings by centre and may clip its rectangular tiles to a district.
+    const QString clipName = QFileInfo(QDir::fromNativeSeparators(
+        tileset.value("extras").toObject().value("clipPath").toString())).fileName();
+    if (!clipName.isEmpty())
+    {
+        QFile clip(info.dir().filePath("../../aoi/" + clipName));
+        if (clip.open(QIODevice::ReadOnly))
+        {
+            auto geometry = QJsonDocument::fromJson(clip.readAll()).object();
+            if (geometry.value("type") == "FeatureCollection")
+                geometry = geometry.value("features").toArray().at(0).toObject();
+            if (geometry.value("type") == "Feature") geometry = geometry.value("geometry").toObject();
+            const auto coordinates = geometry.value("coordinates").toArray();
+            const auto polygons = geometry.value("type") == "Polygon" ? QJsonArray{coordinates} : coordinates;
+            QPainterPath boundary;
+            for (const auto& polygon : polygons)
+                for (const auto& ring : polygon.toArray())
+                {
+                    QPolygonF outline;
+                    for (const auto& point : ring.toArray())
+                    {
+                        const auto xy = point.toArray();
+                        if (xy.size() >= 2) outline << QPointF(xy[0].toDouble(), xy[1].toDouble());
+                    }
+                    if (outline.size() >= 3) boundary.addPolygon(outline);
+                }
+            if (!boundary.isEmpty()) tilesRoot->coverage = tilesRoot->coverage.intersected(boundary);
+        }
     }
     osgEarth::Registry::shaderGenerator().run(tilesRoot.get());
     diagnostics.loaded = true;

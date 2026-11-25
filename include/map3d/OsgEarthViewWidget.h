@@ -192,6 +192,7 @@ public:
     QSize framebufferSize() const;
     bool hasEarthMap() const;
     bool hasLocal3DTilesPreview() const;
+    const QString& pendingLocal3DTilesPath() const { return pending_local_tiles_path_; }
     bool layerVisible(Map3DLayer layer) const;
     bool layerAvailable(Map3DLayer layer) const;
     double earthCameraRangeM() const;
@@ -319,6 +320,7 @@ private:
     std::array<bool, kMap3DLayerCount> layer_visibility_{};
     quint64 earth_load_generation_ = 0;
     quint64 local_3d_tiles_load_generation_ = 0;
+    QString pending_local_tiles_path_;
     quint64 aircraft_load_generation_ = 0;
     QSet<QFutureWatcherBase*> async_watchers_;
 };

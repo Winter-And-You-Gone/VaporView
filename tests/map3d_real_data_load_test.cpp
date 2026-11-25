@@ -3,6 +3,8 @@
 #include "../src/map3d/Map3DAssetLoader.h"
 #include "../src/map3d/CesiumTerrain.h"
 #include "../src/map3d/MapHttp.h"
+#include "../src/map3d/Map3DRuntime.h"
+#include "../src/map3d/OpenFreeMapBuildings.h"
 
 #include <osgEarth/ElevationLayer>
 #include <osgEarth/ElevationPool>
@@ -136,6 +138,61 @@ void checkTerrainLevels(osgEarth::Map* map)
             QStringLiteral("level 7 skips the entire elevation stack"));
 }
 
+void checkLiveBuildings(const QString& tilesetPath)
+{
+    using namespace VaporView::Map3D;
+    using namespace osgEarth;
+    initializeMap3DRuntime();
+    osg::ref_ptr<Map> map = new Map;
+    osg::ref_ptr<Detail::OpenFreeMapBuildings> online = new Detail::OpenFreeMapBuildings;
+    map->addLayer(online.get());
+    const TileKey xihu(14, 13658, 6745, online->getProfile());
+    const TileKey downtown(14, 13663, 6746, online->getProfile());
+    require(!online->createTile(xihu.createParentKey(), nullptr), QStringLiteral("distant views skip buildings"));
+    const auto tile = online->createTile(xihu, nullptr);
+    require(tile && tile->getBound().valid(), QStringLiteral("live Xihu tile produces a 3D mesh"));
+    if (QFileInfo::exists(tilesetPath))
+    {
+        const auto local = Detail::loadLocal3DTilesAsset(tilesetPath);
+        const auto* native = dynamic_cast<Detail::LocalBuildingTiles*>(local.node.get());
+        require(native && native->coverage.contains(QPointF(120.1218, 30.2639)),
+                QStringLiteral("native coverage includes Xihu sample"));
+        osg::ref_ptr<Detail::OpenFreeMapBuildings> fallback = new Detail::OpenFreeMapBuildings(native->coverage);
+        map->addLayer(fallback.get());
+        require(!fallback->createTile(xihu, nullptr), QStringLiteral("native Xihu buildings suppress the online tile"));
+        const auto outside = fallback->createTile(downtown, nullptr);
+        require(outside && outside->getBound().valid(), QStringLiteral("Hangzhou city centre streams outside local coverage"));
+    }
+
+    // Isolate the building layer so a frame change measures real paged drawables.
+    OsgEarthViewWidget view;
+    view.resize(820, 580);
+    view.show();
+    view.startRendering();
+    for (size_t i = 0; i < kMap3DLayerCount; ++i)
+        view.setLayerVisible(static_cast<Map3DLayer>(i), false);
+    view.setFollowAircraft(false);
+    require(view.loadOnlineGlobe(), QStringLiteral("online globe opens without a local map"));
+    VaporView::Geo::NavSample west;
+    west.latDeg = 30.246;
+    west.lonDeg = 120.210;
+    west.heightM = 0;
+    west.heightReference = VaporView::Geo::HeightReference::Wgs84Ellipsoid;
+    auto east = west;
+    east.lonDeg += 0.008;
+    view.setSamples(std::vector<VaporView::Geo::NavSample>{west, east});
+    require(view.flyToTrack(), QStringLiteral("camera focuses on the Hangzhou city centre"));
+    processEventsFor(2000);
+    const QImage background = view.grabFramebuffer();
+    require(!background.isNull(), QStringLiteral("globe framebuffer is available"));
+    view.setLayerVisible(Map3DLayer::Buildings3D, true);
+    require(waitUntil([&] { return view.grabFramebuffer() != background; }, 30000),
+            QStringLiteral("online building meshes appear in the visible street-level view"));
+    view.setLayerVisible(Map3DLayer::Buildings3D, false);
+    require(waitUntil([&] { return view.grabFramebuffer() == background; }, 5000),
+            QStringLiteral("disabling buildings restores the original frame"));
+}
+
 void checkLiveTerrain(const QString& earth, bool blockCopernicus)
 {
     // Only GDAL's remote file reader is affected. The local DEM and ion's Qt
@@ -200,6 +257,11 @@ int main(int argc, char** argv)
     const QString tilesetPath =
         sourceRoot.filePath(QStringLiteral("resources/maps/tiles3d/local/tileset.json"));
 
+    if (mode == "--buildings-live")
+    {
+        checkLiveBuildings(tilesetPath);
+        return 0;
+    }
     if (liveTerrain)
     {
         checkLiveTerrain(earthPath, blockCopernicus);
@@ -320,6 +382,8 @@ int main(int argc, char** argv)
             QStringLiteral("real scene exposes the hydrography layer"));
     require(view.layerAvailable(VaporView::Map3D::Map3DLayer::RoadNetwork),
             QStringLiteral("real scene exposes the road network layer"));
+    require(!view.hasLocal3DTilesPreview() && view.layerAvailable(VaporView::Map3D::Map3DLayer::Buildings3D),
+            QStringLiteral("built-in map offers online buildings before any local tileset is loaded"));
     view.setLayerVisible(VaporView::Map3D::Map3DLayer::Hydrography, false);
     require(!view.layerVisible(VaporView::Map3D::Map3DLayer::Hydrography),
             QStringLiteral("hydrography visibility can be disabled independently"));

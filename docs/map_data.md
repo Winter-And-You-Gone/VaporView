@@ -222,6 +222,8 @@ The helper only reads local GeoTIFF files. It does not download imagery and does
 
 VaporView native OSG building tiles live under `resources/maps/tiles3d/` for offline 3D content experiments. This path is local-only and does not use Cesium ion.
 
+In the 3D Map layer menu, enable `三维建筑模型` to display buildings. Built-in maps stream OpenFreeMap buildings outside the loaded local building tiles. At street scale the renderer fetches zoom-14 vector tiles for the visible area, raises footprints by their supplied heights, and places them on the terrain. The building layer needs no API key. Coverage and height detail vary with the OpenStreetMap data for each area.
+
 Expected entry point:
 
 ```text

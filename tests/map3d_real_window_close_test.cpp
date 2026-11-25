@@ -171,6 +171,9 @@ int main(int argc, char** argv)
     QTemporaryDir settingsDir;
     require(settingsDir.isValid(), QStringLiteral("temporary settings directory"));
     qputenv("OSGEARTH_CACHE_PATH", settingsDir.filePath(QStringLiteral("map-cache")).toUtf8());
+    // This lifecycle test reloads the local DEM. A remote GDAL raster can block
+    // the terrain engine's first frame and delay delivery of completed Qt futures.
+    qputenv("CPL_VSIL_CURL_ALLOWED_EXTENSIONS", ".disabled");
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, settingsDir.path());

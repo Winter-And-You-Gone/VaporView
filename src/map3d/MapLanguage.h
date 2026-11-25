@@ -472,7 +472,7 @@ inline const QHash<QString, QString>& mapLanguageCatalog() {
         {QStringLiteral("全球基础地理参考与地表纹理"), QStringLiteral("Global geographic reference and surface texture")},
         {QStringLiteral("当前可用"), QStringLiteral("Available now")},
         {QStringLiteral("当前场景未加载；数据可用时按此设置显示"), QStringLiteral("Not loaded in this scene; shown when data becomes available")},
-        {QStringLiteral("本地原生 OSG 三维建筑叠加层"), QStringLiteral("Local native OSG 3D building overlay")},
+        {QStringLiteral("优先显示本地建筑，覆盖范围外放大到街区后按需加载 OpenFreeMap 建筑"), QStringLiteral("Show local buildings first and stream OpenFreeMap buildings at street level outside local coverage")},
         {QStringLiteral("河流、湖泊及其他水体要素"), QStringLiteral("Rivers, lakes and other water features")},
         {QStringLiteral("道路与交通网络要素"), QStringLiteral("Road and transport features")},
         {QStringLiteral("飞行轨迹、采样点与飞行器模型"), QStringLiteral("Flight track, samples and aircraft model")},

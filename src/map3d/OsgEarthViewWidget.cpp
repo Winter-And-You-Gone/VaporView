@@ -9,6 +9,7 @@
 #include "EarthProjectionProfile.h"
 #include "OpenAerialMapImageLayer.h"
 #include "OnlineOsmLayer.h"
+#include "OpenFreeMapBuildings.h"
 #include "CesiumTerrain.h"
 #include "TiandituImageLayer.h"
 #include <osgEarth/TerrainEngineNode>
@@ -1486,6 +1487,7 @@ bool OsgEarthViewWidget::loadLocal3DTilesPreview(const QString& tilesetPath)
 {
     assertGuiThread(this, Q_FUNC_INFO);
     ++local_3d_tiles_load_generation_;
+    pending_local_tiles_path_.clear();
     const Detail::Local3DTilesAssetLoadResult result = Detail::loadLocal3DTilesAsset(tilesetPath);
     return applyLocal3DTilesLoad(result.diagnostics, result.node);
 }
@@ -1501,6 +1503,8 @@ void OsgEarthViewWidget::loadLocal3DTilesPreviewAsync(
         return;
     }
     const quint64 generation = ++local_3d_tiles_load_generation_;
+    pending_local_tiles_path_ = tilesetPath;
+    applyLayerVisibility(Map3DLayer::Buildings3D);
     local_3d_tiles_load_diagnostics_ = {};
     local_3d_tiles_load_diagnostics_.attempted = true;
     local_3d_tiles_load_diagnostics_.requestedPath = tilesetPath;
@@ -1511,7 +1515,9 @@ void OsgEarthViewWidget::loadLocal3DTilesPreviewAsync(
         unregisterAsyncWatcher(watcher);
         watcher->deleteLater();
         if (shutdown_ || generation != local_3d_tiles_load_generation_) return;
+        pending_local_tiles_path_.clear();
         if (watcher->isCanceled() || watcher->future().resultCount()==0) {
+            applyLayerVisibility(Map3DLayer::Buildings3D);
             if (finished) finished(false);
             return;
         }
@@ -1529,7 +1535,12 @@ bool OsgEarthViewWidget::applyLocal3DTilesLoad(Local3DTilesLoadDiagnostics diagn
 {
     assertGuiThread(this, Q_FUNC_INFO);
     local_3d_tiles_load_diagnostics_ = std::move(diagnostics);
-    if (shutdown_ || !local_3d_tiles_load_diagnostics_.loaded || !node) return false;
+    if (shutdown_) return false;
+    if (!local_3d_tiles_load_diagnostics_.loaded || !node)
+    {
+        applyLayerVisibility(Map3DLayer::Buildings3D);
+        return false;
+    }
     initializeSceneIfNeeded();
     if (!root_)
     {
@@ -1541,6 +1552,7 @@ bool OsgEarthViewWidget::applyLocal3DTilesLoad(Local3DTilesLoadDiagnostics diagn
     if (local_3d_tiles_node_) root_->removeChild(local_3d_tiles_node_.get());
     local_3d_tiles_node_ = std::move(node);
     root_->addChild(local_3d_tiles_node_.get());
+    if (map_node_) removeLayerByName(map_node_->getMap(), Detail::OpenFreeMapBuildings::layerName);
     applyLayerVisibility(Map3DLayer::Buildings3D);
     update();
     return true;
@@ -1550,6 +1562,7 @@ void OsgEarthViewWidget::clearLocal3DTilesPreview()
 {
     assertGuiThread(this, Q_FUNC_INFO);
     ++local_3d_tiles_load_generation_;
+    pending_local_tiles_path_.clear();
     if (shutdown_)
     {
         local_3d_tiles_node_ = nullptr;
@@ -1558,8 +1571,10 @@ void OsgEarthViewWidget::clearLocal3DTilesPreview()
     if (root_ && local_3d_tiles_node_)
     {
         root_->removeChild(local_3d_tiles_node_.get());
+        local_3d_tiles_node_ = nullptr;
+        if (map_node_) removeLayerByName(map_node_->getMap(), Detail::OpenFreeMapBuildings::layerName);
     }
-    local_3d_tiles_node_ = nullptr;
+    applyLayerVisibility(Map3DLayer::Buildings3D);
 }
 
 EarthLoadDiagnostics OsgEarthViewWidget::earthLoadDiagnostics() const
@@ -1647,7 +1662,7 @@ bool OsgEarthViewWidget::layerAvailable(Map3DLayer layer) const
         return true;
     if (layer == Map3DLayer::Buildings3D)
     {
-        return local_3d_tiles_node_.valid();
+        return local_3d_tiles_node_.valid() || (map_node_ && earth_load_diagnostics_.onlineOsmAvailable);
     }
     if (layer == Map3DLayer::FlightElements)
     {
@@ -1691,6 +1706,17 @@ void OsgEarthViewWidget::applyLayerVisibility(Map3DLayer layer)
         if (local_3d_tiles_node_)
         {
             local_3d_tiles_node_->setNodeMask(visible ? ~0u : 0u);
+        }
+        if (map_node_ && earth_load_diagnostics_.onlineOsmAvailable)
+        {
+            auto* map = map_node_->getMap();
+            if (!visible || (!local_3d_tiles_node_ && !pending_local_tiles_path_.isEmpty()))
+                removeLayerByName(map, Detail::OpenFreeMapBuildings::layerName);
+            else if (!map->getLayerByName(Detail::OpenFreeMapBuildings::layerName))
+            {
+                const auto* local = dynamic_cast<const Detail::LocalBuildingTiles*>(local_3d_tiles_node_.get());
+                map->addLayer(new Detail::OpenFreeMapBuildings(local ? local->coverage : QPainterPath{}));
+            }
         }
     }
     else if (layer == Map3DLayer::FlightElements)

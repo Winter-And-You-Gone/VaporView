@@ -5,6 +5,7 @@
 #include <osg/Group>
 #include <osg/Node>
 #include <osg/ref_ptr>
+#include <QPainterPath>
 
 namespace osgEarth {
 class MapNode;
@@ -23,6 +24,11 @@ struct EarthAssetLoadResult {
 struct Local3DTilesAssetLoadResult {
     Local3DTilesLoadDiagnostics diagnostics;
     osg::ref_ptr<osg::Group> node;
+};
+
+class LocalBuildingTiles final : public osg::Group {
+public:
+    QPainterPath coverage; // Longitude/latitude of the loaded payloads.
 };
 
 struct AircraftAssetLoadResult {
