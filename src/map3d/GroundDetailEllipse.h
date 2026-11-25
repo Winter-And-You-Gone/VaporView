@@ -43,22 +43,6 @@ struct GroundDetailEllipse
             <= majorAxisM + 2.0 * tile.radius();
     }
 
-    unsigned maxAllowedLod(const osg::BoundingSphere& tile, unsigned minLod) const
-    {
-        if (majorAxisM == 0.0 || !tile.valid()) return 99u;
-        const osg::Vec3d center = tile.center();
-        const double excessM = horizontalDistance(center - eyeGround)
-                             + horizontalDistance(center - targetGround)
-                             - (majorAxisM + 2.0 * tile.radius());
-        if (excessM <= 0.0) return 99u;
-        // Step LOD down gradually outside the focus ellipse so steep mountain
-        // ridges never place an LOD 13/14 mesh directly against an LOD 8 tile.
-        if (excessM <= 20000.0) return (std::max)(minLod, 11u);
-        if (excessM <= 50000.0) return (std::max)(minLod, 10u);
-        if (excessM <= 100000.0) return (std::max)(minLod, 9u);
-        return minLod;
-    }
-
 private:
     double horizontalDistance(const osg::Vec3d& delta) const
     {
