@@ -627,6 +627,12 @@ void checkGroundDetailEllipse()
                 "side detail ends at 30 km and tiles overlapping the boundary are retained");
         require(!ellipse.intersects({nearGround - (target - nearGround), 20}),
                 "turning the camera leaves detail behind it outside the ellipse");
+        require(ellipse.maxAllowedLod({nearGround, 0}, 8u) > 19u &&
+                ellipse.maxAllowedLod({middle + side * 35000, 0}, 8u) == 11u &&
+                ellipse.maxAllowedLod({middle + side * 50000, 0}, 8u) == 10u &&
+                ellipse.maxAllowedLod({middle + side * 70000, 0}, 8u) == 9u &&
+                ellipse.maxAllowedLod({middle + side * 120000, 0}, 8u) == 8u,
+                "LOD tapers smoothly in rings outside the oblique focus ellipse");
         require(ellipse.requiredFarPlaneM > range, "far plane accommodates the target");
         ellipse.update(earth, pose, range, -90);
         require(ellipse.intersects({middle + side * 90000, 0}) && ellipse.requiredFarPlaneM == 0,

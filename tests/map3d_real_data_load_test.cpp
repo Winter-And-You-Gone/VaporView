@@ -227,23 +227,33 @@ void checkTerrainLevels(osgEarth::Map* map)
                 && std::abs(field->getHeight(32, 32)) < 1.0f,
             QStringLiteral("level 7 ocean tile stays at sea level"));
 
-    // Deferring online terrain while panning must still resolve high-altitude terrain from the global base DEM.
+    // Deferring online terrain while panning must fall back to the parent/level-7
+    // coarse DEM without locking a coarse tile into ElevationPool's native LOD 12 cache.
     for (const auto& layer : layers)
     {
         if (auto* online = dynamic_cast<VaporView::Map3D::Detail::OnlineTerrainLayer*>(layer.get()))
             online->deferDownloads();
     }
-    const auto deferredKey = map->getProfile()->createTileKey(86.925, 28.0, 12);
+    const auto deferredKey = map->getProfile()->createTileKey(90.0, 31.5, 12);
     std::fill(field->getHeightList().begin(), field->getHeightList().end(), NO_DATA_VALUE);
-    require(layers.populateHeightField(field, nullptr, deferredKey, nullptr, osgEarth::INTERP_BILINEAR, nullptr),
-            QStringLiteral("deferred level 12 tile falls back to the global coarse base DEM"));
-    require(field->getHeight(32, 32) > 4000.0f,
-            QStringLiteral("deferred level 12 Himalayan tile avoids dropping to 0 m"));
+    require(!layers.populateHeightField(field, nullptr, deferredKey, nullptr, osgEarth::INTERP_BILINEAR, nullptr),
+            QStringLiteral("deferred level 12 tile does not masquerade coarse DEM as native level 12"));
+    auto* pool = map->getElevationPool();
+    osg::ref_ptr<osgEarth::ElevationTile> fallbackTile;
+    require(pool && pool->getTile(deferredKey, true, fallbackTile, nullptr, nullptr) && fallbackTile.valid(),
+            QStringLiteral("deferred level 12 tile resolves lower-res fallback from ElevationPool"));
+    require(fallbackTile->getTileKey().getLOD() == VaporView::Map3D::kTerrainMinLevel - 1
+                && fallbackTile->getHeightField()->getHeight(32, 32) > 4000.0f,
+            QStringLiteral("deferred level 12 fallback inherits > 4000 m level-7 relief instead of 0 m"));
     for (const auto& layer : layers)
     {
         if (auto* online = dynamic_cast<VaporView::Map3D::Detail::OnlineTerrainLayer*>(layer.get()))
+        {
             online->resumeDownloads();
+            online->dirty();
+        }
     }
+    pool->setMap(map);
 }
 
 void checkLiveBuildings(const QString& tilesetPath)
