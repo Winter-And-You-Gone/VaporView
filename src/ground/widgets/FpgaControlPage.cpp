@@ -820,11 +820,11 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout, QVB
             homeMotorState_ = new QLabel(homeBody);
             homeMotorState_->setObjectName(QStringLiteral("homeStepperMotorState"));
             statusRow->addWidget(homeMotorState_, 0, Qt::AlignRight | Qt::AlignTop);
-            grid->addLayout(statusRow, 0, 0, 1, 2);
+            grid->addLayout(statusRow, 0, 0, 1, 3);
             auto *homeProgress = new QLabel(homeBody);
             homeProgress->setObjectName(QStringLiteral("fpgaMotorProgress"));
             homeProgress->setWordWrap(true);
-            grid->addWidget(homeProgress, 1, 0, 1, 2);
+            grid->addWidget(homeProgress, 1, 0, 1, 3);
             auto *homeStop = operation(grid, 2, 0, "停止并停用", "Stop and disable", "fpgaMotorDisable",
                                        [] { return QJsonObject{{"op","motor"},{"action",4},{"value",0}}; });
             homeStop->setProperty("fpgaSafetyControl", true);
@@ -837,6 +837,12 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout, QVB
                       [=] { return move(inFrequency, inSteps); });
             operation(grid, 3, 1, "移出 / 遥测模式", "Move out / Telemetry", "fpgaMotorMoveOut",
                       [=] { return move(outFrequency, outSteps); });
+            auto *configure = new QPushButton(homeBody);
+            configure->setObjectName(QStringLiteral("homeStepperConfigure"));
+            configure->setCursor(Qt::PointingHandCursor);
+            label(configure, QStringLiteral("设备配置"), QStringLiteral("Settings"));
+            connect(configure, &QPushButton::clicked, this, &FpgaControlPage::openDeviceConfigurationRequested);
+            grid->addWidget(configure, 3, 2);
             grid->setColumnStretch(0, 1);
             grid->setColumnStretch(1, 1);
             homeRow->addWidget(homeBody, 1);

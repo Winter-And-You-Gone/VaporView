@@ -99,7 +99,7 @@ void MainWindow::loadModernStyleSheet()
             "QDialog#rtkConfigDialog QGroupBox#rtkCardGroup::title { color: transparent; }"
             "QDialog#rtkConfigDialog QWidget#sectionTitleBar { background-color: @vv-surface; border: none; border-bottom: 1px solid @vv-border; border-top-left-radius: 7px; border-top-right-radius: 7px; }"
             "QDialog#rtkConfigDialog QLabel#sectionTitleLabel { background-color: transparent; border: none; color: @vv-text; margin: 0px; padding: 0px; }"
-            "QWidget#sectionTitleBar { background-color: @vv-surface; border-bottom: 1px solid @vv-border; border-top-left-radius: 7px; border-top-right-radius: 7px; min-height: 40px; max-height: 40px; }"
+            "QWidget#sectionTitleBar { background-color: @vv-surface; border-bottom: 1px solid @vv-border; border-top-left-radius: 7px; border-top-right-radius: 7px; }"
             "QWidget#sectionTitleBar QLabel { background-color: transparent; border: none; }"
             "QFrame#homeInternalEnvironmentPill { background-color: transparent; border: 1px solid @vv-border; border-radius: 10px; }"
             "QFrame#homeInternalEnvironmentPill QLabel { background-color: transparent; border: none; font-size: 14px; font-weight: normal; padding: 0px; margin: 0px; }"
@@ -110,7 +110,7 @@ void MainWindow::loadModernStyleSheet()
             "QLabel#fieldLabel { color: @vv-text; font-size: 14px; font-weight: 600; }"
             "QLabel#separatorLabel { color: @vv-text; font-size: 14px; font-weight: bold; }"
             "QLabel#rtkStatusLabel { color: @vv-text; font-weight: bold; }"
-            "QWidget#environmentSectionTitleBar { background-color: @vv-surface; border-bottom: 1px solid @vv-border; border-top-left-radius: 7px; border-top-right-radius: 7px; min-height: 40px; max-height: 40px; }"
+            "QWidget#environmentSectionTitleBar { background-color: @vv-surface; border-bottom: 1px solid @vv-border; border-top-left-radius: 7px; border-top-right-radius: 7px; }"
             "QWidget#environmentSectionTitleBar QLabel { background-color: transparent; border: none; }"
             "QWidget#environmentSectionTitleBar QLabel#sectionTitleLabel { background-color: transparent; border: none; margin: 0px; padding: 0px; }"
             "QLabel#sectionTitleLabel { background-color: @vv-surface; border: none; border-bottom: 1px solid @vv-border; border-radius: 0px; color: @vv-text; font-size: 16px; font-weight: bold; margin: 0px; padding: 0px; }"
@@ -891,9 +891,10 @@ void MainWindow::applyScaledUiMetrics()
             return;
         }
 
+        const bool fontMetricsManagedWidth = widget->property("fontMetricsManagedWidth").toBool();
         const int minimumWidth = widget->minimumWidth();
         const bool usesDynamicHomeOverviewWidth = widget == state_->config_group_ && state_->data_telemetry_summary_card_;
-        if (minimumWidth > 0 && !usesDynamicHomeOverviewWidth)
+        if (!fontMetricsManagedWidth && minimumWidth > 0 && !usesDynamicHomeOverviewWidth)
         {
             rememberBaseMetric(widget, kBaseMinWidthProperty, minimumWidth);
             widget->setMinimumWidth(std::max(1, scalePixels(widget->property(kBaseMinWidthProperty).toInt())));
@@ -909,7 +910,7 @@ void MainWindow::applyScaledUiMetrics()
         }
 
         const int maximumWidth = widget->maximumWidth();
-        if (maximumWidth > 0 && maximumWidth < QWIDGETSIZE_MAX)
+        if (!fontMetricsManagedWidth && maximumWidth > 0 && maximumWidth < QWIDGETSIZE_MAX)
         {
             rememberBaseMetric(widget, kBaseMaxWidthProperty, maximumWidth);
             widget->setMaximumWidth(std::max(1, scalePixels(widget->property(kBaseMaxWidthProperty).toInt())));

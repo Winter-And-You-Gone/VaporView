@@ -768,6 +768,8 @@ void MainWindow::setupFpgaControlPage()
     state_->fpga_session_.startWorker(state_->virtual_fpga_port_);
     auto *controller = state_->fpga_session_.controller();
     auto *page = state_->fpga_page_;
+    connect(page, &FpgaControlPage::openDeviceConfigurationRequested,
+            state_->device_config_nav_btn_, &QPushButton::click);
     connect(page,&FpgaControlPage::simulationStateChanged,this,[this](bool ready,bool busy,const QMap<quint32,quint32>& values,quint16 pressure) {
         if (!isUiTestMode()) return;
         const bool wasReady=state_->fpga_sim_ready_;

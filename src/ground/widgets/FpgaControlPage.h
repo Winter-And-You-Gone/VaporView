@@ -69,6 +69,7 @@ public:
                         bool partialFailure = false, qint64 elapsedMs = 0,
                         VaporView::SensorTransportPath path = VaporView::SensorTransportPath::DirectDevices);
 signals:
+    void openDeviceConfigurationRequested();
     void simulationStateChanged(bool ready, bool busy, const QMap<quint32, quint32> &registers, quint16 pressureSource);
     void simulationSensorConfigurationApplied(quint16 source, const QMap<quint32, quint32> &registers);
     void waveformDisplayUpdated(quint16 source, const QVector<QVector<double>> &samples,

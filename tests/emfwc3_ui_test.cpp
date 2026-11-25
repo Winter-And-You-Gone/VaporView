@@ -142,6 +142,12 @@ int main(int argc, char **argv)
               !find<QPushButton>(*homeStepper, "fpgaMotorMoveOut")->isEnabled() &&
               !homeStepper->findChild<QDoubleSpinBox *>(), "offline home presets are disabled and have no inputs");
         auto *homeStepperBody = find<QWidget>(*homeStepper, "homeStepperMotorBody");
+        auto *moveOut = find<QPushButton>(*homeStepperBody, "fpgaMotorMoveOut");
+        auto *stepperConfigure = find<QPushButton>(*homeStepperBody, "homeStepperConfigure");
+        check(stepperConfigure->isEnabled() && stepperConfigure->text() == QStringLiteral("设备配置") &&
+              stepperConfigure->geometry().left() > moveOut->geometry().right() &&
+              stepperConfigure->geometry().center().y() == moveOut->geometry().center().y(),
+              "stepper settings remains available offline and sits directly to the right of Move out");
         auto *homeStepperStatus = find<QLabel>(*homeStepperBody, "fpgaMotorSafetyStatus");
         auto *homeStepperState = find<QLabel>(*homeStepperBody, "homeStepperMotorState");
         check(homeStepperState->isVisible() && homeStepperState->text() == QStringLiteral("未连接") &&
@@ -187,12 +193,16 @@ int main(int argc, char **argv)
         check(!homeGo->isEnabled() && !configMinus->isEnabled() && !configPlus->isEnabled(),
               "home motion actions are disabled while disconnected");
         check(homePosition->text() == QStringLiteral("—"), "home position is empty while disconnected");
+        auto *pages = find<QStackedWidget>(window, "mainPageStack");
+        auto *configuration = find<QWidget>(window, "deviceConfigPage");
+        auto *homePage = pages->currentWidget();
+        stepperConfigure->click();
+        check(pages->currentWidget() == configuration, "stepper settings opens device configuration");
+        pages->setCurrentWidget(homePage);
         int configurationRequests = 0;
         QObject::connect(homeMotion, &HomeMotionPanel::openConfigurationRequested, &window, [&] { ++configurationRequests; });
         find<QPushButton>(*homeMotion, "homeMotionConfigure")->click();
         check(configurationRequests == 1, "home configuration action emits one navigation request");
-        auto *pages = find<QStackedWidget>(window, "mainPageStack");
-        auto *configuration = find<QWidget>(window, "deviceConfigPage");
         check(pages->currentWidget() == configuration, "home configuration action opens device configuration");
         auto *panel = find<QWidget>(window, "emFwc3ConnectionPanel");
         window.resize(1920, 900);

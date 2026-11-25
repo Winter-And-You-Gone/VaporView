@@ -5613,6 +5613,36 @@ int main(int argc, char **argv)
                 window.resize(1280, 800);
                 processEventsFor(500);
                 requireHomeSensorColumnLayout(window);
+                auto *display = window.findChild<QToolButton *>(QStringLiteral("tcpWaveDisplayButton"));
+                require(display != nullptr, "home wave display button exists");
+                auto *waveTitleBar = display->parentWidget();
+                auto *waveTitle = waveTitleBar->findChild<QLabel *>(QStringLiteral("sectionTitleLabel"));
+                require(waveTitle != nullptr, "wave title label exists");
+                const int waveTitleInkWidth = waveTitle->fontMetrics().tightBoundingRect(waveTitle->text()).width();
+                require(waveTitle->contentsRect().width() >= waveTitleInkWidth,
+                        qPrintable(QStringLiteral("wave title %1 fits (%2 available, %3 needed, font scale %4)")
+                            .arg(waveTitle->text()).arg(waveTitle->contentsRect().width()).arg(waveTitleInkWidth).arg(scale)));
+                for (auto *cluster : scroll->findChildren<QWidget *>(QStringLiteral("sectionTitleCluster")))
+                {
+                    if (!cluster->isVisible()) continue;
+                    auto *bar = cluster->parentWidget();
+                    auto *icon = cluster->findChild<QLabel *>(QStringLiteral("sectionTitleIcon"));
+                    require(icon != nullptr, "home card title icon exists");
+                    auto *status = bar->findChild<QWidget *>(QStringLiteral("temperatureOverviewTitleStatusStrip"));
+                    const int rowCenter = status && status->y() > cluster->geometry().bottom()
+                        ? cluster->geometry().center().y() : bar->rect().center().y();
+                    require(std::abs(icon->mapTo(bar, icon->rect().center()).y() - rowCenter) <= 1,
+                            "home card title icons are vertically centered in their row");
+                }
+                if (auto *status = scroll->findChild<QWidget *>(QStringLiteral("temperatureOverviewTitleStatusStrip"));
+                    status && status->isVisible())
+                {
+                    auto *bar = status->parentWidget();
+                    require(bar->rect().contains(status->geometry()),
+                            qPrintable(QStringLiteral("both TEC103 status rows fit inside the title bar (%1x%2, status %3x%4 at %5,%6, font scale %7)")
+                                .arg(bar->width()).arg(bar->height()).arg(status->width()).arg(status->height())
+                                .arg(status->x()).arg(status->y()).arg(scale)));
+                }
                 if (scale == 100 && !english)
                 {
                     require(sensors->orientation() == Qt::Horizontal,
