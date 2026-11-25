@@ -339,6 +339,7 @@ struct MainWindowState
     QPushButton *temperature_nav_btn_;
     VaporView::Ground::Motion::MotionControlPage *motion_page_ = nullptr;
     VaporView::Ground::Motion::HomeMotionPanel *home_motion_panel_ = nullptr;
+    QVBoxLayout *home_motion_subcards_layout_ = nullptr;
     QPushButton *rtk_config_nav_btn_;
     QPushButton *device_config_nav_btn_;
     QPushButton *fpga_nav_btn_ = nullptr;

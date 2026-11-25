@@ -595,11 +595,18 @@ int main(int argc, char **argv)
         auto *readback = stepperCard->findChild<QLabel *>(QStringLiteral("fpgaRegister6708"));
         require(showReadbacks && showReadbacks->isVisible() && showReadbacks->isCheckable() && !showReadbacks->isChecked() &&
                     readback && !readback->isVisible(), "stepper readback navigation is available in the header and starts collapsed");
+        auto *status = stepperHeader->findChild<QLabel *>(QStringLiteral("fpgaMotorSafetyStatus"));
+        auto *title = stepperHeader->findChild<QLabel *>(QStringLiteral("sectionTitleLabel"));
+        auto *steps = stepperCard->findChild<QDoubleSpinBox *>(QStringLiteral("fpgaMotorSteps"));
+        require(status && status->isVisible() && title && title->text() == QStringLiteral("步进电机") && steps,
+                "the title bar contains the motor title and live safety status");
+        steps->setValue(-120);
         showReadbacks->click();
-        require(showReadbacks->isChecked() && readback->isVisible() && stepper->isVisible(),
-                "register readbacks expand below the motor controls");
+        require(showReadbacks->isChecked() && readback->isVisible() && !stepper->isVisible() && !steps->isVisible() && status->isVisible(),
+                "register readbacks replace the controls and keep the title bar visible");
         showReadbacks->click();
-        require(!showReadbacks->isChecked() && !readback->isVisible(), "the header toggle also collapses the readbacks");
+        require(!showReadbacks->isChecked() && !readback->isVisible() && stepper->isVisible() && steps->isVisible() && steps->value() == -120,
+                "returning to the controls preserves edited values");
         window.close();
         VaporView::setSettingsWritesSuspended(false);
         return 0;

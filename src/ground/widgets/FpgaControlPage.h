@@ -33,7 +33,8 @@ class FpgaControlPage final : public QWidget
 {
     Q_OBJECT
 public:
-    explicit FpgaControlPage(QWidget *parent = nullptr, QVBoxLayout *motionLayout = nullptr);
+    explicit FpgaControlPage(QWidget *parent = nullptr, QVBoxLayout *motionLayout = nullptr,
+                             QVBoxLayout *homeMotionLayout = nullptr);
     ~FpgaControlPage() override;
     VaporView::Ground::Devices::FpgaDeviceController* uiTestController() const;
     bool linkDacsOnStart() const;
@@ -137,7 +138,14 @@ private:
     } simulation_;
     FpgaControlConfig config_;
     QVector<Field> fields_;
-    QFrame *motorCard_ = nullptr;
+    struct MotorView {
+        QFrame *card;
+        QLabel *status;
+        QLabel *progress;
+        QDoubleSpinBox *frequency;
+        QDoubleSpinBox *steps;
+    };
+    QList<MotorView> motorViews_;
     QVector<QWidget*> onlineControls_;
     QMap<quint32, QLabel*> hardwareLabels_;
     QMap<quint32,QDoubleSpinBox*> sensorParameterInputs_;
@@ -166,7 +174,7 @@ private:
     QAbstractButton *refresh_ = nullptr;
     QAbstractButton *record_ = nullptr;
     QLabel *status_ = nullptr, *captureStatus_ = nullptr, *recordStatus_ = nullptr, *managementStatus_ = nullptr;
-    QLabel *calibrationStatus_ = nullptr, *motorStatus_ = nullptr, *motorProgress_ = nullptr, *lcStatus_ = nullptr;
+    QLabel *calibrationStatus_ = nullptr, *lcStatus_ = nullptr;
     QTimer motorHeartbeatTimer_;
     bool motorLeaseRequested_ = false;
     enum class MotorPhase { Idle, Pending, Running, Unconfirmed };

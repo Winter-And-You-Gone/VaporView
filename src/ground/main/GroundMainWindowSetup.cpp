@@ -2567,13 +2567,14 @@ void MainWindow::setupCentralWidget()
     state_->main_page_stack_->addWidget(state_->home_page_);
     state_->motion_page_ = new VaporView::Ground::Motion::MotionControlPage(state_->main_page_stack_);
     if (state_->virtual_fpga_port_) state_->motion_page_->setEnabled(false);
+    auto *homeEmMotorCard = state_->home_motion_card_->findChild<QFrame *>(QStringLiteral("homeEmMotorCard"));
     state_->home_motion_panel_ = new VaporView::Ground::Motion::HomeMotionPanel(
         state_->motion_page_,
         state_->home_motion_card_->findChild<QComboBox *>(QStringLiteral("homeMotionChannelCombo")),
         state_->home_motion_card_->findChild<QComboBox *>(QStringLiteral("homeMotionPort")),
         state_->home_motion_card_->findChild<QLabel *>(QStringLiteral("homeMotionConnectionState")),
-        state_->home_motion_card_);
-    static_cast<QVBoxLayout *>(state_->home_motion_card_->layout())->addWidget(state_->home_motion_panel_, 1);
+        homeEmMotorCard);
+    homeEmMotorCard->layout()->addWidget(state_->home_motion_panel_);
     connect(state_->home_motion_panel_, &VaporView::Ground::Motion::HomeMotionPanel::openConfigurationRequested,
             state_->device_config_nav_btn_, &QPushButton::click);
     connect(state_->motion_page_->session(), &VaporView::Ground::Motion::EmFwc3Session::stateChanged,
@@ -5542,7 +5543,30 @@ void MainWindow::setupDataPanels()
     createSectionTitleCluster(motionTitleBar, QStringLiteral("locate-fixed"),
                               kMainPageButtonHeight, &motionTitleCluster);
     motionTitleLayout->addWidget(motionTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    auto *motionChannelCombo = createSingleLevelPopupComboBox(motionTitleBar, false, true);
+    motionTitleLayout->addStretch();
+    motionLayout->addWidget(motionTitleBar);
+    auto *subcards = new QVBoxLayout;
+    subcards->setContentsMargins(8, 8, 8, 8);
+    subcards->setSpacing(8);
+    motionLayout->addLayout(subcards);
+    motionLayout->addStretch();
+    state_->home_motion_subcards_layout_ = subcards;
+
+    auto *emMotorCard = new QFrame(state_->home_motion_card_);
+    emMotorCard->setObjectName(QStringLiteral("homeEmMotorCard"));
+    auto *emMotorLayout = new QVBoxLayout(emMotorCard);
+    emMotorLayout->setContentsMargins(1, 0, 1, 1);
+    emMotorLayout->setSpacing(0);
+    auto *emMotorHeader = new QWidget(emMotorCard);
+    emMotorHeader->setObjectName(QStringLiteral("sectionTitleBar"));
+    emMotorHeader->setFixedHeight(kMainPageTitleBarHeight);
+    auto *emMotorHeaderLayout = new QHBoxLayout(emMotorHeader);
+    emMotorHeaderLayout->setContentsMargins(10, 2, 10, 2);
+    emMotorHeaderLayout->setSpacing(8);
+    auto *emMotorTitle = new QLabel(QStringLiteral("EM-FWC3"), emMotorHeader);
+    emMotorTitle->setObjectName(QStringLiteral("sectionTitleLabel"));
+    emMotorHeaderLayout->addWidget(emMotorTitle);
+    auto *motionChannelCombo = createSingleLevelPopupComboBox(emMotorHeader, false, true);
     motionChannelCombo->setObjectName(QStringLiteral("homeMotionChannelCombo"));
     motionChannelCombo->setEditable(false);
     motionChannelCombo->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
@@ -5552,16 +5576,15 @@ void MainWindow::setupDataPanels()
     for (int channel = 1; channel <= 3; ++channel)
         motionChannelCombo->addItem(QStringLiteral("通道 %1").arg(channel), channel);
     motionChannelCombo->hide(); // Keep channel routing available internally; use channel 1 in the UI.
-    motionTitleLayout->setSpacing(8);
-    auto *motionPort = createSingleLevelPopupComboBox(motionTitleBar, false, true);
+    auto *motionPort = createSingleLevelPopupComboBox(emMotorHeader, false, true);
     motionPort->setObjectName(QStringLiteral("homeMotionPort"));
     motionPort->setEditable(false);
     motionPort->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     motionPort->setFixedHeight(kMainPageButtonHeight);
     motionPort->setCursor(Qt::PointingHandCursor);
     motionPort->setFocusPolicy(Qt::TabFocus);
-    motionTitleLayout->addWidget(motionPort, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    auto *motionAction = new DeviceActionButton(motionTitleBar);
+    emMotorHeaderLayout->addWidget(motionPort, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    auto *motionAction = new DeviceActionButton(emMotorHeader);
     state_->home_motion_title_action_btn_ = motionAction;
     motionAction->setObjectName(QStringLiteral("homeMotionActionButton"));
     motionAction->setToolButtonStyle(Qt::ToolButtonIconOnly);
@@ -5570,13 +5593,14 @@ void MainWindow::setupDataPanels()
     motionAction->setFocusPolicy(Qt::TabFocus);
     motionAction->setCursor(Qt::PointingHandCursor);
     connect(motionAction, &QToolButton::clicked, this, &MainWindow::triggerHomeMotionDeviceAction);
-    motionTitleLayout->addWidget(motionAction, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    motionTitleLayout->addStretch(1);
-    auto *motionConnection = new QLabel(motionTitleBar);
+    emMotorHeaderLayout->addWidget(motionAction, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    emMotorHeaderLayout->addStretch(1);
+    auto *motionConnection = new QLabel(emMotorHeader);
     motionConnection->setObjectName(QStringLiteral("homeMotionConnectionState"));
     motionConnection->setAlignment(Qt::AlignVCenter | Qt::AlignRight);
-    motionTitleLayout->addWidget(motionConnection, 0, Qt::AlignVCenter | Qt::AlignRight);
-    motionLayout->addWidget(motionTitleBar);
+    emMotorHeaderLayout->addWidget(motionConnection, 0, Qt::AlignVCenter | Qt::AlignRight);
+    emMotorLayout->addWidget(emMotorHeader);
+    subcards->addWidget(emMotorCard);
     sensorColumnLayout->addWidget(state_->home_motion_card_, 1);
     state_->sensor_card_splitter_->addWidget(state_->home_sensor_column_);
 

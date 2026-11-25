@@ -488,6 +488,17 @@ QGroupBox#deviceRemoteSkyConfigCard {
     padding: 0px;
     color: @vv-text;
 }
+QFrame#homeEmMotorCard {
+    background-color: @vv-surface-raised;
+    border: 1px solid @vv-border;
+    border-radius: 12px;
+}
+QFrame#homeEmMotorCard > QWidget#sectionTitleBar {
+    background-color: @vv-surface-raised;
+    border-bottom: 1px solid @vv-border;
+    border-top-left-radius: 11px;
+    border-top-right-radius: 11px;
+}
 QGroupBox#sensorGroupBox::title,
 QGroupBox#homeMotionCard::title,
 QGroupBox#deviceRemoteSkyConfigCard::title {

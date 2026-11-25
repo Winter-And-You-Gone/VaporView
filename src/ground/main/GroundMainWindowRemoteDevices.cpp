@@ -978,7 +978,11 @@ void MainWindow::updateConfigCardHeightForSourceMode()
     state_->config_group_->setMinimumHeight(minimumHeight);
     if (state_->env_group_)
     {
-        state_->env_group_->setFixedHeight(minimumHeight);
+        const bool besideMotion = state_->sensor_card_splitter_ &&
+            state_->sensor_card_splitter_->indexOf(state_->env_group_) >= 0 &&
+            state_->sensor_card_splitter_->orientation() == Qt::Horizontal;
+        state_->env_group_->setMinimumHeight(minimumHeight);
+        state_->env_group_->setMaximumHeight(besideMotion ? QWIDGETSIZE_MAX : minimumHeight);
     }
     if (state_->home_overview_splitter_)
     {

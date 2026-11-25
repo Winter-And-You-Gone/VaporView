@@ -1284,6 +1284,8 @@ void MainWindow::updateResponsiveHomeLayout()
     if (state_->env_group_)
     {
         state_->env_group_->setMaximumWidth(QWIDGETSIZE_MAX);
+        state_->env_group_->setMaximumHeight(!environmentInOverview && !stackSensorCards
+            ? QWIDGETSIZE_MAX : state_->env_group_->minimumHeight());
         state_->env_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     }
     if (!environmentInOverview && !stackSensorCards && sensorAvailableWidth > sensorCardGap)

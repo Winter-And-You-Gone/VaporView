@@ -280,8 +280,10 @@ int main(int argc,char **argv) {
         page.finishMotorOperation(advancedRequest,true);page.setHardwareValues({{0x6734,motionId+1},{0x6708,2},{0x673c,0}});page.setConnectionState(true,false);
     }
     motorSteps->setValue(40);
-    require(page.findChild<QLabel*>("fpgaMotorSafetyStatus")->text().contains(QStringLiteral("旧 BIT 会拒绝")),
-        "motor guidance distinguishes the host range from old BIT limits");
+    page.setHardwareValues({{0x6708,0x61},{0x673c,8}});
+    require(page.findChild<QLabel*>("fpgaMotorSafetyStatus")->text() == QStringLiteral("请求使能 1 · 实际使能 1 · 心跳存活 1 · 故障 1"),
+        "motor status reports all four live safety fields");
+    page.setHardwareValues({{0x6708,2},{0x673c,0}});
     int heartbeats=0;QObject::connect(&page,&FpgaControlPage::motorHeartbeatRequested,&page,[&]{++heartbeats;});
     page.findChild<QPushButton*>("fpgaMotorEnable")->click();page.setConnectionState(true,true);
     QElapsedTimer leaseTime;leaseTime.start();while(leaseTime.elapsed()<250){QCoreApplication::processEvents();QThread::msleep(1);}

@@ -126,7 +126,21 @@ int main(int argc, char **argv)
         auto *configMinus = find<QPushButton>(*page, "emFwc3Minus2");
         auto *configPlus = find<QPushButton>(*page, "emFwc3Plus2");
         auto *homeCard = find<QWidget>(window, "homeMotionCard");
-        auto *homeHeader = homeCard->findChild<QWidget *>(QStringLiteral("sectionTitleBar"), Qt::FindDirectChildrenOnly);
+        auto *homeEmCard = find<QWidget>(*homeCard, "homeEmMotorCard");
+        auto *homeStepper = find<QWidget>(*homeCard, "fpgaSectionCard");
+        auto *homeHeader = homeEmCard->findChild<QWidget *>(QStringLiteral("sectionTitleBar"), Qt::FindDirectChildrenOnly);
+        check(homeEmCard->isAncestorOf(homeMotion) && homeEmCard->isVisible() && homeStepper->isVisible() &&
+              homeEmCard->mapTo(homeCard, QPoint(0, homeEmCard->height())).y() <= homeStepper->mapTo(homeCard, QPoint()).y(),
+              "Home stacks separate EM-FWC3 and stepper cards in the motion card");
+        auto *homeStepperRun = find<QPushButton>(*homeStepper, "fpgaMotorRun");
+        auto *homeSteps = find<QDoubleSpinBox>(*homeStepper, "fpgaMotorSteps");
+        auto *deviceMotion = find<QWidget>(window, "deviceMotionCard");
+        auto *deviceSteps = find<QDoubleSpinBox>(*deviceMotion, "fpgaMotorSteps");
+        check(!homeStepperRun->isEnabled(), "the home stepper is disabled while the FPGA is offline");
+        homeSteps->setValue(-123);
+        check(deviceSteps->value() == -123, "home stepper edits reach device configuration");
+        deviceSteps->setValue(40);
+        check(homeSteps->value() == 40, "device configuration edits reach the home stepper");
         auto *homePort = find<QComboBox>(*homeCard, "homeMotionPort");
         auto *homeAction = find<QToolButton>(*homeCard, "homeMotionActionButton");
         auto *overview = find<QWidget>(window, "homeOverviewDeviceGrid");
