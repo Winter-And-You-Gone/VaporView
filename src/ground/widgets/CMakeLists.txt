@@ -30,6 +30,7 @@ target_link_libraries(vaporview_ground_widgets PUBLIC
 )
 
 target_link_libraries(vaporview_ground_widgets PRIVATE
+    vaporview_app_config
     vaporview_app_theme
     vaporview_fpga_device_core
     Qt6::Svg

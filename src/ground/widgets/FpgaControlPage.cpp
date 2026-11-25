@@ -12,6 +12,8 @@
 #include "shared/theme/CheckedIndicator.h"
 #include "shared/theme/TopLevelCardStyle.h"
 #include "VisualTextLabel.h"
+#include "shared/config/ApplicationConfig.h"
+#include "shared/config/SettingsWriteBarrier.h"
 #include "LabelTextSelection.h"
 
 #include <QAbstractButton>
@@ -31,6 +33,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QSettings>
 #include <QSignalBlocker>
 #include <QStandardItemModel>
 #include <QStyleOptionButton>
@@ -717,7 +720,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout, QVB
         {0x103c,"当前 GNSS 标签高位","Actual GNSS tag high"},{0x1040,"串口 GNSS 标签有效（非 UTC 锚点）","Serial GNSS tag valid (not a UTC anchor)"},
         {0x1048,"PPS 实测 tick/s","Measured PPS ticks/s"},{0x104c,"PPS 序号","PPS sequence"},{0x1060,"原子校准状态","Atomic calibration status"},
         {0x1064,"不合格 PPS 间隔累计数","Rejected PPS interval count"}});
-    auto addMotorCard = [&](QVBoxLayout *layout, bool topLevel, bool showRegisters) {
+    auto addMotorCard = [&](QVBoxLayout *layout, bool topLevel) {
         QHBoxLayout *titleRow = nullptr;
         auto *body = card(layout->parentWidget(), layout, QStringLiteral("步进电机"), QStringLiteral("Stepper motor"),
                           QStringLiteral("sliders-vertical"), topLevel, &titleRow);
@@ -728,8 +731,8 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout, QVB
         status->setObjectName("fpgaMotorSafetyStatus");
         status->setProperty("fpgaSecondaryText", true);
         status->setWordWrap(true);
-        status->setContentsMargins(10, 0, 10, 0);
-        header->layout()->addWidget(status);
+        titleRow->setStretch(1, 0);
+        titleRow->addWidget(status, 1);
 
         auto *bodyLayout = new QVBoxLayout(body);
         bodyLayout->setContentsMargins(0, 0, 0, 0);
@@ -765,13 +768,90 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout, QVB
         motorGrid->addWidget(progress, 5, 0, 1, 2);
         motorViews_.append({frame, status, progress, frequency, steps});
 
-        if (showRegisters) {
+        auto settings = VaporView::applicationConfigSettings();
+        const auto presetInput = [&](int row, const char *zh, const char *en, const char *name,
+                                     int lower, int upper, int fallback, const QString &key) {
+            auto *input = number(motorGrid, row, zh, name, lower, upper, fallback, 0, en);
+            bool ok = false;
+            const int saved = settings.value(key, fallback).toInt(&ok);
+            if (ok && saved >= lower && saved <= upper) input->setValue(saved);
+            connect(input, &QDoubleSpinBox::valueChanged, this, [key](double value) {
+                auto settings = VaporView::applicationConfigSettings();
+                VaporView::setPersistentSetting(settings, key, int(value));
+            });
+            return input;
+        };
+        auto *presetTitle = new QLabel(controls);
+        label(presetTitle, QStringLiteral("首页运动预设"), QStringLiteral("Home motion presets"));
+        motorGrid->addWidget(presetTitle, 6, 0, 1, 2);
+        auto *inFrequency = presetInput(7, "移入频率 / Hz", "Move-in frequency / Hz", "fpgaMotorInFrequency",
+                                        20, 400, 200, QStringLiteral("Fpga/stepperInFrequency"));
+        auto *inSteps = presetInput(8, "移入脉冲数", "Move-in pulses", "fpgaMotorInSteps",
+                                    1, 5000, 2000, QStringLiteral("Fpga/stepperInSteps"));
+        auto *outFrequency = presetInput(9, "移出频率 / Hz", "Move-out frequency / Hz", "fpgaMotorOutFrequency",
+                                         20, 400, 200, QStringLiteral("Fpga/stepperOutFrequency"));
+        auto *outSteps = presetInput(10, "移出脉冲数", "Move-out pulses", "fpgaMotorOutSteps",
+                                     -5000, -1, -2000, QStringLiteral("Fpga/stepperOutSteps"));
+
+        if (homeMotionLayout) {
+            auto *homeCard = new QFrame(homeMotionLayout->parentWidget());
+            homeCard->setObjectName(QStringLiteral("homeStepperMotorCard"));
+            homeCard->setProperty("epsilonSubcard", true);
+            auto *homeRow = new QHBoxLayout(homeCard);
+            homeRow->setContentsMargins(2, 2, 2, 2);
+            homeRow->setSpacing(2);
+            auto *title = new QLabel(homeCard);
+            title->setObjectName(QStringLiteral("epsilonSectionLabel"));
+            title->setAlignment(Qt::AlignCenter);
+            title->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Expanding);
+            title->setContentsMargins(4, 0, 4, 0);
+            label(title, QStringLiteral("步\n进\n电\n机"), QStringLiteral("Stepper\nmotor"));
+            homeRow->addWidget(title);
+            auto *homeBody = new QWidget(homeCard);
+            homeBody->setObjectName(QStringLiteral("homeStepperMotorBody"));
+            auto *grid = new QGridLayout(homeBody);
+            grid->setContentsMargins(6, 6, 6, 6);
+            grid->setSpacing(6);
+            auto *homeStatus = new QLabel(homeBody);
+            homeStatus->setObjectName(QStringLiteral("fpgaMotorSafetyStatus"));
+            homeStatus->setWordWrap(true);
+            auto *statusRow = new QHBoxLayout;
+            statusRow->addWidget(homeStatus, 1);
+            homeMotorState_ = new QLabel(homeBody);
+            homeMotorState_->setObjectName(QStringLiteral("homeStepperMotorState"));
+            statusRow->addWidget(homeMotorState_, 0, Qt::AlignRight | Qt::AlignTop);
+            grid->addLayout(statusRow, 0, 0, 1, 2);
+            auto *homeProgress = new QLabel(homeBody);
+            homeProgress->setObjectName(QStringLiteral("fpgaMotorProgress"));
+            homeProgress->setWordWrap(true);
+            grid->addWidget(homeProgress, 1, 0, 1, 2);
+            auto *homeStop = operation(grid, 2, 0, "停止并停用", "Stop and disable", "fpgaMotorDisable",
+                                       [] { return QJsonObject{{"op","motor"},{"action",4},{"value",0}}; });
+            homeStop->setProperty("fpgaSafetyControl", true);
+            homeStop->hide();
+            const auto move = [](QDoubleSpinBox *frequency, QDoubleSpinBox *steps) {
+                return QJsonObject{{"op","motor"},{"action",1},{"value",int(steps->value())},
+                                   {"frequency",int(frequency->value())}};
+            };
+            operation(grid, 3, 0, "移入 / 定标模式", "Move in / Calibration", "fpgaMotorMoveIn",
+                      [=] { return move(inFrequency, inSteps); });
+            operation(grid, 3, 1, "移出 / 遥测模式", "Move out / Telemetry", "fpgaMotorMoveOut",
+                      [=] { return move(outFrequency, outSteps); });
+            grid->setColumnStretch(0, 1);
+            grid->setColumnStretch(1, 1);
+            homeRow->addWidget(homeBody, 1);
+            homeMotionLayout->addWidget(homeCard);
+            motorViews_.append({homeCard, homeStatus, homeProgress, nullptr, nullptr});
+            homeMotorStop_ = homeStop;
+        }
+
+        {
             auto *toggle = new QPushButton(header);
             toggle->setObjectName("fpgaMotorShowReadbacks");
             toggle->setCheckable(true);
             toggle->setCursor(Qt::PointingHandCursor);
             toggle->setFocusPolicy(Qt::TabFocus);
-            label(toggle, QStringLiteral("显示寄存器读回"), QStringLiteral("Show register readbacks"));
+            label(toggle, QStringLiteral("查看寄存器"), QStringLiteral("Registers"));
             titleRow->addWidget(toggle, 0, Qt::AlignVCenter);
 
             auto *registers = new QWidget(body);
@@ -789,17 +869,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout, QVB
                 {0x6738,"真实心跳累计数","Real heartbeat count"},{0x673c,"DM422 核心状态","DM422 core status"},{0x6744,"失联超时 / ms","Heartbeat timeout / ms"}});
         }
     };
-    addMotorCard(motionLayout ? motionLayout : advancedLayout, !motionLayout, true);
-    if (homeMotionLayout) {
-        addMotorCard(homeMotionLayout, false, false);
-        const auto &device = motorViews_.first();
-        const auto &home = motorViews_.last();
-        for (const auto &[deviceInput, homeInput] : {std::pair{device.frequency, home.frequency},
-                                                     std::pair{device.steps, home.steps}}) {
-            connect(deviceInput, &QDoubleSpinBox::valueChanged, homeInput, &QDoubleSpinBox::setValue);
-            connect(homeInput, &QDoubleSpinBox::valueChanged, deviceInput, &QDoubleSpinBox::setValue);
-        }
-    }
+    addMotorCard(motionLayout ? motionLayout : advancedLayout, !motionLayout);
     auto *lc=card(advanced,advancedLayout,QStringLiteral("LC 双路 UART 状态"),QStringLiteral("LC UART status"),QStringLiteral("activity"));auto *lcGrid=new QGridLayout(lc);
     lcStatus_=new QLabel(lc);lcStatus_->setObjectName("fpgaLcStatus");lcStatus_->setWordWrap(true);lcGrid->addWidget(lcStatus_,0,0,1,3);
     readbacks(lcGrid,1,{{0x6800,"LC0 模块 ID","LC0 module ID"},{0x6808,"LC0 UART 状态","LC0 UART status"},{0x6828,"LC0 完成发送字节数","LC0 transmitted byte count"},{0x682c,"LC0 接收字节数","LC0 received byte count"},
@@ -927,11 +997,12 @@ bool FpgaControlPage::prepareMotorOperation(const QJsonObject& request) {
     if(action==4 && request.value("value").toInt()==1)motorLeaseRequested_=true;
     if(safety)motorPendingOperation_=request;
     if(action==1) {
+        if (request.contains("frequency")) motorLeaseRequested_ = true;
         motorPendingOperation_=request;motorPhase_=MotorPhase::Pending;
         motorHasBaselineId_=hardwareValues_.contains(0x6734);motorBaselineId_=hardwareValues_.value(0x6734);
         motorStartEventTick_=motorLastEventTick_;motorSawBusy_=motorCompletionKnown_=motorCompletionFault_=false;
         const auto actualFrequency=hardwareValues_.value(0x6714,100);
-        const double frequency=actualFrequency>=20&&actualFrequency<=400?actualFrequency:100;
+        const double frequency = request.value("frequency").toDouble(actualFrequency>=20&&actualFrequency<=400?actualFrequency:100);
         motorEstimatedMs_=10+qint64(std::ceil(std::abs(request.value("value").toDouble())*1000/qMax(1.0,frequency)));
         motorMoveClock_.start();motorResultZh_.clear();motorResultEn_.clear();updateMotorProgress();
     }
@@ -946,6 +1017,7 @@ void FpgaControlPage::finishMotorOperation(const QJsonObject& request,bool succe
     if(motorPendingOperation_.isEmpty() || request!=motorPendingOperation_)return;
     motorPendingOperation_={};
     if(!success || !ready_) {
+        if (request.contains("frequency")) motorLeaseRequested_ = false;
         motorPhase_=MotorPhase::Unconfirmed;motorMoveClock_.invalidate();updateMotorProgress();updateActions();return;
     }
     const int action=request.value("action").toInt();
@@ -994,6 +1066,12 @@ void FpgaControlPage::updateMotorProgress() {
     } else {
         message = english_ ? motorResultEn_ : motorResultZh_;
     }
+    if (homeMotorState_) {
+        const QString state = !ready_ ? text("未连接", "Offline")
+            : message.isEmpty() ? text("空闲", "Idle") : QString();
+        if (homeMotorState_->text() != state) homeMotorState_->setText(state);
+        if (homeMotorState_->isHidden() != state.isEmpty()) homeMotorState_->setVisible(!state.isEmpty());
+    }
     for (const auto &view : motorViews_) {
         if (view.progress->text() != message) view.progress->setText(message);
         if (view.progress->isHidden() != message.isEmpty()) view.progress->setVisible(!message.isEmpty());
@@ -1027,13 +1105,16 @@ void FpgaControlPage::updateActions(){
     }refresh_->setEnabled(connected_&&!busy_);record_->setEnabled(!property("fpgaUiTestMode").toBool()&&(ready_||recording_));
     const bool motorBlocked=motorLocked();
     for (const auto &view : motorViews_) {
-        for (const char *name : {"fpgaMotorRun", "fpgaMotorEnable", "fpgaMotorConfigure", "fpgaMotorZero"}) {
-            auto *button = view.card->findChild<QPushButton *>(QString::fromLatin1(name));
-            button->setEnabled(button->isEnabled() && !motorBlocked);
+        for (const char *name : {"fpgaMotorRun", "fpgaMotorEnable", "fpgaMotorConfigure", "fpgaMotorZero",
+                                 "fpgaMotorMoveIn", "fpgaMotorMoveOut"}) {
+            if (auto *button = view.card->findChild<QPushButton *>(QString::fromLatin1(name)))
+                button->setEnabled(button->isEnabled() && !motorBlocked);
         }
-        view.frequency->setEnabled(!motorBlocked && !busy_);
-        view.steps->setEnabled(!motorBlocked && !busy_);
+        if (view.frequency) view.frequency->setEnabled(!motorBlocked && !busy_);
+        if (view.steps) view.steps->setEnabled(!motorBlocked && !busy_);
     }
+    if (homeMotorStop_)
+        homeMotorStop_->setVisible(homeMotorStop_->isEnabled() && (motorBlocked || (hardwareValues_.value(0x6708) & 1)));
     if(auto *module=findChild<QComboBox*>("fpgaMaintenanceModule"))if(module->currentData().toInt()==0x47 && motorBlocked)
         for(const char *name:{"fpgaModuleReset","fpgaModuleClearErrors","fpgaSensorClearFifo"})
             if(auto *button=findChild<QPushButton*>(QString::fromLatin1(name)))button->setEnabled(false);
@@ -1162,7 +1243,7 @@ void FpgaControlPage::setTransportConnected(bool connected){
 void FpgaControlPage::setConnectionState(bool ready,bool busy,const QString &detail){
     const bool lost=ready_&&!ready;ready_=ready;if(ready_)connected_=true;busy_=busy;connectionDetail_=detail;
     if(!ready_)motorLeaseRequested_=false;
-    if(!ready_ && motorPhase_!=MotorPhase::Idle) {motorPhase_=MotorPhase::Unconfirmed;motorMoveClock_.invalidate();updateMotorProgress();}
+    if(!ready_ && motorPhase_!=MotorPhase::Idle) {motorPhase_=MotorPhase::Unconfirmed;motorMoveClock_.invalidate();}
     status_->setText(ready?text("已连接","Connected"):connected_?text("已连接未就绪 · 禁止写操作","Connected, not ready · Writes disabled"):text("离线","Offline"));
     if (backend_->currentData().toString() == QLatin1String(VaporView::Ground::Devices::FpgaVirtualTcpBackend))
         status_->setText(text("虚拟 FPGA TCP · ", "Virtual FPGA TCP · ") + status_->text());
@@ -1170,6 +1251,7 @@ void FpgaControlPage::setConnectionState(bool ready,bool busy,const QString &det
         status_->setText(text("协议模拟 · ","Protocol simulation · ")+status_->text());
     status_->setText(status_->text()+(busy?text(" · 正在处理"," · Working"):QString())+(detail.isEmpty()?QString():" · "+detail));
     status_->setToolTip(status_->text());
+    updateMotorProgress();
     updateCaptureStatus();
     if(lost){
         for(auto it=latestReadings_.cbegin();it!=latestReadings_.cend();++it)historicalReadings_.insert(it.key());
@@ -1530,7 +1612,7 @@ void FpgaControlPage::setTheme(bool dark,int fontScalePercent){
         "QPushButton#fpgaMotorShowReadbacks:focus { border-color: @vv-primary; }")
         .arg(pixels(40)).arg(pixels(16)).arg(pixels(28)).arg(pixels(10)), dark);
     for (const auto &view : motorViews_) {
-        if (!isAncestorOf(view.card)) {
+        if (view.frequency && !isAncestorOf(view.card)) {
             view.card->setPalette(appThemePalette(dark, view.card->palette()));
             view.card->setStyleSheet(cardStyle);
         }

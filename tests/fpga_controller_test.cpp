@@ -348,6 +348,33 @@ void currentFirmwareSafety(){
     incompatible.controller.connectDevice({},"auto");incompatible.finish();
     require(!incompatible.controller.ready() && incompatible.transport->writes().isEmpty(),"old humidity model is read-only and never receives HC2A configuration");
 }
+void motorPresets(){
+    const auto verifyMove = [](int frequency, int pulses, bool ignoreFrequency) {
+        Fixture f;f.connect();
+        f.transport->clear();
+        if(ignoreFrequency)f.transport->ignoreWriteAddress=0x6714;
+        f.controller.executeOperation({{"op","motor"},{"action",1},{"value",pulses},{"frequency",frequency}});
+        f.finish();
+        int configure=-1, readback=-1, enable=-1, move=-1;
+        for(int i=0;i<f.transport->commands.size();++i) {
+            const auto &command=f.transport->commands[i];
+            if(command.message==3 && command.address==0x6714)configure=i;
+            if(command.message==2 && command.address==0x6714 && readback<0)readback=i;
+            if(command.message==12 && command.source==0x47 && command.address==4 && command.value==1)enable=i;
+            if(command.message==12 && command.source==0x47 && command.address==1) {
+                require(move<0 && qint32(command.value)==pulses,"preset sends the signed pulse count exactly once");
+                move=i;
+            }
+        }
+        require(configure>=0 && configure<readback,"preset writes and reads back its own frequency");
+        if(ignoreFrequency)require(enable<0 && move<0,"frequency mismatch prevents both enable and move");
+        else require(readback<enable && enable<move && int(f.transport->regs.value(0x6714))==frequency,
+                     "preset enables and moves only after its frequency is confirmed");
+    };
+    verifyMove(250,2000,false);
+    verifyMove(125,-2000,false);
+    verifyMove(250,2000,true);
+}
 void motorRejectionOwnership(){
     const auto actionCount=[](const Fixture& f,quint32 action) {
         int count=0;
@@ -1179,7 +1206,7 @@ int main(int argc,char **argv){
     if(app.arguments().contains("--startup-grace")) {startupWarningGrace();ptbStartupWarningGrace();std::puts("FPGA startup warning grace tests passed");return 0;}
     if(app.arguments().contains("--scan-presentation")) {ai8ScanPresentation();std::puts("FPGA scan presentation tests passed");return 0;}
     if(app.arguments().contains("--command-timeout")) {commandTimeoutAttribution();std::puts("FPGA command timeout attribution tests passed");return 0;}
-    if(app.arguments().contains("--motor-ownership")) {currentFirmwareSafety();motorRejectionOwnership();std::puts("FPGA motor ownership tests passed");return 0;}
+    if(app.arguments().contains("--motor-ownership")) {currentFirmwareSafety();motorPresets();motorRejectionOwnership();std::puts("FPGA motor ownership tests passed");return 0;}
     if(app.arguments().contains("--hardware-probe")) {
         FpgaDeviceController controller;
         const int durationIndex=app.arguments().indexOf("--hardware-duration-ms");
@@ -1236,5 +1263,5 @@ int main(int argc,char **argv){
         }
         std::puts("hardware controller connect/idle/reconnect probe passed");return 0;
     }
-    connectionEventTimeFilter();currentFirmwareSafety();motorRejectionOwnership();advancedDataPaths();connectionResultLogs();sensorRates();ai8ScanPresentation();connectionAndVersions();connectionRecovery();backgroundRefresh();commandTimeoutAttribution();independentAndAcquisition();restartClearsDliaState();configurationAndFailure();scopedConfiguration();laserDriverProtection();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();ptbHistoricalErrorRecovery();threadCleanup();std::puts("FPGA controller tests passed");return 0;
+    connectionEventTimeFilter();currentFirmwareSafety();motorPresets();motorRejectionOwnership();advancedDataPaths();connectionResultLogs();sensorRates();ai8ScanPresentation();connectionAndVersions();connectionRecovery();backgroundRefresh();commandTimeoutAttribution();independentAndAcquisition();restartClearsDliaState();configurationAndFailure();scopedConfiguration();laserDriverProtection();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();ptbHistoricalErrorRecovery();threadCleanup();std::puts("FPGA controller tests passed");return 0;
 }

@@ -597,7 +597,13 @@ void MainWindow::updateAppSidebarButtonTexts()
         state_->device_config_.motion_title_lbl->setText(state_->is_english_
             ? QStringLiteral("Motion control") : QStringLiteral("运动控制"));
     if (state_->motion_page_) state_->motion_page_->setLanguage(state_->is_english_);
-    if (state_->home_motion_panel_) state_->home_motion_panel_->setLanguage(state_->is_english_);
+    if (state_->home_motion_panel_) {
+        state_->home_motion_panel_->setLanguage(state_->is_english_);
+        auto *card = state_->home_motion_card_->findChild<QWidget *>(QStringLiteral("homeEmMotorCard"));
+        if (auto *title = card->findChild<QLabel *>(QStringLiteral("epsilonSectionLabel"))) {
+            title->setText(state_->is_english_ ? QStringLiteral("Attenuator\nmotor") : QStringLiteral("衰\n减\n片\n电\n机"));
+        }
+    }
     applyButtonText(state_->rtk_config_nav_btn_, state_->is_english_ ? QStringLiteral("Combination Navigation") : QStringLiteral("组合导航"),
                     state_->is_english_ ? QStringLiteral("Nav") : QString());
     applyButtonText(state_->device_config_nav_btn_, state_->is_english_ ? QStringLiteral("Device") : QStringLiteral("设备配置"));
@@ -1238,8 +1244,6 @@ void MainWindow::updateResponsiveHomeLayout()
     if (navigationMotionLayout) {
         navigationMotionLayout->setDirection(navigationMotionSideBySide ? QBoxLayout::LeftToRight : QBoxLayout::TopToBottom);
         navigationMotionLayout->setStretch(0, navigationMotionSideBySide ? 1 : 0);
-        navigationMotionLayout->setAlignment(state_->epsilon_group_, navigationMotionSideBySide ? Qt::AlignTop : Qt::Alignment{});
-        navigationMotionLayout->setAlignment(state_->home_motion_card_, navigationMotionSideBySide ? Qt::AlignTop : Qt::Alignment{});
         navigationMotionLayout->invalidate();
     }
 
