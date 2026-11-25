@@ -18,7 +18,7 @@ namespace VaporView::Ground::Gateway
 struct GatewayListenerConfig
 {
     bool enabled = false;
-    QString address = QStringLiteral("127.0.0.1");
+    QString address = QStringLiteral("0.0.0.0");
     quint16 port = 8443;
 
     bool operator==(const GatewayListenerConfig& other) const;

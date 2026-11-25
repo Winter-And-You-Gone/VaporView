@@ -154,3 +154,5 @@ Windows Release 通过 `cmake --build build/Release --config Release --parallel 
 首页按地面端排列环境测量、EPSILON 三维定位和实时波形。浏览器通过同源 WebSocket 订阅 SkyCore 的采样预览；峰值和命令回执保留在网关调试页。
 
 本机 Release 使用模拟 SkyCore、正式地面主窗口和网关、真实 Chromium 验证两路 DLIA 曲线、遥测读数、五种命令的最终回执，以及录制期间 5 条峰值与 SkyCore CSV 的对应关系。1260 px 和 390 px 两种宽度下，从空值切换至长文本和满表时，首页及调试页的定位点与总高度变化均为 0 px。监听器集成测试另外注入已知 ADC、TCP、BMP390 和 SHT45 帧，核对有符号幅值、采样间距、Pa 到 hPa 换算、有效零值和坏帧清空。上述记录属于软件链路验证，现场实物传感器与 FPGA 板卡仍待验收。
+
+4.19 入站监听默认地址已改为 0.0.0.0:8443。Release 配置测试核对默认地址和端口；监听集成测试使用系统分配的端口，从同机回环地址和局域网网卡地址查询 /api/v1/status 均返回 HTTP 200。跨设备连通性待现场验证。

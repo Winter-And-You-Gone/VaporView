@@ -48,8 +48,8 @@ void testPermissionsAndPersistence()
             "Cloud forwarding, cloud commands and tray background mode are opt-in");
     require(defaults.connection.allowedCommands == QSet<quint16>{static_cast<quint16>(VaporView::CommandId::RequestStatus)},
             "default command permission is status only");
-    require(defaults.connection.listener.enabled && defaults.connection.listener.address == QStringLiteral("127.0.0.1") &&
-            defaults.connection.listener.port == 8443, "ground listener defaults to loopback port 8443");
+    require(defaults.connection.listener.enabled && defaults.connection.listener.address == QStringLiteral("0.0.0.0") &&
+            defaults.connection.listener.port == 8443, "ground listener defaults to all IPv4 interfaces on port 8443");
     GatewaySettings saved = defaults;
     saved.connection.deviceId = QUuid::createUuid().toString(QUuid::WithoutBraces);
     saved.connection.enabled = true;
