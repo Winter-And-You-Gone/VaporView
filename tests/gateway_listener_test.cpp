@@ -321,6 +321,18 @@ try
     conflict.insert("commandId", static_cast<int>(CommandId::StartRecording));
     require(http("/api/v1/commands", conflict).code == 409, "different command with the same ID conflicts");
 
+    auto targeted = command("target-test", CommandId::ConnectDevice);
+    targeted.insert("targetDevice", "ptb");
+    require(http("/api/v1/commands", targeted).code == 202, "targeted connection accepted");
+    require(waitForCommandStatus("target-test", "device-unavailable"), "headless gateway has no desktop devices");
+    const auto retry = http("/api/v1/commands", targeted);
+    require(retry.code == 200 && retry.body.value("targetDevice") == QStringLiteral("ptb"),
+        "retry preserves the target and its final result");
+    targeted.insert("targetDevice", "hc2a");
+    require(http("/api/v1/commands", targeted).code == 409, "same ID cannot switch devices");
+    targeted.insert("commandId", int(CommandId::StartRecording));
+    require(http("/api/v1/commands", targeted).code == 400, "recording command rejects a device target");
+
     const auto calibrationError = QStringLiteral("缺少原 Session 的定标锁，请先处理异常会话");
     gateway.setListenerCommandPreparation([&](CommandId type, QByteArray&, QString& detail) -> QString {
         if (type != CommandId::StartRecording) return {};

@@ -193,6 +193,26 @@ async function verify(rawOrigin, sessionRoot) {
 
     assert(await page.locator("#home-view").isVisible());
     await page.locator('nav a[href="#gateway"]').click();
+    await waitText(page, "#out-state", "未启用");
+    await page.locator('nav a[href="#home"]').click();
+    const controls = await waitFor("production desktop controls", async () => {
+      const data = await page.evaluate(async () => (await fetch("/api/v1/operations")).json());
+      return data.controls.some(row => row.enabled && row.connected) && data.controls;
+    });
+    for (const key of ["epsilon", "ptb", "hc2a", "lidar", "wave"]) {
+      assert(controls.some(row => row.key === key), `desktop control available: ${key}`);
+      const selector = `#home-controls [data-key="${key}"]`;
+      const row = page.locator(selector);
+      for (const [commandId, state] of [[22, "未连接"], [21, "已连接"]]) {
+        const accepted = await clickAndRead(page, selector + " button", "commands", "POST", 202);
+        assert.equal(accepted.targetDevice, key);
+        assert.equal(accepted.skyCommandId, commandId);
+        await waitText(page, "#device-feedback", "已确认设备状态");
+        await row.getByText(state, {exact: true}).waitFor();
+      }
+      console.log("Desktop device disconnected and reconnected:", key);
+    }
+    await page.locator('nav a[href="#gateway"]').click();
     await command(page, "#command-status", 10);
     const first = await waitStream(page, connections, 0);
     await waitText(page, "#telemetry-state", "已收到");

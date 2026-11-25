@@ -26,6 +26,7 @@ struct GatewayListenerIngress
     QMutex mutex;
     QList<TelemetryFrame> frames;
     std::optional<TelemetryFrame> latestBasic;
+    QJsonArray desktopControls;
     qsizetype bytes = 0;
     quint64 dropped = 0;
     quint64 linkRevision = 0;
@@ -42,6 +43,7 @@ public:
     GatewayListener(const GatewayListenerConfig& config, QString deviceId,
                     std::shared_ptr<GatewayListenerIngress> ingress, Dispatch dispatch);
     ~GatewayListener() override;
+    std::function<QJsonObject(bool)> forwardingSnapshot;
     QString start();
     quint16 port() const { return port_; }
     void complete(QJsonObject result);

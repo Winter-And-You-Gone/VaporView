@@ -8,14 +8,16 @@
 #include <QDateTime>
 #include <QDir>
 #include <QElapsedTimer>
+#include <QEventLoop>
 #include <QFile>
-#include <QFileInfo>
 #include <QHostAddress>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QNetworkProxy>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
 #include <QPointer>
-#include <QSaveFile>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTemporaryDir>
@@ -160,189 +162,28 @@ bool hasResult(const Cloud& cloud, const QString& id, const QString& status)
     return false;
 }
 
-int webDemo()
+QJsonObject getOperations(quint16 port, bool includePayload, int *statusCode)
 {
-    const QUrl cloudUrl(QString::fromUtf8(qgetenv("GATEWAY_DEMO_URL")));
-    const QString device = QString::fromUtf8(qgetenv("GATEWAY_DEMO_DEVICE"));
-    const QString reportPath = QString::fromUtf8(qgetenv("GATEWAY_DEMO_REPORT"));
-    const QString cancelPath = QString::fromUtf8(qgetenv("GATEWAY_DEMO_CANCEL"));
-    QJsonArray checks;
-    bool success = true;
-    int skyConnections = 0, skyCommands = 0, localUpdates = 0, localStatusUpdates = 0;
-    int commandAcks = 0, statusCommands = 0, offlineEvents = 0, onlineEvents = 0;
-    bool sessionSynced = false;
-    bool cancelled = false;
-    QString sessionError;
-    qint64 elapsedMs = 0;
-    const auto addCheck = [&](const QString& name, bool passed, const QString& detail) {
-        checks.append(QJsonObject{{"name", name}, {"passed", passed}, {"detail", detail}});
-        success = success && passed;
-    };
-    const auto finish = [&] {
-        const QJsonObject report{{"success", success}, {"passed", success}, {"checks", checks},
-            {"skyConnections", skyConnections}, {"skyCommands", skyCommands}, {"localUpdates", localUpdates},
-            {"localTelemetryUpdates", localUpdates}, {"localStatusUpdates", localStatusUpdates},
-            {"sessionSynced", sessionSynced}, {"sessionCompleted", sessionSynced},
-            {"commandAcknowledged", commandAcks > 0}, {"commandAcks", commandAcks},
-            {"statusCommands", statusCommands}, {"offlineEvents", offlineEvents}, {"onlineEvents", onlineEvents},
-            {"elapsedMs", elapsedMs}, {"sessionError", sessionError}, {"simulatedSkyCore", true}, {"cancelled", cancelled}};
-        QSaveFile file(reportPath);
-        const auto bytes = QJsonDocument(report).toJson(QJsonDocument::Indented);
-        if (reportPath.isEmpty() || !QFileInfo(reportPath).isAbsolute() ||
-            !file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit())
-        {
-            std::cerr << "FAIL: cannot write web demo report\n";
-            return 1;
-        }
-        std::cout << "Gateway web demo " << (success ? "passed" : "failed") << ": "
-                  << localUpdates << " local telemetry updates, " << skyConnections << " Sky socket, "
-                  << commandAcks << " command ACKs\n";
-        return success ? 0 : 1;
-    };
-    const bool loopback = cloudUrl.host() == QLatin1String("127.0.0.1") ||
-        cloudUrl.host() == QLatin1String("::1") || cloudUrl.host() == QLatin1String("localhost");
-    const bool validEnvironment = loopback && isGatewayServerUrlValid(cloudUrl) && !device.isEmpty();
-    addCheck("local_demo_environment", validEnvironment, QStringLiteral("Demo cloud must be a loopback server with an isolated device."));
-    if (!validEnvironment) return finish();
-
-    QTemporaryDir temporary;
-    addCheck("isolated_runtime", temporary.isValid(), QStringLiteral("Cache and completed Session use a temporary directory."));
-    if (!temporary.isValid()) return finish();
-    const QString session = temporary.filePath("demo-session");
-    const auto saveFixture = [](const QString& path, const QByteArray& bytes) {
-        QSaveFile file(path);
-        return file.open(QIODevice::WriteOnly) && file.write(bytes) == bytes.size() && file.commit();
-    };
-    const bool sessionReady = QDir().mkpath(session) &&
-        saveFixture(session + "/session.json", QJsonDocument(QJsonObject{
-            {"session_format", "vaporview.session"}, {"session_format_version", 1},
-            {"state", "complete"}, {"recording_origin", "ground"}, {"session_name", "Gateway software demonstration"}
-        }).toJson(QJsonDocument::Compact)) && saveFixture(session + "/wave.dat", QByteArray(600000, 's'));
-    addCheck("completed_session_fixture", sessionReady, QStringLiteral("A completed v1 Session contains a 600000-byte file for multipart upload."));
-    if (!sessionReady) return finish();
-
-    QTcpServer sky;
-    const bool listening = sky.listen(QHostAddress::LocalHost, 0);
-    addCheck("simulated_skycore", listening, QStringLiteral("SkyCore is simulated on an ephemeral loopback TCP port."));
-    if (!listening) return finish();
-    QPointer<QTcpSocket> peer;
-    TelemetryCodec encoder;
-    quint16 frameSequence = 1;
-    bool recording = false;
-    QObject::connect(&sky, &QTcpServer::newConnection, &sky, [&] {
-        while (auto *socket = sky.nextPendingConnection())
-        {
-            ++skyConnections;
-            peer = socket;
-            auto decoder = std::make_shared<TelemetryCodec>();
-            QObject::connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
-            QObject::connect(socket, &QTcpSocket::readyRead, &sky, [&, socket, decoder] {
-                for (const auto& frame : decoder->feedBytes(socket->readAll()))
-                {
-                    CommandMessage command;
-                    if (frame.type != MsgType::Command || !TelemetryCodec::parseCommand(frame.payload, command)) continue;
-                    ++skyCommands;
-                    CommandAck ack;
-                    ack.command_id = command.command_id;
-                    ack.command_seq = command.command_seq;
-                    ack.correlation_id = command.correlation_id;
-                    ack.session_id = command.session_id;
-                    if (command.command_id == CommandId::RequestStatus) ++statusCommands;
-                    else if (command.command_id == CommandId::StartRecording) recording = true;
-                    else if (command.command_id == CommandId::StopRecording) recording = false;
-                    else ack.error_code = CommandErrorCode::UnknownCommand;
-                    const quint64 timeUs = static_cast<quint64>(QDateTime::currentMSecsSinceEpoch()) * 1000;
-                    socket->write(encoder.encodeFrame(MsgType::CommandAck, TelemetryCodec::serializeCommandAck(ack), frameSequence++, timeUs));
-                }
-            });
-        }
-    });
-    GroundTelemetryService service;
-    const bool connected = service.openTcp("127.0.0.1", sky.serverPort()) && waitUntil([&] { return !peer.isNull(); }, 3000);
-    addCheck("shared_skycore_connection", connected, QStringLiteral("The existing telemetry service owns the only SkyCore connection."));
-    if (!connected) return finish();
-    QElapsedTimer duration;
-    qint64 firstUpdateMs = -1, lastUpdateMs = -1, largestGapMs = 0;
-    QObject::connect(&service, &GroundTelemetryService::basicTelemetryUpdated, &service, [&](const TelemetryBasic&) {
-        const qint64 current = duration.elapsed();
-        if (lastUpdateMs >= 0) largestGapMs = qMax(largestGapMs, current - lastUpdateMs);
-        if (firstUpdateMs < 0) firstUpdateMs = current;
-        lastUpdateMs = current;
-        ++localUpdates;
-    });
-    QObject::connect(&service, &GroundTelemetryService::statusUpdated, &service, [&](const TelemetryStatus&) { ++localStatusUpdates; });
-    QObject::connect(&service, &GroundTelemetryService::commandAckReceived, &service, [&](const CommandAck& ack) {
-        if (ack.error_code == CommandErrorCode::Ok) ++commandAcks;
-    });
-    duration.start();
-    {
-        GatewayService gateway;
-        gateway.attach(&service);
-        QObject::connect(&gateway, &GatewayService::sessionSyncFinished, &gateway,
-            [&](const QString&, bool passed, const QString& error) { sessionSynced = passed; sessionError = error; });
-        QObject::connect(&gateway, &GatewayService::statusChanged, &gateway, [&](const QString& status) {
-            if (status.contains(QStringLiteral("HTTP 503"))) ++offlineEvents;
-            if (status.contains(QStringLiteral("Gateway 在线"))) ++onlineEvents;
-        });
-        GatewayConfig config;
-        config.enabled = true;
-        config.serverUrl = cloudUrl;
-        config.deviceId = device;
-        config.cacheDirectory = temporary.filePath("cache");
-        config.allowRemoteCommands = true;
-        config.allowedCommands = {static_cast<quint16>(CommandId::RequestStatus),
-            static_cast<quint16>(CommandId::StartRecording), static_cast<quint16>(CommandId::StopRecording)};
-        gateway.configure(config);
-        gateway.enqueueSession(session);
-        QTimer telemetry;
-        telemetry.setInterval(1000);
-        const auto sendTelemetry = [&] {
-            if (!peer || peer->state() != QAbstractSocket::ConnectedState) return;
-            const quint64 timeUs = static_cast<quint64>(QDateTime::currentMSecsSinceEpoch()) * 1000;
-            TelemetryBasic basic;
-            basic.host_time_us = timeUs;
-            basic.validity_flags = BasicHasTemperature | BasicHasPressure;
-            basic.temperature_c = 25.0f + static_cast<float>(localUpdates % 10) * 0.1f;
-            basic.pressure_hpa = 1013.25f;
-            TelemetryStatus status;
-            status.recording_state = recording ? 1 : 0;
-            status.session_name = QStringLiteral("Software demonstration");
-            status.telemetry_basic_rate_hz = status.status_rate_hz = 1.0f;
-            status.rx_total_frames = static_cast<quint32>(localUpdates);
-            peer->write(encoder.encodeFrame(MsgType::TelemetryBasic, TelemetryCodec::serializeBasicTelemetry(basic), frameSequence++, timeUs));
-            peer->write(encoder.encodeFrame(MsgType::TelemetryStatus, TelemetryCodec::serializeTelemetryStatus(status), frameSequence++, timeUs));
-        };
-        QObject::connect(&telemetry, &QTimer::timeout, &telemetry, sendTelemetry);
-        telemetry.start();
-        sendTelemetry();
-        waitUntil([&] { return duration.elapsed() >= 22000 || (!cancelPath.isEmpty() && QFile::exists(cancelPath)); }, 23000);
-        cancelled = !cancelPath.isEmpty() && QFile::exists(cancelPath);
-        telemetry.stop();
-        elapsedMs = duration.elapsed();
-    }
-    service.close();
-    if (peer) peer->abort();
-    sky.close();
-    addCheck("verification_completed", !cancelled, cancelled
-        ? QStringLiteral("Demo shutdown requested; client stopped and cleaned its runtime state.")
-        : QStringLiteral("The complete verification window finished."));
-    addCheck("single_sky_socket", skyConnections == 1, QStringLiteral("Accepted %1 SkyCore TCP connection(s).").arg(skyConnections));
-    addCheck("local_updates_continue", localUpdates >= 18 && localStatusUpdates >= 18 && lastUpdateMs - firstUpdateMs >= 18000 && largestGapMs <= 2500,
-        QStringLiteral("Basic/status updates: %1/%2; largest local gap: %3 ms, including the cloud outage.").arg(localUpdates).arg(localStatusUpdates).arg(largestGapMs));
-    addCheck("command_acknowledged", statusCommands > 0 && commandAcks > 0,
-        QStringLiteral("Received %1 status command(s) and validated %2 ACK(s) on the shared SkyCore connection.").arg(statusCommands).arg(commandAcks));
-    addCheck("session_synced", sessionSynced, sessionSynced ? QStringLiteral("The cloud confirmed all Session chunks and completion.") : sessionError);
-    addCheck("offline_retry_recovery", offlineEvents > 0 && onlineEvents > 0,
-        QStringLiteral("Observed %1 HTTP 503 event(s) and %2 confirmed upload(s).").arg(offlineEvents).arg(onlineEvents));
-    return finish();
+    QNetworkAccessManager manager;
+    QUrl url(QStringLiteral("http://127.0.0.1:%1/api/v1/operations").arg(port));
+    if (includePayload) url.setQuery(QStringLiteral("payload=1"));
+    QNetworkReply *reply = manager.get(QNetworkRequest(url));
+    QEventLoop loop;
+    QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+    QTimer::singleShot(3000, &loop, &QEventLoop::quit);
+    loop.exec();
+    if (statusCode) *statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    const auto object = QJsonDocument::fromJson(reply->readAll()).object();
+    reply->deleteLater();
+    return object;
 }
+
 }  // namespace
 
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
     QNetworkProxy::setApplicationProxy(QNetworkProxy::NoProxy);
-    if (app.arguments().value(1) == QLatin1String("--web-demo")) return webDemo();
     QTemporaryDir temporary;
     require(temporary.isValid(), "temporary cache");
     Cloud cloud;
@@ -385,6 +226,9 @@ int main(int argc, char **argv)
     config.deviceId = "test-aircraft";
     config.cacheDirectory = temporary.filePath("gateway-cache");
     config.allowRemoteCommands = true;
+    config.listener.enabled = true;
+    config.listener.address = "127.0.0.1";
+    config.listener.port = 0;
 
     // Data is buffered while the cloud is unavailable, while local display keeps receiving.
     {
@@ -401,6 +245,13 @@ int main(int argc, char **argv)
         require(waitUntil([&] { return localUpdates == 1; }), "offline upload never blocks local parsing");
         settle(500);
         require(cloud.telemetry.isEmpty(), "cloud offline");
+        int code = 0;
+        auto snapshot = getOperations(gateway.listenerPort(), false, &code);
+        require(code == 200 && snapshot.value("queuedBatches").toInt() > 0 &&
+            !snapshot.value("lastTelemetry").toObject().contains("payloadBase64"), "offline backlog and compact telemetry are visible");
+        snapshot = getOperations(gateway.listenerPort(), true, &code);
+        require(code == 200 && snapshot.value("lastTelemetry").toObject().value("payloadBase64").toString().toLatin1()
+            == basic.toBase64(), "expanded preview contains the actual outbound telemetry payload");
     }
     cloud.offline = false;
     cloud.commands = {command("valid", 10, config.deviceId, 120), command("expired", 10, config.deviceId, -1),
@@ -452,6 +303,11 @@ int main(int argc, char **argv)
         gateway.configure(config);
         require(waitUntil([&] { return completed; }, 10000), "Session resumes from persistent cursor after restart");
         require(cloud.sessionsCompleted == 1 && cloud.sessionData.value("wave.dat") == QByteArray(600000, 's'), "Session bytes are complete");
+        int code = 0;
+        const auto snapshot = getOperations(gateway.listenerPort(), false, &code);
+        require(code == 200 && snapshot.value("pendingSessions").toInt(-1) == 0 &&
+            snapshot.value("lastSession").toObject().value("success").toBool() &&
+            !snapshot.value("events").toArray().isEmpty(), "operations reports the completed Session and HTTP history");
         const int requests = cloud.requests;
         GatewayConfig invalid = config;
         invalid.serverUrl.setScheme("ftp");

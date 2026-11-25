@@ -117,6 +117,9 @@ public:
         ingress_ = std::move(ingress);
         config_ = config;
         generation_ = generation;
+        httpEvents_ = {};
+        lastSession_ = {};
+        lastTelemetry_ = {};
         if (!config.enabled) { report(QStringLiteral("Gateway 未启用")); return; }
         const auto badHeader = [](const QString& value) {
             return std::any_of(value.cbegin(), value.cend(), [](QChar ch) { return ch.unicode() < 33 || ch.unicode() > 126; });
@@ -196,6 +199,22 @@ public:
                         if (owner) owner->receiveCommand(command, generation, true);
                     }, Qt::QueuedConnection);
                 });
+            listener_->forwardingSnapshot = [this](bool includePayload) {
+                QJsonObject session;
+                if (queue_ && !jobs_.isEmpty()) {
+                    const auto job = jobs_.first().toObject();
+                    session = {{"name", QFileInfo(job.value("directory").toString()).fileName()},
+                        {"index", job.value("index")}, {"files", job.value("files").toArray().size()},
+                        {"offset", job.value("offset")}};
+                }
+                auto telemetry = lastTelemetry_;
+                if (!includePayload) telemetry.remove("payloadBase64");
+                return QJsonObject{{"enabled", config_.enabled}, {"status", outboundStatus_},
+                    {"endpoint", config_.serverUrl.toDisplayString(QUrl::RemoveUserInfo | QUrl::RemoveQuery | QUrl::RemoveFragment)},
+                    {"queuedBatches", queue_ ? queue_->count() : 0}, {"queuedBytes", queue_ ? queue_->bytes() : 0},
+                    {"pendingSessions", queue_ ? jobs_.size() : 0}, {"session", session}, {"lastSession", lastSession_},
+                    {"events", httpEvents_}, {"lastTelemetry", telemetry}};
+            };
             const auto error = listener_->start();
             if (!error.isEmpty())
             {
@@ -300,6 +319,7 @@ public:
 private:
     void report(const QString& text)
     {
+        outboundStatus_ = text;
         const auto owner = owner_;
         const auto generation = generation_;
         QMetaObject::invokeMethod(owner_, [owner, text, generation] {
@@ -311,6 +331,8 @@ private:
     }
     void sessionDone(const QString& directory, bool success, const QString& error)
     {
+        lastSession_ = {{"name", QFileInfo(directory).fileName()}, {"success", success}, {"detail", error},
+                        {"time", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)}};
         const auto owner = owner_;
         QMetaObject::invokeMethod(owner_, [owner, directory, success, error] {
             if (owner) emit owner->sessionSyncFinished(directory, success, error);
@@ -347,6 +369,7 @@ private:
             array.append(QJsonObject{{"type", static_cast<int>(frame.type)}, {"flags", frame.flags},
                                      {"sequence", frame.seq}, {"timeUs", QString::number(frame.time_us)},
                                      {"payloadBase64", QString::fromLatin1(frame.payload.toBase64())}});
+        lastTelemetry_ = array.last().toObject();
         OfflineQueue::Item item;
         item.id = uniqueId();
         item.createdMs = now();
@@ -379,12 +402,15 @@ private:
             if (bytes->size() > kResponseBytes || reply->bytesAvailable() > 0) reply->abort();
         });
         QTimer::singleShot(15000, reply, [reply] { if (!reply->isFinished()) reply->abort(); });
-        connect(reply, &QNetworkReply::finished, this, [this, reply, bytes, get, callback = std::move(callback)] {
+        connect(reply, &QNetworkReply::finished, this, [this, reply, bytes, get, endpoint, callback = std::move(callback)] {
             const int code = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
             QJsonParseError error;
             const QJsonDocument json = QJsonDocument::fromJson(*bytes, &error);
             const bool ok = reply->error() == QNetworkReply::NoError && code >= 200 && code < 300 &&
                 bytes->size() <= kResponseBytes && error.error == QJsonParseError::NoError && json.isObject();
+            httpEvents_.prepend(QJsonObject{{"time", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
+                {"endpoint", endpoint}, {"method", get ? "GET" : "POST"}, {"code", code}, {"ok", ok}});
+            if (httpEvents_.size() > 32) httpEvents_.removeLast();
             reply_.clear();
             reply->deleteLater();
             if (!ok)
@@ -543,6 +569,10 @@ private:
     QPointer<QNetworkReply> reply_;
     GatewayConfig config_;
     quint64 generation_ = 0;
+    QString outboundStatus_ = QStringLiteral("出站转发未启用");
+    QJsonArray httpEvents_;
+    QJsonObject lastSession_;
+    QJsonObject lastTelemetry_;
     std::unique_ptr<OfflineQueue> queue_;
     QString directory_;
     QJsonObject seen_;
@@ -592,6 +622,7 @@ void GatewayService::configure(const GatewayConfig& config)
     config_ = config;
     if (listenerChanged)
     {
+        activeDesktopCommand_.clear();
         listenerPort_ = 0;
         listenerIngress_ = std::make_shared<GatewayListenerIngress>();
         listenerIngress_->setConnected(service_ && service_->isOpen());
@@ -611,6 +642,13 @@ void GatewayService::configure(const GatewayConfig& config)
             worker_->configure(config, generation, ingress);
         }, Qt::QueuedConnection);
     }
+}
+
+void GatewayService::updateDesktopControls(const QJsonArray& controls)
+{
+    if (!listenerIngress_ || !config_.listener.enabled) return;
+    QMutexLocker lock(&listenerIngress_->mutex);
+    listenerIngress_->desktopControls = controls;
 }
 
 void GatewayService::setListenerCommandPreparation(ListenerCommandPreparation preparation)
@@ -683,10 +721,27 @@ void GatewayService::receiveCommand(const QJsonObject& command, quint64 generati
     const int commandId = rawCommand >= 0 && rawCommand <= 65535 && std::floor(rawCommand) == rawCommand
         ? static_cast<int>(rawCommand) : -1;
     const qint64 expires = expiry(command);
+    if (listener && command.contains("targetDevice"))
+    {
+        if (expires <= now()) { postResult(resultFor(id, "expired"), true); return; }
+        if (!desktopAction_) { postResult(resultFor(id, "device-unavailable"), true); return; }
+        if (!activeDesktopCommand_.isEmpty() || std::any_of(pending_.cbegin(), pending_.cend(), [](const Pending& pending) {
+                return pending.command == CommandId::StartRecording || isListenerFpgaCommand(int(pending.command));
+            })) { postResult(resultFor(id, "device-busy"), true); return; }
+        activeDesktopCommand_ = id;
+        desktopAction_(command.value("targetDevice").toString(), commandId == int(CommandId::ConnectDevice),
+            [this, id, generation](QString outcome) {
+                if (generation != listenerGeneration_ || activeDesktopCommand_ != id) return;
+                activeDesktopCommand_.clear();
+                postResult(resultFor(id, outcome), true);
+            });
+        return;
+    }
     QString rejected;
     const bool allowed = listener ? isListenerCommand(commandId)
         : config_.allowRemoteCommands && commandId >= 0 && config_.allowedCommands.contains(quint16(commandId));
     if (!allowed) rejected = "forbidden";
+    else if (!activeDesktopCommand_.isEmpty() && (commandId == int(CommandId::StartRecording) || isListenerFpgaCommand(commandId))) rejected = "device-busy";
     else if (!listener && command.value("deviceId").toString() != config_.deviceId) rejected = "wrong-device";
     else if (expires <= now() || expires > now() + kDayMs) rejected = "expired";
     else if (!service_ || !service_->isOpen()) rejected = "disconnected";

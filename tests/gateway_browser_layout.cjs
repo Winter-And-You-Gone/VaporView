@@ -16,11 +16,17 @@ async function checkGatewayLayout(browser, origin) {
         const shifts = await page.evaluate(async () => {
           await document.fonts.ready;
           document.querySelector("#measurement-details").open = true;
+          document.querySelector("#transfer-details").open = true;
           const anchors = location.hash === "#home" ? [".sensor-columns", ".waves", "#wave-32", "#wave-48", "#device-title"] : [".workspace-grid", "#peak-trend", "#command-check", "#device-title", "#measurement-details", ".stream-table"];
           const positions = () => anchors.map((selector) => document.querySelector(selector).getBoundingClientRect().top);
           const before = positions();
           const beforeHeight = document.documentElement.scrollHeight;
           const fill = (id, text) => { document.getElementById(id).textContent = text; };
+          fill("device-feedback", "等待地面端确认目标设备状态。".repeat(10));
+          fill("out-endpoint", "receiver.example/".repeat(12));
+          fill("out-job", "已完成 128/1024 个文件 · 当前文件 262144 B");
+          fill("out-events", "POST gateway/v1/telemetry 200\n".repeat(32));
+          fill("out-payload", "AQID".repeat(1000));
           fill("session-name", "session_2026-11-20_03-29-59_simulated_ground");
           fill("device-id", "ground-unit-".repeat(9));
           fill("command-id", "0a".repeat(32));

@@ -250,6 +250,15 @@ QString GatewayListener::start()
     server_->route("/style.css", Method::Get, [] {
         return webResource(":/gateway-web/style.css", "text/css; charset=utf-8");
     });
+    server_->route("/api/v1/operations", Method::Get, [this](const QHttpServerRequest& request) {
+        const bool payload = request.query().queryItemValue("payload") == QLatin1String("1");
+        auto snapshot = forwardingSnapshot ? forwardingSnapshot(payload) : QJsonObject{};
+        {
+            QMutexLocker lock(&ingress_->mutex);
+            snapshot.insert("controls", ingress_->desktopControls);
+        }
+        return jsonResponse(snapshot);
+    });
     server_->route("/api/v1/status", Method::Get, [this] {
         auto status = statusMessage();
         status.insert("streamId", streamId_);
@@ -296,7 +305,11 @@ QHttpServerResponse GatewayListener::submit(const QHttpServerRequest& request)
     const QString expires = body.value("expiresAt").toString();
     const auto expiryDate = QDateTime::fromString(expires, Qt::ISODateWithMs);
     static const QRegularExpression idPattern(QStringLiteral("\\A[A-Za-z0-9_-]{1,64}\\z"));
-    if (body.size() != 3 || !idPattern.match(id).hasMatch() || command < 0 || command > 65535 ||
+    const bool targeted = body.contains("targetDevice");
+    const QString target = body.value("targetDevice").toString();
+    if (targeted && (!isListenerFpgaCommand(command) || target.isEmpty() || target.size() > 32))
+        return errorResponse("invalid-command", HttpStatus::BadRequest);
+    if (body.size() != (targeted ? 4 : 3) || !idPattern.match(id).hasMatch() || command < 0 || command > 65535 ||
         !expires.endsWith(QLatin1Char('Z')) || !expiryDate.isValid())
         return errorResponse("invalid-command", HttpStatus::BadRequest);
     if (!isListenerCommand(command)) return errorResponse("forbidden", HttpStatus::Forbidden);
@@ -306,7 +319,7 @@ QHttpServerResponse GatewayListener::submit(const QHttpServerRequest& request)
     const auto existing = commands_.constFind(id);
     if (existing != commands_.cend())
     {
-        if (existing->commandId != command || existing->expiresAt != expiry)
+        if (existing->commandId != command || existing->expiresAt != expiry || existing->result.value("targetDevice").toString() != target)
             return errorResponse("command-id-conflict", HttpStatus::Conflict);
         return jsonResponse(existing->result, existing->result.value("status") == QLatin1String("accepted")
             ? HttpStatus::Accepted : HttpStatus::Ok);
@@ -321,6 +334,7 @@ QHttpServerResponse GatewayListener::submit(const QHttpServerRequest& request)
     if (commands_.size() >= kMaxCommands)
         return errorResponse("command-capacity", HttpStatus::ServiceUnavailable);
     QJsonObject result{{"id", id}, {"deviceId", deviceId_}, {"skyCommandId", command}, {"status", "accepted"}};
+    if (targeted) result.insert("targetDevice", target);
     commands_.insert(id, {command, expiry, result});
     dispatch_(body);
     return jsonResponse(result, HttpStatus::Accepted);
@@ -332,6 +346,7 @@ void GatewayListener::complete(QJsonObject result)
     if (it == commands_.end()) return;
     result.insert("deviceId", deviceId_);
     result.insert("skyCommandId", it->commandId);
+    if (it->result.contains("targetDevice")) result.insert("targetDevice", it->result.value("targetDevice"));
     it->result = std::move(result);
 }
 

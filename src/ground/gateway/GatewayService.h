@@ -1,6 +1,7 @@
 #pragma once
 
 #include "TelemetryTypes.h"
+#include <QJsonArray>
 #include <QObject>
 #include <QPointer>
 #include <QSet>
@@ -62,6 +63,10 @@ public:
     quint16 listenerPort() const { return listenerPort_; }
     using ListenerCommandPreparation = std::function<QString(CommandId, QByteArray&, QString& detail)>;
     void setListenerCommandPreparation(ListenerCommandPreparation preparation);
+    // Desktop device controls run on the GUI thread. The listener reads a snapshot.
+    using DesktopAction = std::function<void(const QString&, bool, std::function<void(QString)>)>;
+    void setDesktopAction(DesktopAction action) { desktopAction_ = std::move(action); }
+    void updateDesktopControls(const QJsonArray& controls);
     void enqueueSession(const QString& directory);
 
 signals:
@@ -87,6 +92,8 @@ private:
     quint64 generation_ = 0;
     quint64 listenerGeneration_ = 0;
     ListenerCommandPreparation listenerPreparation_;
+    DesktopAction desktopAction_;
+    QString activeDesktopCommand_;
     QThread thread_;
     GatewayWorker *worker_ = nullptr;
     std::shared_ptr<GatewayIngress> ingress_;

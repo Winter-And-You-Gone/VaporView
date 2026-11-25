@@ -25,6 +25,9 @@ const requestErrors = {
   503: "网关服务暂不可用",
 };
 const receiptLabels = {
+  "state-confirmed": "地面端已确认设备状态",
+  "device-state-timeout": "地面端尚未确认目标状态",
+  "device-unavailable": "设备当前不可操作，请检查地面端的设备配置和记录状态",
   acknowledged: "SkyCore 已应答",
   rejected: "SkyCore 已拒绝",
   timeout: "等待 SkyCore 回执超时",
@@ -44,6 +47,8 @@ let stream = null;
 let currentCommand = null;
 let linkConnected = false;
 let fpgaConnected = false;
+let fpgaAvailable = false;
+let recordingBusy = false;
 let latestTrendTime = null;
 let trendPaint = 0;
 
@@ -51,6 +56,13 @@ function show(id, text, tone = "") {
   const target = element(id);
   target.textContent = text;
   target.dataset.tone = tone;
+  if (currentCommand?.fromHome && (id === "command-feedback" || id === "command-result")) {
+    const result = element("command-result").textContent;
+    const feedback = element("device-feedback");
+    feedback.textContent = currentCommand.operation + " · " +
+      (tone === "error" || !result || result === "—" ? text : result);
+    feedback.dataset.tone = tone || element("command-result").dataset.tone;
+  }
 }
 
 function label(value) {
@@ -61,6 +73,9 @@ function syncButtons() {
   element("connect-stream").disabled = stream !== null;
   element("disconnect-stream").disabled = stream === null;
   element("command-check").disabled = !currentCommand || currentCommand.checking || currentCommand.sending;
+  for (const button of element("home-controls").querySelectorAll("button")) {
+    button.disabled = button.dataset.ready !== "true" || Boolean(currentCommand?.sending || currentCommand?.pending);
+  }
   for (const button of commandButtons) {
     button.disabled = !linkConnected || Boolean(currentCommand?.sending || currentCommand?.pending);
   }
@@ -120,6 +135,8 @@ function renderStatus(status, updateReadings = true) {
   show("telemetry-state", hasStatus ? "已收到" : "暂无状态", hasStatus ? "good" : "");
   show("recording-state", hasStatus ? (["停止", "记录中", "暂停"][status.recordingState] ?? label(status.recordingState)) : "—");
   show("session-name", hasStatus ? label(status.sessionName || null) : "—");
+  fpgaAvailable = hasStatus && status.devices?.some(d => d.device === 8 && d.state !== 0);
+  recordingBusy = hasStatus && status.recordingState !== 0;
   fpgaConnected = hasStatus && Array.isArray(status.devices) &&
     status.devices.some((device) => device.device === 8 && device.state === 3);
   if (!linkConnected) dashboard.clear();
@@ -462,7 +479,7 @@ function renderReceipt(command, receipt) {
   command.pending = receipt.status === "accepted";
   show("command-accepted", "网关已受理", "good");
   if (command.pending) {
-    show("command-result", "等待 SkyCore 回执");
+    show("command-result", receipt.targetDevice ? "等待地面端确认设备状态" : "等待 SkyCore 回执");
     return;
   }
   const status = Object.hasOwn(receiptLabels, receipt.status) ? receiptLabels[receipt.status] : label(receipt.status);
@@ -472,7 +489,8 @@ function renderReceipt(command, receipt) {
   if (receipt.errorCode !== undefined) parts.push(`错误码 ${label(receipt.errorCode)}`);
   if (receipt.result !== undefined) parts.push(`结果 ${label(receipt.result)}`);
   if (receipt.completedAt) parts.push(label(receipt.completedAt));
-  show("command-result", parts.join(" · "), receipt.status === "acknowledged" ? "good" : "error");
+  const success = receipt.status === "acknowledged" || receipt.status === "state-confirmed";
+  show("command-result", parts.join(" · "), success ? "good" : "error");
   show("command-session", label(receipt.sessionId));
   show("command-feedback", "已收到最终回执");
   void refreshStatus();
@@ -506,10 +524,10 @@ async function checkCommand() {
   }
 }
 
-async function sendCommand(commandId, operation) {
+async function sendCommand(commandId, operation, targetDevice, fromHome = false) {
   const random = crypto.getRandomValues(new Uint8Array(16));
   const id = Array.from(random, (byte) => byte.toString(16).padStart(2, "0")).join("");
-  const command = { id, sending: true, pending: false, checking: false, pollUntil: Date.now() + 35000 };
+  const command = { id, operation, fromHome, sending: true, pending: false, checking: false, pollUntil: Date.now() + 35000 };
   clearTimeout(currentCommand?.timer);
   currentCommand = command;
   show("command-operation", operation);
@@ -521,7 +539,7 @@ async function sendCommand(commandId, operation) {
   syncButtons();
   try {
     const receipt = await request("/api/v1/commands", { method: "POST", body: {
-      id: command.id, commandId, expiresAt: new Date(Date.now() + 30000).toISOString(),
+      id: command.id, commandId, ...(targetDevice ? { targetDevice } : {}), expiresAt: new Date(Date.now() + 30000).toISOString(),
     } });
     if (currentCommand !== command) return;
     renderReceipt(command, receipt);
@@ -541,7 +559,64 @@ async function sendCommand(commandId, operation) {
   }
 }
 
+function renderControls(controls) {
+  const host = element("home-controls");
+  const items = [...controls, {key: "fpga", name: "机载 FPGA", connected: fpgaConnected,
+    enabled: linkConnected && fpgaAvailable && !recordingBusy}];
+  const keys = new Set(items.map(item => item.key));
+  for (const row of [...host.children]) if (!keys.has(row.dataset.key)) row.remove();
+  for (const item of items) {
+    let row = [...host.children].find(child => child.dataset.key === item.key);
+    if (!row) {
+      row = document.createElement("div");
+      row.dataset.key = item.key;
+      row.append(document.createElement("strong"), document.createElement("span"), document.createElement("button"));
+      host.append(row);
+    }
+    const [name, state, button] = row.children;
+    name.textContent = item.name;
+    state.textContent = item.connected ? "已连接" : item.enabled ? "未连接" : "未就绪";
+    state.dataset.tone = item.connected ? "good" : "";
+    row.title = item.detail || "";
+    button.textContent = item.connected ? "断开" : "连接";
+    button.setAttribute("aria-label", button.textContent + item.name);
+    button.dataset.ready = String(item.enabled);
+    button.onclick = () => sendCommand(item.connected ? 22 : 21, button.textContent + item.name,
+      item.key === "fpga" ? undefined : item.key, true);
+  }
+  syncButtons();
+}
+
+async function refreshOperations() {
+  try {
+    const details = element("transfer-details").open && !element("gateway-view").hidden;
+    const op = await request("/api/v1/operations" + (details ? "?payload=1" : ""));
+    renderControls(op.controls);
+    if (!currentCommand?.fromHome) show("device-feedback", "连接状态来自地面端");
+    show("out-endpoint", op.endpoint || "尚未配置");
+    show("out-state", op.status);
+    show("out-queue", op.queuedBatches + " 批 · " + op.queuedBytes + " B");
+    const job = op.session;
+    show("out-job", op.pendingSessions + " 项" + (job.name ? " · " + job.name + " · 已完成 " +
+      job.index + "/" + job.files + " 个文件 · 当前文件 " + job.offset + " B" : ""));
+    show("out-last", op.lastSession.name ? op.lastSession.name + (op.lastSession.success ? " · 已同步" :
+      " · " + op.lastSession.detail) : "暂无已结束的同步任务");
+    if (details) {
+      show("out-events", op.events.map(e => [e.time, e.method, e.endpoint, e.code || "连接失败"].join("  ")).join("\n") || "暂无请求");
+      show("out-payload", Object.keys(op.lastTelemetry).length ? JSON.stringify(op.lastTelemetry, null, 2) : "暂无出站遥测");
+    }
+  } catch (error) {
+    for (const button of element("home-controls").querySelectorAll("button")) button.dataset.ready = "false";
+    syncButtons();
+    show("device-feedback", error.message);
+    show("out-state", error.message);
+  } finally {
+    setTimeout(refreshOperations, 1000);
+  }
+}
+
 show("gateway-origin", location.host);
+void refreshOperations();
 trendChannel.addEventListener("change", scheduleTrend);
 new ResizeObserver(scheduleTrend).observe(trendCanvas);
 element("refresh-status").addEventListener("click", refreshStatus);

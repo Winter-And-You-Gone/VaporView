@@ -16,6 +16,11 @@
       <div class="page-head"><h2 id="page-title">数据首页</h2><time id="reading-time" class="mono" tabindex="0">等待测量</time></div>
       <div class="desktop">
         <div id="home-view">
+          <section class="panel device-controls" aria-labelledby="control-heading">
+            <h2 id="control-heading">设备连接</h2>
+            <div id="home-controls" class="control-grid" aria-label="设备连接操作"></div>
+            <p id="device-feedback" role="status">正在读取地面端设备状态</p>
+          </section>
           <div class="sensor-columns">
             <section class="panel"><h2>环境测量</h2>
               <section class="instrument"><h3>HC2A · 环境温湿度</h3><dl><div><dt>温度</dt><dd id="reading-temperature" class="reading-value">—</dd></div>
@@ -63,6 +68,18 @@
         </section>
         </aside>
       <div id="gateway-view" hidden>
+        <section class="panel transfer-panel"><h2>出站转发与 Session 同步</h2>
+          <dl class="transfer-stats">
+            <div><dt>接收端</dt><dd id="out-endpoint">—</dd></div>
+            <div><dt>转发状态</dt><dd id="out-state">等待读取</dd></div>
+            <div><dt>待上传缓存</dt><dd id="out-queue">—</dd></div>
+            <div><dt>Session 队列与进度</dt><dd id="out-job">—</dd></div>
+            <div><dt>上次同步结果</dt><dd id="out-last">—</dd></div>
+          </dl>
+          <details id="transfer-details"><summary>最近 HTTP 请求与出站遥测载荷</summary>
+            <pre id="out-events">暂无请求</pre><pre id="out-payload">暂无出站遥测</pre>
+          </details>
+        </section>
     <div class="workspace-grid">
       <section class="panel stream" aria-labelledby="stream-title">
         <div class="section-head">

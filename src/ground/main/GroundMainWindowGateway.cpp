@@ -3,6 +3,7 @@
 #include "ground/calibration/CalibrationService.h"
 
 #include <QSystemTrayIcon>
+#include <QDeadlineTimer>
 
 void MainWindow::initializeGateway()
 {
@@ -22,6 +23,68 @@ void MainWindow::initializeGateway()
             if (state_->gateway_tray_)
                 state_->gateway_tray_->setToolTip(QStringLiteral("VaporView\n") + text.left(110));
         });
+    struct Control { QString key; QLabel *label; QToolButton *button; };
+    const auto controls = [this] {
+        return QList<Control>{
+            {"epsilon", state_->home_epsilon_status_lbl_, state_->home_epsilon_action_btn_},
+            {"ptb", state_->home_ptb_status_lbl_, state_->home_ptb_action_btn_},
+            {"hc2a", state_->home_hc2a_status_lbl_, state_->home_hc2a_action_btn_},
+            {"lidar", state_->home_lidar_status_lbl_, state_->home_lidar_action_btn_},
+            {isFpgaRelayPath() ? "tec-in-situ" : "temperature", state_->home_temperature_status_lbl_, state_->home_temperature_action_btn_},
+            {"tec_remote", state_->home_tec_remote_lbl_, state_->home_tec_remote_btn_},
+            {"wave", state_->home_wave_status_lbl_, state_->home_wave_action_btn_},
+            {"ai8_temperature", state_->home_ai8_temperature_status_lbl_, state_->home_ai8_temperature_action_btn_},
+            {"bmp390", state_->home_bmp390_status_lbl_, state_->home_bmp390_action_btn_},
+            {"sht45", state_->home_sht45_status_lbl_, state_->home_sht45_action_btn_},
+            {"motion", state_->home_motion_status_lbl_, state_->home_motion_action_btn_}
+        };
+    };
+    const auto ready = [this](const Control& control) {
+        return !isUiTestMode() && !state_->virtual_fpga_port_ && control.button->isEnabled() &&
+            state_->remote_recording_state_ != 1 && state_->remote_recording_state_ != 2 &&
+            !state_->recording_service_->status().sessionOpen &&
+            (control.key == "motion" || !isRemoteSkyMode() || state_->remote_sky_controller_->isOpen());
+    };
+    auto *refresh = new QTimer(state_->gateway_service_.get());
+    connect(refresh, &QTimer::timeout, this, [this, controls, ready] {
+        if (!state_->gateway_service_->listenerPort()) return;
+        QJsonArray rows;
+        for (const auto& control : controls()) {
+            if (!control.label || !control.button || control.label->isHidden()) continue;
+            rows.append(QJsonObject{{"key", control.key}, {"name", control.label->text()},
+                {"connected", control.label->property("connected").toBool()}, {"enabled", ready(control)},
+                {"detail", control.label->accessibleDescription()}});
+        }
+        state_->gateway_service_->updateDesktopControls(rows);
+    });
+    refresh->start(500);
+    state_->gateway_service_->setDesktopAction([this, controls, ready](const QString& key, bool connectRequested, auto complete) {
+        for (const auto& control : controls()) {
+            if (control.key != key || !control.label || !control.button || control.label->isHidden()) continue;
+            if (!ready(control)) { complete("device-unavailable"); return; }
+            if (control.label->property("connected").toBool() == connectRequested) { complete("state-confirmed"); return; }
+            control.button->click();
+            auto *poll = new QTimer(state_->gateway_service_.get());
+            const bool remote = isRemoteSkyMode() && key != "motion";
+            const auto link = state_->remote_sky_controller_->telemetryService()->linkGeneration();
+            const QDeadlineTimer deadline(15000);
+            connect(poll, &QTimer::timeout, this, [this, poll, control, connectRequested, remote, link, deadline, complete] {
+                QString outcome;
+                if (control.label->isHidden() || (remote && (!state_->remote_sky_controller_->isOpen() ||
+                    state_->remote_sky_controller_->telemetryService()->linkGeneration() != link))) outcome = "disconnected";
+                else if (control.button->isEnabled() && control.label->property("connected").toBool() == connectRequested)
+                    outcome = "state-confirmed";
+                else if (deadline.hasExpired()) outcome = "device-state-timeout";
+                else return;
+                poll->stop();
+                poll->deleteLater();
+                complete(outcome);
+            });
+            poll->start(200);
+            return;
+        }
+        complete("device-unavailable");
+    });
     configureGatewayRuntime();
 }
 
