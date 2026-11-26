@@ -393,6 +393,7 @@ private:
     VaporView::DeviceState homeFpgaDeviceState(VaporView::SkyDeviceId device) const;
     double homeFpgaSensorRate(VaporView::SkyDeviceId device) const;
     VaporView::DeviceState homeFpgaDeviceActionState(VaporView::SkyDeviceId device) const;
+    QString homeFpgaUnavailableReason(VaporView::SkyDeviceId device) const;
     void setHomeFpgaDeviceEnabled(VaporView::SkyDeviceId device, bool enabled);
     void executeHomeFpgaDeviceAction(VaporView::SkyDeviceId device, bool enabled);
     void queueFpgaAction(std::function<void()> action, std::function<void(const QString&)> cancel,

@@ -393,6 +393,31 @@ VaporView::DeviceState MainWindow::homeFpgaDeviceActionState(VaporView::SkyDevic
     return actual != DeviceState::Connected && !homeFpgaDeviceSelected(device) ? DeviceState::Disabled : actual;
 }
 
+QString MainWindow::homeFpgaUnavailableReason(VaporView::SkyDeviceId device) const
+{
+    const bool english = state_->is_english_;
+    if (!homeFpgaDeviceSelected(device))
+        return english ? QStringLiteral("Select Enabled first") : QStringLiteral("请先勾选启用");
+    if (isRemoteSkyMode() && !isUiTestMode()) {
+        if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
+            return english ? QStringLiteral("Connect telemetry first") : QStringLiteral("请先连接数传");
+        if (state_->remote_config_session_.reading || state_->remote_config_session_.applying)
+            return english ? QStringLiteral("Syncing Sky config") : QStringLiteral("正在同步天空端配置");
+        if (!state_->fpga_session_.remoteReady() &&
+            (state_->fpga_session_.requestId || state_->fpga_session_.remoteStatus.value("busy").toBool()))
+            return english ? QStringLiteral("FPGA initializing") : QStringLiteral("FPGA 正在初始化");
+    } else {
+        const bool initBusy = isUiTestMode()
+            ? (state_->fpga_sim_busy_ && !state_->fpga_sim_ready_)
+            : (state_->fpga_busy_ && !state_->fpga_ready_);
+        if (initBusy)
+            return english ? QStringLiteral("FPGA initializing") : QStringLiteral("FPGA 正在初始化");
+        if (!isUiTestMode() && state_->fpga_replaying_)
+            return english ? QStringLiteral("FPGA replaying") : QStringLiteral("FPGA 回放中");
+    }
+    return english ? QStringLiteral("FPGA device unavailable") : QStringLiteral("FPGA 设备不可用");
+}
+
 QMap<quint32, quint32> MainWindow::homeFpgaRegisters() const
 {
     if (isUiTestMode()) return state_->fpga_sim_ready_ ? state_->fpga_sim_registers_ : QMap<quint32, quint32>{};
@@ -580,9 +605,7 @@ VaporView::DeviceState MainWindow::homeFpgaDeviceState(VaporView::SkyDeviceId de
         if (!state_->fpga_ready_) return DeviceState::Disconnected;
     } else {
         if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen()) return DeviceState::Disabled;
-        const bool fresh = std::chrono::steady_clock::now() - state_->fpga_session_.statusTime < std::chrono::seconds(4);
-        if (state_->fpga_session_.remoteStatus.isEmpty() || (fresh && !state_->fpga_session_.remoteStatus.value("connected").toBool()
-            && !state_->fpga_session_.remoteStatus.value("busy").toBool())) return DeviceState::Disconnected;
+        if (!state_->fpga_session_.remoteReady()) return DeviceState::Disconnected;
     }
     const auto registers = homeFpgaRegisters();
     if (source == 0x48 || source == 0x49) {

@@ -870,7 +870,9 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         }
         const bool remoteMode = isRemoteSkyMode();
         const bool linkOpen = state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen();
-        const bool enabled = !channelEnabled || actionState == VaporView::DeviceState::Disabled || spinnerActive
+        const bool buttonDisabled = !channelEnabled || actionState == VaporView::DeviceState::Disabled ||
+            state == VaporView::DeviceState::Disabled;
+        const bool enabled = buttonDisabled || spinnerActive
             ? false
             : isFpgaRelayPath() || isUiTestMode()
                 ? true
@@ -891,11 +893,9 @@ void MainWindow::updateHomeDeviceStatusCapsules()
             {
                 return state_->is_english_ ? QStringLiteral("Disconnect") : QStringLiteral("断开");
             }
-            if (state == VaporView::DeviceState::Disabled)
+            if (buttonDisabled)
             {
-                if (isFpgaRelayPath() && !homeFpgaDeviceSelected(device))
-                    return state_->is_english_ ? QStringLiteral("Select Enabled first") : QStringLiteral("请先勾选启用");
-                if (isFpgaRelayPath()) return state_->is_english_ ? QStringLiteral("FPGA device unavailable") : QStringLiteral("FPGA 设备不可用");
+                if (isFpgaRelayPath()) return homeFpgaUnavailableReason(device);
                 if (remoteMode)
                 {
                     return state_->is_english_ ? QStringLiteral("Connect telemetry first") : QStringLiteral("请先连接数传");
@@ -912,6 +912,16 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         if (isFpgaRelayPath())
         {
             modeHint=state_->is_english_ ? QStringLiteral("FPGA relay device") : QStringLiteral("FPGA 中转设备");
+            if (!buttonDisabled && !connected && remoteMode && !isUiTestMode() &&
+                !state_->fpga_session_.remoteReady() && state_->fpga_session_.remoteStatus.value("connected").toBool())
+            {
+                const QString detail = state_->fpga_session_.remoteStatus.value("detail").toString().trimmed();
+                modeHint += state_->is_english_
+                    ? (detail.isEmpty() ? QStringLiteral("; FPGA not ready, click to reconnect")
+                                        : QStringLiteral("; FPGA not ready (%1), click to reconnect").arg(detail))
+                    : (detail.isEmpty() ? QStringLiteral("；FPGA 未就绪，点击重连")
+                                        : QStringLiteral("；FPGA 未就绪（%1），点击重连").arg(detail));
+            }
         }
         else if (remoteMode)
         {
@@ -938,7 +948,7 @@ void MainWindow::updateHomeDeviceStatusCapsules()
             const QString iconName = connected ? QStringLiteral("unlink") : QStringLiteral("link");
             const QColor iconColor = connected
                 ? toolbarColor(AppThemeColor::ToolbarRed)
-                : state == VaporView::DeviceState::Disabled
+                : buttonDisabled
                     ? toolbarColor(AppThemeColor::ToolbarDisabled)
                     : toolbarColor(AppThemeColor::HomeDeviceSuccess);
             const QString iconKey = QStringLiteral("%1|%2").arg(iconName, iconColor.name(QColor::HexArgb));
@@ -961,7 +971,8 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         }
         bool buttonStyleChanged = false;
         buttonStyleChanged |= setDynamicPropertyIfChanged(button, "connected", connected);
-        buttonStyleChanged |= setDynamicPropertyIfChanged(button, "state", spinnerActive ? QStringLiteral("connecting") : stateKey);
+        buttonStyleChanged |= setDynamicPropertyIfChanged(button, "state",
+            spinnerActive ? QStringLiteral("connecting") : (buttonDisabled ? QStringLiteral("disabled") : stateKey));
         if (buttonStyleChanged)
         {
             button->style()->unpolish(button);

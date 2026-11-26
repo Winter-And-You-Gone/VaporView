@@ -833,6 +833,9 @@ static void remoteHomeActions()
             requests.append(request);commandSequence=command.command_seq;
         }
     });
+    auto *epsilon=homeAction(window,"EPSILON");
+    require(waitUntil([&]{return !epsilon->isEnabled()&&epsilon->toolTip().contains(QStringLiteral("请先连接数传"));}),
+        "remote home prompts to connect telemetry before link opens");
     require(remote->openTcp("127.0.0.1",server.localPort())&&waitUntil([&]{return remote->isOpen();}),"home remote link opens");
     window.testInjectRemoteSkyConfig(sky.toJson());
     FpgaControlConfig config;config.pressureSource=0x43;
@@ -864,9 +867,22 @@ static void remoteHomeActions()
         require(waitUntil([&]{navigation->refreshStatus();return navigationPanel->snapshot().navigationDataAvailable
             &&navigationPanel->snapshot().gnssFixCode==6;}),"fresh remote navigation baseline is available");
     };
+    auto initializing=status;initializing["connected"]=true;initializing["ready"]=false;initializing["busy"]=true;initializing["registers"]=QJsonObject{};
+    send(MsgType::FpgaStatus,FpgaRemote::encodeStatus(initializing));
+    require(waitUntil([&]{return !epsilon->isEnabled()&&epsilon->property("state")=="disabled"
+        &&epsilon->toolTip().contains(QStringLiteral("FPGA 正在初始化"))
+        &&!epsilon->toolTip().contains(QStringLiteral("FPGA 设备不可用"));}),
+        "remote home explains FPGA initialization instead of showing device unavailable");
+    auto recoveryFailed=status;recoveryFailed["connected"]=true;recoveryFailed["ready"]=false;recoveryFailed["busy"]=false;
+    recoveryFailed["detail"]=QStringLiteral("读回等待超时：0x00006308");recoveryFailed["registers"]=QJsonObject{};
+    send(MsgType::FpgaStatus,FpgaRemote::encodeStatus(recoveryFailed));
+    require(waitUntil([&]{return epsilon->isEnabled()&&epsilon->property("state")=="disconnected"
+        &&epsilon->toolTip().contains(QStringLiteral("连接"))
+        &&epsilon->toolTip().contains(QStringLiteral("0x00006308"))
+        &&!epsilon->toolTip().contains(QStringLiteral("FPGA 设备不可用"));}),
+        "connected but unready remote FPGA stays disconnected and allows manual reconnect");
     auto disconnected=status;disconnected["connected"]=false;disconnected["ready"]=false;disconnected["registers"]=QJsonObject{};
     send(MsgType::FpgaStatus,FpgaRemote::encodeStatus(disconnected));
-    auto *epsilon=homeAction(window,"EPSILON");
     require(waitUntil([&]{return epsilon->isEnabled()&&epsilon->property("state")=="disconnected";}),
         "remote home can connect FPGA before a USB session exists");
     epsilon->click();
