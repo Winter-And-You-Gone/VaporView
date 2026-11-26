@@ -392,15 +392,19 @@ struct Fixture {
         deadline.start(10000);retry.start();loop.exec();QObject::disconnect(observer);
         require(!result.isEmpty(),"production UART extension completed");return result;
     }
-    int txBytes() const
+    int txBytesFor(quint32 targetAddress) const
     {
         int count=0;
         for(const auto& command:commands) {
             if(command.header.message!=3 || command.payload.size()<8)continue;
             const auto address=qFromLittleEndian<quint32>(command.payload.data());
-            if(address==0x6818 || address==0x6918)++count;
+            if(address==targetAddress)++count;
         }
         return count;
+    }
+    int txBytes() const
+    {
+        return txBytesFor(0x6818)+txBytesFor(0x6918);
     }
     void assertNoLegacyWrites() const
     {
@@ -490,6 +494,51 @@ void controllerLifecycleAndIndependentPhysicalPorts()
     require(f.txBytes()==bytesAtStop,"disconnect stops periodic UART instrument queries");
     f.assertNoLegacyWrites();f.controller.disconnectDevice();
 }
+
+void unidentifiedPortStopsPollingAfterSixFailures()
+{
+    Fixture f;
+    QJsonObject ports;
+    QVector<LogRecord> logs;
+    QObject observer;
+    QObject::connect(&f.controller,&FpgaDeviceController::temperaturePortsChanged,&observer,
+        [&](const QJsonObject& value){ ports=value; });
+    QObject::connect(&f.controller,&FpgaDeviceController::logRecordGenerated,&observer,
+        [&](const LogRecord& record){ logs.append(record); });
+    const auto valid=[&](const char* port){return ports.value(port).toObject().value("valid").toBool();};
+    const auto enable=[&](int source,bool enabled){
+        waitUntil([&]{return !f.controller.busy();},"FPGA is available before port toggle");
+        f.controller.setSensorEnabled(source,enabled);
+    };
+    enable(0x48,true);
+    waitUntil([&]{return valid("1");},"LC0 connects normally before LC1 absence test");
+    f.simulator->injectFault("tec103_lc1_disconnected");
+    enable(0x49,true);
+    const auto hasAutoStopLog=[&]{
+        for(const auto& record:logs) {
+            if(record.fields.value("event").toString()=="tec103_gpio_poll_stopped"
+                && record.fields.value("logical_channel").toInt()==2
+                && record.fields.value("consecutive_failures").toInt()==6)
+                return true;
+        }
+        return false;
+    };
+    waitUntil(hasAutoStopLog,"unidentified LC1 stops polling after 6 consecutive timeouts",30000);
+    require(f.txBytesFor(0x6918)==6*6,"unidentified LC1 sends exactly 6 TEC=?@ queries before auto-stopping");
+    require(valid("1") && !ports.value("2").toObject().value("connected").toBool()
+        && !ports.value("2").toObject().value("identifying").toBool(),
+        "LC1 auto-stop leaves LC0 healthy and marks LC1 disconnected");
+    const int lc1BytesAtAutoStop=f.txBytesFor(0x6918);
+    const int lc0UpdatesAtAutoStop=f.updates;
+    QElapsedTimer quiet;quiet.start();
+    while(quiet.elapsed()<2500) {QCoreApplication::processEvents(QEventLoop::AllEvents,10);QThread::msleep(1);}
+    require(f.txBytesFor(0x6918)==lc1BytesAtAutoStop,"auto-stopped LC1 emits no further UART queries");
+    require(f.updates>lc0UpdatesAtAutoStop && valid("1"),"LC0 continues polling after LC1 auto-stops");
+    f.simulator->injectFault("tec103_lc1_reconnected");
+    enable(0x49,true);
+    waitUntil([&]{return valid("1") && valid("2");},"manual reconnect restores auto-stopped LC1 once attached",15000);
+    f.controller.disconnectDevice();
+}
 }
 int main(int argc,char** argv)
 {
@@ -507,5 +556,6 @@ int main(int argc,char** argv)
     }
     singlePortConnectionAndFailureIsolation();
     controllerLifecycleAndIndependentPhysicalPorts();
+    unidentifiedPortStopsPollingAfterSixFailures();
     std::puts("TEC103 GPIO controller tests passed");return 0;
 }

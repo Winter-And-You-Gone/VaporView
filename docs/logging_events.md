@@ -16,6 +16,7 @@
 | Ground/SkyCore | device.fpga | fpga_operation_diagnostic | Info/Warning/Error | FPGA 操作诊断；具体原因保留在 message。 | operation, ready, busy | error_code | FPGA_OPERATION_FAILED |
 | SkyCore | device.fpga | fpga_async_connection_result | Info/Warning | FPGA 异步连接结果；失败时需核对设备状态。 | result_code, detail | correlation_id, session_id |  |
 | Ground/SkyCore | device.temperature.identity | tec103_gpio_identified | Info | 已通过原生应答确认一台 TEC103 的型号、固件和物理 UART 对应关系。 | logical_channel, uart_bridge, model, firmware_raw, instrument_channel, baud | correlation_id, session_id |  |
+| Ground/SkyCore | device.temperature.identity | tec103_gpio_poll_stopped | Warning | 未识别的 TEC103 通道连续多次未收到应答，已自动停止后台轮询。 | logical_channel, uart_bridge, consecutive_failures, reason | correlation_id, session_id |  |
 | Ground/SkyCore | device.fpga | fpga_unrelated_command_timeout | Warning | 设备会话中不属于当前操作的排队命令超时；前台操作被中止时另记其关联诊断。 | command_sequence, command_message |  |  |
 | Ground | telemetry.command | ground_config_apply_result_context | Info | 已收到天空端配置应用关联结果。 | command_seq, command_id, config_apply_result |  |  |
 | Ground | protocol.parse | sky_config_apply_context_parse_failed | Warning | 无法解析天空端配置应用关联结果。 | message_type, payload_bytes |  |  |

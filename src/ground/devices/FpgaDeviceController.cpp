@@ -1139,7 +1139,7 @@ void FpgaDeviceController::stopTec103()
 {
     ++tec103Generation_;tec103Timer_.stop();tec103Enabled_=false;tec103PollPending_.fill(false);
     tec103PortEnabled_.fill(false);tec103PortConnected_.fill(false);tec103PortIdentifying_.fill(false);
-    tec103Identified_.fill(false);tec103Online_.fill(false);tec103Valid_.fill(false);
+    tec103Identified_.fill(false);tec103Online_.fill(false);tec103Valid_.fill(false);tec103IdentifyFailures_.fill(0);
     tec103Data_=TemperatureControllerData{};tec103PortData_={};
     tec103Data_.device_address=tec103Data_.rs485_baud_index=-1;
     tec103Data_.controller_mode=tec103Data_.overtemp_output_mode=-1;
@@ -1199,6 +1199,7 @@ void FpgaDeviceController::configureTec103(bool enable, quint16 source)
                 ++tec103Revision_[i];
                 tec103PortEnabled_[i] = tec103PortIdentifying_[i] = enable;
                 tec103PortConnected_[i] = tec103Identified_[i] = tec103Online_[i] = tec103Valid_[i] = false;
+                tec103IdentifyFailures_[i] = 0;
                 tec103PortData_[i] = {};
                 tec103Data_.channels[i] = TemperatureControllerChannelData{};
                 tec103Data_.channels[i].measured_temperature_c = std::numeric_limits<double>::quiet_NaN();
@@ -1296,6 +1297,7 @@ void FpgaDeviceController::pollTec103Port(int i)
                 if (owner) QMetaObject::invokeMethod(owner,[owner,generation,revision,i] {
                     if (!owner || generation!=owner->tec103Generation_ || revision!=owner->tec103Revision_[i]) return;
                     owner->tec103PortConnected_[i]=true;owner->tec103PortIdentifying_[i]=false;
+                    owner->tec103IdentifyFailures_[size_t(i)]=0;
                     owner->publishTec103Ports();
                     if (!owner->tec103Connected_) {
                         owner->tec103Connected_=true;
@@ -1315,7 +1317,9 @@ void FpgaDeviceController::pollTec103Port(int i)
             auto& channel=owner->tec103Data_.channels[size_t(i)];
             owner->tec103Online_[size_t(i)]=result.success;
             owner->tec103Valid_[size_t(i)]=result.success && result.channelValid[size_t(i)];
+            bool autoStopped = false;
             if(result.success) {
+                owner->tec103IdentifyFailures_[size_t(i)]=0;
                 if(!result.channelValid[size_t(i)] && !result.message.isEmpty())
                     errors.append(QStringLiteral("LC%1：%2").arg(i).arg(result.message));
                 if(!identified) {
@@ -1339,14 +1343,38 @@ void FpgaDeviceController::pollTec103Port(int i)
             } else {
                 channel.measured_temperature_c=channel.output_percent=channel.sensor_resistance_ohm=std::numeric_limits<double>::quiet_NaN();
                 errors.append(QStringLiteral("LC%1：%2").arg(i).arg(result.message));
+                if(!owner->tec103Identified_[size_t(i)] && owner->tec103PortEnabled_[size_t(i)]
+                    && !result.message.contains(QStringLiteral("未发送 TEC103 查询"))) {
+                    if(++owner->tec103IdentifyFailures_[size_t(i)] >= kTec103MaxUnidentifiedFailures) {
+                        autoStopped = true;
+                        ++owner->tec103Revision_[size_t(i)];
+                        owner->tec103PortEnabled_[size_t(i)] = false;
+                        owner->tec103PortConnected_[size_t(i)] = false;
+                        owner->tec103PortIdentifying_[size_t(i)] = false;
+                        owner->tec103Online_[size_t(i)] = false;
+                        owner->tec103Valid_[size_t(i)] = false;
+                        owner->tec103IdentifyFailures_[size_t(i)] = 0;
+                        owner->tec103Enabled_ = owner->tec103PortEnabled_[0] || owner->tec103PortEnabled_[1];
+                        if(!owner->tec103Enabled_) owner->tec103Timer_.stop();
+                        LogRecord record;record.source=QStringLiteral("Ground");record.category=QStringLiteral("device.temperature.identity");record.level=LogLevel::Warning;
+                        record.message=QStringLiteral("LC%1 连续 %2 次未收到 TEC103 应答，已自动停止轮询。").arg(i).arg(kTec103MaxUnidentifiedFailures);
+                        record.fields={{"event","tec103_gpio_poll_stopped"},{"logical_channel",i+1},{"uart_bridge",QStringLiteral("LC%1").arg(i)},
+                            {"consecutive_failures",kTec103MaxUnidentifiedFailures},{"reason",result.message}};
+                        LogService::addCallLocation(record,VAPORVIEW_LOG_FILE,VAPORVIEW_LOG_FUNCTION,VAPORVIEW_LOG_LINE);
+                        emit owner->logRecordGenerated(record);
+                    }
+                }
             }
             const bool bothOnline=owner->tec103Online_[0] && owner->tec103Online_[1];
             const bool connected=owner->tec103Connected_ || owner->tec103Online_[0] || owner->tec103Online_[1];
+            const auto portSummary=[owner,autoStopped,i](int portIndex) {
+                if (owner->tec103Online_[size_t(portIndex)]) return QStringLiteral("已连接 TEC103");
+                if (autoStopped && portIndex == i) return QStringLiteral("未连接或无应答（连续 %1 次失败，已停止轮询）").arg(kTec103MaxUnidentifiedFailures);
+                return QStringLiteral("未连接或无有效应答");
+            };
             const auto detail=bothOnline?QStringLiteral("双 TEC103 已连接（LC0/LC1，38400/8N1，各内部 TC1）。"):
                 QStringLiteral("LC0：%1；LC1：%2。%3")
-                    .arg(owner->tec103Online_[0]?QStringLiteral("已连接 TEC103"):QStringLiteral("未连接或无有效应答"),
-                         owner->tec103Online_[1]?QStringLiteral("已连接 TEC103"):QStringLiteral("未连接或无有效应答"),
-                         errors.join(QStringLiteral("；")));
+                    .arg(portSummary(0), portSummary(1), errors.join(QStringLiteral("；")));
             if(owner->tec103Connected_!=connected || owner->tec103Detail_!=detail) {
                 owner->tec103Connected_=connected;owner->tec103Detail_=detail;
                 emit owner->temperatureConnectionChanged(connected,detail);

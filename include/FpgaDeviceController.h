@@ -159,10 +159,12 @@ private:
     QTimer tec103Timer_;
     TemperatureControllerData tec103Data_;
     std::array<TemperatureControllerData,2> tec103PortData_;
+    static constexpr int kTec103MaxUnidentifiedFailures = 6;
     std::array<bool,2> tec103PortEnabled_{}, tec103PortConnected_{}, tec103PortIdentifying_{};
     std::array<bool,2> tec103Identified_{};
     std::array<bool,2> tec103Online_{};
     std::array<bool,2> tec103Valid_{};
+    std::array<int,2> tec103IdentifyFailures_{};
     std::array<quint64,2> tec103Revision_{};
     quint64 tec103Generation_ = 0, tec103Ticket_ = 0;
     bool tec103Enabled_ = false, tec103Connected_ = false;
