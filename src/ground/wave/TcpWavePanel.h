@@ -114,6 +114,7 @@ public:
 
 protected:
     void changeEvent(QEvent *event) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
 signals:
     void waterCalibrationRequested();
@@ -179,6 +180,7 @@ private:
     const WaveDisplayMode &waveDisplayMode() const;
     void updatePeakPlotModeButtonText();
     void updatePeakFilterButtonText();
+    void updatePeakHeaderLayout();
     QString peakFilterModeText(PeakFilterMode mode) const;
     void resetFrameRateDisplay();
     void updateFrameRateDisplay(qint64 arrivalTimeMs);
@@ -245,8 +247,10 @@ private:
     QGridLayout *control_layout_;
     QHBoxLayout *top_controls_layout_;
     QGridLayout *plots_layout_;
-    QHBoxLayout *peak_header_layout_ = nullptr;
-    QHBoxLayout *fpga_peak_controls_layout_ = nullptr;
+    QWidget *peak_header_bar_ = nullptr;
+    QHBoxLayout *peak_header_top_layout_ = nullptr;
+    QHBoxLayout *peak_header_wrapped_layout_ = nullptr;
+    bool peak_header_wrapped_ = false;
     QWidget *fpga_peak_controls_ = nullptr;
     QGroupBox *water_concentration_group_ = nullptr;
     QGroupBox *water_profile_group_ = nullptr;

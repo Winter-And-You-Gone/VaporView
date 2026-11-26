@@ -580,23 +580,31 @@ void testFpgaPeakHeaderStaysStable()
     auto *valueLabel=panel.findChild<QLabel*>("fpgaMonitorPeakValue");
     auto *mode=panel.findChild<QWidget*>("tcpWavePeakPlotModeSwitch");
     require(info&&valueLabel&&mode,"FPGA peak header controls exist");
-    auto *header=info->parentWidget();
+    auto *titleBar=mode->parentWidget();
+    auto *statusBar=info->parentWidget();
+    require(titleBar&&titleBar->objectName()==QStringLiteral("sectionTitleBar")&&statusBar&&statusBar!=titleBar,
+        "mode and clear controls stay in the peak trend title bar while peak readout lives below it");
+    auto *titleLabel=titleBar->findChild<QLabel*>("sectionTitleLabel");
     QPushButton *clear=nullptr;
-    for(auto *button:header->findChildren<QPushButton*>("compactTcpButton"))
+    for(auto *button:titleBar->findChildren<QPushButton*>("compactTcpButton"))
         if(!button->isHidden())clear=button;
-    require(clear,"FPGA peak clear button exists");
+    require(titleLabel&&clear,"FPGA peak title and clear button live in the title bar");
     quint32 cycle=0;
     const auto baseFont=panel.font();
     for(double scale:{1.0,1.3}) for(bool english:{false,true}) {
         auto font=baseFont; font.setPointSizeF(baseFont.pointSizeF()*scale); panel.setFont(font);
         panel.setEnglish(english); QApplication::processEvents();
         ++cycle; panel.setFpgaSecondHarmonicPeak(0x30,cycle,cycle,1.0,false); QApplication::processEvents();
-        const auto modeRect=mode->geometry(),clearRect=clear->geometry(),infoRect=info->geometry(),valueRect=valueLabel->geometry();
+        const auto titleRect=titleLabel->geometry(),modeRect=mode->geometry(),clearRect=clear->geometry();
+        const auto infoRect=info->geometry(),valueRect=valueLabel->geometry();
         const auto captionImage=info->grab().toImage();
-        require(info->alignment().testFlag(Qt::AlignRight)&&infoRect.left()>clearRect.right()
+        require(modeRect.left()>titleRect.right()&&clearRect.left()>modeRect.right()
+            &&clearRect.right()==titleBar->width()-titleBar->layout()->contentsMargins().right()-1,
+            "mode switch and clear button are right-aligned inside the peak trend title bar");
+        require(info->alignment().testFlag(Qt::AlignRight)&&infoRect.width()>0
             &&valueRect.left()>infoRect.right()
-            &&valueRect.right()==header->width()-header->layout()->contentsMargins().right()-1,
-            "latest FPGA peak occupies the right edge after both buttons");
+            &&valueRect.right()==statusBar->width()-statusBar->layout()->contentsMargins().right()-1,
+            "latest FPGA peak occupies the right edge of the status bar below the title bar");
         require(valueLabel->minimumWidth()==valueLabel->maximumWidth()
             &&valueLabel->fontMetrics().horizontalAdvance("1111111")==valueLabel->fontMetrics().horizontalAdvance("8888888"),
             "latest peak reserves a fixed width with equal-width digits");
@@ -634,6 +642,29 @@ void testFpgaPeakHeaderStaysStable()
             require(renderPeak(value).copy(suffix)==shortInteger.copy(suffix),
                 "integer digit counts and negative signs never move the decimal or fractional digits");
     }
+    panel.setFont(baseFont);
+    panel.setEnglish(false);
+    panel.setFpgaMode(false);
+    QApplication::processEvents();
+    require(mode->parentWidget()==titleBar&&clear->parentWidget()==titleBar
+        &&clear->geometry().left()>mode->geometry().right()
+        &&clear->geometry().right()==titleBar->width()-titleBar->layout()->contentsMargins().right()-1,
+        "direct mode also keeps mode switch and clear button right-aligned in the peak trend title bar");
+    panel.setFpgaMode(true);
+    panel.setEnglish(true);
+    panel.resize(700,900);
+    QApplication::processEvents();
+    require(mode->geometry().top()>=titleLabel->geometry().bottom()
+        &&clear->geometry().left()>mode->geometry().right()
+        &&clear->geometry().right()==titleBar->width()-titleBar->layout()->contentsMargins().right()-1
+        &&titleLabel->width()>=titleLabel->fontMetrics().horizontalAdvance(titleLabel->text()),
+        "narrow peak trend title bar wraps controls onto a right-aligned second row without clipping the title");
+    panel.resize(1500,900);
+    QApplication::processEvents();
+    require(mode->geometry().left()>titleLabel->geometry().right()
+        &&clear->geometry().left()>mode->geometry().right()
+        &&clear->geometry().right()==titleBar->width()-titleBar->layout()->contentsMargins().right()-1,
+        "widening the peak trend title bar restores single-row right-aligned controls");
 }
 
 }  // namespace

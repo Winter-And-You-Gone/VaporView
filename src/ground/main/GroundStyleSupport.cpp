@@ -1493,6 +1493,12 @@ QPushButton#temperatureOverviewOutputSwitch {
     background-color: transparent;
     color: @vv-text;
 }
+QPushButton#tcpWavePeakPlotModeSwitch {
+    background-color: transparent;
+    border: none;
+    padding: 0px;
+    margin: 0px;
+}
 )");
 }
 

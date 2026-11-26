@@ -233,6 +233,44 @@ int widestTextWidth(const QLabel *label, const QStringList& candidates)
     return width;
 }
 
+class PeakHeaderBarWidget final : public QWidget
+{
+public:
+    explicit PeakHeaderBarWidget(QWidget *parent = nullptr)
+        : QWidget(parent)
+    {
+    }
+
+    void setReferenceRowWidget(const QWidget *widget)
+    {
+        reference_row_widget_ = widget;
+    }
+
+    QSize minimumSizeHint() const override
+    {
+        return expandedSize(QWidget::minimumSizeHint());
+    }
+
+    QSize sizeHint() const override
+    {
+        return expandedSize(QWidget::sizeHint());
+    }
+
+private:
+    QSize expandedSize(const QSize &base) const
+    {
+        const int refHeight = (reference_row_widget_ && reference_row_widget_->minimumHeight() > 0)
+            ? reference_row_widget_->minimumHeight()
+            : kTcpButtonHeight;
+        const int singleRowHeight = std::max(
+            1,
+            static_cast<int>(std::lround(refHeight * static_cast<double>(kTcpTitleBarHeight) / kTcpButtonHeight)));
+        return QSize(base.width(), std::max(base.height(), singleRowHeight));
+    }
+
+    const QWidget *reference_row_widget_ = nullptr;
+};
+
 class DecimalAlignedPeakLabel final : public QLabel
 {
 public:
@@ -2147,34 +2185,36 @@ void TcpWavePanel::setupUi()
 
     peak_group_ = new QGroupBox(this);
     peak_group_->setObjectName("sensorGroupBox");
-    peak_group_->setMinimumHeight(198);
     peak_group_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::MinimumExpanding);
     auto *peakLayout = new QVBoxLayout(peak_group_);
     peakLayout->setContentsMargins(2, 2, 2, 2);
     peakLayout->setSpacing(0);
-    auto *peakHeaderBar = new QWidget(peak_group_);
-    peakHeaderBar->setObjectName("sectionTitleBar");
-    peakHeaderBar->setFixedHeight(kTcpTitleBarHeight);
-    peakHeaderBar->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    auto *peakHeaderLayout = new QHBoxLayout(peakHeaderBar);
-    peakHeaderLayout->setContentsMargins(8, 2, 8, 2);
-    peakHeaderLayout->setSpacing(6);
-    peak_title_label_ = new VaporView::VisualTextLabel(this);
+    auto *peakHeaderBar = new PeakHeaderBarWidget(peak_group_);
+    peak_header_bar_ = peakHeaderBar;
+    peak_header_bar_->setObjectName("sectionTitleBar");
+    peak_header_bar_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    peak_header_bar_->installEventFilter(this);
+    auto *peakHeaderOuterLayout = new QVBoxLayout(peak_header_bar_);
+    peakHeaderOuterLayout->setContentsMargins(8, 1, 8, 1);
+    peakHeaderOuterLayout->setSpacing(0);
+    peak_header_top_layout_ = new QHBoxLayout();
+    peak_header_top_layout_->setContentsMargins(0, 0, 0, 0);
+    peak_header_top_layout_->setSpacing(6);
+    peak_header_wrapped_layout_ = new QHBoxLayout();
+    peak_header_wrapped_layout_->setContentsMargins(0, 0, 0, 0);
+    peak_header_wrapped_layout_->setSpacing(6);
+    peakHeaderOuterLayout->addLayout(peak_header_top_layout_);
+    peakHeaderOuterLayout->addLayout(peak_header_wrapped_layout_);
+    peak_title_label_ = new VaporView::VisualTextLabel(peak_header_bar_);
     peak_title_label_->setObjectName("sectionTitleLabel");
     VaporView::configureSelectableCardTitle(peak_title_label_);
     peak_title_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     peak_title_label_->setMargin(0);
     peak_title_label_->setContentsMargins(0, 0, 0, 0);
     peak_title_label_->setFixedHeight(kTcpButtonHeight);
-    peakHeaderLayout->addWidget(peak_title_label_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    fpga_peak_info_label_ = new QLabel(peakHeaderBar);
-    fpga_peak_info_label_->setObjectName(QStringLiteral("fpgaMonitorPeakInfo"));
-    fpga_peak_info_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    fpga_peak_info_label_->hide();
-    fpga_peak_value_label_ = new DecimalAlignedPeakLabel(peakHeaderBar);
-    fpga_peak_value_label_->setObjectName(QStringLiteral("fpgaMonitorPeakValue"));
-    fpga_peak_value_label_->hide();
-    peak_filter_button_ = new QPushButton(this);
+    peakHeaderBar->setReferenceRowWidget(peak_title_label_);
+    peak_header_top_layout_->addWidget(peak_title_label_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    peak_filter_button_ = new QPushButton(peak_header_bar_);
     peak_filter_button_->setObjectName("compactTcpButton");
     peak_filter_button_->setFixedHeight(kTcpButtonHeight);
     {
@@ -2187,38 +2227,45 @@ void TcpWavePanel::setupUi()
         peak_filter_button_->setFixedWidth(width);
     }
     connect(peak_filter_button_, &QPushButton::clicked, this, &TcpWavePanel::onConfigurePeakFilterClicked);
-    peakHeaderLayout->addWidget(peak_filter_button_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    peak_mode_button_ = new VaporView::Ground::Widgets::SegmentedSwitchButton(this);
+    peak_header_top_layout_->addWidget(peak_filter_button_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    peak_header_top_layout_->addStretch(1);
+    peak_mode_button_ = new VaporView::Ground::Widgets::SegmentedSwitchButton(peak_header_bar_);
     peak_mode_button_->setObjectName("tcpWavePeakPlotModeSwitch");
     peak_mode_button_->setFixedSize(128, kTcpButtonHeight);
     connect(peak_mode_button_, &VaporView::Ground::Widgets::SegmentedSwitchButton::selectionRequested,
             this, &TcpWavePanel::onPeakPlotModeSelected);
-    peakHeaderLayout->addWidget(peak_mode_button_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    peak_clear_button_ = new QPushButton(this);
+    peak_header_top_layout_->addWidget(peak_mode_button_, 0, Qt::AlignVCenter | Qt::AlignRight);
+    peak_clear_button_ = new QPushButton(peak_header_bar_);
     peak_clear_button_->setObjectName("compactTcpButton");
     peak_clear_button_->setFixedHeight(kTcpButtonHeight);
     peak_clear_button_->setMinimumWidth(72);
+    peak_clear_button_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     connect(peak_clear_button_, &QPushButton::clicked, this, &TcpWavePanel::onClearPeakPlotClicked);
-    peakHeaderLayout->addWidget(peak_clear_button_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    peakHeaderLayout->addStretch(1);
-    peakHeaderLayout->addWidget(fpga_peak_info_label_);
-    peakHeaderLayout->addWidget(fpga_peak_value_label_);
-    peakLayout->addWidget(peakHeaderBar, 0, Qt::AlignTop);
+    peak_header_top_layout_->addWidget(peak_clear_button_, 0, Qt::AlignVCenter | Qt::AlignRight);
+    peakLayout->addWidget(peak_header_bar_, 0, Qt::AlignTop);
+    fpga_peak_controls_ = new QWidget(peak_group_);
+    auto *fpgaPeakControlsLayout = new QHBoxLayout(fpga_peak_controls_);
+    fpgaPeakControlsLayout->setContentsMargins(8, 2, 8, 2);
+    fpgaPeakControlsLayout->setSpacing(6);
+    fpga_peak_info_label_ = new QLabel(QStringLiteral(" "), fpga_peak_controls_);
+    fpga_peak_info_label_->setObjectName(QStringLiteral("fpgaMonitorPeakInfo"));
+    fpga_peak_info_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    fpga_peak_info_label_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+    fpga_peak_info_label_->hide();
+    fpga_peak_value_label_ = new DecimalAlignedPeakLabel(fpga_peak_controls_);
+    fpga_peak_value_label_->setObjectName(QStringLiteral("fpgaMonitorPeakValue"));
+    static_cast<DecimalAlignedPeakLabel *>(fpga_peak_value_label_)->setPeakText(QStringLiteral("—"));
+    fpga_peak_value_label_->hide();
+    fpgaPeakControlsLayout->addWidget(fpga_peak_info_label_, 1, Qt::AlignVCenter);
+    fpgaPeakControlsLayout->addWidget(fpga_peak_value_label_, 0, Qt::AlignVCenter);
+    peakLayout->addWidget(fpga_peak_controls_, 0, Qt::AlignTop);
+    fpga_peak_controls_->hide();
     peak_plot_ = new PeakTrendPlotWidget(this);
     peak_plot_->setObjectName(QStringLiteral("tcpWavePeakTrendPlot"));
     peak_plot_->setMaximumHeight(QWIDGETSIZE_MAX);
     peak_plot_->setPlotMode(peak_plot_scatter_mode_ ? PeakTrendPlotWidget::PlotMode::Scatter : PeakTrendPlotWidget::PlotMode::Polyline);
     peakLayout->addWidget(peak_plot_, 1);
     installTcpWaveCardOutline(peak_group_);
-    // The half-width FPGA trend keeps its controls on a second header row.
-    peak_header_layout_ = peakHeaderLayout;
-    fpga_peak_controls_ = new QWidget(peak_group_);
-    fpga_peak_controls_layout_ = new QHBoxLayout(fpga_peak_controls_);
-    fpga_peak_controls_layout_->setContentsMargins(8, 4, 8, 2);
-    fpga_peak_controls_layout_->addStretch();
-    peakLayout->insertWidget(1, fpga_peak_controls_, 0, Qt::AlignTop);
-    fpga_peak_controls_->hide();
-    fpga_peak_info_label_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
 
     createWaterPlots();
     for (auto *group : {wave1_group_, fpga_h2_group_, wave4_group_, peak_group_,
@@ -2387,6 +2434,8 @@ void TcpWavePanel::setEnglish(bool english)
     wave4_info_label_->setText(english ? "waiting for frame" : "等待数据帧");
     updatePeakFilterButtonText();
     updatePeakPlotModeButtonText();
+    updatePeakHeaderLayout();
+    if (fpga_mode_) refreshFpgaWaveform();
     refreshWaterPlots();
     applyWaveDisplayMode();
 
@@ -2394,7 +2443,6 @@ void TcpWavePanel::setEnglish(bool english)
     {
         setStatusText(english ? "Idle" : "空闲");
     }
-    if (fpga_mode_) refreshFpgaWaveform();
     setFpgaAcquisitionState(fpga_acquisition_available_, fpga_acquisition_busy_, fpga_acquiring_, fpga_raw_enabled_);
 }
 
@@ -2416,14 +2464,6 @@ void TcpWavePanel::setFpgaMode(bool enabled)
     fpga_peak_value_label_->setVisible(enabled);
     peak_filter_button_->setVisible(!enabled);
     fpga_peak_controls_->setVisible(enabled);
-    for (QWidget *control : QList<QWidget *>{peak_mode_button_, peak_clear_button_, fpga_peak_info_label_, fpga_peak_value_label_})
-    {
-        auto *from = enabled ? peak_header_layout_ : fpga_peak_controls_layout_;
-        auto *to = enabled ? fpga_peak_controls_layout_ : peak_header_layout_;
-        from->removeWidget(control);
-        const bool metadata = control == fpga_peak_info_label_ || control == fpga_peak_value_label_;
-        to->insertWidget(metadata ? to->count() : to->count() - 1, control, 0, Qt::AlignVCenter);
-    }
     clearRemoteWaveformDisplay();
     if (!enabled) { fpga_waves_.clear(); fpga_peaks_.clear(); clearWaterSamples(); }
     wave1_plot_->setSampleAxis(enabled);
@@ -2584,11 +2624,123 @@ void TcpWavePanel::changeEvent(QEvent *event)
 
     if (event->type() == QEvent::ApplicationPaletteChange ||
         event->type() == QEvent::PaletteChange ||
-        event->type() == QEvent::StyleChange)
+        event->type() == QEvent::StyleChange ||
+        event->type() == QEvent::FontChange)
     {
         updateWaveDisplayModeIcon();
         updatePeakFilterButtonText();
+        updatePeakHeaderLayout();
     }
+}
+
+bool TcpWavePanel::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == peak_header_bar_ && event)
+    {
+        switch (event->type())
+        {
+        case QEvent::Show:
+        case QEvent::Resize:
+        case QEvent::FontChange:
+        case QEvent::StyleChange:
+        case QEvent::LayoutRequest:
+            updatePeakHeaderLayout();
+            break;
+        default:
+            break;
+        }
+    }
+    return QWidget::eventFilter(watched, event);
+}
+
+void TcpWavePanel::updatePeakHeaderLayout()
+{
+    if (!peak_header_bar_ || !peak_header_bar_->isVisible() ||
+        !peak_header_top_layout_ || !peak_header_wrapped_layout_ ||
+        !peak_title_label_ || !peak_mode_button_ || !peak_clear_button_)
+    {
+        return;
+    }
+
+    const QMargins barMargins = peak_header_bar_->layout()
+        ? peak_header_bar_->layout()->contentsMargins()
+        : QMargins();
+    const int availableWidth = peak_header_bar_->contentsRect().width()
+        - barMargins.left() - barMargins.right();
+    if (availableWidth <= 0)
+    {
+        return;
+    }
+
+    const auto layoutWidth = [](const QWidget *widget) {
+        int width = widget->sizeHint().width();
+        if (widget->minimumWidth() > 0)
+        {
+            width = std::max(width, widget->minimumWidth());
+        }
+        if (widget->maximumWidth() < QWIDGETSIZE_MAX)
+        {
+            width = std::min(width, widget->maximumWidth());
+        }
+        return width;
+    };
+
+    const int spacing = std::max(0, peak_header_top_layout_->spacing());
+    const int titleWidth = std::max(
+        peak_title_label_->sizeHint().width(),
+        peak_title_label_->fontMetrics().horizontalAdvance(peak_title_label_->text()) + 2);
+    const int filterWidth = (peak_filter_button_ && !peak_filter_button_->isHidden())
+        ? layoutWidth(peak_filter_button_) + spacing
+        : 0;
+    const int requiredWidth = titleWidth + filterWidth + spacing
+        + layoutWidth(peak_mode_button_) + spacing + layoutWidth(peak_clear_button_);
+    const bool shouldWrap = requiredWidth > availableWidth;
+    if (shouldWrap == peak_header_wrapped_)
+    {
+        return;
+    }
+
+    peak_header_wrapped_ = shouldWrap;
+    peak_header_top_layout_->removeWidget(peak_mode_button_);
+    peak_header_top_layout_->removeWidget(peak_clear_button_);
+    peak_header_wrapped_layout_->removeWidget(peak_mode_button_);
+    peak_header_wrapped_layout_->removeWidget(peak_clear_button_);
+    while (QLayoutItem *item = peak_header_wrapped_layout_->takeAt(0))
+    {
+        delete item;
+    }
+
+    if (shouldWrap)
+    {
+        peak_header_wrapped_layout_->addStretch(1);
+        peak_header_wrapped_layout_->addWidget(peak_mode_button_, 0, Qt::AlignVCenter | Qt::AlignRight);
+        peak_header_wrapped_layout_->addWidget(peak_clear_button_, 0, Qt::AlignVCenter | Qt::AlignRight);
+    }
+    else
+    {
+        peak_header_top_layout_->addWidget(peak_mode_button_, 0, Qt::AlignVCenter | Qt::AlignRight);
+        peak_header_top_layout_->addWidget(peak_clear_button_, 0, Qt::AlignVCenter | Qt::AlignRight);
+    }
+    if (auto *outerLayout = qobject_cast<QVBoxLayout *>(peak_header_bar_->layout()))
+    {
+        outerLayout->setSpacing(shouldWrap ? 2 : 0);
+        outerLayout->invalidate();
+    }
+    peak_header_bar_->updateGeometry();
+    if (peak_group_ && peak_group_->layout())
+    {
+        peak_group_->layout()->invalidate();
+    }
+    if (peak_group_)
+    {
+        peak_group_->updateGeometry();
+    }
+    if (plots_layout_)
+    {
+        plots_layout_->invalidate();
+    }
+    updateGeometry();
+    emit preferredPanelHeightChanged();
 }
 
 void TcpWavePanel::updateWaveDisplayModeTexts()
@@ -2690,6 +2842,14 @@ void TcpWavePanel::applyWaveDisplayMode()
         peak_plot_->setPeakValues(peak_history_, peak_wall_msecs_);
     }
 
+    if (peak_group_ && peak_group_->layout())
+    {
+        peak_group_->layout()->invalidate();
+    }
+    if (plots_layout_)
+    {
+        plots_layout_->invalidate();
+    }
     updateGeometry();
     emit preferredPanelHeightChanged();
 }
@@ -2919,6 +3079,7 @@ void TcpWavePanel::updatePeakFilterButtonText()
     peak_filter_button_->setToolTip(text);
     const QFontMetrics metrics(peak_filter_button_->font());
     peak_filter_button_->setFixedWidth(std::clamp(metrics.horizontalAdvance(text) + kTcpCompactButtonTextPadding, 168, 420));
+    updatePeakHeaderLayout();
 }
 
 float TcpWavePanel::currentWaveformPeakValue(const QVector<float>& samples) const
