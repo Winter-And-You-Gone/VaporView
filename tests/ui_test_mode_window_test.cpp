@@ -1189,7 +1189,7 @@ int main(int argc, char **argv)
         require(settingsSnapshotsEqual(snapshotAll(), before, "navigation UI test preserves persistent settings"),
                 "all navigation simulations leave persistent settings unchanged");
         const auto sidebarButtons = window->findChildren<QPushButton *>(QStringLiteral("appSidebarButton"));
-        require(sidebarButtons.size() == 6, "sidebar restoration covers all six current navigation icons");
+        require(sidebarButtons.size() == 7, "sidebar restoration covers all seven current navigation icons");
         const auto requireSidebarColors = [&]() {
             for (auto *button : sidebarButtons)
             {

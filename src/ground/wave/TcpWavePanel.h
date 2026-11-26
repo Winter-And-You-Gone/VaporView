@@ -56,6 +56,7 @@ public:
     bool hasVisibleWaveDisplay() const;
     bool usesExpandedPanelHeight() const;
     void setRemoteSkyMode(bool enabled);
+    QWidget *createWaveformPage(QWidget *parent);
     void setFpgaMode(bool enabled);
     bool isFpgaMode() const { return fpga_mode_; }
     void setFpgaAcquisitionState(bool available, bool busy, bool acquiring, bool rawEnabled);
@@ -160,7 +161,8 @@ private:
     };
 
     void setupUi();
-    void refreshFpgaWaveform();
+    void refreshFpgaWaveform(int changedChannel = -1);
+    void refreshFpgaChannel(int channel);
     void setupSocket();
     void recreateSocket();
     void requestGracefulDisconnect();
@@ -172,8 +174,11 @@ private:
     void updateWaveDisplayModeIcon();
     void applyWaveDisplayMode();
     void layoutPlots();
-    void createWaterPlots();
-    void refreshWaterPlots();
+    struct WaterCards;
+    struct CalibrationControls;
+    void createWaterPlots(WaterCards &cards, QWidget *parent, int channel);
+    void addCalibrationControls(CalibrationControls &controls, QHBoxLayout *row);
+    void refreshWaterPlots(int changedChannel = -1);
     struct WaveDisplayMode {
         bool all = true;
         bool raw = false;
@@ -257,20 +262,23 @@ private:
     QHBoxLayout *peak_header_wrapped_layout_ = nullptr;
     bool peak_header_wrapped_ = false;
     QWidget *fpga_peak_controls_ = nullptr;
-    QGroupBox *water_concentration_group_ = nullptr;
-    QGroupBox *water_profile_group_ = nullptr;
-    QLabel *water_concentration_title_ = nullptr;
-    QLabel *water_profile_title_ = nullptr;
-    QLabel *water_profile_summary_ = nullptr;
-    QPushButton *profile_resolution_button_ = nullptr;
-    QPushButton *profile_clear_button_ = nullptr;
-    int profile_resolution_m_ = 5;
+    struct WaterCards {
+        QGroupBox *concentration, *profile;
+        QLabel *concentrationTitle, *profileTitle, *summary;
+        QPushButton *resolution, *clear;
+        PeakTrendPlotWidget *series;
+        WaterProfilePlotWidget *layers;
+    };
+    struct CalibrationControls { QPushButton *button; QLabel *file; };
+    struct WaveformPage;
+    std::unique_ptr<WaveformPage> waveform_page_;
+    std::array<WaterCards, 2> home_water_{};
+    std::array<QLabel *, 2> home_channel_labels_{};
+    std::array<int, 2> profile_resolution_m_{5, 5};
+    CalibrationControls home_calibration_{};
+    QWidget *home_calibration_bar_ = nullptr;
     std::shared_ptr<WaterProfileAccumulator> water_profile_;
     std::array<QString, 2> last_water_id_, excluded_profile_id_;
-    QPushButton *water_calibration_button_ = nullptr;
-    QLabel *water_calibration_file_label_ = nullptr;
-    PeakTrendPlotWidget *water_concentration_plot_ = nullptr;
-    WaterProfilePlotWidget *water_profile_plot_ = nullptr;
     QString water_calibration_key_, water_calibration_name_, water_unit_, water_calibration_detail_;
     struct WaterSample {
         QString id;

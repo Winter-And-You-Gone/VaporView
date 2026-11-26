@@ -533,6 +533,7 @@ void testPeakPlotModeSwitch()
 {
     TcpWavePanel panel;
     panel.setFpgaMode(true);
+    panel.findChild<QAction *>("tcpWaveDisplayPeakTrendMenuAction")->trigger();
     for (quint32 cycle=1;cycle<=4;++cycle)
         panel.setFpgaSecondHarmonicPeak(0x30,cycle,quint64(cycle)*100000000,cycle%2?10:30,false);
     panel.resize(1500,900);panel.show();QApplication::processEvents();
@@ -559,6 +560,7 @@ void testPeakPlotModeSwitch()
 void testNormalizedWaveformGapsRender()
 {
     TcpWavePanel panel;panel.setFpgaMode(true);panel.resize(1500,900);panel.show();
+    panel.findChild<QAction *>("tcpWaveDisplayHarmonicMenuAction")->trigger();
     panel.setFpgaWaveform(0x30,{{1,1,1,1,1}},{"H2/max(H1)"},"normalized",5);
     QApplication::processEvents();
     auto *plot=panel.findChild<QWidget*>("tcpWaveHarmonicPlot");
@@ -578,6 +580,7 @@ void testNormalizedWaveformGapsRender()
 void testFpgaPeakHeaderStaysStable()
 {
     TcpWavePanel panel; panel.setFpgaMode(true); panel.resize(1200,900); panel.show();
+    panel.findChild<QAction *>("tcpWaveDisplayShowAllMenuAction")->trigger();
     auto *info=panel.findChild<QLabel*>("fpgaMonitorPeakInfo");
     auto *valueLabel=panel.findChild<QLabel*>("fpgaMonitorPeakValue");
     auto *mode=panel.findChild<QWidget*>("tcpWavePeakPlotModeSwitch");
@@ -689,7 +692,9 @@ void testFpgaWaveDisplaySelection()
                                     panel.findChild<QWidget *>("tcpWaveHarmonicPlot"),
                                     panel.findChild<QWidget *>("tcpWavePeakTrendPlot"),
                                     panel.findChild<QWidget *>("waterConcentrationPlot"),
-                                    panel.findChild<QWidget *>("waterProfilePlot")};
+                                    panel.findChild<QWidget *>("waterProfilePlot"),
+                                    panel.findChild<QWidget *>("waterConcentrationPlot1"),
+                                    panel.findChild<QWidget *>("waterProfilePlot1")};
     const auto clickRow = [&](const QString &name) {
         button->click();
         require(waitUntil([&] { return menu->isVisible(); }), "wave display menu opens in either transport mode");
@@ -711,19 +716,19 @@ void testFpgaWaveDisplaySelection()
     panel.setFpgaMode(true);
     QApplication::processEvents();
     require(button->isVisible(), "FPGA keeps the wave display settings button visible");
-    checkPlots(60);
+    checkPlots(240);
     const auto equalRow = [&](int left, int right) {
         const auto *a = plots[left]->parentWidget();
         const auto *b = plots[right]->parentWidget();
         return a->geometry().top() == b->geometry().top() && a->geometry().right() < b->geometry().left() &&
                std::abs(a->width() - b->width()) <= 1;
     };
-    require(equalRow(2, 4) && equalRow(3, 5), "default water plots align in two equal-width rows");
+    require(equalRow(4, 6) && equalRow(5, 7), "default water plots align in two equal-width rows");
     const QString defaultView = QStringLiteral("fpgaWaveDisplayDefaultMenuAction");
     const QString showAll = QStringLiteral("tcpWaveDisplayShowAllMenuAction");
     clickRow(showAll);
-    checkPlots(63);
-    require(equalRow(0, 1) && equalRow(2, 4) && equalRow(3, 5), "all six plots use the requested 1:1 pairings");
+    checkPlots(255);
+    require(equalRow(0, 1) && equalRow(4, 6) && equalRow(5, 7), "both water channels stay aligned in the all-graphs view");
     const int allHeight = panel.preferredPanelHeight();
     int acquisitionRequests = 0;
     QObject::connect(&panel, &TcpWavePanel::fpgaAcquisitionRequested, &panel,
@@ -744,7 +749,7 @@ void testFpgaWaveDisplaySelection()
         }
     }
     clickRow(showAll);
-    checkPlots(63);
+    checkPlots(255);
     clickRow(showAll);
     checkPlots(0);
     panel.setFpgaWaveform(0x30, {{10, 20}, {40, 50}, {4, 2.5}}, {"H1", "H2", "H2/max(H1)"}, "complete", 2);
@@ -767,7 +772,7 @@ void testFpgaWaveDisplaySelection()
     QApplication::processEvents();
     checkPlots(12);
     clickRow(defaultView);
-    checkPlots(60);
+    checkPlots(240);
     panel.setWaterCalibration("cal-a", "sample.vcal", "ppmv", false, {});
     auto *calFileLabel = panel.findChild<QLabel *>(QStringLiteral("waterCalibrationFileLabel"));
     QPushButton *calButton = nullptr;
@@ -829,8 +834,9 @@ void testFpgaWaveDisplaySelection()
             "a timely later height completes the profile point without duplicating concentration");
     panel.appendWaterSample(1, "other", now, 4.0, 60.0);
     panel.findChild<QComboBox *>("fpgaMonitorChannelCombo")->setCurrentIndex(1);
-    require(plots[4]->property("sampleCount").toInt() == 1 && plots[5]->property("sampleCount").toInt() == 1,
-            "water plots follow the selected FPGA channel");
+    require(plots[4]->property("sampleCount").toInt() == 2 && plots[5]->property("sampleCount").toInt() == 2 &&
+            plots[6]->property("sampleCount").toInt() == 1 && plots[7]->property("sampleCount").toInt() == 1,
+            "both water channels are independent of the harmonic selector");
     auto *profile = plots[5];
     auto *summary = panel.findChild<QLabel *>("waterProfileSummary");
     auto *profileCard = profile->parentWidget();
@@ -840,9 +846,13 @@ void testFpgaWaveDisplaySelection()
     for (auto *candidate : profileCard->findChildren<QPushButton *>())
         if (candidate->text() == QStringLiteral("清空")) clearProfile = candidate;
     require(summary && resolutionButton && clearProfile, "profile controls available");
-    clearProfile->click();
+    QPushButton *clearOther = nullptr;
+    for (auto *button : plots[7]->parentWidget()->findChildren<QPushButton *>())
+        if (button->text() == QStringLiteral("清空")) clearOther = button;
+    require(clearOther, "second channel has a profile clear button");
+    clearOther->click();
     panel.appendWaterSample(1, "other", now, 4.0, 60.0);
-    require(plots[4]->property("sampleCount").toInt() == 1 && profile->property("layerCount").toInt() == 0,
+    require(plots[6]->property("sampleCount").toInt() == 1 && plots[7]->property("layerCount").toInt() == 0,
             "manual clear preserves concentration and excludes republished current reading");
     panel.findChild<QComboBox *>("fpgaMonitorChannelCombo")->setCurrentIndex(0);
     require(profile->property("layerCount").toInt() == 2, "manual clear is channel-local");
@@ -971,7 +981,7 @@ int main(int argc, char **argv)
         auto *h2=panel.findChild<QWidget*>("fpgaWaveH2Plot");
         auto *peaks=panel.findChild<QWidget*>("tcpWavePeakTrendPlot");
         panel.resize(1500,900);panel.show();QApplication::processEvents();
-        // This waveform test exercises all four traces. The default also reserves two water cards.
+        // This waveform test exercises all four traces. The default shows the four water cards.
         panel.findChild<VaporView::SingleLevelPopupMenuRow *>("tcpWaveDisplayShowAllMenuAction")->click();
         require(raw->isVisible()&&h2->isVisible()&&dlia->isVisible()&&peaks->isVisible(),"FPGA monitor displays all four graphs");
         auto *rawButton=panel.findChild<QPushButton*>("fpgaMonitorRawButton");

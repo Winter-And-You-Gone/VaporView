@@ -1771,6 +1771,7 @@ void requireRtkSidebarPage(
     QLabel *customTitleLabel,
     bool requireStableFirstFrame = true)
 {
+    QPushButton *waveformButton = nullptr;
     QPushButton *homeButton = nullptr;
     QPushButton *temperatureButton = nullptr;
     QPushButton *rtkButton = nullptr;
@@ -1783,6 +1784,10 @@ void requireRtkSidebarPage(
         if (accessibleName == QStringLiteral("首页") || accessibleName == QStringLiteral("Home"))
         {
             homeButton = button;
+        }
+        else if (accessibleName == QStringLiteral("波形") || accessibleName == QStringLiteral("Waveforms"))
+        {
+            waveformButton = button;
         }
         else if (accessibleName == QStringLiteral("温控") || accessibleName == QStringLiteral("Thermal"))
         {
@@ -1804,10 +1809,10 @@ void requireRtkSidebarPage(
     require(homeButton != nullptr, "home sidebar button exists after combination-navigation check");
     require(rtkButton->property("_vv_sidebar_icon_name").toString() == QStringLiteral("satellite"),
             "combination-navigation sidebar button uses the existing satellite icon");
-    require(homeButton->y() < deviceButton->y() &&
+    require(waveformButton && homeButton->y() < waveformButton->y() && waveformButton->y() < deviceButton->y() &&
                 deviceButton->y() < temperatureButton->y() &&
                 temperatureButton->y() < rtkButton->y(),
-            "sidebar order is home, device configuration, thermal, combination navigation");
+            "sidebar order is home, waveforms, device configuration, thermal, combination navigation");
     require(homeButton->focusPolicy() == Qt::TabFocus &&
                 deviceButton->focusPolicy() == Qt::TabFocus &&
                 temperatureButton->focusPolicy() == Qt::TabFocus &&
@@ -1817,10 +1822,10 @@ void requireRtkSidebarPage(
     QKeyEvent sidebarDown(QEvent::KeyPress, Qt::Key_Down, Qt::NoModifier);
     QApplication::sendEvent(homeButton, &sidebarDown);
     processEventsFor(60);
-    require(deviceButton->isChecked(),
-            "sidebar Down arrow moves page selection to device configuration");
+    require(waveformButton->isChecked() && window.findChild<QStackedWidget *>("mainPageStack")->currentWidget()->objectName() == "waveformMonitorPage",
+            "sidebar Down arrow opens waveforms from home");
     QKeyEvent sidebarUp(QEvent::KeyPress, Qt::Key_Up, Qt::NoModifier);
-    QApplication::sendEvent(deviceButton, &sidebarUp);
+    QApplication::sendEvent(waveformButton, &sidebarUp);
     processEventsFor(60);
     require(homeButton->isChecked(),
             "sidebar Up arrow moves page selection back to home");
@@ -1839,7 +1844,7 @@ void requireRtkSidebarPage(
     const qint64 stoppedIconKey = rtkButton->icon().pixmap(iconSize).cacheKey();
 
     auto *pageStack = window.findChild<QStackedWidget *>(QStringLiteral("mainPageStack"));
-    require(pageStack != nullptr && pageStack->count() == 6 &&
+    require(pageStack != nullptr && pageStack->count() == 7 &&
                 pageStack->widget(4)->objectName() == QStringLiteral("fpgaControlPage") &&
                 pageStack->widget(5)->objectName() == QStringLiteral("waterCalibrationPage"),
             "main page stack preserves existing indices with motion embedded in device configuration");

@@ -323,7 +323,7 @@ int main(int argc, char **argv)
               "direct mode packs ten devices into two complete columns");
         window.resize(1600, 850);
         pages->setCurrentWidget(configuration); QApplication::processEvents();
-        check(configuration->isAncestorOf(panel) && pages->indexOf(page) == -1 && pages->count() == 6,
+        check(configuration->isAncestorOf(panel) && pages->indexOf(page) == -1 && pages->count() == 7,
               "motion controls belong to device configuration without a separate navigation page");
         auto *header = panel->findChild<QWidget*>(QStringLiteral("sectionTitleBar"));
         check(header->isAncestorOf(port) && header->isAncestorOf(connect) &&

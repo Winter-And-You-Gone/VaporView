@@ -1,3 +1,6 @@
+#include "shared/theme/SingleLevelPopupMenu.h"
+#include <QScrollArea>
+#include <QGroupBox>
 #include "test_settings_sandbox.h"
 #include "IndependentCalibrationFixture.h"
 #include "ground/main/MainWindow.h"
@@ -2220,6 +2223,50 @@ static void harmonicHomeGraphs()
             monitor->findChild<QWidget *>("waterProfilePlot")->isVisibleTo(monitor) &&
             !monitor->findChild<QWidget *>("tcpWaveRawPlot")->isVisibleTo(monitor),
             "home FPGA monitor starts in the water measurement view");
+        auto *stack = window.findChild<QStackedWidget *>("mainPageStack");
+        auto *wavePage = window.findChild<QScrollArea *>("waveformMonitorPage");
+        QPushButton *nav = nullptr;
+        for (auto *button : window.findChildren<QPushButton *>("appSidebarButton"))
+            if (button->property("_vv_sidebar_icon_name").toString() == "audio-waveform") nav = button;
+        require(wavePage && nav, "waveforms page and navigation exist");
+        nav->click();
+        require(stack->currentWidget() == wavePage, "waveform navigation opens the page");
+        require(wavePage->findChildren<QGroupBox *>("sensorGroupBox").size() == 14,
+                "waveforms page has seven chart cards in each channel");
+        monitor->setWaterCalibration("test", "test.vcal", "ppmv", false, {});
+        for (int channel = 0; channel < 2; ++channel) {
+            wave.source = 0x30 + channel;
+            page->updateWaveform(wave);
+            QVector<double> adc(10 + channel, channel + 1.0);
+            monitor->setFpgaWaveform(0x20 + channel, {adc}, {"ADC"}, "preview", 128, true);
+            monitor->appendWaterSample(channel, QString::number(channel), 1000, 10 + channel, 5);
+            for (const QString &kind : {"Raw", "H1", "H2", "Normalized", "Trend"}) {
+                auto *plot = wavePage->findChild<QWidget *>(QStringLiteral("wavePage%1Channel%2").arg(kind).arg(channel));
+                require(plot && plot->isVisibleTo(wavePage) && plot->property("sampleCount").toInt() > 0,
+                        "dedicated waveform page receives raw, H1, H2, normalized waveform and peaks on each lane");
+                if (kind == "Raw") require(plot->property("sampleCount").toInt() == adc.size(), "ADC preview is channel-specific");
+            }
+            for (const QString &kind : {"waterConcentrationPlot", "waterProfilePlot"}) {
+                const auto name = kind + (channel ? QStringLiteral("1") : QString());
+                for (QWidget *view : {static_cast<QWidget *>(wavePage), static_cast<QWidget *>(monitor)})
+                    require(view->findChild<QWidget *>(name)->property("sampleCount").toInt() == 1,
+                            "home and waveforms share each water measurement exactly once");
+            }
+        }
+
+        auto *profileCard = wavePage->findChild<QWidget *>("waterProfilePlot1")->parentWidget();
+        auto *resolution = profileCard->findChild<VaporView::SingleLevelPopupMenu *>();
+        require(resolution, "waveforms resolution uses the custom popup");
+        resolution->actions().last()->trigger();
+        auto *homeMenu = monitor->findChild<QWidget *>("waterProfilePlot1")->parentWidget()->findChild<VaporView::SingleLevelPopupMenu *>();
+        require(qobject_cast<QPushButton *>(homeMenu->parent())->text() == resolution->actions().last()->text(),
+                "changing resolution on the waveforms page updates the home profile");
+        for (auto *button : profileCard->findChildren<QPushButton *>())
+            if (button->text() == QStringLiteral("清空") || button->text() == "Clear") button->click();
+        require(monitor->findChild<QWidget *>("waterProfilePlot1")->property("sampleCount").toInt() == 0 &&
+                monitor->findChild<QWidget *>("waterProfilePlot")->property("sampleCount").toInt() == 1,
+                "clearing a lane in waveforms clears only that shared profile");
+        stack->setCurrentIndex(0);
         auto *all = monitor->findChild<QAction *>("tcpWaveDisplayShowAllMenuAction");
         require(all, "home monitor provides the all-graphs view");
         all->trigger();
@@ -3544,7 +3591,7 @@ int main(int argc,char **argv)
         MainWindow window;
         auto *stack=window.findChild<QStackedWidget*>(QStringLiteral("mainPageStack"));
         auto *page=window.findChild<FpgaControlPage*>(QStringLiteral("fpgaControlPage"));
-        require(stack && stack->count()==6 && page && stack->widget(4)==page,"FPGA remains the fifth standalone persistent page");
+        require(stack && stack->count()==7 && page && stack->widget(4)==page,"FPGA remains the fifth standalone persistent page");
         worker=window.testFpgaController()->thread();
         require(worker && worker->isRunning(),"USB worker has its own running event loop");
         require(page->configuration().pressureSource==0x40 && page->configuration().backend=="auto","PTB210 and auto backend defaults");

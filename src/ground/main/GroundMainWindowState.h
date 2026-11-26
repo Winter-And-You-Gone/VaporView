@@ -337,6 +337,7 @@ struct MainWindowState
     QWidget *app_sidebar_;
     QButtonGroup *app_nav_button_group_;
     QPushButton *home_nav_btn_;
+    QPushButton *waveform_nav_btn_ = nullptr;
     QPushButton *temperature_nav_btn_;
     VaporView::Ground::Motion::MotionControlPage *motion_page_ = nullptr;
     VaporView::Ground::Motion::HomeMotionPanel *home_motion_panel_ = nullptr;

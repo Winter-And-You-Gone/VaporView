@@ -930,6 +930,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
             auto *keyEvent = static_cast<QKeyEvent *>(event);
             const QList<QPushButton *> buttons = {
                 state_->home_nav_btn_,
+                state_->waveform_nav_btn_,
                 state_->device_config_nav_btn_,
                 state_->temperature_nav_btn_,
                 state_->rtk_config_nav_btn_,

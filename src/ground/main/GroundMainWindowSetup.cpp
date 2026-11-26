@@ -2473,6 +2473,7 @@ void MainWindow::setupCentralWidget()
         return button;
     };
     state_->home_nav_btn_ = createNavButton(QStringLiteral("首页"), QStringLiteral("square-activity"));
+    state_->waveform_nav_btn_ = createNavButton(QStringLiteral("波形"), QStringLiteral("audio-waveform"));
     state_->device_config_nav_btn_ = createNavButton(QStringLiteral("设备配置"), QStringLiteral("sliders-vertical"));
     state_->temperature_nav_btn_ = createNavButton(QStringLiteral("温控"), QStringLiteral("thermometer"));
     state_->rtk_config_nav_btn_ = createNavButton(QStringLiteral("组合导航"), QStringLiteral("satellite"));
@@ -2899,6 +2900,8 @@ void MainWindow::setupCentralWidget()
     setupFpgaControlPage();
     state_->water_calibration_page_ = new VaporView::Ground::Calibration::WaterCalibrationPage(state_->main_page_stack_, {}, state_->calibration_service_);
     state_->main_page_stack_->addWidget(state_->water_calibration_page_);
+    const int waveformIndex = state_->main_page_stack_->addWidget(state_->tcp_wave_panel_->createWaveformPage(state_->main_page_stack_));
+    state_->app_nav_button_group_->addButton(state_->waveform_nav_btn_, waveformIndex);
 
     connect(state_->app_nav_button_group_, &QButtonGroup::idClicked, this, [this](int id) {
         if (id == 3)
@@ -3920,7 +3923,7 @@ void MainWindow::updateSidebarNavIcons()
     const bool dark = state_->dark_theme_enabled_;
     const QColor normalColor = appThemeColor(AppThemeColor::Text, dark);
     const QColor activeColor = QColor(255, 255, 255);
-    for (QPushButton *button : {state_->home_nav_btn_, state_->temperature_nav_btn_, state_->rtk_config_nav_btn_, state_->device_config_nav_btn_, state_->fpga_nav_btn_, state_->water_calibration_nav_btn_})
+    for (QPushButton *button : {state_->home_nav_btn_, state_->waveform_nav_btn_, state_->temperature_nav_btn_, state_->rtk_config_nav_btn_, state_->device_config_nav_btn_, state_->fpga_nav_btn_, state_->water_calibration_nav_btn_})
     {
         if (!button)
         {

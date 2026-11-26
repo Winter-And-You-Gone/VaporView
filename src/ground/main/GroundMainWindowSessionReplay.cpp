@@ -2,6 +2,7 @@
 #include "ground/main/UiTestReplayWindow.h"
 #include "ground/session/SessionCsv.h"
 #include "Hc2aProtocol.h"
+#include "FpgaHarmonics.h"
 #include "FpgaTelemetry.h"
 #include "EpsilonProtocol.h"
 #include "Sdfm300Protocol.h"
@@ -106,13 +107,16 @@ void showWave(TcpWavePanel& panel, const Sample& s)
     if (s.header.recordType == Raw::kRecordTypeHarmonicPair) {
         VaporView::Session::HarmonicLayout layout;
         if (!VaporView::Session::parseHarmonicLayout(s.bytes, s.bytes.size(), layout)) return;
-        QVector<QVector<double>> waves;
-        for (int component : {1, 0, 6}) {
-            const auto samples = VaporView::Session::harmonicSamples(s.bytes, component);
-            waves.append(QVector<double>(samples.begin(), samples.end()));
-        }
+        QVector<double> h1, h2;
+        if (!VaporView::Session::harmonicSamplePairs(s.bytes, h1, h2) || h1.isEmpty()) return;
+        const double reference = *std::max_element(h1.cbegin(), h1.cend());
+        QVector<double> normalized;
+        normalized.reserve(h2.size());
+        for (double sample : h2)
+            normalized.append(VaporView::FpgaWave::normalizedSecondHarmonic(reference, sample));
         panel.setFpgaMode(true);
-        panel.setFpgaWaveform(layout.channel, waves, {"H1", "H2", "H2/H1"}, "Session", layout.originalPoints);
+        panel.setFpgaWaveform(layout.channel, {h1, h2, normalized}, {"H1", "H2", "H2/max(H1)"},
+                              "Session", layout.originalPoints, layout.quality & VaporView::Session::IncompleteCycle);
         return;
     }
     Raw::WaveformPayloadLayout layout;
