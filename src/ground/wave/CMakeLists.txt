@@ -1,6 +1,8 @@
 add_library(vaporview_ground_wave STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/RawDataParserWindow.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/RawDataParserWindow.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/WaterProfileAccumulator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/WaterProfileAccumulator.h
     ${CMAKE_CURRENT_SOURCE_DIR}/TcpWavePanel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/TcpWavePanel.h
 )

@@ -1137,6 +1137,7 @@ void MainWindow::startOrResumeUiTestRecording()
 {
     if (state_->ui_test_recording_state_ == 0)
     {
+        state_->tcp_wave_panel_->clearWaterProfiles();
         state_->ui_test_recording_elapsed_ms_ = 0;
     }
     state_->ui_test_recording_started_ms_ = QDateTime::currentMSecsSinceEpoch();
@@ -1305,6 +1306,7 @@ bool MainWindow::startRecordingSession()
     if (state_->combination_navigation_page_)
         state_->combination_navigation_page_->refreshStatus();
     updateRecordingStatusLabel();
+    if (!resuming) state_->tcp_wave_panel_->clearWaterProfiles();
     const VaporView::ScopedLogContext completedContext({operationId, status.sessionDirectory});
     if (resuming)
     {

@@ -139,7 +139,10 @@ void MainWindow::resetReplayDisplays(bool replay)
     }
 #endif
     if (changed) {
-        if (replay) invalidateFpgaMeasurements();
+        if (replay) {
+            state_->tcp_wave_panel_->clearWaterProfiles();
+            invalidateFpgaMeasurements();
+        }
         updateUiTestModeUi();
         if (replay && state_->motion_page_) state_->motion_page_->session()->setUiTestScenario(true, true);
     }

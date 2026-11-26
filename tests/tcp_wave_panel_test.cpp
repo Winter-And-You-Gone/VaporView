@@ -1,5 +1,7 @@
 #include "test_settings_sandbox.h"
 #include "ground/wave/TcpWavePanel.h"
+#include "shared/theme/AppTheme.h"
+#include <QMouseEvent>
 #include "ground/widgets/SegmentedSwitchButton.h"
 #include "LogService.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
@@ -829,6 +831,76 @@ void testFpgaWaveDisplaySelection()
     panel.findChild<QComboBox *>("fpgaMonitorChannelCombo")->setCurrentIndex(1);
     require(plots[4]->property("sampleCount").toInt() == 1 && plots[5]->property("sampleCount").toInt() == 1,
             "water plots follow the selected FPGA channel");
+    auto *profile = plots[5];
+    auto *summary = panel.findChild<QLabel *>("waterProfileSummary");
+    auto *profileCard = profile->parentWidget();
+    auto *resolutionMenu = profileCard->findChild<VaporView::SingleLevelPopupMenu *>();
+    auto *resolutionButton = qobject_cast<QPushButton *>(resolutionMenu ? resolutionMenu->parentWidget() : nullptr);
+    QPushButton *clearProfile = nullptr;
+    for (auto *candidate : profileCard->findChildren<QPushButton *>())
+        if (candidate->text() == QStringLiteral("清空")) clearProfile = candidate;
+    require(summary && resolutionButton && clearProfile, "profile controls available");
+    clearProfile->click();
+    panel.appendWaterSample(1, "other", now, 4.0, 60.0);
+    require(plots[4]->property("sampleCount").toInt() == 1 && profile->property("layerCount").toInt() == 0,
+            "manual clear preserves concentration and excludes republished current reading");
+    panel.findChild<QComboBox *>("fpgaMonitorChannelCombo")->setCurrentIndex(0);
+    require(profile->property("layerCount").toInt() == 2, "manual clear is channel-local");
+    const auto chooseResolution = [&](int meters) {
+        resolutionButton->click();
+        require(waitUntil([&] { return resolutionMenu->isVisible(); }), "resolution popup opens");
+        for (auto *action : resolutionMenu->actions()) if (action->text() == QStringLiteral("%1 m").arg(meters)) {
+            action->trigger();
+            resolutionMenu->hide();
+            require(resolutionButton->text() == action->text(), "resolution selection updates button");
+            return;
+        }
+        require(false, "resolution option exists");
+    };
+    chooseResolution(10);
+    require(profile->property("layerCount").toInt() == 1 && profile->property("sampleCount").toInt() == 2,
+            "coarser resolution combines historical layers");
+    chooseResolution(5);
+    for (int i = 0; i < 1501; ++i) panel.appendWaterSample(0, QString::number(i), now + 2 + i, 13, 50);
+    require(plots[4]->property("sampleCount").toInt() == 1000 && profile->property("layerCount").toInt() == 3 &&
+            profile->property("sampleCount").toInt() == 1503, "1000-frame trend cannot evict profile layers");
+    panel.clearWaterSamples(); // The same path used on disconnect.
+    require(plots[4]->property("sampleCount").toInt() == 0 && profile->property("sampleCount").toInt() == 1503,
+            "disconnect clears only the time series");
+    panel.hide(); panel.show();
+    require(profile->property("layerCount").toInt() == 3, "reopening retains the profile");
+
+    // Two vertically aligned layers separated by three empty bins. Inspect the actual
+    // plotted pixels and hover the lower node, without depending on private plot geometry.
+    clearProfile->click();
+    panel.appendWaterSample(0, "lower", now + 2000, 10, 20);
+    panel.appendWaterSample(0, "upper", now + 2001, 10, 40);
+    panel.setEnglish(true);
+    QApplication::processEvents();
+    const auto image = profile->grab().toImage();
+    const QColor blue = VaporView::appThemeColor(VaporView::AppThemeColor::PlotSeriesWaveBlue, image.pixelColor(0, 0).lightness() < 128);
+    int top = image.height(), bottom = -1;
+    QPoint lower;
+    for (int y = 0; y < image.height(); ++y) for (int x = 0; x < image.width(); ++x) {
+        if (image.pixelColor(x, y) != blue) continue;
+        top = std::min(top, y);
+        if (y > bottom) { bottom = y; lower = QPoint(x, y); }
+    }
+    require(bottom - top > 12, "both layer nodes are rendered");
+    // Match blended antialiased blue too: a thin connecting line need not contain a solid pixel.
+    for (int x = lower.x() - 4; x <= lower.x() + 4; ++x) {
+        auto pixel = image.pixelColor(x, (top + bottom) / 2);
+        require(pixel.blue() - pixel.red() < 20, "no profile line across empty bins");
+    }
+    QPointF local = QPointF(lower) / image.devicePixelRatio();
+    QMouseEvent move(QEvent::MouseMove, local, profile->mapToGlobal(local), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(profile, &move);
+    require(profile->toolTip().contains(QStringLiteral("20–25 m")) && profile->toolTip().contains("22.5 m") &&
+            profile->toolTip().contains("Samples: 1") && profile->toolTip().contains(QStringLiteral("Sample SD: —")),
+            "hover explains the actual bin and singleton uncertainty");
+    QEvent leave(QEvent::Leave);
+    QApplication::sendEvent(profile, &leave);
+    require(profile->toolTip().startsWith("X:"), "leaving a node restores the axes tooltip");
     panel.setWaterCalibration("cal-b", "other.vcal", "ppmv", false, {});
     require(plots[4]->property("sampleCount").toInt() == 0 && plots[5]->property("sampleCount").toInt() == 0,
             "calibration changes clear prior measurements");
@@ -899,6 +971,8 @@ int main(int argc, char **argv)
         auto *h2=panel.findChild<QWidget*>("fpgaWaveH2Plot");
         auto *peaks=panel.findChild<QWidget*>("tcpWavePeakTrendPlot");
         panel.resize(1500,900);panel.show();QApplication::processEvents();
+        // This waveform test exercises all four traces. The default also reserves two water cards.
+        panel.findChild<VaporView::SingleLevelPopupMenuRow *>("tcpWaveDisplayShowAllMenuAction")->click();
         require(raw->isVisible()&&h2->isVisible()&&dlia->isVisible()&&peaks->isVisible(),"FPGA monitor displays all four graphs");
         auto *rawButton=panel.findChild<QPushButton*>("fpgaMonitorRawButton");
         auto *harmonicButton=panel.findChild<QPushButton*>("fpgaMonitorHarmonicButton");

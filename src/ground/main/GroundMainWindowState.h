@@ -17,6 +17,7 @@
 #include <atomic>
 
 #include "ground/navigation/NavigationStatusPanel.h"
+class WaterProfileAccumulator;
 class UiTestReplayWindow;
 class FpgaControlPage;
 class QVBoxLayout;
@@ -635,6 +636,9 @@ struct MainWindowState
     QAction *rtk_config_action_;
     RtkConfigDialog *rtk_config_dialog_;
     bool rtk_service_running_;
+    std::shared_ptr<WaterProfileAccumulator> water_profile_;
+    bool remote_profile_session_open_ = false;
+    QString remote_profile_session_name_;
     TcpWavePanel *tcp_wave_panel_;
     SessionViewerWindow *session_viewer_window_;
 };

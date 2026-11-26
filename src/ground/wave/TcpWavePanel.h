@@ -7,6 +7,10 @@
 
 #include <QByteArray>
 #include <QMap>
+#include <array>
+#include <memory>
+
+class WaterProfileAccumulator;
 #include <QStringList>
 #include <QVariantMap>
 #include <QWidget>
@@ -34,7 +38,7 @@ class TcpWavePanel : public QWidget
     Q_OBJECT
 
 public:
-    explicit TcpWavePanel(QWidget *parent = nullptr);
+    explicit TcpWavePanel(QWidget *parent = nullptr, std::shared_ptr<WaterProfileAccumulator> profile = {});
     ~TcpWavePanel() override;
 
     void setEnglish(bool english);
@@ -59,7 +63,8 @@ public:
                          const QStringList &components, const QString &detail, quint32 totalPoints, bool preview = false);
     void setFpgaSecondHarmonicPeak(quint16 source, quint32 cycleId, quint64 timestamp, double peak, bool preview);
     void setWaterCalibration(const QString &key, const QString &name, const QString &unit, bool locked, const QString &detail);
-    void clearWaterSamples();
+    void clearWaterSamples(); // Concentration time series only.
+    void clearWaterProfiles();
     void appendWaterSample(int channel, const QString &id, qint64 timeMs, double value, double heightM);
     void setUiTestMode(bool enabled);
     void setUiTestConnected(bool connected);
@@ -256,7 +261,12 @@ private:
     QGroupBox *water_profile_group_ = nullptr;
     QLabel *water_concentration_title_ = nullptr;
     QLabel *water_profile_title_ = nullptr;
-    QLabel *water_profile_axes_ = nullptr;
+    QLabel *water_profile_summary_ = nullptr;
+    QPushButton *profile_resolution_button_ = nullptr;
+    QPushButton *profile_clear_button_ = nullptr;
+    int profile_resolution_m_ = 5;
+    std::shared_ptr<WaterProfileAccumulator> water_profile_;
+    std::array<QString, 2> last_water_id_, excluded_profile_id_;
     QPushButton *water_calibration_button_ = nullptr;
     QLabel *water_calibration_file_label_ = nullptr;
     PeakTrendPlotWidget *water_concentration_plot_ = nullptr;
@@ -265,7 +275,7 @@ private:
     struct WaterSample {
         QString id;
         qint64 timeMs;
-        double value, heightM;
+        double value;
     };
     QMap<int, QVector<WaterSample>> water_samples_;
     QTcpSocket *socket_;

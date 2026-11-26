@@ -1,3 +1,4 @@
+#include "ground/wave/WaterProfileAccumulator.h"
 #include "ground/widgets/DeviceActionButton.h"
 #include "ground/calibration/CalibrationService.h"
 #include "ground/main/GroundMainWindowImplementation.h"
@@ -6294,7 +6295,8 @@ void MainWindow::setupDataPanels()
     tcpWaveLayout->setContentsMargins(0, 0, 0, 0);
     tcpWaveLayout->setSpacing(0);
 
-    state_->tcp_wave_panel_ = new TcpWavePanel(this);
+    if (!state_->water_profile_) state_->water_profile_ = std::make_shared<WaterProfileAccumulator>();
+    state_->tcp_wave_panel_ = new TcpWavePanel(this, state_->water_profile_);
     using VaporView::Ground::Calibration::CalibrationService;
     const auto refreshWaterMeasurement = [this] {
         const auto view = state_->calibration_service_->view();

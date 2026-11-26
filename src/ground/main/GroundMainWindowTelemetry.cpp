@@ -216,6 +216,17 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
     }
     if(isRemoteSkyMode() && state_->remote_recording_state_!=0 && status.recording_state==0 && !isUiTestMode())state_->calibration_service_->finish();
     if(isRemoteSkyMode())state_->calibration_service_->setExternalSessionOpen(status.recording_state!=0);
+    if (isRemoteSkyMode()) {
+        // Link loss resets the transport's recording state. Only a Sky status can
+        // close the profile session; its name also detects a new one while offline.
+        const bool differentSession = !status.session_name.isEmpty() && !state_->remote_profile_session_name_.isEmpty()
+            && status.session_name != state_->remote_profile_session_name_;
+        if (status.recording_state == 1 && (!state_->remote_profile_session_open_ || differentSession))
+            state_->tcp_wave_panel_->clearWaterProfiles();
+        state_->remote_profile_session_open_ = status.recording_state != 0;
+        if (!state_->remote_profile_session_open_ || !status.session_name.isEmpty())
+            state_->remote_profile_session_name_ = status.session_name;
+    }
     state_->remote_recording_state_ = status.recording_state;
     for (const VaporView::DeviceStatusItem& item : status.devices)
     {

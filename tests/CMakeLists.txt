@@ -217,6 +217,11 @@ target_include_directories(tcp_wave_encoding_test PRIVATE
 target_link_libraries(tcp_wave_encoding_test PRIVATE vaporview_sky_core)
 vaporview_add_test(NAME tcp_wave_encoding_test COMMAND tcp_wave_encoding_test)
 
+add_executable(water_profile_accumulator_test water_profile_accumulator_test.cpp)
+target_link_libraries(water_profile_accumulator_test PRIVATE vaporview_ground_wave)
+vaporview_add_test(NAME water_profile_accumulator_test COMMAND water_profile_accumulator_test)
+set_tests_properties(water_profile_accumulator_test PROPERTIES LABELS "fast;unit;tcp-wave")
+
 add_executable(tcp_wave_panel_test
     ${CMAKE_CURRENT_SOURCE_DIR}/tcp_wave_panel_test.cpp
 )

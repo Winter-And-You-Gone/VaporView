@@ -3,7 +3,9 @@
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
 #include "TcpWavePanel.h"
+#include "WaterProfileAccumulator.h"
 #include "WavePlotFrame.h"
+#include <QToolTip>
 #include "ground/widgets/VisualTextLabel.h"
 #include "ground/widgets/LabelTextSelection.h"
 #include "ground/widgets/SegmentedSwitchButton.h"
@@ -1734,21 +1736,54 @@ class WaterProfilePlotWidget final : public QWidget
 public:
     explicit WaterProfilePlotWidget(QWidget *parent) : QWidget(parent)
     {
+        setMouseTracking(true);
         setFont(numericFontFrom(font()));
         setMinimumHeight(kPeakPlotMinimumHeight);
         setMaximumHeight(QWIDGETSIZE_MAX);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     }
 
-    void setProfile(const QVector<QPointF> &points, const QString &emptyText)
+    void setProfile(QVector<WaterProfileAccumulator::Layer> layers, std::optional<WaterProfileAccumulator::Point> latest,
+                    int resolution, const QString &unit, bool english, const QString &emptyText)
     {
-        points_ = points;
+        layers_ = std::move(layers);
+        latest_ = latest;
+        resolution_ = resolution;
+        unit_ = unit;
+        english_ = english;
         empty_text_ = emptyText;
-        setProperty("sampleCount", points.size());
+        axes_ = english ? QStringLiteral("X: concentration%1. Y: lidar height (m).").arg(unit)
+                        : QStringLiteral("横轴：水汽浓度%1。纵轴：测距雷达高度 (m)。").arg(unit);
+        setToolTip(axes_);
+        nodes_.clear();
+        quint64 count = 0;
+        for (const auto &layer : layers_) count += layer.sampleCount;
+        setProperty("sampleCount", count);
+        setProperty("layerCount", layers_.size());
         update();
     }
 
 protected:
+    void mouseMoveEvent(QMouseEvent *event) override
+    {
+        int hit = -1;
+        double nearest = 8.0;
+        for (int i = 0; i < nodes_.size(); ++i) {
+            const double distance = QLineF(nodes_[i], event->position()).length();
+            if (distance <= nearest) { nearest = distance; hit = i; }
+        }
+        if (hit < 0) { resetTooltip(); return; }
+        const auto &layer = layers_[hit];
+        const QString message = (english_ ? QStringLiteral("Height: %1–%2 m\nCenter: %3 m\nMean: %4%5\nSample SD: %6\nSamples: %7")
+            : QStringLiteral("高度区间：%1–%2 m\n代表高度：%3 m\n平均浓度：%4%5\n样本标准差：%6\n样本数：%7"))
+            .arg(layer.minHeightM).arg(layer.maxHeightM).arg(layer.centerHeightM).arg(formatWaveValue(layer.meanConcentration, 3), unit_,
+                layer.sampleCount >= 2 ? formatWaveValue(layer.stdDev, 3) + unit_ : QStringLiteral("—")).arg(layer.sampleCount);
+        setToolTip(message);
+        QToolTip::showText(event->globalPosition().toPoint(), message, this);
+    }
+
+    void leaveEvent(QEvent *) override { resetTooltip(); }
+
     void paintEvent(QPaintEvent *) override
     {
         QPainter painter(this);
@@ -1756,16 +1791,22 @@ protected:
         const auto theme = plotThemeFor(this);
         painter.fillRect(rect(), theme.background);
         const QFontMetrics metrics = painter.fontMetrics();
-        const auto bounds = [this](auto coordinate) {
-            const auto range = std::minmax_element(points_.cbegin(), points_.cend(),
-                [coordinate](const QPointF &a, const QPointF &b) { return coordinate(a) < coordinate(b); });
-            if (range.first == points_.cend()) return std::pair{0.0, 1.0};
-            const double low = coordinate(*range.first), high = coordinate(*range.second);
-            const double padding = high > low ? (high - low) * 0.04 : std::max(0.01, std::abs(high) * 0.05);
-            return std::pair{low - padding, high + padding};
+        const auto bounds = [](double low, double high, double minimumSpan) {
+            const double span = std::max(minimumSpan, (high - low) * 1.12);
+            const double start = std::max(0.0, low + ((high - low) - span) * 0.5);
+            return std::pair{start, start + span};
         };
-        const auto [xMin, xMax] = bounds([](const QPointF &p) { return p.x(); });
-        const auto [yMin, yMax] = bounds([](const QPointF &p) { return p.y(); });
+        double lowX = latest_ ? latest_->concentration : 0, highX = lowX;
+        double lowY = latest_ ? latest_->heightM : 0, highY = lowY;
+        for (const auto &layer : layers_) {
+            lowX = std::min(lowX, layer.meanConcentration);
+            highX = std::max(highX, layer.meanConcentration);
+            lowY = std::min(lowY, layer.centerHeightM);
+            highY = std::max(highY, layer.centerHeightM);
+        }
+        const auto [xMin, xMax] = bounds(lowX, highX, std::max(1.0, highX * 0.02));
+        const auto [yMin, yMax] = bounds(lowY, highY, std::max(5.0, resolution_ * 2.0));
+        nodes_.clear();
         const int rightMargin = 5 + metrics.horizontalAdvance(formatWaveValue(xMax, 2)) / 2;
         const int leftMargin = 8 + std::max({metrics.horizontalAdvance(formatWaveValue(yMin, 2)),
                                            metrics.horizontalAdvance(formatWaveValue(yMax, 2)),
@@ -1774,7 +1815,7 @@ protected:
         if (area.width() < 2 || area.height() < 2) return;
         const int columns = area.width() >= 4 * (rightMargin * 2 + 8) ? 4 : 2;
         VaporView::WavePlotFrame::drawGrid(painter, area, columns, theme);
-        if (points_.isEmpty()) {
+        if (layers_.isEmpty()) {
             painter.setPen(theme.mutedText);
             painter.drawText(area, Qt::AlignCenter | Qt::TextWordWrap, empty_text_);
             return;
@@ -1794,21 +1835,45 @@ protected:
             painter.drawText(QRectF(0, y - metrics.height() / 2.0 + (i == 0 ? 5 : 0), leftMargin - 4, metrics.height()),
                              Qt::AlignRight | Qt::AlignVCenter, formatWaveValue(yMax - (yMax - yMin) * ratio, 2));
         }
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(appThemeColor(AppThemeColor::PlotSeriesWaveBlue, theme.background.lightness() < 128));
-        for (const QPointF &point : points_) {
-            const qreal x = area.left() + area.width() * (point.x() - xMin) / (xMax - xMin);
-            const qreal y = area.bottom() - area.height() * (point.y() - yMin) / (yMax - yMin);
-            painter.drawEllipse(QPointF(x, y), 2.5, 2.5);
+        const auto position = [&](double value, double height) {
+            return QPointF(area.left() + area.width() * ((value - xMin) / (xMax - xMin)),
+                          area.bottom() - area.height() * ((height - yMin) / (yMax - yMin)));
+        };
+        const bool dark = theme.background.lightness() < 128;
+        const QColor blue = appThemeColor(AppThemeColor::PlotSeriesWaveBlue, dark);
+        painter.setPen(QPen(blue, 1.5));
+        painter.setBrush(blue);
+        for (int i = 0; i < layers_.size(); ++i) {
+            const auto &layer = layers_[i];
+            const auto node = position(layer.meanConcentration, layer.centerHeightM);
+            if (i && layer.binIndex == layers_[i - 1].binIndex + 1) painter.drawLine(nodes_.last(), node);
+            painter.drawEllipse(node, 2.5, 2.5);
+            nodes_.append(node);
+        }
+        if (latest_) {
+            painter.setPen(QPen(theme.background, 1.5));
+            painter.setBrush(appThemeColor(AppThemeColor::PlotSeriesWaveOrange, dark));
+            painter.drawEllipse(position(latest_->concentration, latest_->heightM), 4.5, 4.5);
         }
     }
 
 private:
-    QVector<QPointF> points_;
-    QString empty_text_;
+    void resetTooltip()
+    {
+        if (toolTip() != axes_) {
+            setToolTip(axes_);
+            QToolTip::hideText();
+        }
+    }
+    QVector<WaterProfileAccumulator::Layer> layers_;
+    QVector<QPointF> nodes_;
+    std::optional<WaterProfileAccumulator::Point> latest_;
+    int resolution_ = 5;
+    bool english_ = false;
+    QString empty_text_, axes_, unit_;
 };
 
-TcpWavePanel::TcpWavePanel(QWidget *parent)
+TcpWavePanel::TcpWavePanel(QWidget *parent, std::shared_ptr<WaterProfileAccumulator> profile)
     : QWidget(parent)
     , host_edit_(nullptr)
     , port_edit_(nullptr)
@@ -1837,6 +1902,7 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , control_layout_(nullptr)
     , top_controls_layout_(nullptr)
     , plots_layout_(nullptr)
+    , water_profile_(profile ? std::move(profile) : std::make_shared<WaterProfileAccumulator>())
     , socket_(nullptr)
     , live_display_timer_(nullptr)
     , pending_wave1_payload_()
@@ -2465,7 +2531,7 @@ void TcpWavePanel::setFpgaMode(bool enabled)
     peak_filter_button_->setVisible(!enabled);
     fpga_peak_controls_->setVisible(enabled);
     clearRemoteWaveformDisplay();
-    if (!enabled) { fpga_waves_.clear(); fpga_peaks_.clear(); clearWaterSamples(); }
+    if (!enabled) { fpga_waves_.clear(); fpga_peaks_.clear(); clearWaterSamples(); clearWaterProfiles(); }
     wave1_plot_->setSampleAxis(enabled);
     wave4_plot_->setSampleAxis(enabled);
     updateEndpointEditorState();
@@ -2907,11 +2973,43 @@ void TcpWavePanel::createWaterPlots()
     static_cast<QVBoxLayout *>(water_concentration_group_->layout())->addWidget(water_concentration_plot_, 1);
     water_profile_plot_ = new WaterProfilePlotWidget(this);
     auto *profileHeader = createCard(water_profile_group_, water_profile_title_, QStringLiteral("profile"));
-    water_profile_axes_ = new QLabel(water_profile_group_);
-    water_profile_axes_->setObjectName(QStringLiteral("fieldLabel"));
-    water_profile_axes_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    water_profile_axes_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
-    profileHeader->addWidget(water_profile_axes_, 1);
+    profileHeader->addStretch();
+    profile_resolution_button_ = new QPushButton(water_profile_group_);
+    profile_clear_button_ = new QPushButton(water_profile_group_);
+    for (auto *button : {profile_resolution_button_, profile_clear_button_}) {
+        button->setObjectName(QStringLiteral("compactTcpButton"));
+        button->setFixedHeight(kTcpButtonHeight);
+        profileHeader->addWidget(button);
+    }
+    auto *menu = new SingleLevelPopupMenu(profile_resolution_button_);
+    for (const int resolution : WaterProfileAccumulator::resolutions) {
+        auto *row = new SingleLevelPopupMenuRow(menu);
+        row->setText(QStringLiteral("%1 m").arg(resolution));
+        auto *action = menu->addRow(row);
+        action->setCheckable(true);
+        connect(menu, &QMenu::aboutToShow, row, [this, row, action, resolution] {
+            row->setCheckIcon(createMenuCheckIcon(appThemeColor(AppThemeColor::MenuCheckText, isDarkThemeEnabled())));
+            action->setChecked(profile_resolution_m_ == resolution);
+        });
+        connect(action, &QAction::triggered, this, [this, resolution] {
+            profile_resolution_m_ = resolution;
+            refreshWaterPlots();
+        });
+    }
+    connect(profile_resolution_button_, &QPushButton::clicked, this, [this, menu] {
+        menu->popupFrom(profile_resolution_button_);
+    });
+    connect(profile_clear_button_, &QPushButton::clicked, this, [this] {
+        const int channel = fpga_channel_combo_->currentIndex();
+        excluded_profile_id_[channel] = last_water_id_[channel];
+        water_profile_->clearChannel(channel);
+        refreshWaterPlots();
+    });
+    water_profile_summary_ = new QLabel(water_profile_group_);
+    water_profile_summary_->setObjectName(QStringLiteral("waterProfileSummary"));
+    water_profile_summary_->setIndent(6);
+    water_profile_summary_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+    static_cast<QVBoxLayout *>(water_profile_group_->layout())->addWidget(water_profile_summary_);
     water_profile_plot_->setObjectName(QStringLiteral("waterProfilePlot"));
     static_cast<QVBoxLayout *>(water_profile_group_->layout())->addWidget(water_profile_plot_, 1);
 }
@@ -2922,8 +3020,11 @@ void TcpWavePanel::setWaterCalibration(const QString &key, const QString &name, 
     water_calibration_button_->setEnabled(!locked);
     if (water_calibration_key_ == key && water_calibration_name_ == name &&
         water_unit_ == unit && water_calibration_detail_ == detail) return;
-    const bool changed = water_calibration_key_ != key;
+    const bool changed = water_calibration_key_ != key || water_calibration_name_ != name;
     if (changed) {
+        if (!water_calibration_key_.isEmpty()) water_profile_->clearAll();
+        last_water_id_ = {};
+        excluded_profile_id_ = {};
         water_calibration_key_ = key;
         water_samples_.clear();
     }
@@ -2940,19 +3041,24 @@ void TcpWavePanel::clearWaterSamples()
     refreshWaterPlots();
 }
 
+void TcpWavePanel::clearWaterProfiles()
+{
+    // CalibrationService republishes the current reading on unrelated changes.
+    excluded_profile_id_ = last_water_id_;
+    water_profile_->clearAll();
+    refreshWaterPlots();
+}
+
 void TcpWavePanel::appendWaterSample(int channel, const QString &id, qint64 timeMs, double value, double heightM)
 {
     if (!fpga_mode_ || channel < 0 || channel > 1 || water_calibration_key_.isEmpty() || id.isEmpty() || timeMs <= 0) return;
+    last_water_id_[channel] = id;
+    const bool paired = id != excluded_profile_id_[channel] && water_profile_->append(channel, id, timeMs, value, heightM);
     auto &series = water_samples_[channel];
-    if (!series.isEmpty() && series.last().timeMs > timeMs) return;
-    if (!series.isEmpty() && series.last().id == id) {
-        // A lidar update may arrive after the concentration but still be within the pairing window.
-        if (std::isfinite(series.last().heightM) || !std::isfinite(heightM)) return;
-        series.last().heightM = heightM;
-    } else {
-        series.append({id, timeMs, value, heightM});
+    if (series.isEmpty() || (series.last().timeMs <= timeMs && series.last().id != id)) {
+        series.append({id, timeMs, value});
         if (series.size() > kPeakTrendFrameWindow) series.removeFirst();
-    }
+    } else if (!paired) return;
     if (channel == fpga_channel_combo_->currentIndex()) refreshWaterPlots();
 }
 
@@ -2963,12 +3069,20 @@ void TcpWavePanel::refreshWaterPlots()
     const QString unit = water_unit_.isEmpty() ? QString() : QStringLiteral(" (%1)").arg(water_unit_);
     water_concentration_title_->setText(name + unit);
     water_profile_title_->setText(profile);
-    const QString axisText = is_english_ ? QStringLiteral("Concentration%1 / Height (m)").arg(unit)
-                                         : QStringLiteral("浓度%1 / 高度 (m)").arg(unit);
-    water_profile_axes_->setText(axisText);
-    water_profile_axes_->setToolTip(axisText);
-    water_profile_plot_->setToolTip(is_english_ ? QStringLiteral("X: concentration%1. Y: lidar height (m).").arg(unit)
-                                              : QStringLiteral("横轴：水汽浓度%1。纵轴：测距雷达高度 (m)。").arg(unit));
+    const int channel = fpga_channel_combo_->currentIndex();
+    const auto latest = water_profile_->latest(channel);
+    auto layers = water_profile_->layers(channel, profile_resolution_m_);
+    const auto missing = QStringLiteral("—");
+    const QString summary = (is_english_ ? QStringLiteral("Y Height: %1   X Concentration: %2   Layers: %3")
+        : QStringLiteral("Y 高度：%1   X 浓度：%2   层数：%3"))
+        .arg(latest ? formatWaveValue(latest->heightM, 2) + QStringLiteral(" m") : missing,
+             latest ? formatWaveValue(latest->concentration, 2) + QStringLiteral(" ") + water_unit_ : missing,
+             layers.isEmpty() ? missing : QString::number(layers.size()));
+    water_profile_summary_->setText(summary);
+    water_profile_summary_->setToolTip(summary);
+    profile_resolution_button_->setText(QStringLiteral("%1 m").arg(profile_resolution_m_));
+    profile_resolution_button_->setToolTip(is_english_ ? QStringLiteral("Height resolution") : QStringLiteral("高度分辨率"));
+    profile_clear_button_->setText(is_english_ ? QStringLiteral("Clear") : QStringLiteral("清空"));
     const auto fileText = is_english_ ? QStringLiteral("Calibration File") : QStringLiteral("定标文件");
     water_calibration_button_->setAccessibleName(fileText);
     water_calibration_button_->setText(fileText);
@@ -2988,16 +3102,14 @@ void TcpWavePanel::refreshWaterPlots()
     const auto &series = water_samples_.value(fpga_channel_combo_->currentIndex());
     QVector<float> values;
     QVector<qint64> times;
-    QVector<QPointF> points;
     for (const auto &sample : series) {
         values.append(float(sample.value));
         times.append(sample.timeMs);
-        if (std::isfinite(sample.value) && std::isfinite(sample.heightM)) points.append({sample.value, sample.heightM});
     }
     water_concentration_plot_->setEmptyText(water_calibration_name_.isEmpty() ? selectText
         : (is_english_ ? QStringLiteral("Waiting for concentration") : QStringLiteral("等待有效浓度")));
     water_concentration_plot_->setPeakValues(values, times);
-    water_profile_plot_->setProfile(points, water_calibration_name_.isEmpty() ? selectText
+    water_profile_plot_->setProfile(std::move(layers), latest, profile_resolution_m_, unit, is_english_, water_calibration_name_.isEmpty() ? selectText
         : (is_english_ ? QStringLiteral("Waiting for paired lidar and concentration") : QStringLiteral("等待配对的测距与浓度")));
 }
 

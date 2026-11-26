@@ -2369,6 +2369,22 @@ static void remoteWaterProfileSkewedClock()
     require(profilePlot->property("sampleCount").toInt() == 2,
             "concentration older than 1000 ms on Ground monotonic clock does not pair with lidar");
 
+    const auto recordingStatus = [&](int state, const QString &session) {
+        TelemetryStatus status;
+        status.recording_state = state;
+        status.session_name = session;
+        require(QMetaObject::invokeMethod(&window, "onRemoteTelemetryStatusUpdated", Qt::DirectConnection,
+                    Q_ARG(VaporView::TelemetryStatus, status)), "deliver confirmed Sky session state");
+    };
+    recordingStatus(1, "profile-session-a");
+    require(profilePlot->property("sampleCount").toInt() == 0, "new remote recording clears the live profile");
+    monitor->appendWaterSample(0, "session-a", skyAheadNextUs / 1000 + 1, 3.5, 123);
+    recordingStatus(2, "profile-session-a");
+    recordingStatus(1, "profile-session-a");
+    recordingStatus(0, {});
+    require(profilePlot->property("sampleCount").toInt() == 1, "pause, resume and stop retain the profile");
+    recordingStatus(1, "profile-session-b");
+    require(profilePlot->property("sampleCount").toInt() == 0, "next confirmed recording starts empty");
     remote->close();
     window.close();
 }
