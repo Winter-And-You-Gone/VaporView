@@ -1,3 +1,4 @@
+#include <QEvent>
 #include "test_settings_sandbox.h"
 #include "ground/widgets/Ai8TemperatureControllerPanel.h"
 #include "ground/widgets/TemperatureTrendPlotWidget.h"
@@ -35,6 +36,19 @@
 
 namespace
 {
+
+bool hasPrimaryIcon(QAbstractButton *button, bool dark)
+{
+    const auto image = button->icon().pixmap(button->iconSize()).toImage();
+    const auto expected = VaporView::appThemeColor(VaporView::AppThemeColor::Primary, dark).rgb();
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const auto color = image.pixelColor(x, y);
+            if (color.alpha() > 200 && color.rgb() == expected) return true;
+        }
+    }
+    return false;
+}
 
 void require(bool condition, const char *message)
 {
@@ -305,17 +319,15 @@ int main(int argc, char **argv)
         auto *multi = panel.findChild<QWidget*>("ai8MultiChannelPlots");
         auto *parameters = panel.findChild<QStackedWidget*>("ai8ParameterStack");
         require(toggle && !toggle->icon().isNull() && multi->isHidden(), "Lucide toggle defaults to single view");
-        const QImage icon = toggle->icon().pixmap(toggle->iconSize()).toImage();
-        bool hasBlue = false;
-        for (int y = 0; y < icon.height(); ++y)
-        {
-            for (int x = 0; x < icon.width(); ++x)
-            {
-                const QColor color = icon.pixelColor(x, y);
-                hasBlue |= color.alpha() > 128 && color.blue() > color.red() + 80;
-            }
+        const QVariant previousTheme = qApp->property(VaporView::kAppDarkThemeProperty);
+        QEvent paletteChange(QEvent::PaletteChange);
+        for (bool dark : {false, true}) {
+            qApp->setProperty(VaporView::kAppDarkThemeProperty, dark);
+            QApplication::sendEvent(&panel, &paletteChange);
+            require(hasPrimaryIcon(toggle, dark), "plot toggle uses the active theme primary color");
         }
-        require(hasBlue, "Temperature plot view toggle has a blue icon");
+        qApp->setProperty(VaporView::kAppDarkThemeProperty, previousTheme);
+        QApplication::sendEvent(&panel, &paletteChange);
         QApplication::processEvents();
         toggle->clearFocus();
         toggle->setAttribute(Qt::WA_UnderMouse, false);
@@ -800,7 +812,8 @@ int main(int argc, char **argv)
                 !channelAlarmStatusEdit->isVisible() && !channelDetailToggle->isChecked() &&
                 !outputDetailToggle->isChecked() &&
                 !globalDetailToggle->isChecked() && !channelDetailContent->isVisible() &&
-                channelDetailToggle->arrowType() == Qt::RightArrow,
+                channelDetailToggle->arrowType() == Qt::NoArrow && !channelDetailToggle->icon().isNull() &&
+                channelDetailToggle->property("ai8DetailIconName").toString() == QStringLiteral("chevron-right"),
             "AI-8 detailed parameter cards start collapsed with right arrows");
     const QRect commonStackRect(stack->mapTo(&panel, QPoint(0, 0)), stack->size());
     const QRect plotRect(temperaturePlot->mapTo(&panel, QPoint(0, 0)), temperaturePlot->size());
@@ -911,7 +924,8 @@ int main(int argc, char **argv)
                 channelInputGroupEdit->isVisible() && channelAlarmStatusEdit->isVisible() &&
                 channelDetailContent->property("ai8DetailContent").toBool() &&
                 channelDetailContent->testAttribute(Qt::WA_StyledBackground) &&
-                channelDetailToggle->arrowType() == Qt::DownArrow &&
+                channelDetailToggle->arrowType() == Qt::NoArrow && !channelDetailToggle->icon().isNull() &&
+                channelDetailToggle->property("ai8DetailIconName").toString() == QStringLiteral("chevron-down") &&
                 channelDetailContent->geometry().top() > channelDetailToggle->geometry().bottom(),
             "AI-8 detailed parameters expand below the toggle card header");
     require(mainContentCard->height() >= mainContentHeightBeforeDetailExpand,
@@ -999,7 +1013,8 @@ int main(int argc, char **argv)
     require(!channelDetailToggle->isChecked() && !channelDetailContent->isVisible() &&
                 !outputDetailToggle->isChecked() &&
                 !globalDetailToggle->isChecked() &&
-                channelDetailToggle->arrowType() == Qt::RightArrow,
+                channelDetailToggle->arrowType() == Qt::NoArrow && !channelDetailToggle->icon().isNull() &&
+                channelDetailToggle->property("ai8DetailIconName").toString() == QStringLiteral("chevron-right"),
             "AI-8 detailed parameters collapse without changing their values");
 
     require(addressSpin != nullptr && addressSpin->minimum() == 1 && addressSpin->maximum() == 88 &&

@@ -36,6 +36,13 @@ namespace VaporView::Ground::Widgets
 {
 namespace
 {
+void updateDetailIcon(QToolButton *button, bool expanded)
+{
+    const QString name = expanded ? QStringLiteral("chevron-down") : QStringLiteral("chevron-right");
+    button->setIcon(temperatureActionIcon(name));
+    button->setProperty("ai8DetailIconName", name);
+}
+
 constexpr int kPageColumnCount = 2;
 constexpr int kDetailPageColumnCount = 4;
 constexpr int kEditorMinimumWidth = 118;
@@ -273,6 +280,18 @@ Ai8TemperatureControllerPanel::Ai8TemperatureControllerPanel(QWidget *parent)
     setupUi();
 }
 
+void Ai8TemperatureControllerPanel::changeEvent(QEvent *event)
+{
+    QWidget::changeEvent(event);
+    if (event->type() == QEvent::PaletteChange || event->type() == QEvent::ApplicationPaletteChange || event->type() == QEvent::StyleChange)
+    {
+        for (const auto& binding : detail_section_bindings_)
+            updateDetailIcon(binding.toggle, binding.toggle->isChecked());
+        if (plot_view_button_)
+            updateTemperaturePlotViewButton(plot_view_button_, plot_view_button_->toolTip());
+    }
+}
+
 void Ai8TemperatureControllerPanel::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
@@ -483,7 +502,9 @@ QWidget *Ai8TemperatureControllerPanel::createDetailSection(const QString& objec
     toggle->setObjectName(objectName + QStringLiteral("Toggle"));
     toggle->setProperty("ai8DetailToggle", true);
     toggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    toggle->setArrowType(Qt::RightArrow);
+    toggle->setArrowType(Qt::NoArrow);
+    toggle->setIconSize(QSize(16, 16));
+    updateDetailIcon(toggle, false);
     toggle->setCheckable(true);
     toggle->setChecked(false);
     toggle->setCursor(Qt::PointingHandCursor);
@@ -1087,7 +1108,7 @@ void Ai8TemperatureControllerPanel::setDetailSectionsExpanded(bool expanded)
 
         const QSignalBlocker blocker(binding.toggle);
         binding.toggle->setChecked(expanded);
-        binding.toggle->setArrowType(expanded ? Qt::DownArrow : Qt::RightArrow);
+        updateDetailIcon(binding.toggle, expanded);
         binding.toggle->setProperty("expanded", expanded);
         binding.toggle->style()->unpolish(binding.toggle);
         binding.toggle->style()->polish(binding.toggle);

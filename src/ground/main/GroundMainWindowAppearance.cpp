@@ -44,12 +44,12 @@ void MainWindow::loadModernStyleSheet()
         const QString resourceDir = styleInfo.absolutePath();
         const QString comboArrowPath = QDir(resourceDir).absoluteFilePath("combo_arrow_down.xpm").replace('\\', '/');
         const QString comboArrowUpPath = QDir(resourceDir).absoluteFilePath("combo_arrow_up.xpm").replace('\\', '/');
-        const QString squareIconPath = QDir(resourceDir).absoluteFilePath("lucide/square.svg").replace('\\', '/');
-        const QString squareCheckIconPath = QDir(resourceDir).absoluteFilePath("lucide/square-check-big.svg").replace('\\', '/');
+        const QString squareIconPath = QDir(resourceDir).absoluteFilePath("lucide/square-primary.svg").replace('\\', '/');
+        const QString squareCheckIconPath = QDir(resourceDir).absoluteFilePath("lucide/square-check-big-primary.svg").replace('\\', '/');
         state_->base_style_sheet_.replace("url(combo_arrow_down.xpm)", QString("url(%1)").arg(comboArrowPath));
         state_->base_style_sheet_.replace("url(combo_arrow_up.xpm)", QString("url(%1)").arg(comboArrowUpPath));
-        state_->base_style_sheet_.replace("url(lucide/square.svg)", QString("url(%1)").arg(squareIconPath));
-        state_->base_style_sheet_.replace("url(lucide/square-check-big.svg)", QString("url(%1)").arg(squareCheckIconPath));
+        state_->base_style_sheet_.replace("url(lucide/square-primary.svg)", QString("url(%1)").arg(squareIconPath));
+        state_->base_style_sheet_.replace("url(lucide/square-check-big-primary.svg)", QString("url(%1)").arg(squareCheckIconPath));
     }
     else
     {
@@ -278,7 +278,8 @@ void MainWindow::loadModernStyleSheet()
             "QWidget#ai8TemperatureControllerPanel QStackedWidget#ai8ParameterStack, QWidget#ai8TemperatureControllerPanel QStackedWidget#ai8DetailParametersStack { background-color: transparent; border: none; }"
             "QWidget#ai8TemperatureControllerPanel QFrame#ai8DetailParametersCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 8px; }"
             "QWidget#ai8TemperatureControllerPanel QToolButton[ai8DetailToggle=\"true\"] { background-color: transparent; border: 1px solid transparent; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 600; min-height: 34px; max-height: 34px; padding: 0px 10px; text-align: left; }"
-            "QWidget#ai8TemperatureControllerPanel QToolButton[ai8DetailToggle=\"true\"]:hover, QWidget#ai8TemperatureControllerPanel QToolButton[ai8DetailToggle=\"true\"]:checked { background-color: @vv-primary-subtle; color: @vv-primary; }"
+            "QWidget#ai8TemperatureControllerPanel QToolButton[ai8DetailToggle=\"true\"]:checked { background-color: transparent; color: @vv-primary; }"
+            "QWidget#ai8TemperatureControllerPanel QToolButton[ai8DetailToggle=\"true\"]:hover, QWidget#ai8TemperatureControllerPanel QToolButton[ai8DetailToggle=\"true\"]:checked:hover { background-color: @vv-title-hover; color: @vv-primary; }"
             "QWidget#ai8TemperatureControllerPanel QToolButton[ai8DetailToggle=\"true\"]:focus { border-color: @vv-primary; }"
             "QWidget#ai8TemperatureControllerPanel QWidget[ai8DetailContent=\"true\"] { background-color: transparent; border: none; }"
             "QToolTip { background-color: rgb(45, 45, 45); color: #FFFFFF; border: 1px solid #474747; border-radius: 13px; padding: 8px 16px; font-size: 16px; }"
@@ -331,8 +332,8 @@ QString temperatureControllerConfigStyleSheet()
         "TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"]:checked { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
         "TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"]:!checked:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
         "TemperatureControllerPanel QPushButton[temperatureOutputEnableSwitch=\"true\"] { background-color: transparent; border: none; padding: 0px; margin: 0px; min-width: 106px; max-width: 106px; min-height: 34px; max-height: 34px; outline: none; }"
-        "TemperatureControllerPanel QPushButton#temperatureFactoryResetButton { background-color: transparent; border: 1px solid @vv-toolbar-red; border-radius: 8px; color: @vv-toolbar-red; font-size: 14px; font-weight: 600; padding: 0px 12px; text-align: center; }"
-        "TemperatureControllerPanel QPushButton#temperatureFactoryResetButton:hover { background-color: rgba(210, 74, 48, 0.10); }"
+        "TemperatureControllerPanel QPushButton#temperatureFactoryResetButton { background-color: transparent; border: 1px solid @vv-border; border-radius: 8px; color: @vv-text; font-size: 14px; font-weight: 600; padding: 0px 12px; text-align: center; }"
+        "TemperatureControllerPanel QPushButton#temperatureFactoryResetButton:hover { background-color: @vv-title-hover; }"
         "TemperatureControllerPanel QLabel#fieldLabel[temperatureOvertempWarning=\"true\"] { color: @vv-danger; }"
         "TemperatureControllerPanel QLabel#fieldLabel[temperatureMaxOutputWarning=\"true\"] { color: @vv-danger; }"
         "TemperatureControllerPanel QComboBox[temperatureCompactEditor=\"true\"], "
@@ -347,7 +348,8 @@ QString temperatureControllerConfigStyleSheet()
         "QWidget#ai8TemperatureControllerPanel QStackedWidget#ai8ParameterStack, QWidget#ai8TemperatureControllerPanel QStackedWidget#ai8DetailParametersStack { background-color: transparent; border: none; }"
         "QWidget#ai8TemperatureControllerPanel QFrame#ai8DetailParametersCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 8px; }"
         "QWidget#ai8TemperatureControllerPanel QToolButton[ai8DetailToggle=\"true\"] { background-color: transparent; border: 1px solid transparent; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 600; min-height: 34px; max-height: 34px; padding: 0px 10px; text-align: left; }"
-        "QWidget#ai8TemperatureControllerPanel QToolButton[ai8DetailToggle=\"true\"]:hover, QWidget#ai8TemperatureControllerPanel QToolButton[ai8DetailToggle=\"true\"]:checked { background-color: @vv-primary-subtle; color: @vv-primary; }"
+        "QWidget#ai8TemperatureControllerPanel QToolButton[ai8DetailToggle=\"true\"]:checked { background-color: transparent; color: @vv-primary; }"
+        "QWidget#ai8TemperatureControllerPanel QToolButton[ai8DetailToggle=\"true\"]:hover, QWidget#ai8TemperatureControllerPanel QToolButton[ai8DetailToggle=\"true\"]:checked:hover { background-color: @vv-title-hover; color: @vv-primary; }"
         "QWidget#ai8TemperatureControllerPanel QToolButton[ai8DetailToggle=\"true\"]:focus { border-color: @vv-primary; }"
         "QWidget#ai8TemperatureControllerPanel QWidget[ai8DetailContent=\"true\"] { background-color: transparent; border: none; }"
         "QWidget#ai8TemperatureControllerPanel QFrame#ai8ParameterField { background-color: transparent; border: none; border-radius: 0px; }"
@@ -362,6 +364,11 @@ QString MainWindow::themedStyleSheet() const
 {
     const QString baseStyle = applyAppThemeTokens(state_->base_style_sheet_, false);
     QString darkStyle = applyAppThemeTokens(darkThemeStyleSheet(), true);
+    for (const QString& name : {QStringLiteral("square-primary-dark"), QStringLiteral("square-check-big-primary-dark")})
+    {
+        const QString path = findResourceFile(QStringLiteral("resources/lucide/%1.svg").arg(name)).replace('\\', '/');
+        darkStyle.replace(QStringLiteral("url(lucide/%1.svg)").arg(name), QStringLiteral("url(%1)").arg(path));
+    }
     const QString chevronDownDarkIconPath = findResourceFile(
         QStringLiteral("resources/lucide/chevron-down-dark.svg")).replace('\\', '/');
     const QString chevronDownPrimaryDarkIconPath = findResourceFile(

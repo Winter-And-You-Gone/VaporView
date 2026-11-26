@@ -343,6 +343,16 @@ void testRtcmStatus(QApplication& app)
             panel.setFont(scaled);
             panel.resize(620, 1200);
             processEventsFor(80);
+            require(panel.width() == 620, "headings preserve the narrow dashboard width");
+            const auto icons = panel.findChildren<QLabel *>(QStringLiteral("sectionTitleIcon"));
+            require(icons.size() == 5, "all five status cards have heading icons");
+            for (auto *icon : icons) {
+                require(!icon->pixmap().isNull() && icon->size() == QSize(18, 18), "each heading renders its compact icon");
+                for (auto *title : icon->parentWidget()->findChildren<QLabel *>()) {
+                    if (title->property("navigationStatusSectionTitle").toBool())
+                        require(!title->wordWrap() && title->width() >= title->fontMetrics().horizontalAdvance(title->text()), "status heading fits a single line");
+                }
+            }
             for (const char *name : {"navigationStatusRtcmAgeValue", "navigationStatusRtcmRateValue",
                                     "navigationStatusRtcmLinkLossValue", "navigationStatusRtcmSkyDropsValue"})
             {

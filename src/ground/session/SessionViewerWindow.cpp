@@ -68,6 +68,26 @@ using namespace VaporView::Ground::SessionUi;
 namespace
 {
 
+void styleSessionAction(QPushButton *button, const QString& iconName, bool dark)
+{
+    const auto path = QCoreApplication::applicationDirPath() + QStringLiteral("/resources/lucide/%1.svg").arg(iconName);
+    QPixmap pixmap = QIcon(path).pixmap(32, 32);
+    if (!pixmap.isNull())
+    {
+        QPainter painter(&pixmap);
+        painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
+        painter.fillRect(pixmap.rect(), VaporView::appThemeColor(VaporView::AppThemeColor::Primary, dark));
+        painter.end();
+        button->setIcon(QIcon(pixmap));
+    }
+    button->setIconSize(QSize(16, 16));
+    const auto style = VaporView::applyAppThemeTokens(QStringLiteral(
+        "QPushButton { background-color: @vv-surface; color: @vv-text; border: 1px solid @vv-border; border-radius: 6px; padding: 6px 12px; }"
+        "QPushButton:hover { background-color: @vv-title-hover; color: @vv-text; }"), dark);
+    if (button->styleSheet() != style)
+        button->setStyleSheet(style);
+}
+
 class SessionSidebarFrame final : public QFrame
 {
 public:
@@ -422,7 +442,9 @@ void SessionViewerWindow::setupUi()
             QJsonArray preview;for(int i=0;i<std::min(200,int(result.rows.size()));++i)preview.append(result.rows[i]);
             auto snapshot=result.snapshot;snapshot.remove("vcal_document");
             text->setPlainText(QString::fromUtf8(QJsonDocument(QJsonObject{{"snapshot",snapshot},{"record_count",result.rows.size()},{"preview_first_200",preview}}).toJson()));layout->addWidget(text);
-            auto *save=new QPushButton(QStringLiteral("导出全部浓度和原始参数"),dialog);layout->addWidget(save);
+            auto *save=new QPushButton(QStringLiteral("导出全部浓度和原始参数"),dialog);
+            styleSessionAction(save, QStringLiteral("file-output"), VaporView::isDarkThemeEnabled());
+            layout->addWidget(save);
             connect(save,&QPushButton::clicked,dialog,[dialog,result]{
                 const auto filename=QFileDialog::getSaveFileName(dialog,QStringLiteral("导出历史浓度"),{},"JSON (*.json)");if(filename.isEmpty())return;
                 auto *exporter=new QFutureWatcher<QString>(dialog);
@@ -630,6 +652,8 @@ void SessionViewerWindow::updatePageAvailability()
                            : QStringLiteral("尚无可用轨迹，请通过标题栏加载包含有效定位数据的会话。"))
             : (is_english_ ? QStringLiteral("Use the title bar to open or reload a session.")
                            : QStringLiteral("请通过标题栏打开或重新加载会话。")));
+        styleSessionAction(empty_actions_[i], session_directory_.isEmpty() ? QStringLiteral("folder-open")
+                                                                      : QStringLiteral("refresh-cw"), VaporView::isDarkThemeEnabled());
         empty_actions_[i]->setText(session_directory_.isEmpty()
             ? (is_english_ ? QStringLiteral("Open Data") : QStringLiteral("打开数据"))
             : (is_english_ ? QStringLiteral("Reload") : QStringLiteral("重新加载")));
@@ -755,7 +779,7 @@ void SessionViewerWindow::updateNavigation(int sidebarWidth)
                 QPainter painter(&pixmap);
                 painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
                 painter.fillRect(pixmap.rect(), state == QIcon::On
-                    ? QColor(Qt::white) : palette().color(QPalette::WindowText));
+                    ? QColor(Qt::white) : VaporView::appThemeColor(VaporView::AppThemeColor::Primary, VaporView::isDarkThemeEnabled()));
                 painter.end();
                 for (QIcon::Mode mode : {QIcon::Normal, QIcon::Active, QIcon::Selected})
                     icon.addPixmap(pixmap, mode, state);
@@ -798,6 +822,8 @@ void SessionViewerWindow::changeEvent(QEvent *event)
         if (!navigation_splitter_)
             return;
         updateNavigation();
+        if (empty_actions_[2])
+            updatePageAvailability();
         // Wait for the new stylesheet to reach the navigation buttons before
         // measuring them, including when returning to the standard font size.
         QTimer::singleShot(0, this, [this]() {

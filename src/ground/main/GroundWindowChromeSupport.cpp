@@ -1008,15 +1008,12 @@ protected:
             return;
         }
 
-        const QPalette::ColorGroup colorGroup = isEnabled()
-            ? (isActiveWindow() ? QPalette::Active : QPalette::Inactive)
-            : QPalette::Disabled;
+        const bool dark = qApp && qApp->property(kAppDarkThemeProperty).toBool();
 
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
         if (indicator_hovered_ || hasFocus() || isDown())
         {
-            const bool dark = qApp && qApp->property(kAppDarkThemeProperty).toBool();
             painter.setPen(Qt::NoPen);
             painter.setBrush(appThemeColor(AppThemeColor::TitleBarHover, dark));
             painter.drawRoundedRect(indicatorRect, kIndicatorCornerRadius, kIndicatorCornerRadius);
@@ -1029,7 +1026,7 @@ protected:
         iconRect.moveCenter(indicatorRect.center());
         const QIcon icon = createLucideIcon(
             isChecked() ? QStringLiteral("square-check-big") : QStringLiteral("square"),
-            palette().color(colorGroup, QPalette::Text));
+            isEnabled() ? appThemeColor(AppThemeColor::Primary, dark) : palette().color(QPalette::Disabled, QPalette::Text));
         icon.paint(&painter,
                    iconRect,
                    Qt::AlignCenter,

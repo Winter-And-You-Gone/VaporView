@@ -430,13 +430,6 @@ QIcon createLucideIcon(const QString& iconName, const QColor& color)
     return icon;
 }
 
-QIcon createTitleBarIcon(const QString& iconName, bool dark)
-{
-    return createLucideIcon(iconName, dark
-        ? appThemeColor(AppThemeColor::TextTitle, true)
-        : appThemeColor(AppThemeColor::TextStrong, false));
-}
-
 QIcon createMenuCheckIcon(bool dark)
 {
     return createLucideIcon(QStringLiteral("check"), appThemeColor(AppThemeColor::MenuCheckText, dark));
@@ -3549,10 +3542,7 @@ void TrajectoryViewerDialog::updateThemeStyles()
         "QDialog#trajectoryViewerDialog QToolButton#trajectoryHeatPaletteButton::menu-indicator { image: none; width: 0px; }"
         "QDialog#trajectoryViewerDialog QToolButton#titleBarButton { background-color: transparent; border: none; border-radius: 6px; padding: 0px; margin: 0px; }"
         "QDialog#trajectoryViewerDialog QToolButton#titleBarButton:hover, QDialog#trajectoryViewerDialog QToolButton#titleBarButton:focus { background-color: @vv-title-hover; border: none; }"
-        "QDialog#trajectoryViewerDialog QToolButton#titleBarButton::menu-indicator { image: none; width: 0px; height: 0px; }"
-        "QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarContent QToolButton#titleBarButton { background-color: @vv-primary; border: 1px solid @vv-primary; color: @vv-white; }"
-        "QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarContent QToolButton#titleBarButton:hover, QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarContent QToolButton#titleBarButton:focus { background-color: @vv-primary-hover; border-color: @vv-primary-hover; }"
-        "QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarContent QToolButton#titleBarButton:pressed { background-color: @vv-primary-pressed; border-color: @vv-primary-pressed; }"),
+        "QDialog#trajectoryViewerDialog QToolButton#titleBarButton::menu-indicator { image: none; width: 0px; height: 0px; }"),
         isDarkPalette());
     if (styleSheet() != themedStyleSheet)
     {
@@ -4236,55 +4226,52 @@ void TrajectoryViewerDialog::closeEvent(QCloseEvent *event)
 void TrajectoryViewerDialog::updateTitleBarIcons()
 {
     const bool dark = isDarkPalette();
+    const QColor primary = appThemeColor(AppThemeColor::Primary, dark);
     if (sidebar_icon_label_)
     {
-        sidebar_icon_label_->setPixmap(createTitleBarIcon(QStringLiteral("route"), dark).pixmap(QSize(20, 20)));
+        const QColor titleTextColor = dark ? appThemeColor(AppThemeColor::TextTitle, true)
+                                          : appThemeColor(AppThemeColor::TextStrong, false);
+        sidebar_icon_label_->setPixmap(createLucideIcon(QStringLiteral("route"), titleTextColor).pixmap(QSize(20, 20)));
     }
     if (heat_palette_button_)
     {
-        heat_palette_button_->setIcon(createLucideIcon(QStringLiteral("chevron-down"),
-            dark ? appThemeColor(AppThemeColor::TextTitle, true) : appThemeColor(AppThemeColor::TextStrong, false)));
+        heat_palette_button_->setIcon(createLucideIcon(QStringLiteral("chevron-down"), primary));
     }
     if (heat_metric_button_)
     {
-        heat_metric_button_->setIcon(createLucideIcon(QStringLiteral("chevron-down"),
-            dark ? appThemeColor(AppThemeColor::TextTitle, true) : appThemeColor(AppThemeColor::TextStrong, false)));
+        heat_metric_button_->setIcon(createLucideIcon(QStringLiteral("chevron-down"), primary));
     }
     if (tianditu_key_button_)
     {
-        tianditu_key_button_->setIcon(createLucideIcon(QStringLiteral("key"), appThemeColor(AppThemeColor::White, dark)));
+        tianditu_key_button_->setIcon(createLucideIcon(QStringLiteral("key"), primary));
     }
     if (zoom_in_button_)
     {
-        zoom_in_button_->setIcon(createLucideIcon(QStringLiteral("zoom-in"), appThemeColor(AppThemeColor::White, dark)));
+        zoom_in_button_->setIcon(createLucideIcon(QStringLiteral("zoom-in"), primary));
     }
     if (zoom_out_button_)
     {
-        zoom_out_button_->setIcon(createLucideIcon(QStringLiteral("zoom-out"), appThemeColor(AppThemeColor::White, dark)));
+        zoom_out_button_->setIcon(createLucideIcon(QStringLiteral("zoom-out"), primary));
     }
     if (reset_view_button_)
     {
-        reset_view_button_->setIcon(createLucideIcon(QStringLiteral("maximize"), appThemeColor(AppThemeColor::White, dark)));
+        reset_view_button_->setIcon(createLucideIcon(QStringLiteral("maximize"), primary));
     }
     if (point_detail_close_button_)
     {
-        point_detail_close_button_->setIcon(createLucideIcon(QStringLiteral("x"),
-            dark ? appThemeColor(AppThemeColor::TextMuted, true) : appThemeColor(AppThemeColor::TextMuted, false)));
+        point_detail_close_button_->setIcon(createLucideIcon(QStringLiteral("x"), primary));
     }
     if (filter_current_point_button_)
     {
-        filter_current_point_button_->setIcon(createLucideIcon(QStringLiteral("flag"),
-            dark ? appThemeColor(AppThemeColor::TextMuted, true) : appThemeColor(AppThemeColor::TextMuted, false)));
+        filter_current_point_button_->setIcon(createLucideIcon(QStringLiteral("flag"), primary));
     }
     if (filter_start_point_button_)
     {
-        filter_start_point_button_->setIcon(createLucideIcon(QStringLiteral("flag-triangle-left"),
-            dark ? appThemeColor(AppThemeColor::TextMuted, true) : appThemeColor(AppThemeColor::TextMuted, false)));
+        filter_start_point_button_->setIcon(createLucideIcon(QStringLiteral("flag-triangle-left"), primary));
     }
     if (filter_end_point_button_)
     {
-        filter_end_point_button_->setIcon(createLucideIcon(QStringLiteral("flag-triangle-right"),
-            dark ? appThemeColor(AppThemeColor::TextMuted, true) : appThemeColor(AppThemeColor::TextMuted, false)));
+        filter_end_point_button_->setIcon(createLucideIcon(QStringLiteral("flag-triangle-right"), primary));
     }
     updateVisibilityButtonIcons();
 }
@@ -4298,12 +4285,9 @@ void TrajectoryViewerDialog::updateVisibilityButtonIcons()
             return;
         }
         const bool checked = button->isChecked();
-        const QColor iconColor = checked
-            ? appThemeColor(AppThemeColor::Primary, dark)
-            : appThemeColor(AppThemeColor::TextStrong, dark);
         button->setIcon(createLucideIcon(
             checked ? QStringLiteral("square-check-big") : QStringLiteral("square"),
-            iconColor));
+            appThemeColor(AppThemeColor::Primary, dark)));
     };
     applyIcon(show_route_button_);
     applyIcon(show_points_button_);

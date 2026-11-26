@@ -206,22 +206,22 @@ QIcon createRefreshIcon()
 
 QIcon createConnectIcon()
 {
-    return createLucideIcon(QStringLiteral("link"), toolbarColor(AppThemeColor::ToolbarGreen));
+    return createLucideIcon(QStringLiteral("link"), toolbarColor(AppThemeColor::ToolbarBlue));
 }
 
 QIcon createCancelIcon()
 {
-    return createLucideIcon(QStringLiteral("circle-x"), toolbarColor(AppThemeColor::ToolbarRed));
+    return createLucideIcon(QStringLiteral("circle-x"), toolbarColor(AppThemeColor::ToolbarBlue));
 }
 
 QIcon createDisconnectIcon()
 {
-    return createLucideIcon(QStringLiteral("unlink"), toolbarColor(AppThemeColor::ToolbarRed));
+    return createLucideIcon(QStringLiteral("unlink"), toolbarColor(AppThemeColor::ToolbarBlue));
 }
 
 QIcon createPlayIcon()
 {
-    return createLucideIcon(QStringLiteral("play"), toolbarColor(AppThemeColor::ToolbarGreen));
+    return createLucideIcon(QStringLiteral("play"), toolbarColor(AppThemeColor::ToolbarBlue));
 }
 
 QIcon createPauseIcon()
@@ -231,7 +231,7 @@ QIcon createPauseIcon()
 
 QIcon createStopIcon()
 {
-    return createLucideIcon(QStringLiteral("square"), toolbarColor(AppThemeColor::ToolbarRed));
+    return createLucideIcon(QStringLiteral("circle-stop"), toolbarColor(AppThemeColor::ToolbarBlue));
 }
 
 QIcon createTimerIcon()
@@ -242,9 +242,8 @@ QIcon createTimerIcon()
 QIcon createRtkSatelliteIcon(bool running)
 {
     return createLucideIcon(
-        QStringLiteral("satellite"),
-        running ? toolbarColor(AppThemeColor::ToolbarGreen)
-                : appThemeColor(AppThemeColor::Primary, isDarkToolbarTheme()));
+        running ? QStringLiteral("radar") : QStringLiteral("satellite"),
+        appThemeColor(AppThemeColor::Primary, isDarkToolbarTheme()));
 }
 
 QIcon createClearLogIcon()
@@ -311,14 +310,12 @@ QIcon createDarkThemeIcon()
 
 QIcon createLightThemeIcon()
 {
-    return createLucideIcon(QStringLiteral("sun"), toolbarColor(AppThemeColor::ToolbarAmber));
+    return createLucideIcon(QStringLiteral("sun"), toolbarColor(AppThemeColor::ToolbarBlue));
 }
 
 QIcon createTitleBarIcon(const QString& iconName, bool dark)
 {
-    return createLucideIcon(iconName, dark
-        ? appThemeColor(AppThemeColor::TextTitle, true)
-        : appThemeColor(AppThemeColor::TextStrong, false));
+    return createLucideIcon(iconName, appThemeColor(AppThemeColor::Primary, dark));
 }
 
 bool isDarkToolbarTheme()

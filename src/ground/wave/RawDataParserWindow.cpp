@@ -775,10 +775,11 @@ public:
         indicator.rect = QStyle::alignedRect(option.direction, Qt::AlignCenter,
             QSize(style->pixelMetric(QStyle::PM_IndicatorWidth, &option, option.widget),
                   style->pixelMetric(QStyle::PM_IndicatorHeight, &option, option.widget)), option.rect);
-        QColor color = VaporView::appThemeColor(checkState == Qt::Checked
-                                                    ? VaporView::AppThemeColor::Primary
-                                                    : VaporView::AppThemeColor::TextSecondary,
-                                                VaporView::isDarkThemePalette(option.palette));
+        const bool dark = VaporView::isDarkThemePalette(option.palette);
+        QColor color = VaporView::appThemeColor(VaporView::AppThemeColor::Primary, dark);
+        if ((option.state & QStyle::State_Enabled) && (option.state & QStyle::State_MouseOver))
+            VaporView::drawCheckedIndicatorHover(*painter, indicator.rect,
+                VaporView::appThemeColor(VaporView::AppThemeColor::TitleBarHover, dark));
         if (!(option.state & QStyle::State_Enabled)) color.setAlphaF(0.6);
         if (checkState == Qt::Checked)
             VaporView::drawSquareCheckBig(*painter, indicator.rect, color);
@@ -1254,6 +1255,7 @@ void RawDataParserWindow::Impl::setupUi()
     QObject::connect(column_resize_timer, &QTimer::timeout, owner, [this]() { resizeTableColumnsToContents(); });
     record_table->viewport()->installEventFilter(owner);
     record_table->setModel(record_model);
+    record_table->setMouseTracking(true);
     record_table->setItemDelegateForColumn(0, new CenteredCheckDelegate(record_table));
     record_table->horizontalHeader()->setMinimumSectionSize(24);
     record_table->setSelectionBehavior(QAbstractItemView::SelectRows);

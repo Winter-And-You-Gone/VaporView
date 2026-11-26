@@ -1429,16 +1429,21 @@ QCheckBox::indicator {
     border: none;
     border-radius: 0px;
     background-color: transparent;
-    image: url(lucide/square.svg);
-}
-
-QCheckBox::indicator:hover {
-    background-color: transparent;
+    image: url(lucide/square-primary.svg);
 }
 
 QCheckBox::indicator:checked {
     background-color: transparent;
-    image: url(lucide/square-check-big.svg);
+    image: url(lucide/square-check-big-primary.svg);
+}
+
+QCheckBox::indicator:hover {
+    background-color: @vv-title-hover;
+    border-radius: 4px;
+}
+
+QCheckBox::indicator:disabled {
+    background-color: transparent;
 }
 
 QCheckBox#epsilonPacketCustomCheck {
@@ -1489,18 +1494,22 @@ QRadioButton[temperatureSensorModelOption="true"]::indicator {
     border: none;
     border-radius: 0px;
     background-color: transparent;
-    image: url(lucide/square.svg);
-}
-
-QRadioButton[temperatureSensorModelOption="true"]::indicator:hover {
-    border: none;
-    background-color: transparent;
+    image: url(lucide/square-primary.svg);
 }
 
 QRadioButton[temperatureSensorModelOption="true"]::indicator:checked {
     border: none;
     background-color: transparent;
-    image: url(lucide/square-check-big.svg);
+    image: url(lucide/square-check-big-primary.svg);
+}
+
+QRadioButton[temperatureSensorModelOption="true"]::indicator:hover {
+    background-color: @vv-title-hover;
+    border-radius: 4px;
+}
+
+QRadioButton[temperatureSensorModelOption="true"]::indicator:disabled {
+    background-color: transparent;
 }
 
 /* 自定义面板样式 */
@@ -1664,7 +1673,7 @@ QToolButton#homeDeviceActionButton[state="connected"] {
 }
 
 QToolButton#homeDeviceActionButton:hover {
-    background-color: @vv-primary-subtle;
+    background-color: @vv-title-hover;
     border-color: @vv-border-strong;
 }
 

@@ -2027,6 +2027,53 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(std::abs(map->width() - mapPanelContents.width()) <= 2
                 && std::abs(map->height() - mapPanelContents.height()) <= 2,
             "trajectory map fills the whole rounded map panel");
+    const auto originalTheme = qApp->property(VaporView::kAppDarkThemeProperty);
+    const auto originalPalette = qApp->palette();
+    const auto hasTint = [](const QPixmap& pixmap, const QColor& expected) {
+        const QImage image = pixmap.toImage();
+        for (int y = 0; y < image.height(); ++y)
+            for (int x = 0; x < image.width(); ++x)
+            {
+                const QColor pixel = image.pixelColor(x, y);
+                if (pixel.alpha() > 160 && std::abs(pixel.red() - expected.red()) <= 2 &&
+                    std::abs(pixel.green() - expected.green()) <= 2 && std::abs(pixel.blue() - expected.blue()) <= 2)
+                    return true;
+            }
+        return false;
+    };
+    for (bool dark : {false, true})
+    {
+        qApp->setProperty(VaporView::kAppDarkThemeProperty, dark);
+        qApp->setPalette(VaporView::appThemePalette(dark));
+        QCoreApplication::processEvents();
+        const QColor primary = VaporView::appThemeColor(VaporView::AppThemeColor::Primary, dark);
+        for (auto* button : sidebarToolButtons)
+            require(hasTint(button->icon().pixmap(32, 32), primary), "sidebar tools use the theme primary icon color");
+        for (auto* button : {pointDetailCloseButton, filterCurrentButton, filterStartButton, filterEndButton,
+                             heatPaletteButton, heatMetricButton})
+            require(hasTint(button->icon().pixmap(32, 32), primary), "detail tools and selectors use primary icons");
+        for (auto* button : {showRouteButton, showPointsButton})
+        {
+            for (bool checked : {false, true})
+            {
+                button->setChecked(checked);
+                require(hasTint(button->icon().pixmap(32, 32), primary), "both visibility states use primary icons");
+            }
+        }
+        require(hasTint(sidebarIcon->pixmap(), VaporView::appThemeColor(dark ? VaporView::AppThemeColor::TextTitle
+                                                                            : VaporView::AppThemeColor::TextStrong, dark)),
+                "noninteractive route icon follows the title text color");
+        const QString hover = VaporView::appThemeColorName(VaporView::AppThemeColor::TitleBarHover, dark);
+        for (const auto name : {"titleBarButton", "trajectoryPointDetailActionButton", "trajectoryHeatMetricButton",
+                                "trajectoryHeatPaletteButton", "trajectoryVisibilityToggle"})
+            require(dialog.styleSheet().contains(QStringLiteral("#%1:focus { background-color: %2;").arg(QString::fromLatin1(name), hover)),
+                    "trajectory control hover and focus use neutral gray");
+        require(!dialog.styleSheet().contains(QStringLiteral("QWidget#trajectoryViewerSidebarContent QToolButton#titleBarButton")),
+                "sidebar tools inherit transparent and neutral hover backgrounds");
+    }
+    qApp->setProperty(VaporView::kAppDarkThemeProperty, originalTheme);
+    qApp->setPalette(originalPalette);
+    QCoreApplication::processEvents();
     const QString styleSheet = dialog.styleSheet();
     require(styleSheet.contains(QStringLiteral("QDialog#trajectoryViewerDialog")),
             "trajectory viewer stylesheet is scoped to dialog");
@@ -2628,8 +2675,8 @@ void testSessionWorkspaceNavigation()
                         if (pixel.alpha() != 255)
                             continue;
                         foundInk = true;
-                        require(pixel.rgb() == viewer.palette().color(QPalette::WindowText).rgb(),
-                                "deselected sidebar icon immediately uses foreground color");
+                        require(pixel.rgb() == VaporView::appThemeColor(VaporView::AppThemeColor::Primary, VaporView::isDarkThemeEnabled()).rgb(),
+                                "deselected sidebar icon immediately uses the primary color");
                     }
                 require(foundInk, "deselected sidebar icon retains visible strokes");
             }

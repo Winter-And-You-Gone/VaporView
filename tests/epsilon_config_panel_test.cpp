@@ -569,6 +569,8 @@ int main(int argc, char *argv[])
             "advanced features shows settings and maintenance together on one page");
     require(maintenanceCard && panel.findChildren<QPushButton *>(QStringLiteral("epsilonMaintenanceButton_0")).size() == 1,
             "calibration maintenance page exposes concrete vendor backed actions");
+    for (auto *icon : panel.findChildren<QLabel *>(QStringLiteral("sectionTitleIcon")))
+        require(!icon->pixmap().isNull(), "each EPSILON heading resolves its icon");
     auto *maintenanceHeading = maintenanceCard->findChild<QLabel *>(QStringLiteral("sectionTitleLabel"));
     auto *maintenanceIcon = maintenanceCard->findChild<QLabel *>(QStringLiteral("sectionTitleIcon"));
     require(maintenanceHeading && maintenanceHeading->text() == QStringLiteral("校准与维护") &&
@@ -923,7 +925,7 @@ int main(int argc, char *argv[])
     require(booleanEditor && enumEditor && booleanEditor->isEnabled() && enumEditor->isEnabled(), "read boolean and enum editors become available");
     require(!panel.previewSettingsImport(importJson(1, 1, "{\"DYNAMICS_MODEL\":99}"), rejectedChanges, importError),
             "imported unknown enum options are rejected");
-    require(booleanEditor->property("epsilonThemedIndicator").toBool() &&
+    require(booleanEditor->property("epsilonThemedIndicator").toBool() && booleanEditor->testAttribute(Qt::WA_Hover) &&
             booleanEditor->styleSheet().contains(QStringLiteral("image: none")),
             "fusion checkbox uses a local theme-painted indicator instead of the dark native glyph");
     QApplication::processEvents();

@@ -14,6 +14,8 @@
 #include "test_ui_helpers.h"
 #include <QApplication>
 #include <QCheckBox>
+#include <QStyleOptionButton>
+#include <QStyle>
 #include <QComboBox>
 #include <QDateTime>
 #include <QDir>
@@ -150,6 +152,28 @@ int main(int argc, char **argv)
         require(window->sessionDirectory() == QDir::fromNativeSeparators(otherSession.path()), "PPK follows Session B");
         require(viewer.openSessionPath(session.path()), "switch back to Session A");
         auto &panel = *window;
+        auto *system = panel.findChild<QCheckBox *>();
+        require(system && system->testAttribute(Qt::WA_Hover), "system indicator receives hover events");
+        const bool wasEnabled = system->isEnabled();
+        const bool wasHovered = system->testAttribute(Qt::WA_UnderMouse);
+        QStyleOptionButton option;
+        option.initFrom(system);
+        const auto indicator = system->style()->subElementRect(QStyle::SE_CheckBoxIndicator, &option, system);
+        const auto hoverColor = VaporView::appThemeColor(VaporView::AppThemeColor::TitleBarHover, VaporView::isDarkThemeEnabled());
+        for (bool enabled : {true, false}) {
+            system->setEnabled(enabled);
+            system->setAttribute(Qt::WA_UnderMouse, false);
+            const auto idle = system->grab(indicator).toImage();
+            system->setAttribute(Qt::WA_UnderMouse, true);
+            const auto hovered = system->grab(indicator).toImage();
+            bool addedHoverColor = false;
+            for (int y = 0; y < hovered.height(); ++y)
+                for (int x = 0; x < hovered.width(); ++x)
+                    addedHoverColor |= hovered.pixelColor(x, y) == hoverColor && idle.pixelColor(x, y) != hoverColor;
+            require(addedHoverColor == enabled, "only enabled system indicators paint the neutral hover color");
+        }
+        system->setAttribute(Qt::WA_UnderMouse, wasHovered);
+        system->setEnabled(wasEnabled);
         require(panel.findChild<QLabel *>("sessionPpkRoverStatus")->text().contains(QString::fromUtf8("缺少")),
                 "missing Rover is visible in PPK window");
         auto *run = panel.findChild<QPushButton *>("sessionPpkRunButton");

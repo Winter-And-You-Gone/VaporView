@@ -447,7 +447,7 @@ QIcon createLucideIcon(const QString& iconName, const QColor& color)
 
 QIcon createWaveDisplayIcon(const QColor& color)
 {
-    return createLucideIcon(QStringLiteral("sliders-vertical"), color);
+    return createLucideIcon(QStringLiteral("sliders-horizontal"), color);
 }
 
 QIcon createMenuCheckIcon(const QColor& color)
@@ -666,12 +666,21 @@ public:
         show_h2_row_->setChecked(show_h2_);
     }
 
-    void setCheckIcon(const QIcon& icon)
+    void updateCheckIcons(bool dark)
     {
-        check_icon_ = icon;
-        for (SingleLevelPopupMenuRow *row : {show_default_row_, show_all_row_, show_raw_row_, show_h2_row_, show_harmonic_row_, show_peak_trend_row_})
+        const auto primary = appThemeColor(AppThemeColor::Primary, dark);
+        const auto checked = createLucideIcon(QStringLiteral("square-check-big"), primary);
+        const auto unchecked = createLucideIcon(QStringLiteral("square"), primary);
+        const auto preset = createMenuCheckIcon(appThemeColor(AppThemeColor::MenuCheckText, dark));
+        for (auto *row : {show_default_row_, show_all_row_})
         {
-            row->setCheckIcon(check_icon_);
+            row->setCheckIcon(preset);
+            row->refreshTheme();
+        }
+        for (SingleLevelPopupMenuRow *row : {show_raw_row_, show_h2_row_, show_harmonic_row_, show_peak_trend_row_})
+        {
+            row->setCheckIcon(checked);
+            row->setUncheckedIcon(unchecked);
             row->refreshTheme();
         }
     }
@@ -730,7 +739,7 @@ protected:
             const bool dark = VaporView::isDarkThemeEnabled();
             painter.setRenderHint(QPainter::Antialiasing, true);
             painter.setPen(Qt::NoPen);
-            painter.setBrush(dark ? QColor(30, 30, 30) : appThemeColor(AppThemeColor::TitleBarHover, dark));
+            painter.setBrush(appThemeColor(AppThemeColor::TitleBarHover, dark));
             painter.drawRoundedRect(icon_area, 4, 4);
         }
 
@@ -812,7 +821,6 @@ private:
     static constexpr int kIconGap = 8;
 
     QIcon normal_icon_;
-    QIcon check_icon_;
     SingleLevelPopupMenu *menu_;
     SingleLevelPopupMenuRow *show_default_row_ = nullptr;
     SingleLevelPopupMenuRow *show_all_row_ = nullptr;
@@ -2938,7 +2946,7 @@ void TcpWavePanel::updateWaveDisplayModeIcon()
     {
         const QIcon waveDisplayIcon = createWaveDisplayIcon(appThemeColor(AppThemeColor::Primary, dark));
         titleLabel->setIcon(waveDisplayIcon);
-        titleLabel->setCheckIcon(createMenuCheckIcon(appThemeColor(AppThemeColor::MenuCheckText, dark)));
+        titleLabel->updateCheckIcons(dark);
         if (wave_display_button_)
         {
             wave_display_button_->setIcon(waveDisplayIcon);

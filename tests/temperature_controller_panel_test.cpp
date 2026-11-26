@@ -1,3 +1,4 @@
+#include <QEvent>
 #include "test_settings_sandbox.h"
 #include "ground/widgets/TelemetryPanels.h"
 #include "ground/widgets/TemperatureControllerWidgets.h"
@@ -21,6 +22,19 @@
 
 namespace
 {
+
+bool hasPrimaryIcon(QAbstractButton *button, bool dark)
+{
+    const auto image = button->icon().pixmap(button->iconSize()).toImage();
+    const auto expected = VaporView::appThemeColor(VaporView::AppThemeColor::Primary, dark).rgb();
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const auto color = image.pixelColor(x, y);
+            if (color.alpha() > 200 && color.rgb() == expected) return true;
+        }
+    }
+    return false;
+}
 
 void require(bool condition, const char *message)
 {
@@ -60,6 +74,19 @@ void testTec103PlotViews()
     require(viewToggle && device && remotePlot && viewToggle->isHidden() && remotePlot->isHidden(),
             "RD105 hides the TEC103-specific controls");
     panel.setDualTec103(true);
+    auto *reset = panel.findChild<QPushButton *>("temperatureFactoryResetButton");
+    require(reset, "factory reset is present");
+    const QVariant previousTheme = qApp->property(VaporView::kAppDarkThemeProperty);
+    QEvent paletteChange(QEvent::PaletteChange);
+    for (bool dark : {false, true}) {
+        qApp->setProperty(VaporView::kAppDarkThemeProperty, dark);
+        QApplication::sendEvent(viewToggle, &paletteChange);
+        QApplication::sendEvent(reset, &paletteChange);
+        require(hasPrimaryIcon(viewToggle, dark) && hasPrimaryIcon(reset, dark), "plot and reset icons use the theme primary color");
+    }
+    qApp->setProperty(VaporView::kAppDarkThemeProperty, previousTheme);
+    QApplication::sendEvent(viewToggle, &paletteChange);
+    QApplication::sendEvent(reset, &paletteChange);
     panel.clearTemperatureHistory();
     data.channels[1].measured_temperature_c = std::numeric_limits<double>::quiet_NaN();
     panel.updateData(data, 10.0);

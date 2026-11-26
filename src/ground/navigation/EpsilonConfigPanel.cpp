@@ -217,6 +217,7 @@ class EpsilonParameterCheckBox final : public QCheckBox
 public:
     explicit EpsilonParameterCheckBox(QWidget *parent) : QCheckBox(parent)
     {
+        setAttribute(Qt::WA_Hover);
         setProperty("epsilonThemedIndicator", true);
         setStyleSheet(QStringLiteral("QCheckBox::indicator { width: 18px; height: 18px; }"
             "QCheckBox::indicator, QCheckBox::indicator:checked, QCheckBox::indicator:indeterminate, "
@@ -231,10 +232,11 @@ protected:
         initStyleOption(&option);
         const QRect rect = style()->subElementRect(QStyle::SE_CheckBoxIndicator, &option, this);
         const bool dark = VaporView::isDarkThemeEnabled();
-        QColor color = VaporView::appThemeColor(isChecked() ? VaporView::AppThemeColor::Primary
-                                                          : VaporView::AppThemeColor::TextSecondary, dark);
+        QColor color = VaporView::appThemeColor(VaporView::AppThemeColor::Primary, dark);
         if (!isEnabled()) color.setAlphaF(0.6f);
         QPainter painter(this);
+        if (isEnabled() && (option.state & QStyle::State_MouseOver))
+            VaporView::drawCheckedIndicatorHover(painter, rect, VaporView::appThemeColor(VaporView::AppThemeColor::TitleBarHover, dark));
         if (checkState() == Qt::Checked)
         {
             VaporView::drawSquareCheckBig(painter, rect, color);
@@ -589,7 +591,7 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     overview_grid_->addWidget(livePacketRateCard.card, 0, 1);
 
     const SectionCard outputCard = createSectionCard(
-        this, QStringLiteral("epsilonOutputCard"), QStringLiteral("activity"));
+        this, QStringLiteral("epsilonOutputCard"), QStringLiteral("radio"));
     output_title_label_ = outputCard.title;
     auto *outputTitleActions = new QWidget(outputCard.title_bar);
     outputTitleActions->setObjectName(QStringLiteral("epsilonOutputTitleActions"));
@@ -746,7 +748,7 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     deviceSettingsCard.body_layout->addLayout(deviceGrid);
     communicationLayout->addWidget(deviceSettingsCard.card);
 
-    const SectionCard settingsActions = createSectionCard(this, QStringLiteral("epsilonParameterActionsCard"), QStringLiteral("sliders-vertical"));
+    const SectionCard settingsActions = createSectionCard(this, QStringLiteral("epsilonParameterActionsCard"), QStringLiteral("file-cog"));
     settings_actions_card_ = settingsActions.card;
     settings_actions_card_->setProperty("epsilonParameterCard", true);
     settings_actions_title_ = settingsActions.title;
@@ -769,7 +771,7 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     createAdvancedSettingsPage();
     auto *advancedPage = pages_->widget(3);
     auto *advancedLayout = qobject_cast<QVBoxLayout *>(advancedPage->layout());
-    auto maintenanceCard = createSectionCard(advancedPage, QStringLiteral("epsilonMaintenanceCard"), QStringLiteral("sliders-vertical"));
+    auto maintenanceCard = createSectionCard(advancedPage, QStringLiteral("epsilonMaintenanceCard"), QStringLiteral("wrench"));
     maintenanceCard.card->setProperty("epsilonParameterCard", true);
     maintenance_title_ = maintenanceCard.title;
     maintenance_grid_ = new QGridLayout();
@@ -1086,7 +1088,7 @@ void EpsilonConfigPanel::createSettingsPages()
         {
             const SectionCard card = createSectionCard(fields,
                 QStringLiteral("epsilonParameterCard_%1_%2").arg(static_cast<int>(group)).arg(cardIndex),
-                group == VaporView::EpsilonSettingsGroup::Installation ? QStringLiteral("satellite") : QStringLiteral("activity"));
+                group == VaporView::EpsilonSettingsGroup::Installation ? QStringLiteral("compass") : QStringLiteral("sliders-horizontal"));
             card.card->setProperty("epsilonParameterCard", true);
             card.card->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
             cards.append(card);
@@ -1318,7 +1320,7 @@ void EpsilonConfigPanel::createAdvancedSettingsPage()
     auto *dgnssPage = new QWidget(advanced_pages_);
     auto *dgnssLayout = new QVBoxLayout(dgnssPage);
     dgnssLayout->setContentsMargins(0, 0, 0, 0);
-    auto dgnssCard = createSectionCard(dgnssPage, QStringLiteral("epsilonDgnssCard"), QStringLiteral("sliders-vertical"));
+    auto dgnssCard = createSectionCard(dgnssPage, QStringLiteral("epsilonDgnssCard"), QStringLiteral("radar"));
     dgnssCard.card->setProperty("epsilonParameterCard", true);
     dgnss_title_ = dgnssCard.title;
     auto *dgnssFields = new QWidget(dgnssCard.card);

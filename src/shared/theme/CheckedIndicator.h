@@ -50,4 +50,15 @@ inline void drawSquareCheckBig(QPainter& painter, const QRectF& rect, const QCol
     painter.restore();
 }
 
+inline void drawCheckedIndicatorHover(QPainter& painter, const QRectF& rect, const QColor& hoverColor)
+{
+    if (rect.width() <= 0 || rect.height() <= 0 || !hoverColor.isValid()) return;
+    painter.save();
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(hoverColor);
+    painter.drawRoundedRect(rect.adjusted(-2.0, -2.0, 2.0, 2.0), 4.0, 4.0);
+    painter.restore();
+}
+
 } // namespace VaporView

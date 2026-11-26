@@ -75,6 +75,11 @@ MapResourceDialog::MapResourceDialog(MapResourceManager* manager, QWidget* paren
     rescan_button_ = new QPushButton(mapText(QStringLiteral("重新扫描")), this);
     download_button_ = new QPushButton(mapText(QStringLiteral("下载选中")), this);
     remove_button_ = new QPushButton(mapText(QStringLiteral("删除选中")), this);
+    rescan_button_->setProperty("mapResourceIcon", QStringLiteral("refresh-cw"));
+    download_button_->setProperty("mapResourceIcon", QStringLiteral("download"));
+    remove_button_->setProperty("mapResourceIcon", QStringLiteral("trash-2"));
+    for (auto* button : {rescan_button_, download_button_, remove_button_})
+        button->setIconSize(QSize(16, 16));
     actions->addWidget(refresh_button_);
     actions->addWidget(rescan_button_);
     actions->addWidget(download_button_);

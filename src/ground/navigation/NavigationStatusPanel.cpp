@@ -1,5 +1,6 @@
 #include "ground/navigation/NavigationStatusPanel.h"
 
+#include "ground/main/GroundMainWindowSupport.h"
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/TopLevelCardStyle.h"
 
@@ -174,6 +175,7 @@ NavigationStatusPanel::NavigationStatusPanel(QWidget *parent)
         this,
         QStringLiteral("navigationStatusSummaryCard"),
         QStringLiteral("navigationStatusSummaryTitle"),
+        QStringLiteral("activity"),
         &summary_title_,
         &summaryLayout);
     auto *summaryGrid = new QGridLayout();
@@ -210,6 +212,7 @@ NavigationStatusPanel::NavigationStatusPanel(QWidget *parent)
         details_row_,
         QStringLiteral("navigationStatusPositionCard"),
         QStringLiteral("navigationStatusPositionTitle"),
+        QStringLiteral("locate-fixed"),
         &position_title_,
         &positionLayout);
     auto *positionGrid = new QGridLayout();
@@ -233,6 +236,7 @@ NavigationStatusPanel::NavigationStatusPanel(QWidget *parent)
         details_row_,
         QStringLiteral("navigationStatusAttitudeCard"),
         QStringLiteral("navigationStatusAttitudeTitle"),
+        QStringLiteral("compass"),
         &attitude_title_,
         &attitudeLayout);
     auto *attitudeGrid = new QGridLayout();
@@ -263,6 +267,7 @@ NavigationStatusPanel::NavigationStatusPanel(QWidget *parent)
         quality_row_,
         QStringLiteral("navigationStatusGnssCard"),
         QStringLiteral("navigationStatusGnssTitle"),
+        QStringLiteral("satellite"),
         &gnss_title_,
         &gnssLayout);
     auto *gnssGrid = new QGridLayout();
@@ -284,6 +289,7 @@ NavigationStatusPanel::NavigationStatusPanel(QWidget *parent)
         quality_row_,
         QStringLiteral("navigationStatusDifferentialCard"),
         QStringLiteral("navigationStatusDifferentialTitle"),
+        QStringLiteral("radar"),
         &differential_title_,
         &differentialLayout);
     auto *differentialGrid = new QGridLayout();
@@ -510,7 +516,7 @@ void NavigationStatusPanel::changeEvent(QEvent *event)
     QWidget::changeEvent(event);
     if (event &&
         (event->type() == QEvent::ApplicationPaletteChange ||
-         event->type() == QEvent::PaletteChange))
+         event->type() == QEvent::PaletteChange || event->type() == QEvent::StyleChange))
     {
         QTimer::singleShot(0, this, [this]() { applyAppearance(); });
     }
@@ -526,6 +532,7 @@ QFrame *NavigationStatusPanel::createCard(
     QWidget *parent,
     const QString& objectName,
     const QString& titleObjectName,
+    const QString& iconName,
     QLabel **titleOut,
     QVBoxLayout **layoutOut)
 {
@@ -539,7 +546,16 @@ QFrame *NavigationStatusPanel::createCard(
     layout->setContentsMargins(16, 14, 16, 16);
     layout->setSpacing(11);
     QLabel *title = createSectionTitle(card, titleObjectName);
-    layout->addWidget(title);
+    auto *heading = new QHBoxLayout();
+    heading->setSpacing(6);
+    auto *icon = new QLabel(card);
+    icon->setObjectName(QStringLiteral("sectionTitleIcon"));
+    icon->setProperty("navigationIconName", iconName);
+    icon->setFixedSize(18, 18);
+    heading->addWidget(icon);
+    title->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+    heading->addWidget(title, 1);
+    layout->addLayout(heading);
     if (titleOut)
     {
         *titleOut = title;
@@ -634,6 +650,13 @@ void NavigationStatusPanel::updateTexts()
 
 void NavigationStatusPanel::applyAppearance()
 {
+    const bool dark = VaporView::isDarkThemeEnabled();
+    const QColor color = dark ? VaporView::appThemeColor(VaporView::AppThemeColor::TextTitle, dark) : QColor(Qt::black);
+    for (auto *icon : findChildren<QLabel *>(QStringLiteral("sectionTitleIcon")))
+    {
+        const auto graphic = VaporView::Ground::MainSupport::createLucideIcon(icon->property("navigationIconName").toString(), color);
+        icon->setPixmap(graphic.pixmap(icon->size(), icon->devicePixelRatioF()));
+    }
     const QString style = QStringLiteral(
         "QWidget#navigationStatusPanel, QWidget#navigationStatusDetailsRow, "
         "QWidget#navigationStatusQualityRow { background-color: @vv-window; border: none; }"

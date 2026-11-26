@@ -1736,9 +1736,10 @@ void MainWindow::onScheduledRecordingClicked()
                                                     state_->dark_theme_enabled_);
         return QStringLiteral(
             "QToolButton { background-color: transparent; border: 0px; border-radius: 0px; color: %1; padding: 2px 4px; margin: 0px; }"
-            "QToolButton:hover, QToolButton:checked, QToolButton:pressed, QToolButton:focus { background-color: transparent; border: 0px; }"
+            "QToolButton:checked, QToolButton:pressed, QToolButton:focus { background-color: transparent; border: 0px; }"
+            "QToolButton:hover { background-color: %2; border-radius: 6px; }"
             "QToolButton::menu-indicator { image: none; width: 0px; height: 0px; }")
-                .arg(textColor);
+                .arg(textColor, appThemeColorName(AppThemeColor::TitleBarHover, state_->dark_theme_enabled_));
     };
     const QString scheduledToggleStyle = makeScheduledToggleStyle();
     auto updateScheduledToggleIcon = [this](QToolButton *button) {
@@ -1746,13 +1747,10 @@ void MainWindow::onScheduledRecordingClicked()
         {
             return;
         }
-        const QColor checkedColor = state_->dark_theme_enabled_
-            ? appThemeColor(AppThemeColor::Primary, true)
-            : appThemeColor(AppThemeColor::ToolbarBlue, false);
         button->setIcon(createLucideIcon(button->isChecked()
             ? QStringLiteral("square-check-big")
             : QStringLiteral("square"),
-            button->isChecked() ? checkedColor : toolbarColor(AppThemeColor::ToolbarDisabled)));
+            appThemeColor(AppThemeColor::Primary, state_->dark_theme_enabled_)));
         button->setIconSize(QSize(26, 26));
     };
     auto createScheduledToggle = [scheduledToggleStyle, updateScheduledToggleIcon](const QString& text, QWidget *parent) {

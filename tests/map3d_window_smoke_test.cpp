@@ -1120,6 +1120,8 @@ int main(int argc, char** argv)
                 "embedded osgEarth view accepts keyboard focus for native camera navigation");
     }
     require(reloadBestMapAction->isEnabled(), "reload best local map action exists");
+    require(!flyToAircraftAction->icon().isNull() && !resetViewAction->icon().isNull(),
+            "view menu displays locate and reset action icons");
     require(flyToAircraftAction->isEnabled(), "fly to aircraft action exists");
     require(flyToTrackAction->isEnabled(), "fly to track action exists");
     require(resetViewAction->isEnabled(), "reset view action exists");
@@ -1163,6 +1165,23 @@ int main(int argc, char** argv)
                 "base map, satellite, DEM and flight elements start enabled");
         require(row && row->isChecked() == expectedVisible && !row->closeOnClick(),
                 "layer row mirrors its check state and keeps the menu open for multi-selection");
+        for (bool checked : {false, true})
+        {
+            row->setChecked(checked);
+            require(row->property(checked ? "hasCheckIcon" : "hasUncheckedIcon").toBool(),
+                    "each independent layer state displays its icon");
+            const QImage image = row->checkLabel()->pixmap().toImage();
+            require(!image.isNull(), "layer row paints a state icon");
+            const auto hasStroke = [&](int left, int top, int right, int bottom) {
+                for (int y = image.height() * top / 100; y < image.height() * bottom / 100; ++y)
+                    for (int x = image.width() * left / 100; x < image.width() * right / 100; ++x)
+                        if (image.pixelColor(x, y).alpha() > 64) return true;
+                return false;
+            };
+            require(hasStroke(8, 35, 25, 65) && hasStroke(35, 75, 65, 93) && hasStroke(38, 38, 62, 62) == checked,
+                    "layer states have square outlines and only the checked state contains a tick");
+        }
+        row->setChecked(expectedVisible);
     }
 
     window.resize(760, 520);
@@ -1177,6 +1196,9 @@ int main(int argc, char** argv)
         qApp->setProperty(VaporView::kAppDarkThemeProperty, dark);
         qApp->setPalette(VaporView::appThemePalette(dark));
         QCoreApplication::processEvents();
+        require(cornerControls->styleSheet().contains(QStringLiteral("QToolButton:hover { background: ") +
+                    VaporView::appThemeColorName(VaporView::AppThemeColor::TitleBarHover, dark)),
+                "map corner buttons use the neutral hover background");
         more->popup(moreButton->mapToGlobal(QPoint(0, moreButton->height())));
         QCoreApplication::processEvents();
         if (dark)

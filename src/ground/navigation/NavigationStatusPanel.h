@@ -78,6 +78,7 @@ private:
     QFrame *createCard(QWidget *parent,
                        const QString& objectName,
                        const QString& titleObjectName,
+                       const QString& iconName,
                        QLabel **titleOut,
                        QVBoxLayout **layoutOut);
     FieldWidgets addField(QGridLayout *layout,

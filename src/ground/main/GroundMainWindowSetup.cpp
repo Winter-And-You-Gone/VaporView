@@ -2472,7 +2472,7 @@ void MainWindow::setupCentralWidget()
         sidebarLayout->addWidget(button);
         return button;
     };
-    state_->home_nav_btn_ = createNavButton(QStringLiteral("首页"), QStringLiteral("square-activity"));
+    state_->home_nav_btn_ = createNavButton(QStringLiteral("首页"), QStringLiteral("house"));
     state_->waveform_nav_btn_ = createNavButton(QStringLiteral("波形"), QStringLiteral("chart-line"));
     state_->device_config_nav_btn_ = createNavButton(QStringLiteral("设备配置"), QStringLiteral("sliders-vertical"));
     state_->temperature_nav_btn_ = createNavButton(QStringLiteral("温控"), QStringLiteral("thermometer"));
@@ -3556,7 +3556,7 @@ void MainWindow::setupDeviceConfigPage()
     summaryTitleLayout->setSpacing(8);
     QWidget *summaryTitleCluster = nullptr;
     state_->device_config_.data_telemetry_summary_title_lbl = createSectionTitleCluster(summaryTitleBar,
-                                                                               QStringLiteral("satellite"),
+                                                                               QStringLiteral("radio"),
                                                                                kMainPageButtonHeight,
                                                                                &summaryTitleCluster);
     summaryTitleLayout->addWidget(summaryTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
@@ -3867,7 +3867,7 @@ void MainWindow::setupDeviceConfigPage()
     motionTitleLayout->setContentsMargins(8, 2, 8, 2);
     QWidget *motionTitleCluster = nullptr;
     state_->device_config_.motion_title_lbl = createSectionTitleCluster(
-        motionTitleBar, QStringLiteral("locate-fixed"), kMainPageButtonHeight, &motionTitleCluster);
+        motionTitleBar, QStringLiteral("cog"), kMainPageButtonHeight, &motionTitleCluster);
     motionTitleLayout->addWidget(motionTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
     motionTitleLayout->addStretch();
     motionLayout->addWidget(motionTitleBar);
@@ -3921,7 +3921,7 @@ void MainWindow::setupDeviceConfigPage()
 void MainWindow::updateSidebarNavIcons()
 {
     const bool dark = state_->dark_theme_enabled_;
-    const QColor normalColor = appThemeColor(AppThemeColor::Text, dark);
+    const QColor normalColor = appThemeColor(AppThemeColor::Primary, dark);
     const QColor activeColor = QColor(255, 255, 255);
     for (QPushButton *button : {state_->home_nav_btn_, state_->waveform_nav_btn_, state_->temperature_nav_btn_, state_->rtk_config_nav_btn_, state_->device_config_nav_btn_, state_->fpga_nav_btn_, state_->water_calibration_nav_btn_})
     {
@@ -3929,16 +3929,16 @@ void MainWindow::updateSidebarNavIcons()
         {
             continue;
         }
-        const QString iconName = button->property(kSidebarIconNameProperty).toString();
+        QString iconName = button->property(kSidebarIconNameProperty).toString();
         if (iconName.isEmpty())
         {
             button->setIcon(QIcon());
             continue;
         }
-        QColor iconColor = button->isChecked() ? activeColor : normalColor;
+        const QColor iconColor = button->isChecked() ? activeColor : normalColor;
         if (button == state_->rtk_config_nav_btn_ && state_->rtk_service_running_)
         {
-            iconColor = toolbarColor(AppThemeColor::ToolbarGreen);
+            iconName = QStringLiteral("radar");
         }
         button->setIcon(createLucideIcon(iconName, iconColor));
     }
@@ -5516,7 +5516,7 @@ void MainWindow::setupDataPanels()
 
     QWidget *epsilonTitleCluster = nullptr;
     state_->epsilon_inline_title_lbl_ = createSectionTitleCluster(epsilonTitleBar,
-                                                          QStringLiteral("earth"),
+                                                          QStringLiteral("compass"),
                                                           kMainPageButtonHeight,
                                                           &epsilonTitleCluster);
     epsilonTitleLayout->addWidget(epsilonTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
@@ -5549,7 +5549,7 @@ void MainWindow::setupDataPanels()
     auto *motionTitleLayout = new QHBoxLayout(motionTitleBar);
     motionTitleLayout->setContentsMargins(8, 2, 8, 2);
     QWidget *motionTitleCluster = nullptr;
-    createSectionTitleCluster(motionTitleBar, QStringLiteral("locate-fixed"),
+    createSectionTitleCluster(motionTitleBar, QStringLiteral("cog"),
                               kMainPageButtonHeight, &motionTitleCluster);
     motionTitleLayout->addWidget(motionTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
     motionTitleLayout->addStretch();

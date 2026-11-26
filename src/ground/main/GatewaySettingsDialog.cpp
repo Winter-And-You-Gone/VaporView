@@ -1,4 +1,5 @@
 #include "ground/main/GatewaySettingsDialog.h"
+#include "ground/main/GroundMainWindowSupport.h"
 #include "shared/config/ApplicationConfig.h"
 #include "shared/config/SettingsWriteBarrier.h"
 
@@ -98,6 +99,8 @@ GatewaySettingsDialog::GatewaySettingsDialog(const GatewaySettings& value,
     : QDialog(parent), original_(value), english_(english)
 {
     setObjectName(QStringLiteral("gatewaySettingsDialog"));
+    setWindowIcon(MainSupport::createLucideIcon(QStringLiteral("server-cog"),
+        appThemeColor(AppThemeColor::TextTitle, MainSupport::isDarkToolbarTheme())));
     setWindowTitle(english ? QStringLiteral("Gateway") : QStringLiteral("Gateway 网关"));
     resize(650, 700);
     auto *layout = new QVBoxLayout(this);

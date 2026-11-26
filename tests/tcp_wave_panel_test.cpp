@@ -754,6 +754,7 @@ void testFpgaWaveDisplaySelection()
     const QString showAll = QStringLiteral("tcpWaveDisplayShowAllMenuAction");
     clickRow(showAll);
     checkPlots(255);
+    QList<QImage> uncheckedIndicators;
     require(equalRow(4, 6) && equalRow(5, 7), "both water channels stay aligned in the all-graphs view");
     const int allHeight = panel.preferredPanelHeight();
     int acquisitionRequests = 0;
@@ -762,8 +763,24 @@ void testFpgaWaveDisplaySelection()
     for (int mask = 0; mask < 16; ++mask) {
         if (mask > 0) clickRow(showAll); // Restore all, then deselect all to reset the subset.
         clickRow(showAll);
+        if (!mask) {
+            for (int index = 0; index < actions.size(); ++index) {
+                auto *row = menu->findChild<VaporView::SingleLevelPopupMenuRow *>(actions[index]);
+                const auto image = row->checkLabel()->pixmap().toImage();
+                require(!row->isChecked() && !image.isNull(), "unchecked option shows its empty square");
+                uncheckedIndicators.append(image);
+            }
+        }
         for (int index = 0; index < actions.size(); ++index)
             if (mask & (1 << index)) clickRow(actions[index]);
+        if (mask == 15) {
+            for (int index = 0; index < actions.size(); ++index) {
+                auto *row = menu->findChild<VaporView::SingleLevelPopupMenuRow *>(actions[index]);
+                const auto image = row->checkLabel()->pixmap().toImage();
+                require(row->isChecked() && !image.isNull() && image != uncheckedIndicators[index],
+                        "checked option displays a distinct checked square");
+            }
+        }
         checkPlots(mask);
         if (!mask) require(panel.preferredPanelHeight() < 80, "hiding all FPGA graphs collapses to the title bar");
         if (mask == 2) {

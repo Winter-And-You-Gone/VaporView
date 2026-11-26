@@ -116,7 +116,7 @@ QPixmap stepIndicator(QToolButton *button, bool completed, bool dark)
     icon.fill(Qt::transparent);
     QPainter painter(&icon);
     painter.setRenderHint(QPainter::Antialiasing);
-    const auto color = appThemeColor(completed ? AppThemeColor::HomeDeviceSuccess : AppThemeColor::HomeDeviceDanger, dark);
+    const auto color = appThemeColor(AppThemeColor::Primary, dark);
     painter.scale(size / 24.0, size / 24.0);
     painter.setPen(QPen(color, 2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
     // Paths from the bundled Lucide check.svg and x.svg (24-unit view box).
@@ -624,7 +624,7 @@ void WaterCalibrationPage::setTheme(bool dark,int percent)
         "QWidget#waterCalibrationPage QPushButton:focus { border: 1px solid @vv-focus; }"
         "QWidget#calibrationStepPath QToolButton { background-color: @vv-hd-bad-bg; border: 1px solid @vv-hd-bad; border-radius: 7px; padding: 2px; }"
         "QWidget#calibrationStepPath QToolButton[completed=\"true\"] { background-color: @vv-hd-ok-bg; border-color: @vv-hd-ok; }"
-        "QWidget#calibrationStepPath QToolButton:hover, QWidget#calibrationStepPath QToolButton:focus { background-color: @vv-primary-subtle; border-color: @vv-border-strong; }"
+        "QWidget#calibrationStepPath QToolButton:hover, QWidget#calibrationStepPath QToolButton:focus { background-color: @vv-title-hover; border-color: @vv-border-strong; }"
         "QWidget#calibrationStepPath QToolButton:pressed { border-color: @vv-primary; }"
         "QWidget#waterCalibrationPage QTableWidget, QWidget#waterCalibrationPage QPlainTextEdit { background: @vv-surface; alternate-background-color: @vv-surface-alt; color: @vv-text; gridline-color: @vv-border; }"
         "QWidget#waterCalibrationPage QHeaderView::section { background: @vv-surface-alt; color: @vv-text; padding: 4px; }"

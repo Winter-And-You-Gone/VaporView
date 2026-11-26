@@ -521,7 +521,7 @@ bool MainWindow::updateHomeMotionDeviceControls(qint64 nowMs, bool animationOnly
         const qint64 elapsedMs = std::max<qint64>(0, nowMs - state_->home_motion_action_spinner_started_ms_);
         const int frame = static_cast<int>((elapsedMs / kHomeDeviceActionSpinnerIntervalMs) % kHomeDeviceActionSpinnerFrames);
         const auto icon = createRotatedLucideIcon(QStringLiteral("refresh-cw"),
-            toolbarColor(AppThemeColor::HomeDeviceSuccess), (frame * 360) / kHomeDeviceActionSpinnerFrames);
+            toolbarColor(AppThemeColor::ToolbarBlue), (frame * 360) / kHomeDeviceActionSpinnerFrames);
         for (auto *button : buttons)
             if (button && (!animationOnly || button->isVisible())) setDeviceActionAnimationFrame(button, icon);
         if (animationOnly) return true;
@@ -584,8 +584,8 @@ bool MainWindow::updateHomeMotionDeviceControls(qint64 nowMs, bool animationOnly
         else
         {
             const QString iconName = connected ? QStringLiteral("unlink") : QStringLiteral("link");
-            const QColor iconColor = connected ? toolbarColor(AppThemeColor::ToolbarRed)
-                : toolbarColor(ready ? AppThemeColor::HomeDeviceSuccess : AppThemeColor::ToolbarDisabled);
+            const QColor iconColor = toolbarColor(connected || ready
+                ? AppThemeColor::ToolbarBlue : AppThemeColor::ToolbarDisabled);
             const QString iconKey = QStringLiteral("%1|%2").arg(iconName, iconColor.name(QColor::HexArgb));
             if (button->property(kHomeDeviceIconKeyProperty).toString() != iconKey)
             {
@@ -940,17 +940,14 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         {
             button->setProperty(kHomeDeviceIconKeyProperty, QStringLiteral("spinner"));
             setDeviceActionAnimationFrame(button, createRotatedLucideIcon(QStringLiteral("refresh-cw"),
-                                                    toolbarColor(AppThemeColor::HomeDeviceSuccess),
+                                                    toolbarColor(AppThemeColor::ToolbarBlue),
                                                     homeDeviceActionSpinnerDegrees(device, nowMs)));
         }
         else
         {
             const QString iconName = connected ? QStringLiteral("unlink") : QStringLiteral("link");
-            const QColor iconColor = connected
-                ? toolbarColor(AppThemeColor::ToolbarRed)
-                : buttonDisabled
-                    ? toolbarColor(AppThemeColor::ToolbarDisabled)
-                    : toolbarColor(AppThemeColor::HomeDeviceSuccess);
+            const QColor iconColor = toolbarColor(buttonDisabled
+                ? AppThemeColor::ToolbarDisabled : AppThemeColor::ToolbarBlue);
             const QString iconKey = QStringLiteral("%1|%2").arg(iconName, iconColor.name(QColor::HexArgb));
             if (button->property(kHomeDeviceIconKeyProperty).toString() != iconKey)
             {
@@ -1058,7 +1055,7 @@ void MainWindow::updateHomeDeviceActionSpinnerIcons()
         anySpinnerActive = true;
         if (!button->isVisible()) return;
         const auto icon = createRotatedLucideIcon(QStringLiteral("refresh-cw"),
-            toolbarColor(AppThemeColor::HomeDeviceSuccess), homeDeviceActionSpinnerDegrees(device, nowMs));
+            toolbarColor(AppThemeColor::ToolbarBlue), homeDeviceActionSpinnerDegrees(device, nowMs));
         setDeviceActionAnimationFrame(button, icon);
     };
 
@@ -1831,8 +1828,8 @@ void MainWindow::updateTelemetryLinkAction()
     const QString iconKey = QStringLiteral("%1|%2").arg(active).arg(state_->dark_theme_enabled_);
     if (state_->telemetry_link_btn_->property("linkIconKey").toString() != iconKey) {
         state_->telemetry_link_btn_->setProperty("linkIconKey", iconKey);
-        state_->telemetry_link_btn_->setIcon(createLucideIcon(active ? QStringLiteral("unplug") : QStringLiteral("plug"),
-            toolbarColor(active ? AppThemeColor::ToolbarRed : AppThemeColor::ToolbarBlue)));
+        state_->telemetry_link_btn_->setIcon(createLucideIcon(active ? QStringLiteral("unlink") : QStringLiteral("link"),
+            toolbarColor(AppThemeColor::ToolbarBlue)));
     }
     if (remote && !isUiTestMode() && state_->connect_btn_) {
         const bool open = state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen();

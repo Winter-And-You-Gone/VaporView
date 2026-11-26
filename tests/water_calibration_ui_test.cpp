@@ -210,8 +210,14 @@ int main(int argc,char **argv)
         check(node->width() == qRound(32 * scale / 100.0) &&
                   node->iconSize().width() == qRound(18 * scale / 100.0),
               "node uses the home connection button proportions");
+        const auto stroke = stepImage(node);
+        bool hasPrimaryStroke = false;
+        for (int y = 0; y < stroke.height(); ++y)
+            for (int x = 0; x < stroke.width(); ++x)
+                hasPrimaryStroke |= stroke.pixelColor(x, y) == VaporView::appThemeColor(VaporView::AppThemeColor::Primary, false);
+        check(hasPrimaryStroke, "step indicator uses the primary action color");
         check(bg(false) == VaporView::appThemeColor(VaporView::AppThemeColor::HomeDeviceDangerBackground, false) &&
-                  bg(true) == VaporView::appThemeColor(VaporView::AppThemeColor::PrimarySubtle, false),
+                  bg(true) == VaporView::appThemeColor(VaporView::AppThemeColor::TitleBarHover, false),
               "pending button renders a red background and the home action hover color");
         node->setAttribute(Qt::WA_UnderMouse, false);
     }

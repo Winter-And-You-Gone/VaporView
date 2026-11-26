@@ -39,6 +39,7 @@ class PpkSystemCheckBox final : public QCheckBox
 public:
     PpkSystemCheckBox(const QString& text, QWidget *parent) : QCheckBox(text, parent)
     {
+        setAttribute(Qt::WA_Hover, true);
         setStyleSheet(QStringLiteral("QCheckBox::indicator, QCheckBox::indicator:checked, "
             "QCheckBox::indicator:hover { background: transparent; border: none; image: none; }"));
     }
@@ -52,7 +53,10 @@ protected:
         const QRect rect = style()->subElementRect(QStyle::SE_CheckBoxIndicator, &option, this);
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing);
-        QColor color = appThemeColor(AppThemeColor::Primary, isDarkThemeEnabled());
+        const bool dark = isDarkThemeEnabled();
+        if (isEnabled() && (option.state & QStyle::State_MouseOver))
+            drawCheckedIndicatorHover(painter, rect, appThemeColor(AppThemeColor::TitleBarHover, dark));
+        QColor color = appThemeColor(AppThemeColor::Primary, dark);
         if (!isEnabled())
             color.setAlphaF(0.4);
         if (isChecked()) drawSquareCheckBig(painter, rect, color);

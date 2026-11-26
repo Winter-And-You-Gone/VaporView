@@ -2,6 +2,7 @@
 
 #include "Ai8TemperatureControllerProtocol.h"
 
+#include <QIcon>
 #include <QList>
 #include <QString>
 #include <QVariant>
@@ -23,6 +24,8 @@ class QTimer;
 
 namespace VaporView::Ground::Widgets
 {
+
+QIcon temperatureActionIcon(const QString& iconName);
 
 class Ai8TemperatureControllerPanel final : public QWidget
 {
@@ -52,6 +55,7 @@ signals:
     void outputStatusChanged();
 
 protected:
+    void changeEvent(QEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
 
 private:

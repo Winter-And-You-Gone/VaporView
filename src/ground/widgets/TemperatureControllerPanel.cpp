@@ -1,3 +1,4 @@
+#include "ground/widgets/Ai8TemperatureControllerPanel.h"
 #include "ground/widgets/TemperatureControllerWidgets.h"
 
 #include "SerialBaudRateCapabilities.h"
@@ -693,7 +694,7 @@ protected:
         const bool dark = VaporView::isDarkThemeEnabled();
         const bool handleHovered = hovered_handle_ || pressed_;
         const QColor fill = appThemeColor(
-            handleHovered || expanded_ ? AppThemeColor::PrimarySubtle : AppThemeColor::SurfaceAlt,
+            handleHovered ? AppThemeColor::TitleBarHover : expanded_ ? AppThemeColor::PrimarySubtle : AppThemeColor::SurfaceAlt,
             dark);
         const QColor border = appThemeColor(expanded_ ? AppThemeColor::Primary : AppThemeColor::Border,
                                             dark);
@@ -730,7 +731,7 @@ protected:
         const auto drawChevron = [&]() {
             const QIcon icon = createLucideIcon(expanded_ ? QStringLiteral("chevron-right")
                                                           : QStringLiteral("chevron-left"),
-                                                text);
+                                                appThemeColor(AppThemeColor::Primary, dark));
             const int iconSize = std::min(kTemperatureControllerCalibrationChevronIconSize,
                                           std::max(1, lineHeight));
             const QRect iconRect(qRound(handleRect.left() + (handleRect.width() - iconSize) / 2.0),
@@ -1434,6 +1435,13 @@ QWidget *TemperatureControllerPanel::titleStatusWidget() const
 
 bool TemperatureControllerPanel::eventFilter(QObject *watched, QEvent *event)
 {
+    if (event->type() == QEvent::PaletteChange || event->type() == QEvent::ApplicationPaletteChange || event->type() == QEvent::StyleChange)
+    {
+        if (watched == temperature_plot_view_button_)
+            VaporView::Ground::Widgets::updateTemperaturePlotViewButton(temperature_plot_view_button_, temperature_plot_view_button_->toolTip());
+        if (watched == common_.factory_reset_button)
+            common_.factory_reset_button->setIcon(VaporView::Ground::Widgets::temperatureActionIcon(QStringLiteral("rotate-ccw")));
+    }
     if (watched->property("temperatureTopControlAlignmentHost").toBool() &&
         (event->type() == QEvent::Show || event->type() == QEvent::Resize))
     {
@@ -1807,6 +1815,7 @@ void TemperatureControllerPanel::setupUi()
     controllerModeLayout->addWidget(controller_mode_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     controllerModeLayout->addWidget(controller_mode_combo_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     temperature_plot_view_button_ = VaporView::Ground::Widgets::createTemperaturePlotViewButton(controller_mode_field_);
+    temperature_plot_view_button_->installEventFilter(this);
     temperature_plot_view_button_->setObjectName(QStringLiteral("tec103PlotViewToggle"));
     temperature_plot_view_button_->hide();
     controllerModeLayout->addWidget(temperature_plot_view_button_, 0, Qt::AlignVCenter);
@@ -2858,13 +2867,13 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
     layout->addWidget(fieldsContainer, 0, Qt::AlignLeft | Qt::AlignTop);
 
     common_.factory_reset_button = new QPushButton(QStringLiteral("恢复出厂设置"), page);
+    common_.factory_reset_button->installEventFilter(this);
     common_.factory_reset_button->setObjectName(QStringLiteral("temperatureFactoryResetButton"));
     common_.factory_reset_button->setCursor(Qt::PointingHandCursor);
     common_.factory_reset_button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     common_.factory_reset_button->setFixedSize(kTemperatureControllerFactoryResetButtonWidth, 40);
     common_.factory_reset_button->setIconSize(QSize(18, 18));
-    common_.factory_reset_button->setIcon(createLucideIcon(QStringLiteral("refresh-cw"),
-                                                           appThemeColor(AppThemeColor::ToolbarRed, VaporView::isDarkThemeEnabled())));
+    common_.factory_reset_button->setIcon(VaporView::Ground::Widgets::temperatureActionIcon(QStringLiteral("rotate-ccw")));
     connect(common_.factory_reset_button, &QPushButton::clicked, this, [this]() {
         emit factoryResetRequested();
     });
@@ -3538,8 +3547,7 @@ void TemperatureControllerPanel::updateChannelTexts()
     if (common_.factory_reset_button)
     {
         common_.factory_reset_button->setText(is_english_ ? QStringLiteral("Factory Reset") : QStringLiteral("恢复出厂设置"));
-        common_.factory_reset_button->setIcon(createLucideIcon(QStringLiteral("refresh-cw"),
-                                                               appThemeColor(AppThemeColor::ToolbarRed, VaporView::isDarkThemeEnabled())));
+        common_.factory_reset_button->setIcon(VaporView::Ground::Widgets::temperatureActionIcon(QStringLiteral("rotate-ccw")));
     }
     auto fitCommonSubButtonWidth = [](QPushButton *button) {
         if (!button)
@@ -4108,6 +4116,11 @@ QString thermalEndpointLabel(bool dualTec103, int channel, bool english)
 }
 
 
+QIcon temperatureActionIcon(const QString& iconName)
+{
+    return createLucideIcon(iconName, appThemeColor(AppThemeColor::Primary, VaporView::isDarkThemeEnabled()));
+}
+
 QToolButton *createTemperaturePlotViewButton(QWidget *parent)
 {
     auto *button = new QToolButton(parent);
@@ -4132,7 +4145,7 @@ void updateTemperaturePlotViewButton(QToolButton *button, const QString& hint)
     button->setToolTip(hint);
     button->setAccessibleName(hint);
     const QString iconName = button->isChecked() ? QStringLiteral("chart-quadrant") : QStringLiteral("chart-line");
-    button->setIcon(createLucideIcon(iconName, appThemeColor(AppThemeColor::ToolbarBlue, false)));
+    button->setIcon(temperatureActionIcon(iconName));
 }
 
 QComboBox *createSingleLevelPopupComboBox(QWidget *parent,

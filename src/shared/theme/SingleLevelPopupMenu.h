@@ -50,6 +50,7 @@ public:
     void setChecked(bool checked);
     bool isChecked() const;
     void setCheckIcon(const QIcon& icon);
+    void setUncheckedIcon(const QIcon& icon);
     void setCheckIconSize(const QSize& size);
     void setTextAlignment(SingleLevelPopupTextAlignment alignment);
     void setTextFixedWidth(int width);
@@ -89,6 +90,7 @@ private:
     QLabel *text_label_;
     QLabel *check_label_;
     QIcon check_icon_;
+    QIcon unchecked_icon_;
     QSize check_icon_size_ = QSize(16, 16);
     SingleLevelPopupTextAlignment text_alignment_ = SingleLevelPopupTextAlignment::Left;
     int text_fixed_width_ = 0;

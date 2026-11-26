@@ -135,9 +135,7 @@ QIcon createLucideIcon(const QString& iconName, const QColor& iconColor)
 
 QIcon createTitleBarIcon(const QString& iconName, bool dark)
 {
-    return createLucideIcon(iconName, dark
-        ? appThemeColor(AppThemeColor::TextTitle, true)
-        : appThemeColor(AppThemeColor::TextStrong, false));
+    return createLucideIcon(iconName, appThemeColor(AppThemeColor::Primary, dark));
 }
 
 QIcon createToolbarIcon(const QString& iconName, const QColor& color = toolbarColor(AppThemeColor::ToolbarBlue))
@@ -788,7 +786,7 @@ private:
         if (theme_button_)
         {
             theme_button_->setIcon(dark
-                ? createToolbarIcon(QStringLiteral("sun"), toolbarColor(AppThemeColor::ToolbarAmber))
+                ? createToolbarIcon(QStringLiteral("sun"), toolbarColor(AppThemeColor::Primary))
                 : createToolbarIcon(QStringLiteral("moon")));
             theme_button_->setToolTip(dark
                 ? (english ? QStringLiteral("Switch to light theme") : QStringLiteral("切换到亮色模式"))
@@ -1003,7 +1001,7 @@ private:
         const bool dark = isDarkPalette();
         const bool restore = isWindowStateMaximized();
         const bool english = isEnglish();
-        maximize_button_->setIcon(createTitleBarIcon(restore ? QStringLiteral("copy") : QStringLiteral("square"), dark));
+        maximize_button_->setIcon(createTitleBarIcon(restore ? QStringLiteral("minimize-2") : QStringLiteral("maximize-2"), dark));
         maximize_button_->setToolTip(restore
             ? (english ? QStringLiteral("Restore") : QStringLiteral("还原"))
             : (english ? QStringLiteral("Maximize") : QStringLiteral("最大化")));

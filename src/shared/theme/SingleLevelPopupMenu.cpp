@@ -276,6 +276,7 @@ SingleLevelPopupMenuRow::SingleLevelPopupMenuRow(QWidget *parent)
     setProperty("checkIconAlignment", QStringLiteral("right"));
     setProperty("selected", false);
     setProperty("hasCheckIcon", false);
+    setProperty("hasUncheckedIcon", false);
     setProperty("hovered", false);
     setProperty("keyboardFocus", false);
     setProperty("menuRow", true);
@@ -347,7 +348,12 @@ bool SingleLevelPopupMenuRow::isChecked() const
 void SingleLevelPopupMenuRow::setCheckIcon(const QIcon& icon)
 {
     check_icon_ = icon;
-    setProperty("hasCheckIcon", checked_ && !check_icon_.isNull());
+    updateCheckIcon();
+}
+
+void SingleLevelPopupMenuRow::setUncheckedIcon(const QIcon& icon)
+{
+    unchecked_icon_ = icon;
     updateCheckIcon();
 }
 
@@ -618,12 +624,15 @@ void SingleLevelPopupMenuRow::layoutChildren()
 
 void SingleLevelPopupMenuRow::updateCheckIcon()
 {
-    if (!checked_ || check_icon_.isNull())
+    setProperty("hasCheckIcon", checked_ && !check_icon_.isNull());
+    setProperty("hasUncheckedIcon", !checked_ && !unchecked_icon_.isNull());
+    const QIcon& icon = checked_ ? check_icon_ : unchecked_icon_;
+    if (icon.isNull())
     {
         check_label_->clear();
         return;
     }
-    check_label_->setPixmap(check_icon_.pixmap(check_icon_size_));
+    check_label_->setPixmap(icon.pixmap(check_icon_size_));
 }
 
 void SingleLevelPopupMenuRow::updateLabelStyles()
@@ -649,7 +658,6 @@ void SingleLevelPopupMenuRow::updateCheckedState(bool checked)
 {
     checked_ = checked;
     setProperty("selected", checked_);
-    setProperty("hasCheckIcon", checked_ && !check_icon_.isNull());
     updateCheckIcon();
     update();
 }

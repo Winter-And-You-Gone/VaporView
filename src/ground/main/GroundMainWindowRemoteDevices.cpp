@@ -2890,16 +2890,13 @@ void MainWindow::updateTemperatureTitleButtonsState()
             button->setProperty(kRemoteActionIconKeyProperty, QStringLiteral("spinner"));
             setDeviceActionAnimationFrame(button, createRotatedLucideIcon(
                 QStringLiteral("refresh-cw"),
-                toolbarColor(AppThemeColor::HomeDeviceSuccess),
+                toolbarColor(AppThemeColor::ToolbarBlue),
                 homeDeviceActionSpinnerDegrees(device, nowMs)));
         }
         else
         {
-            const QColor iconColor = connected
-                ? toolbarColor(AppThemeColor::ToolbarRed)
-                : deviceState == VaporView::DeviceState::Disabled
-                    ? toolbarColor(AppThemeColor::ToolbarDisabled)
-                    : toolbarColor(AppThemeColor::HomeDeviceSuccess);
+            const QColor iconColor = toolbarColor(deviceState == VaporView::DeviceState::Disabled
+                ? AppThemeColor::ToolbarDisabled : AppThemeColor::ToolbarBlue);
             const QString iconName = deviceConfigRemoteIconName(command);
             setButtonIconForKey(button,
                                 QStringLiteral("%1|%2").arg(iconName, iconColor.name(QColor::HexArgb)),
@@ -3722,7 +3719,7 @@ void MainWindow::updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId dev
     {
         button->setProperty(kRemoteActionIconKeyProperty, QStringLiteral("spinner"));
         setDeviceActionAnimationFrame(button, createRotatedLucideIcon(QStringLiteral("refresh-cw"),
-                                                toolbarColor(AppThemeColor::HomeDeviceSuccess),
+                                                toolbarColor(AppThemeColor::ToolbarBlue),
                                                 homeDeviceActionSpinnerDegrees(device, nowMs)));
     }
     else

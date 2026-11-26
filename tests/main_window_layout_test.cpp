@@ -3044,7 +3044,7 @@ void requireRtkSidebarPage(
                 rtkButton->toolTip().contains(QStringLiteral("stopped")),
             "RTK sidebar button returns to stopped status text");
     require(rtkButton->icon().pixmap(iconSize).cacheKey() != runningIconKey,
-            "RTK sidebar icon changes away from running color when service stops");
+            "RTK sidebar icon returns to satellite when service stops");
 
     clickWidget(homeButton);
     processEventsFor(150);
@@ -6504,8 +6504,11 @@ int main(int argc, char **argv)
 #else
     requireMainWindowOmitsMap3DEntries(window);
 #endif
-    require(VaporView::appStyleSheet().contains(QStringLiteral("square.svg")) &&
-                VaporView::appStyleSheet().contains(QStringLiteral("square-check-big.svg")) &&
+    requireLastStyleRuleContains(VaporView::appStyleSheet(), QStringLiteral("QCheckBox::indicator:hover {"),
+                                 VaporView::appThemeColorName(VaporView::AppThemeColor::TitleBarHover, qApp->property(VaporView::kAppDarkThemeProperty).toBool()),
+                                 "checkbox indicators use the title-bar hover background");
+    require(VaporView::appStyleSheet().contains(QStringLiteral("square-primary.svg")) &&
+                VaporView::appStyleSheet().contains(QStringLiteral("square-check-big-primary.svg")) &&
                 !VaporView::appStyleSheet().contains(QStringLiteral("lucide/check.svg")),
             "checkbox indicators use lucide square and square-check-big icons");
     require(VaporView::appStyleSheet().contains(QStringLiteral("chevron-up.svg")) &&
@@ -8051,9 +8054,9 @@ int main(int argc, char **argv)
         VaporView::appStyleSheet(),
         QStringLiteral("QToolButton#homeDeviceActionButton:hover {"),
         QStringLiteral("background-color: ") +
-            VaporView::appThemeColorName(VaporView::AppThemeColor::PrimarySubtle,
+            VaporView::appThemeColorName(VaporView::AppThemeColor::TitleBarHover,
                                          homeDeviceActionDark),
-        "home device overview action buttons keep their primary hover background");
+        "home device overview action buttons use the gray hover background");
     requireLastStyleRuleContains(
         VaporView::appStyleSheet(),
         QStringLiteral("QToolButton#homeDeviceActionButton:hover {"),
@@ -8756,6 +8759,12 @@ int main(int argc, char **argv)
                 QColor(24, 24, 24),
             "dark top-level card background uses the requested rgb(24, 24, 24) surface");
     const QString darkOverviewStyleSheet = VaporView::appStyleSheet();
+    require(darkOverviewStyleSheet.contains(QStringLiteral("square-primary-dark.svg")) &&
+                darkOverviewStyleSheet.contains(QStringLiteral("square-check-big-primary-dark.svg")),
+            "dark checkbox indicators use the orange Lucide assets");
+    requireLastStyleRuleContains(darkOverviewStyleSheet, QStringLiteral("QCheckBox::indicator:hover {"),
+                                 VaporView::appThemeColorName(VaporView::AppThemeColor::TitleBarHover, true),
+                                 "checkbox indicators use the title-bar hover background");
     requireLastStyleRuleContains(
         darkOverviewStyleSheet, QStringLiteral("QWidget#waveformPageRow {"),
         QStringLiteral("background-color: %1").arg(
@@ -10041,9 +10050,9 @@ int main(int argc, char **argv)
         require(hasVisiblePixel, "scrollbar arrow image contains a visible triangle");
     }
     requireLastStyleRuleContains(VaporView::appStyleSheet(),
-                                 QStringLiteral("TemperatureControllerPanel QPushButton#temperatureFactoryResetButton {"),
-                                 VaporView::appThemeColorName(VaporView::AppThemeColor::ToolbarRed, false),
-                                 "temperature factory reset button uses the vivid red toolbar token");
+                                 QStringLiteral("TemperatureControllerPanel QPushButton#temperatureFactoryResetButton:hover {"),
+                                 VaporView::appThemeColorName(VaporView::AppThemeColor::TitleBarHover, false),
+                                 "temperature factory reset button uses the title-bar hover background");
     requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("TemperatureControllerPanel QLabel#fieldLabel[temperatureMaxOutputWarning=\"true\"] {"),
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::Danger, false),

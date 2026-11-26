@@ -2000,12 +2000,12 @@ void Map3DWindow::refreshLayerMenuTheme()
     if (auto* toolbar = findChild<QToolBar*>(QStringLiteral("map3DToolbar")))
     {
         const QString arrow = QDir::fromNativeSeparators(firstExistingMap3DFile(
-            map3DRuntimeRootCandidates(), {dark ? QStringLiteral("resources/lucide/chevron-down-dark.svg")
-                                               : QStringLiteral("resources/lucide/chevron-down.svg")}));
+            map3DRuntimeRootCandidates(), {dark ? QStringLiteral("resources/lucide/chevron-down-primary-dark.svg")
+                                               : QStringLiteral("resources/lucide/chevron-down-primary.svg")}));
         const QString style = applyAppThemeTokens(QStringLiteral(
             "QToolBar#map3DToolbar { background: @vv-surface; border: none; spacing: 6px; padding: 6px; }"
             "QToolBar#map3DToolbar QToolButton { background: @vv-surface-alt; color: @vv-text; border: 1px solid @vv-border; border-radius: 6px; padding: 7px 12px; }"
-            "QToolBar#map3DToolbar QToolButton:hover { background: @vv-primary-subtle; border-color: @vv-primary; }"
+            "QToolBar#map3DToolbar QToolButton:hover { background: @vv-title-hover; border-color: @vv-border-strong; }"
             "QToolBar#map3DToolbar QToolButton:pressed, QToolBar#map3DToolbar QToolButton:checked { background: @vv-primary-subtle-pressed; border-color: @vv-primary; color: @vv-primary; }"
             "QToolBar#map3DToolbar QToolButton:disabled { background: @vv-disabled-fill; color: @vv-text-disabled; border-color: @vv-border; }"
             "QToolBar#map3DToolbar QToolButton#map3DMoreButton { padding-right: 36px; padding-left: 12px; }"
@@ -2024,7 +2024,7 @@ void Map3DWindow::refreshLayerMenuTheme()
             "QToolButton:checked, QToolButton:hover { background: @vv-primary-subtle; color: @vv-primary; border-color: @vv-primary; }"
             "QToolButton[customTitleBarButton=\"true\"] { background: transparent; border: none; padding: 0px; }"
             "QToolButton[customTitleBarButton=\"true\"]:hover, QToolButton[customTitleBarButton=\"true\"][titleBarHover=\"true\"] { background: @vv-title-hover; }"
-            "QToolButton#windowCloseButton:hover, QToolButton#windowCloseButton[titleBarHover=\"true\"] { background: @vv-close-hover; }"
+            "QToolButton#windowCloseButton:hover, QToolButton#windowCloseButton[titleBarHover=\"true\"] { background: @vv-title-hover; }"
             "QCheckBox { color: @vv-text; spacing: 8px; }"), dark));
     }
     if (auto* menu = findChild<QMenu*>(QStringLiteral("map3DMoreMenu")))
@@ -2046,18 +2046,18 @@ void Map3DWindow::refreshLayerMenuTheme()
     if (layers_action_)
     {
         layers_action_->setIcon(map3DIcon(QStringLiteral("layers-3"),
-                                           appThemeColor(AppThemeColor::ToolbarBlue, dark)));
+                                           appThemeColor(AppThemeColor::Primary, dark)));
     }
     if (auto* controls = findChild<QWidget*>(QStringLiteral("map3DCornerControls")))
     {
         controls->setStyleSheet(applyAppThemeTokens(QStringLiteral(
             "QWidget#map3DCornerControls { background: transparent; border: none; }"
             "QToolButton { background: @vv-surface; color: @vv-text; border: 1px solid @vv-border; border-radius: 8px; padding: 0px; }"
-            "QToolButton:hover { background: @vv-primary-subtle; border-color: @vv-primary; }"
-            "QToolButton:pressed { background: @vv-primary-subtle-pressed; }"
+            "QToolButton:hover { background: @vv-title-hover; border-color: @vv-border-strong; }"
+            "QToolButton:pressed { background: @vv-surface-alt; }"
             "QToolButton::menu-indicator { image: none; width: 0px; height: 0px; }"), dark));
         controls->findChild<QToolButton*>(QStringLiteral("map3DLocateButton"))->setIcon(
-            map3DIcon(QStringLiteral("locate-fixed"), appThemeColor(AppThemeColor::ToolbarBlue, dark)));
+            map3DIcon(QStringLiteral("locate-fixed"), appThemeColor(AppThemeColor::Primary, dark)));
         controls->raise();
     }
     if (map_loading_bubble_)
@@ -2069,6 +2069,24 @@ void Map3DWindow::refreshLayerMenuTheme()
             "QProgressBar#map3DLoadingProgressBar::chunk { background: @vv-primary; border-radius: 3px; }"), dark));
         map_loading_bubble_->update();
     }
+    const QColor primary = appThemeColor(AppThemeColor::Primary, dark);
+    if (auto* reset = findChild<QAction*>(QStringLiteral("map3DResetViewAction")))
+        reset->setIcon(map3DIcon(QStringLiteral("rotate-ccw"), primary));
+    if (auto* locate = findChild<QAction*>(QStringLiteral("map3DFlyToAircraftAction")))
+        locate->setIcon(map3DIcon(QStringLiteral("locate-fixed"), primary));
+    if (map_resource_dialog_)
+    {
+        for (auto* button : map_resource_dialog_->findChildren<QPushButton*>())
+        {
+            const QString iconName = button->property("mapResourceIcon").toString();
+            if (iconName.isEmpty()) continue;
+            button->setIcon(map3DIcon(iconName, primary));
+            button->setStyleSheet(applyAppThemeTokens(QStringLiteral(
+                "QPushButton { background: @vv-surface; color: @vv-text; border: 1px solid @vv-border; border-radius: 6px; padding: 6px 12px; }"
+                "QPushButton:hover { background: @vv-title-hover; color: @vv-text; }"
+                "QPushButton:disabled { color: @vv-text-muted; }"), dark));
+        }
+    }
     const QIcon checkIcon = map3DIcon(QStringLiteral("check"),
                                      appThemeColor(AppThemeColor::MenuCheckText, dark));
     if (auto* moreMenu = findChild<QMenu*>(QStringLiteral("map3DMoreMenu")))
@@ -2077,11 +2095,14 @@ void Map3DWindow::refreshLayerMenuTheme()
         for (QMenu* child : moreMenu->findChildren<QMenu*>())
             if (auto* styledMenu = dynamic_cast<MapOptionsMenu*>(child)) styledMenu->setCheckIcon(checkIcon);
     }
+    const QIcon checkedLayer = map3DIcon(QStringLiteral("square-check-big"), primary);
+    const QIcon uncheckedLayer = map3DIcon(QStringLiteral("square"), primary);
     for (VaporView::SingleLevelPopupMenuRow* row : layer_rows_)
     {
         if (row)
         {
-            row->setCheckIcon(checkIcon);
+            row->setCheckIcon(checkedLayer);
+            row->setUncheckedIcon(uncheckedLayer);
             row->refreshTheme();
         }
     }

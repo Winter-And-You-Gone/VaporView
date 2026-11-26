@@ -284,7 +284,7 @@ QToolButton#windowMaximizeButton:checked {
 }
 QToolButton#windowCloseButton:hover,
 QToolButton#windowCloseButton[titleBarHover="true"] {
-    background-color: @vv-close-hover;
+    background-color: @vv-title-hover;
 }
 QWidget#customTitleBar QToolButton::menu-indicator {
     image: none;
@@ -1008,9 +1008,22 @@ QRadioButton::indicator {
     background-color: @vv-surface;
     border-color: @vv-border;
 }
-QCheckBox::indicator {
+QCheckBox::indicator,
+QRadioButton[temperatureSensorModelOption="true"]::indicator {
+    image: url(lucide/square-primary-dark.svg);
+}
+QCheckBox::indicator:checked,
+QRadioButton[temperatureSensorModelOption="true"]::indicator:checked {
+    image: url(lucide/square-check-big-primary-dark.svg);
+}
+QRadioButton[temperatureSensorModelOption="true"]::indicator:hover,
+QCheckBox::indicator:hover {
+    background-color: @vv-title-hover;
+    border-radius: 4px;
+}
+QRadioButton[temperatureSensorModelOption="true"]::indicator:disabled,
+QCheckBox::indicator:disabled {
     background-color: transparent;
-    border-color: @vv-border;
 }
 QWidget#sessionPpkPanel QCheckBox::indicator {
     background-color: transparent;
@@ -1094,7 +1107,7 @@ QToolButton#homeDeviceActionButton[state="connected"] {
     border-color: @vv-border-strong;
 }
 QToolButton#homeDeviceActionButton:hover {
-    background-color: @vv-primary-subtle;
+    background-color: @vv-title-hover;
     border-color: @vv-border-strong;
 }
 QToolButton#homeDeviceActionButton[deviceConfigAction="true"] {

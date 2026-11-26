@@ -28,35 +28,54 @@ set(NAV_RESOURCES
 
 set(LUCIDE_RESOURCES
     ${CMAKE_SOURCE_DIR}/resources/lucide/activity.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/audio-lines.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/audio-waveform.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/cable.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/chart-line.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/chart-quadrant.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/chart-scatter.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/chart-spline.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/check.svg
-    ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-down.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-down-dark.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-down-primary-dark.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-down-primary.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-down.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-left.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-right-dark.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-right.svg
-    ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-up.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-up-dark.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-up-primary-dark.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-up-primary.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-up.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/circle-stop.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/circle-x.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/clock-arrow-up.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/cog.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/compass.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/copy.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/cpu.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/download.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/earth.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/file-cog.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/file-output.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/flag-triangle-left.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/flag-triangle-right.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/flag.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/folder-open.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/funnel.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/gauge.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/help-circle.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/house.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/key.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/languages.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/layers-3.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/link.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/list-filter.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/locate-fixed.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/maximize-2.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/maximize.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/menu.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/minimize-2.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/minus.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/moon.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/mountain-snow.svg
@@ -68,13 +87,22 @@ set(LUCIDE_RESOURCES
     ${CMAKE_SOURCE_DIR}/resources/lucide/play.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/plug.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/radar.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/radio.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/refresh-cw.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/rotate-ccw.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/route.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/satellite.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/scroll-text.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/search.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/server-cog.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/sliders-horizontal.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/sliders-vertical.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/square-activity.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/square-check-big-primary-dark.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/square-check-big-primary.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/square-check-big.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/square-primary-dark.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/square-primary.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/square.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/sun.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/thermometer.svg
@@ -84,6 +112,7 @@ set(LUCIDE_RESOURCES
     ${CMAKE_SOURCE_DIR}/resources/lucide/unlink.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/unplug.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/usb.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/wrench.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/x.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/zoom-in.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/zoom-out.svg

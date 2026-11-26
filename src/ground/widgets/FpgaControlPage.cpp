@@ -90,6 +90,7 @@ protected:
 class FpgaCheckBox final : public QCheckBox {
 public:
     explicit FpgaCheckBox(QWidget *parent) : QCheckBox(parent) {
+        setAttribute(Qt::WA_Hover);
         setStyleSheet(QStringLiteral("QCheckBox::indicator, QCheckBox::indicator:checked, QCheckBox::indicator:hover { background: transparent; border: none; image: none; }"));
     }
 protected:
@@ -98,9 +99,11 @@ protected:
         QStyleOptionButton option; initStyleOption(&option);
         const QRect indicator=style()->subElementRect(QStyle::SE_CheckBoxIndicator,&option,this);
         const bool dark=VaporView::isDarkThemePalette(palette());
-        QColor color=VaporView::appThemeColor(isChecked()?VaporView::AppThemeColor::Primary:VaporView::AppThemeColor::TextSecondary,dark);
+        QColor color=VaporView::appThemeColor(VaporView::AppThemeColor::Primary,dark);
         if (!isEnabled()) color.setAlphaF(0.6f);
         QPainter painter(this);
+        if (isEnabled() && (option.state & QStyle::State_MouseOver))
+            VaporView::drawCheckedIndicatorHover(painter, indicator, VaporView::appThemeColor(VaporView::AppThemeColor::TitleBarHover, dark));
         if (isChecked()) VaporView::drawSquareCheckBig(painter,indicator,color);
         else VaporView::drawSquare(painter,indicator,color);
     }
@@ -417,7 +420,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout, QVB
     };
     auto *waves=tab(QStringLiteral("采样"),QStringLiteral("Sampling"));
     auto *waveLayout=new QVBoxLayout(waves);
-    auto *capture=card(waves,waveLayout,QStringLiteral("采集控制"),QStringLiteral("Acquisition control"),QStringLiteral("activity"));
+    auto *capture=card(waves,waveLayout,QStringLiteral("采集控制"),QStringLiteral("Acquisition control"),QStringLiteral("play"));
     auto *captureLayout=new QVBoxLayout(capture);
     auto *actions=new QGridLayout; captureLayout->addLayout(actions);
     auto action=[this](QGridLayout *layout,int row,int col,const char *zh,const char *en,const QString &name,std::function<void()> fn) {
@@ -428,7 +431,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout, QVB
     action(actions,0,1,"停止 H1/H2","Stop H1/H2","fpgaAcquisitionStop",[this]{emit acquisitionRequested(false);});
     action(actions,0,2,"开始原始波形","Start raw waveform","fpgaRawStart",[this]{emit rawRequested(true);});
     action(actions,0,3,"停止原始波形","Stop raw waveform","fpgaRawStop",[this]{emit rawRequested(false);});
-    linkDacs_ = new QCheckBox(capture);
+    linkDacs_ = new FpgaCheckBox(capture);
     linkDacs_->setObjectName("fpgaLinkDacsOnStart");
     label(linkDacs_, QStringLiteral("开始 H1/H2 时开启双路 DAC"), QStringLiteral("Enable both DACs when starting H1/H2"));
     captureLayout->addWidget(linkDacs_);
@@ -581,7 +584,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout, QVB
         row = 0;
         wf("扫描相位 / 整圈码","Scan phase / turn code","Phase",0x24,0,4294967295.0,&FpgaControlConfig::Wms::phase);
         wf("相位模式","Phase mode","PhaseMode",0x40,0,2,&FpgaControlConfig::Wms::phaseMode);
-        auto *dliaGroup=card(dliaPage,dliaChannels,QStringLiteral("DLIA · 通道 %1").arg(channel+1),QStringLiteral("DLIA · Channel %1").arg(channel+1),QStringLiteral("activity"));
+        auto *dliaGroup=card(dliaPage,dliaChannels,QStringLiteral("DLIA · 通道 %1").arg(channel+1),QStringLiteral("DLIA · Channel %1").arg(channel+1),QStringLiteral("chart-spline"));
         auto *dliaGrid=new QGridLayout(dliaGroup);int dliaRow=0;
         auto df=[&,channel](const char *zh,const char *en,const char *name,quint32 offset,double minimum,double maximum,auto member,double scale=1.0) {
             field(dliaGrid,dliaRow++,zh,en,QString("fpga%1%2").arg(channel).arg(name),d+offset,minimum,maximum,scale==1.0?0:3,
@@ -640,7 +643,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout, QVB
     wmsLayout->addStretch();dliaLayout->addStretch();
     pl->addStretch();
     auto *sensors=tab(QStringLiteral("传感器"),QStringLiteral("Sensors")); auto *sensorLayout=new QVBoxLayout(sensors);
-    auto *sensorCard=card(sensors,sensorLayout,QStringLiteral("传感器状态"),QStringLiteral("Sensor status"),QStringLiteral("activity"));
+    auto *sensorCard=card(sensors,sensorLayout,QStringLiteral("传感器状态"),QStringLiteral("Sensor status"),QStringLiteral("gauge"));
     auto *sensorGrid=new QGridLayout(sensorCard);sensorGrid->setObjectName("fpgaSensorGrid");sensorGrid->setSpacing(12);sensorGrid->setColumnStretch(1,1);
     const char *names[]={"PTB210","HC2A","EPSILON","BMP390","SHT45","SDFM300","TEC103 × 2"}; const quint16 sources[]={0x40,0x41,0x42,0x43,0x44,0x45,0x4a};
     for(int i=0;i<7;++i) {
@@ -654,7 +657,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout, QVB
         auto* disable=action(sensorGrid,i,3,"停用","Disable","fpgaSensorDisable"+suffix,[this,source]{emit sensorEnableRequested(source,false);});
         if(source==0x4a) {enable->setProperty("tec103BridgeControl",true);disable->setProperty("tec103BridgeControl",true);}
     }
-    auto *ai8config=card(sensors,sensorLayout,QStringLiteral("AI8 轮询配置（停用时提交）"),QStringLiteral("AI8 polling configuration (apply while disabled)"),QStringLiteral("sliders-vertical"));
+    auto *ai8config=card(sensors,sensorLayout,QStringLiteral("AI8 轮询配置（停用时提交）"),QStringLiteral("AI8 polling configuration (apply while disabled)"),QStringLiteral("thermometer"));
     auto *ai8layout=new QHBoxLayout(ai8config);auto *ai8controls=new QVBoxLayout;auto *ai8grid=new QGridLayout;
     ai8layout->addLayout(ai8controls,1);ai8layout->addLayout(ai8grid,2);
     auto *ai8reading=new QLabel(ai8config);ai8reading->setObjectName("fpgaSensor0046");ai8reading->setWordWrap(true);sensorLabels_[0x46]=ai8reading;ai8controls->addWidget(ai8reading);
@@ -684,7 +687,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout, QVB
     readback(ai8grid,9,1,2,0x66a8,QStringLiteral("缓存 OP / SV 原码"),QStringLiteral("Cached OP / SV raw"));
     readback(ai8grid,10,1,2,0x66ac,QStringLiteral("缓存设备状态"),QStringLiteral("Cached device status"));
     ai8controls->addStretch();sensorLayout->addStretch();
-    waveformTrigger_ = new QCheckBox(waves);
+    waveformTrigger_ = new FpgaCheckBox(waves);
     waveformTrigger_->setObjectName("fpgaWaveformTrigger");
     label(waveformTrigger_, QStringLiteral("波形触发对齐（关闭时按 FPGA 扫描起点显示）"),
           QStringLiteral("Align by waveform trigger (off: FPGA scan origin)"));
@@ -774,10 +777,10 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout, QVB
     auto readbacks=[&readback](QGridLayout *grid,int row,std::initializer_list<ActualField> fields) {
         for(const auto& field:fields)readback(grid,row++,1,2,field.address,QString::fromUtf8(field.zh),QString::fromUtf8(field.en));
     };
-    auto *lanes=card(advanced,advancedLayout,QStringLiteral("分通道采集"),QStringLiteral("Acquisition per channel"),QStringLiteral("activity"));auto *laneGrid=new QGridLayout(lanes);
+    auto *lanes=card(advanced,advancedLayout,QStringLiteral("分通道采集"),QStringLiteral("Acquisition per channel"),QStringLiteral("audio-lines"));auto *laneGrid=new QGridLayout(lanes);
     for(int channel=0;channel<2;++channel) {
         auto *featureCard=card(advanced,advancedLayout,QStringLiteral("通道 %1 · SOS 滤波 / PPS 扫描").arg(channel+1),
-            QStringLiteral("Channel %1 · SOS filter / PPS scan").arg(channel+1),QStringLiteral("activity"));
+            QStringLiteral("Channel %1 · SOS filter / PPS scan").arg(channel+1),QStringLiteral("funnel"));
         auto *grid=new QGridLayout(featureCard);
         auto *hint=new QLabel(featureCard);hint->setWordWrap(true);
         label(hint,QStringLiteral("应用前自动停止采集，完成后请手动开始。SOS 按实际 ADC 输入率设计；普通参数提交保留自定义滤波。等待电平为有符号码，不代表电压。"),
@@ -806,7 +809,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout, QVB
         auto *pps=new QLabel(featureCard);pps->setObjectName(name("PpsStatus"));pps->setWordWrap(true);grid->addWidget(pps,8,0,1,3);
     }
     for(int ch=0;ch<2;++ch)for(int enable=0;enable<2;++enable)operation(laneGrid,ch,enable,ch?(enable?"通道 1 开始":"通道 1 停止"):(enable?"通道 0 开始":"通道 0 停止"),enable?"Start channel":"Stop channel",qPrintable(QString("fpgaChannel%1%2").arg(ch).arg(enable)),[ch,enable]{return QJsonObject{{"op","channel_acquisition"},{"channel",ch},{"enabled",bool(enable)}};});
-    auto *time=card(common,commonLayout,QStringLiteral("时间同步"),QStringLiteral("Time synchronization"),QStringLiteral("timer"));auto *tg=new QGridLayout(time);
+    auto *time=card(common,commonLayout,QStringLiteral("时间同步"),QStringLiteral("Time synchronization"),QStringLiteral("clock-arrow-up"));auto *tg=new QGridLayout(time);
     commonLayout->addStretch();
     auto *edge=number(tg,0,"同步沿 (0 上升 / 1 下降)","fpgaTimeEdge",0,1,0);auto *timeout=number(tg,1,"同步超时 / ms","fpgaTimeTimeout",1,3600000,2000);
     operation(tg,0,2,"设置同步沿","Set edge","fpgaTimeSetEdge",[edge]{return QJsonObject{{"op","time"},{"action",3},{"value",edge->value()}};});
@@ -821,7 +824,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout, QVB
     auto addMotorCard = [&](QVBoxLayout *layout, bool topLevel) {
         QHBoxLayout *titleRow = nullptr;
         auto *body = card(layout->parentWidget(), layout, QStringLiteral("步进电机"), QStringLiteral("Stepper motor"),
-                          QStringLiteral("sliders-vertical"), topLevel, &titleRow);
+                          QStringLiteral("cog"), topLevel, &titleRow);
         auto *frame = static_cast<QFrame *>(body->parentWidget());
         frame->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
         auto *header = frame->findChild<QWidget *>(QStringLiteral("sectionTitleBar"), Qt::FindDirectChildrenOnly);
@@ -975,11 +978,11 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout, QVB
         }
     };
     addMotorCard(motionLayout ? motionLayout : advancedLayout, !motionLayout);
-    auto *lc=card(advanced,advancedLayout,QStringLiteral("LC 双路 UART 状态"),QStringLiteral("LC UART status"),QStringLiteral("activity"));auto *lcGrid=new QGridLayout(lc);
+    auto *lc=card(advanced,advancedLayout,QStringLiteral("LC 双路 UART 状态"),QStringLiteral("LC UART status"),QStringLiteral("cable"));auto *lcGrid=new QGridLayout(lc);
     lcStatus_=new QLabel(lc);lcStatus_->setObjectName("fpgaLcStatus");lcStatus_->setWordWrap(true);lcGrid->addWidget(lcStatus_,0,0,1,3);
     readbacks(lcGrid,1,{{0x6800,"LC0 模块 ID","LC0 module ID"},{0x6808,"LC0 UART 状态","LC0 UART status"},{0x6828,"LC0 完成发送字节数","LC0 transmitted byte count"},{0x682c,"LC0 接收字节数","LC0 received byte count"},
         {0x6900,"LC1 模块 ID","LC1 module ID"},{0x6908,"LC1 UART 状态","LC1 UART status"},{0x6928,"LC1 完成发送字节数","LC1 transmitted byte count"},{0x692c,"LC1 接收字节数","LC1 received byte count"}});
-    auto *maintenance=card(advanced,advancedLayout,QStringLiteral("设备维护与上传"),QStringLiteral("Maintenance and upload"),QStringLiteral("settings"));auto *maintenanceGrid=new QGridLayout(maintenance);
+    auto *maintenance=card(advanced,advancedLayout,QStringLiteral("设备维护与上传"),QStringLiteral("Maintenance and upload"),QStringLiteral("wrench"));auto *maintenanceGrid=new QGridLayout(maintenance);
     auto *module=new VaporView::SingleLevelPopupComboBox(maintenance);module->setObjectName("fpgaMaintenanceModule");maintenanceGrid->addWidget(module,0,0,1,2);
     for(auto pair:{qMakePair("时间同步",2),qMakePair("WMS0 / DAC0",0x10),qMakePair("WMS1 / DAC1",0x11),qMakePair("ADC0",0x20),qMakePair("ADC1",0x21),qMakePair("DLIA0",0x30),qMakePair("DLIA1",0x31),qMakePair("PTB210",0x40),qMakePair("HC2A",0x41),qMakePair("EPSILON",0x42),qMakePair("BMP390",0x43),qMakePair("SHT45",0x44),qMakePair("SDFM300",0x45),qMakePair("AI8",0x46),qMakePair("步进电机",0x47)})module->addItem(QString::fromUtf8(pair.first),pair.second);
     operation(maintenanceGrid,1,0,"复位所选模块","Reset selected module","fpgaModuleReset",[module]{return QJsonObject{{"op","maintenance"},{"source",module->currentData().toInt()},{"action",8},{"value",0}};});operation(maintenanceGrid,1,1,"清除所选模块错误","Clear selected errors","fpgaModuleClearErrors",[module]{return QJsonObject{{"op","maintenance"},{"source",module->currentData().toInt()},{"action",9},{"value",0}};});
@@ -992,7 +995,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout, QVB
     advancedLayout->addStretch();
     auto *recordingTab=tab(QStringLiteral("记录与诊断"),QStringLiteral("Recording & diagnostics")); auto *recordingLayout=new QVBoxLayout(recordingTab);
     auto *recordingCards=new QHBoxLayout;recordingCards->setObjectName("fpgaRecordingCards");recordingCards->setSpacing(12);recordingLayout->addLayout(recordingCards);
-    auto *recording=card(recordingTab,recordingCards,QStringLiteral("采集记录"),QStringLiteral("Acquisition recording"),QStringLiteral("scroll-text")); auto *rl=new QVBoxLayout(recording);
+    auto *recording=card(recordingTab,recordingCards,QStringLiteral("采集记录"),QStringLiteral("Acquisition recording"),QStringLiteral("pencil")); auto *rl=new QVBoxLayout(recording);
     recordSensors_=new FpgaCheckBox(recording); label(recordSensors_,QStringLiteral("记录传感器"),QStringLiteral("Record sensors"));
     recordDlia_=new FpgaCheckBox(recording); recordDlia_->setObjectName("fpgaRecordHarmonics");
     label(recordDlia_,QStringLiteral("保存 H1/H2（必选）"),QStringLiteral("Save H1/H2 (required)"));
@@ -1010,7 +1013,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout, QVB
     auto *exportButton=new QPushButton(recording);exportButton->setObjectName("fpgaExport"); label(exportButton,QStringLiteral("导出记录"),QStringLiteral("Export recording")); files->addWidget(exportButton);
     connect(replay,&QPushButton::clicked,this,[this]{emit replayRequested({});});
     connect(exportButton,&QPushButton::clicked,this,[this]{emit exportRequested({});});
-    auto *diagnosticCard=card(recordingTab,recordingCards,QStringLiteral("诊断日志"),QStringLiteral("Diagnostics"),QStringLiteral("list-filter"));
+    auto *diagnosticCard=card(recordingTab,recordingCards,QStringLiteral("诊断日志"),QStringLiteral("Diagnostics"),QStringLiteral("scroll-text"));
     auto *diagnosticLayout=new QVBoxLayout(diagnosticCard);
     auto *managementScroll=new QScrollArea(diagnosticCard);managementScroll->setObjectName("fpgaManagementScroll");managementScroll->setWidgetResizable(true);managementScroll->setFrameShape(QFrame::NoFrame);
     managementStatus_=new QLabel(managementScroll);managementStatus_->setObjectName("fpgaManagementState");managementStatus_->setWordWrap(true);managementStatus_->setAlignment(Qt::AlignLeft|Qt::AlignTop);managementScroll->setWidget(managementStatus_);diagnosticLayout->addWidget(managementScroll);
@@ -1757,7 +1760,7 @@ void FpgaControlPage::setTheme(bool dark,int fontScalePercent){
         button->setFixedSize(pixels(40),pixels(40)); button->setIconSize(QSize(pixels(20),pixels(20)));
         QFile file(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/lucide/%1.svg").arg(button->property("fpgaIconName").toString())));
         if (!file.open(QIODevice::ReadOnly)) continue;
-        const auto color=button==connect_?AppThemeColor::HomeDeviceSuccess:button==disconnect_?AppThemeColor::ToolbarRed:AppThemeColor::ToolbarBlue;
+        const auto color=AppThemeColor::Primary;
         QByteArray svg=file.readAll(); svg.replace("currentColor",appThemeColorName(color,dark).toUtf8());
         const qreal dpr=button->devicePixelRatioF(); const int size=pixels(20);
         QPixmap pixmap(qRound(size*dpr),qRound(size*dpr)); pixmap.setDevicePixelRatio(dpr); pixmap.fill(Qt::transparent);
