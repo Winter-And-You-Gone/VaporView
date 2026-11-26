@@ -70,6 +70,9 @@ public:
         if(source==0x4a)for(int i=1;i<=2;++i)rates_.remove(quint16(0x4a00+i));
     }
     void setAi8Channel(int channel) { ai8Channel_ = channel; }
+    void setAi8PollIntervalMs(quint32 pollMs) {
+        ai8ScanMaxAgeTicks_ = qMax<quint64>(500000000ULL, quint64(pollMs) * 300000ULL);
+    }
 
 private:
     struct RateWindow {
@@ -90,6 +93,7 @@ private:
     NavigationSample epsilonPosition_, epsilonVelocity_;
     quint64 epsilonStatusMaxAgeTicks_;
     int ai8Channel_;
+    quint64 ai8ScanMaxAgeTicks_ = 500000000ULL;
     std::array<std::optional<Ai8Sample>,8> ai8ScanSnapshots_;
     std::array<quint64,8> ai8ScanTicks_{};
 };

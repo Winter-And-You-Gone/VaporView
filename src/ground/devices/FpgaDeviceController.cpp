@@ -99,6 +99,7 @@ void FpgaDeviceController::installSession(std::unique_ptr<FpgaUsbTransport> tran
         [this](quint32, quint32 address, const QVector<quint32>& values) {
             for (int i=0; i<values.size(); ++i) registers_[address + quint32(4*i)] = values[i];
             if (registers_.contains(0x661c)) adapter_.setAi8Channel(int(registers_.value(0x661c)));
+            if (registers_.contains(0x662c)) adapter_.setAi8PollIntervalMs(registers_.value(0x662c));
         });
     connect(session_, &FpgaDeviceSession::commandCompleted, this,
         [this](quint32 seq, quint16, bool success, quint32 status, const QByteArray& payload) {
@@ -1784,10 +1785,11 @@ void FpgaDeviceController::flushPresentation()
     checkConnectionResults();
     const qint64 now=QDateTime::currentMSecsSinceEpoch();
     auto ai8ScanLive=latestReadings_.value(0x46).ai8Live;
+    const qint64 ai8ScanWindowMs=qMax<qint64>(5000,qint64(registers_.value(0x662c,0))*3);
     if(ai8ScanLive && !replaying_) {
         for(int channel=1;channel<=8;++channel) {
             const quint16 key=quint16(0x4600+channel);
-            if(lastReadingMs_.contains(key) && now-lastReadingMs_.value(key)<=5000)continue;
+            if(lastReadingMs_.contains(key) && now-lastReadingMs_.value(key)<=ai8ScanWindowMs)continue;
             const int index=channel-1,shift=channel%2?8:0;
             ai8ScanLive->measuredC[index]=std::numeric_limits<double>::quiet_NaN();
             ai8ScanLive->setpointsC[index]=std::numeric_limits<double>::quiet_NaN();
@@ -1871,6 +1873,7 @@ void FpgaDeviceController::replaySession(const QString& directory)
             const auto actual=document.value("hardware_registers").toObject();
             for(auto it=actual.begin();it!=actual.end();++it) {bool ok=false;const auto address=it.key().toUInt(&ok,0);if(ok)registers_[address]=quint32(it.value().toDouble());}
             if(registers_.contains(0x661c))adapter_.setAi8Channel(int(registers_.value(0x661c)));
+            if(registers_.contains(0x662c))adapter_.setAi8PollIntervalMs(registers_.value(0x662c));
         });
     session_->flushWaveforms(); flushPresentation(); replaying_=false;
     emit connectionChanged(false,false,ok?QStringLiteral("离线会话已载入；USB 未连接"):error);

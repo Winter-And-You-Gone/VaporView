@@ -2819,16 +2819,20 @@ static void remoteAi8FaultMetadata()
     fault.alarmRaw = 1;
     fault.mainStatusValid = true;
     fault.mainStatusRaw = 0x214;
+    auto *readButton = panel->findChild<QPushButton *>("ai8ReadParametersButton");
+    require(readButton, "AI8 read page button exists");
     send(MsgType::Ai8TemperatureControllerStatus, TelemetryCodec::serializeAi8TemperatureControllerStatus(fault));
     require(waitUntil([&] { return statuses[0]->text() == QStringLiteral("输入错误") &&
                 alarm->text().contains(QStringLiteral("0x01")); }), "confirmed remote input fault is displayed");
+    require(readButton->isEnabled(), "channel input fault keeps AI8 parameter communication available");
     status.devices[0].state = DeviceState::Error;
     send(MsgType::TelemetryStatus, TelemetryCodec::serializeTelemetryStatus(status));
     require(waitUntil([&] { return remote->deviceState(item.device_id) == DeviceState::Error; }),
             "AI8 remote status reports its measurement error");
     require(statuses[0]->text() == QStringLiteral("输入错误") &&
-                values[0]->text() == QStringLiteral("---") && alarm->text().contains(QStringLiteral("0x01")),
-            "Error device status preserves newly confirmed input diagnostics without restoring a fault PV");
+                values[0]->text() == QStringLiteral("---") && alarm->text().contains(QStringLiteral("0x01")) &&
+                readButton->isEnabled(),
+            "Error device status preserves newly confirmed input diagnostics without disabling AI8 communication");
     Ai8::LiveData unknown;
     unknown.measuredC.fill(std::numeric_limits<double>::quiet_NaN());
     send(MsgType::Ai8TemperatureControllerStatus, TelemetryCodec::serializeAi8TemperatureControllerStatus(unknown));

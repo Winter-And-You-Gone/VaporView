@@ -1239,6 +1239,9 @@ void Ai8TemperatureControllerPanel::setBackendConnected(bool connected, const QS
         sp_confirmed_.fill(false);
         if (fpga_relay_) sp_status_->setText(english_ ? QStringLiteral("Disconnected; pending result unknown") : QStringLiteral("连接已断开；未完成的设温结果未知"));
     }
+    if (connected && !backend_connected_ && fpga_relay_) {
+        sp_status_->clear();
+    }
     backend_connected_ = connected;
     backend_detail_ = detail;
     if (!connected)
@@ -1812,14 +1815,22 @@ void Ai8TemperatureControllerPanel::clearTemperatureHistory()
 void Ai8TemperatureControllerPanel::applyLiveData(
     const Ai8TemperatureControllerProtocol::LiveData& liveData, double sampleTimeSeconds)
 {
-    if (fpga_relay_ && liveData.valid && liveData.detailedChannel >= 1 && liveData.detailedChannel <= 8) {
-        const int i = liveData.detailedChannel - 1;
-        if (sp_confirmed_[i] && std::abs(liveData.setpointC - sp_draft_[i]) < 0.05) {
-            sp_dirty_[i] = false;
-            sp_confirmed_[i] = false;
+    if (fpga_relay_) {
+        const auto recordSp = [&](int index, double spValue) {
+            if (index < 0 || index >= 8 || !std::isfinite(spValue)) return;
+            if (sp_confirmed_[index] && std::abs(spValue - sp_draft_[index]) < 0.05) {
+                sp_dirty_[index] = false;
+                sp_confirmed_[index] = false;
+            }
+            sp_actual_[index] = spValue;
+            sp_known_[index] = true;
+        };
+        if (liveData.setpointsValid) {
+            for (int i = 0; i < 8; ++i) recordSp(i, liveData.setpointsC[static_cast<size_t>(i)]);
         }
-        sp_actual_[i] = liveData.setpointC;
-        sp_known_[i] = true;
+        if (liveData.detailedChannel >= 1 && liveData.detailedChannel <= 8) {
+            recordSp(liveData.detailedChannel - 1, liveData.setpointC);
+        }
     }
     const bool hadDetails=latest_live_data_.detailedChannel!=0;
     const auto previousTicks=latest_live_data_.sampleTicks;

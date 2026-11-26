@@ -204,6 +204,21 @@ int main()
     mixed=mixedScan.accept(healthyScan);
     require(!mixed.ai8Live->valid && std::isnan(mixed.ai8Live->measuredC[0]) && std::isnan(mixed.ai8Live->measuredC[1]),
         "instrument-wide system fault invalidates measurements retained before that fault");
+    FpgaSensorAdapter slowScan;
+    slowScan.setAi8PollIntervalMs(3000);
+    AdaptedMeasurements slowMixed;
+    for (int channel = 1; channel <= 8; ++channel) {
+        auto reading = aiReading;
+        reading.schema = 3;
+        reading.ai8Channel = channel;
+        reading.timestamp = quint64(channel) * 100000000ULL;
+        reading.ai8Alarm = channel == 3 ? 0 : 1;
+        reading.ai8Host = 0x214;
+        reading.ai8PvRaw = channel == 3 ? 221 : 9110;
+        slowMixed = slowScan.accept(reading);
+    }
+    require(slowMixed.ai8Live && slowMixed.ai8Live->valid && slowMixed.ai8Live->measuredC[2] == 22.1,
+        "slow 8-channel scan keeps a single healthy channel valid across its poll window");
     aiReading.ai8DeviceStatus=3; sample=adapter.accept(aiReading);
     require(!sample.ai8->measurementValid && sample.ai8->online,"AI8 transport failure isolates stale snapshot");
     aiReading.ai8SetResult=0; require(!adapter.accept(aiReading).ai8->setSucceeded,"zero result without valid bit is not success");

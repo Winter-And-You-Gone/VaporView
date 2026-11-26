@@ -257,9 +257,11 @@ int main(int argc, char **argv)
         require(sp->value() == 27, "matching telemetry retires page draft");
         sp->setValue(26);
         relay.setBackendConnected(false);
-        require(!sp->isEnabled(), "page write disabled while disconnected");
+        auto *spStatus = relay.findChild<QLabel*>("ai8FpgaSetpointStatus");
+        require(!sp->isEnabled() && spStatus && !spStatus->text().isEmpty(), "page write disabled and disconnect status shown while disconnected");
         relay.setBackendConnected(true);
-        require(sp->value() == 26 && sp->isEnabled() && writes.size() == 1, "reconnect retains draft without writing");
+        require(sp->value() == 26 && sp->isEnabled() && writes.size() == 1 && spStatus->text().isEmpty(),
+                "reconnect retains draft without writing and clears stale disconnect status");
         relay.setPageCommandsEnabled(false);
         require(!sp->isEnabled(), "SP requires page write capability");
         require(!relay.findChild<QDoubleSpinBox*>("ai8ProportionalBandSpin")->isEnabled(), "unsupported parameter disabled");

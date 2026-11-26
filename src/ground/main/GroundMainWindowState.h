@@ -607,6 +607,7 @@ struct MainWindowState
 #endif
     VaporView::TelemetryStatus remote_status_;
     bool remote_ai8_fault_metadata_ = false;
+    bool remote_ai8_system_fault_ = false;
     VaporView::Session::NavigationStatusChangeTracker navigation_status_changes_;
     VaporView::TelemetryStatus last_remote_recording_status_;
     bool has_last_remote_recording_status_;

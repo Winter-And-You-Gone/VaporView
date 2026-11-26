@@ -1452,7 +1452,9 @@ void MainWindow::receiveFpgaMeasurements(const VaporView::FpgaSensor::AdaptedMea
     const bool valid = r.validity.structure && r.validity.crc && r.validity.deviceOnline && r.validity.measurement;
     // A scan publishes the aggregate once, followed by individual channel updates.
     if (r.kind != VaporView::FpgaSensor::SensorKind::Ai8 || m.ai8Live) {
-        const bool deviceValid = m.ai8Live ? m.ai8Live->valid : valid;
+        const bool ai8Healthy = m.ai8Live && (m.ai8Live->valid ||
+            (m.ai8 && m.ai8->snapshotValid && !m.ai8->systemFault));
+        const bool deviceValid = m.ai8Live ? ai8Healthy : valid;
         if (deviceValid) state_->fpga_sources_.insert(r.source); else state_->fpga_sources_.remove(r.source);
     }
     const auto now = std::chrono::steady_clock::now();

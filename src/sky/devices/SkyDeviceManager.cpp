@@ -816,7 +816,9 @@ void SkyDeviceManager::acceptFpgaMeasurement(const FpgaSensor::AdaptedMeasuremen
         if (channel>=0 && channel<Ai8TemperatureControllerProtocol::kChannelCount) {
             if(m.ai8Live)data=*m.ai8Live;
         }
-        setState(SkyDeviceId::Ai8TemperatureController, data.valid ? DeviceState::Connected : DeviceState::Error);handleAi8TemperatureControllerData(data);
+        const bool communicating = data.valid || (m.ai8 && m.ai8->snapshotValid && !m.ai8->systemFault);
+        setState(SkyDeviceId::Ai8TemperatureController, communicating ? DeviceState::Connected : DeviceState::Error);
+        handleAi8TemperatureControllerData(data);
     }
     fpga_status_.rx_count++; fpga_status_.last_data_time_us=nowUs();
     emit fpgaSensorUpdated(r);

@@ -164,7 +164,7 @@ AdaptedMeasurements FpgaSensorAdapter::accept(const Reading &input)
             live.sampleTicksValid=true;
             if(s.snapshotValid && s.systemFault)ai8ScanSnapshots_={};
             for(int i=0;i<8;++i) {
-                if(input.timestamp<ai8ScanTicks_[i] || input.timestamp-ai8ScanTicks_[i]>500000000) {
+                if(input.timestamp<ai8ScanTicks_[i] || input.timestamp-ai8ScanTicks_[i]>ai8ScanMaxAgeTicks_) {
                     ai8ScanSnapshots_[i].reset();
                 }
             }

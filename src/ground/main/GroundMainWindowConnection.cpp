@@ -689,9 +689,9 @@ QString MainWindow::homeDeviceMeasurementWarning(VaporView::SkyDeviceId device, 
             valid = false;
         if (!valid && nowMs - history.connectedSinceMs >= timeoutMs)
             fault = remoteDeviceInvalidText(device, timeoutMs);
-        if (valid && device == SkyDeviceId::Ai8TemperatureController && state_->remote_ai8_fault_metadata_)
-            fault = english ? QStringLiteral("Temperature controller reported invalid readings")
-                            : QStringLiteral("温控仪上报的测量异常");
+        if (valid && device == SkyDeviceId::Ai8TemperatureController && state_->remote_ai8_system_fault_)
+            fault = english ? QStringLiteral("Temperature controller reported a system fault")
+                            : QStringLiteral("温控仪上报系统故障");
     }
     else if (fpga)
     {
