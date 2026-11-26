@@ -2241,6 +2241,122 @@ static void harmonicHomeGraphs()
     settings.setValue("font_scale_percent",100);
 }
 
+static void remoteWaterProfileSkewedClock()
+{
+    using namespace VaporView;
+    IndependentCalibrationTest::Rig calibration;
+    const auto file = calibration.complete();
+    calibration.service->selectFile(file.filename);
+    calibration.service->synchronize();
+    TcpTelemetryLink server;
+    require(server.listen(QStringLiteral("127.0.0.1"), 0), "skewed-clock water profile fake Sky listens");
+    MainWindow window(nullptr, calibration.service);
+    require(QMetaObject::invokeMethod(&window, "onDataSourceModeChanged", Q_ARG(int, 1)),
+            "skewed-clock water profile remote mode");
+    auto *path = window.findChild<QComboBox *>("deviceSensorTransportPathCombo");
+    require(path, "skewed-clock water profile transport selector exists");
+    path->setCurrentIndex(path->findData("fpga_relay"));
+    window.show();
+    auto *remote = window.testRemoteSkyController();
+    require(remote && remote->openTcp(QStringLiteral("127.0.0.1"), server.localPort()) &&
+            waitUntil([&] { return remote->isOpen(); }),
+            "skewed-clock water profile connects to fake Sky");
+
+    TelemetryCodec codec;
+    quint32 seq = 1;
+    FpgaControlConfig skyConfiguration;
+    const QJsonObject fpgaStatus{
+        {"connected", true}, {"ready", true}, {"busy", false}, {"detail", "remote ready"},
+        {"backend", "winusb"}, {"locator", "usb://sky-test"}, {"simulation", false},
+        {"usb", QJsonObject{{"mode", "winusb"}}},
+        {"configuration", skyConfiguration.toJson()}, {"registers", QJsonObject{}},
+        {"archived_records", "0"}, {"recording_state", 0}, {"session_directory", ""}};
+    QJsonObject parsedStatus;
+    const QByteArray statusPayload = FpgaRemote::encodeStatus(fpgaStatus);
+    require(FpgaRemote::parseStatus(statusPayload, parsedStatus),
+            "skewed-clock water profile status payload is valid");
+    calibration.bus.setDevice(false, {});
+    calibration.service->synchronize();
+    server.writeBytes(codec.encodeFrame(MsgType::FpgaStatus, statusPayload, seq++, 1));
+    require(waitUntil([&] { return calibration.service->view().connected; }),
+            "skewed-clock water profile sees remote FPGA connected");
+
+    auto sendLidar = [&](quint64 skyTimeUs, float distanceM) {
+        TelemetryBasic basic;
+        basic.host_time_us = skyTimeUs;
+        basic.validity_flags = BasicHasLidar;
+        basic.lidar_distance_m = distanceM;
+        server.writeBytes(codec.encodeFrame(MsgType::TelemetryBasic,
+                                            TelemetryCodec::serializeBasicTelemetry(basic), seq++, skyTimeUs));
+    };
+    auto sendFeature = [&](quint64 skyTimeUs, quint32 cycleId) {
+        const auto stream = IndependentCalibrationTest::cycle(1368, 8, cycleId);
+        const auto payload = FpgaRemote::encodeCycleFeature(skyTimeUs, stream);
+        require(!payload.isEmpty(), "encode remote cycle feature");
+        server.writeBytes(codec.encodeFrame(MsgType::FpgaCycleFeature, payload, seq++, skyTimeUs));
+    };
+
+    auto *monitor = window.findChild<TcpWavePanel *>();
+    auto *concentrationPlot = monitor ? monitor->findChild<QWidget *>("waterConcentrationPlot") : nullptr;
+    auto *profilePlot = monitor ? monitor->findChild<QWidget *>("waterProfilePlot") : nullptr;
+    require(concentrationPlot && profilePlot, "water concentration and profile plots exist");
+
+    const qint64 groundNowMs = QDateTime::currentMSecsSinceEpoch();
+    const quint64 skyBehindUs = quint64(groundNowMs - 300000) * 1000ULL;
+    const quint64 skyAheadUs = quint64(groundNowMs + 300000) * 1000ULL;
+    const quint64 skyAheadNextUs = quint64(groundNowMs + 301000) * 1000ULL;
+
+    // Sample 1: Sky host clock 5 minutes behind Ground PC wall clock.
+    sendLidar(skyBehindUs, 117.65f);
+    sendFeature(skyBehindUs, 100);
+    require(waitUntil([&] {
+        calibration.service->synchronize();
+        const auto live = calibration.service->view().live;
+        return live.contains(1368) && live.value(1368).input.feature.cycleId == 100;
+    }), "remote cycle 100 reaches calibration service");
+    calibration.now += 500;
+    calibration.service->synchronize();
+    require(waitUntil([&] {
+        return concentrationPlot->property("sampleCount").toInt() == 1 &&
+               profilePlot->property("sampleCount").toInt() == 1;
+    }), "remote concentration pairs with lidar when Sky clock is 5 minutes behind Ground");
+
+    // Sample 2: Sky host clock 5 minutes ahead of Ground PC wall clock.
+    sendLidar(skyAheadUs, 118.25f);
+    sendFeature(skyAheadUs, 101);
+    require(waitUntil([&] {
+        calibration.service->synchronize();
+        const auto live = calibration.service->view().live;
+        return live.contains(1368) && live.value(1368).input.feature.cycleId == 101;
+    }), "remote cycle 101 reaches calibration service");
+    calibration.now += 500;
+    calibration.service->synchronize();
+    require(waitUntil([&] {
+        return concentrationPlot->property("sampleCount").toInt() == 2 &&
+               profilePlot->property("sampleCount").toInt() == 2;
+    }), "remote concentration pairs with lidar when Sky clock is 5 minutes ahead of Ground");
+
+    // Sample 3: concentration arrives, then ages beyond 1000 ms on Ground monotonic clock before pairing.
+    sendLidar(skyAheadNextUs, 119.00f);
+    sendFeature(skyAheadNextUs, 102);
+    require(waitUntil([&] {
+        calibration.service->synchronize();
+        const auto live = calibration.service->view().live;
+        return live.contains(1368) && live.value(1368).input.feature.cycleId == 102;
+    }), "remote cycle 102 reaches calibration service");
+    calibration.now += 1200;
+    calibration.service->synchronize();
+    require(waitUntil([&] {
+        return concentrationPlot->property("sampleCount").toInt() == 3;
+    }), "stale concentration still appears in concentration trend");
+    processFor(100);
+    require(profilePlot->property("sampleCount").toInt() == 2,
+            "concentration older than 1000 ms on Ground monotonic clock does not pair with lidar");
+
+    remote->close();
+    window.close();
+}
+
 static void relayConfigurationPresentation()
 {
     auto preferences=VaporView::applicationConfigSettings();
@@ -3373,7 +3489,7 @@ int main(int argc,char **argv)
         catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}
     }
     if(app.arguments().contains("--harmonic-home")) {
-        harmonicHomeGraphs();std::cout<<"FPGA harmonic home graphs test passed\n";return 0;
+        harmonicHomeGraphs();remoteWaterProfileSkewedClock();std::cout<<"FPGA harmonic home graphs test passed\n";return 0;
     }
     if(app.arguments().contains("--local-simulator")) {
         try { localSimulatorRouting();std::cout<<"Local FPGA simulator GUI test passed\n";return 0; }

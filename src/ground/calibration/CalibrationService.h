@@ -17,6 +17,7 @@ struct CalibrationView
     CalibrationFile selected;
     QStringList files, drafts;
     QMap<int, ConcentrationResult> live;
+    QMap<int, qint64> liveAgeMs;
     Environment compensationEnvironment;
     QMap<int, double> recentPeaks;
     QString message, identityWarning, recoveredSession;

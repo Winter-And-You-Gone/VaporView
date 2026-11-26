@@ -142,6 +142,13 @@ CalibrationView CalibrationService::view() const
     }
     if (!view.connected) return view;
 
+    const auto monotonicNow = clock_();
+    for (auto it = view.live.cbegin(); it != view.live.cend(); ++it) {
+        const auto received = latestValid_.constFind(it.key());
+        if (received != latestValid_.cend() && monotonicNow >= received.value())
+            view.liveAgeMs.insert(it.key(), qint64(monotonicNow - received.value()));
+    }
+
     const auto now = VaporView::Session::harmonicReceptionTimeUs();
     auto useReadings = [&](const char *temperatureKey, const char *pressureKey, const char *pressureField,
                            const char *temperatureValid, const char *pressureValid, double pressureDivisor,

@@ -6307,18 +6307,19 @@ void MainWindow::setupDataPanels()
             panel->clearWaterSamples();
             return;
         }
-        const auto nowWall = QDateTime::currentMSecsSinceEpoch();
         const auto nowSteady = std::chrono::steady_clock::now();
         const auto &lidar = state_->current_lidar_;
         constexpr qint64 maxPairAgeMs = 1000;
-        for (const auto &reading : view.live) {
+        for (auto it = view.live.cbegin(); it != view.live.cend(); ++it) {
+            const auto &reading = it.value();
             const auto &feature = reading.input.feature;
             const qint64 timeMs = qint64(feature.hostTimeUs / 1000);
             double height = std::numeric_limits<double>::quiet_NaN();
             if (lidar.valid && lidar.timestamp != std::chrono::steady_clock::time_point{} &&
                 std::isfinite(lidar.distance_m) && lidar.distance_m >= 0) {
                 const auto lidarAge = std::chrono::duration_cast<std::chrono::milliseconds>(nowSteady - lidar.timestamp).count();
-                const auto concentrationAge = nowWall - timeMs;
+                const auto ageIt = view.liveAgeMs.constFind(it.key());
+                const qint64 concentrationAge = ageIt == view.liveAgeMs.cend() ? -1 : ageIt.value();
                 if (lidarAge >= 0 && lidarAge <= maxPairAgeMs && concentrationAge >= 0 &&
                     concentrationAge <= maxPairAgeMs)
                     height = lidar.distance_m;
