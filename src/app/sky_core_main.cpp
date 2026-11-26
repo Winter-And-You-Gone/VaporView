@@ -210,9 +210,8 @@ int main(int argc, char *argv[])
             QDir().mkpath(directory);
             options.config_path = QDir(directory).filePath(QStringLiteral("sky_config.json"));
         }
-        if (!parser.isSet(telemetryHostOption)) options.telemetry_host = QStringLiteral("127.0.0.1");
-        QTextStream(stdout) << "SkyCore 模拟服务：初始为 FPGA 中转，可在 VaporView 切换到传感器直连；远程 TCP 端口 "
-                            << options.telemetry_tcp_port << "。\n配置：" << options.config_path << "\n";
+        QTextStream(stdout) << "SkyCore 模拟服务：初始为 FPGA 中转，可在 VaporView 切换到传感器直连。\n配置："
+                            << options.config_path << "\n";
     }
     options.wave_host = parser.value(skyWaveHostOption);
     options.wave_port = parser.value(skyWavePortOption).toInt();

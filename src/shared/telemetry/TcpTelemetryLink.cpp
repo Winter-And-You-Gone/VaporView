@@ -33,14 +33,15 @@ bool TcpTelemetryLink::listen(const QString& host, quint16 port)
     }
     open_emitted_ = true;
     emit openChanged(true);
+    const QString listeningHost = server_.serverAddress().toString();
     const quint16 listeningPort = server_.serverPort();
     emitTcpLog(LogLevel::Info,
                QStringLiteral("telemetry_tcp_server_listening"),
                QStringLiteral("TCP 遥测服务端已开始监听：%1:%2。")
-                   .arg(host_)
+                   .arg(listeningHost)
                    .arg(listeningPort),
                {{QStringLiteral("role"), QStringLiteral("server")},
-                {QStringLiteral("host"), host_},
+                {QStringLiteral("host"), listeningHost},
                 {QStringLiteral("requested_port"), port_},
                 {QStringLiteral("local_port"), listeningPort},
                 {QStringLiteral("ui_visibility"), QStringLiteral("details")}});

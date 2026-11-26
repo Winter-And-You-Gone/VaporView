@@ -445,7 +445,7 @@ set_tests_properties(fpga_telemetry_test PROPERTIES LABELS "fast;unit;fpga" TIME
 
 add_executable(fpga_simulator_test fpga_simulator_test.cpp)
 target_link_libraries(fpga_simulator_test PRIVATE vaporview_ground_device_core vaporview_water_calibration_core)
-add_dependencies(fpga_simulator_test VaporViewFpgaSimulator)
+add_dependencies(fpga_simulator_test VaporViewFpgaSimulator VaporViewSkyCore)
 vaporview_add_test(NAME fpga_simulator_test COMMAND fpga_simulator_test)
 vaporview_add_test(NAME fpga_simulator_e2e_test COMMAND fpga_simulator_test --process)
 set_tests_properties(fpga_simulator_test fpga_simulator_e2e_test PROPERTIES LABELS "integration;fpga" TIMEOUT 90)

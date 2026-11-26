@@ -382,20 +382,50 @@ struct Child
     ~Child(){if(process.state()!=QProcess::NotRunning){process.write("quit\n");process.closeWriteChannel();
         if(!process.waitForFinished(5000)){process.kill();process.waitForFinished(3000);}}}
 };
+quint16 startSimulator(Child& child, const QTemporaryDir& directory, const QString& program,
+                       QStringList arguments, const QString& expectedHost)
+{
+    QTcpServer reservation;
+    check(reservation.listen(QHostAddress::LocalHost, 0), "reserve local telemetry port");
+    const auto port = reservation.serverPort();
+    reservation.close();
+    arguments << "--sky-config" << directory.filePath("sky.json") << "--telemetry-tcp-port"
+              << QString::number(port) << "--ipc-port" << "0";
+    auto executable = QCoreApplication::applicationDirPath() + '/' + program;
+#ifdef Q_OS_WIN
+    executable += ".exe";
+#endif
+    child.process.setProcessChannelMode(QProcess::MergedChannels);
+    child.process.start(executable, arguments);
+    check(child.process.waitForStarted(5000), qPrintable(program + " failed to start"));
+    const auto endpoint = QStringLiteral("%1:%2").arg(expectedHost).arg(port);
+    const auto listening = QStringLiteral("TCP 遥测服务端已开始监听：%1。").arg(endpoint).toUtf8();
+    QByteArray output;
+    wait([&] {
+        output += child.process.readAll();
+        return output.contains(listening) || child.process.state() == QProcess::NotRunning;
+    }, qPrintable(program + " did not report listening on " + endpoint));
+    check(output.contains(listening), qPrintable(program + " exited before listening on " + endpoint));
+    return port;
+}
 void processTest()
 {
     QTemporaryDir directory;check(directory.isValid(),"isolated simulator config and recording directory");
-    QTcpServer portReservation;check(portReservation.listen(QHostAddress::LocalHost,0),"reserve local telemetry port");
-    const auto port=portReservation.serverPort();portReservation.close();
-    Child child;const auto executable=QCoreApplication::applicationDirPath()+"/VaporViewFpgaSimulator"
-#ifdef Q_OS_WIN
-        ".exe"
-#endif
-        ;
-    check(QFileInfo::exists(executable),"standalone simulator executable was built");
-    child.process.setProcessChannelMode(QProcess::MergedChannels);
-    child.process.start(executable,{"--sky-config",directory.filePath("sky.json"),"--telemetry-tcp-port",QString::number(port),"--ipc-port","0"});
-    check(child.process.waitForStarted(5000),"standalone simulator starts");
+    const QString skyCore = "VaporViewSkyCore";
+    const QString simulator = "VaporViewFpgaSimulator";
+    const QString loopback = "127.0.0.1";
+    {
+        Child child;
+        startSimulator(child, directory, skyCore, {"--simulate"}, "0.0.0.0");
+    }
+    for (const auto& program : {skyCore, simulator}) {
+        Child child;
+        QStringList arguments{"--telemetry-host", loopback};
+        if (program == skyCore) arguments << "--simulate";
+        startSimulator(child, directory, program, arguments, loopback);
+    }
+    Child child;
+    const auto port = startSimulator(child, directory, simulator, {}, "0.0.0.0");
     RemoteSkyController remote;QJsonObject status;QSet<quint16> sensors,waves;
     bool basic=false,position=false,fullCyclePeakReceived=false;QMap<quint32,DeviceOperationResponse> replies;
     QObject::connect(&remote,&RemoteSkyController::fpgaStatusUpdated,[&](const auto& s){status=s;});
@@ -409,7 +439,7 @@ void processTest()
             &&b.height_m>=15&&b.height_m<=45;
     });
     QObject::connect(&remote,&RemoteSkyController::deviceOperationResponseReceived,[&](const auto& response){replies.insert(response.request_id,response);});
-    events(300);check(remote.openTcp("127.0.0.1",port),"Ground controller connects to the real simulator process");
+    check(remote.openTcp("127.0.0.1",port),"Ground controller connects to the real simulator process");
     wait([&]{check(child.process.state()!=QProcess::NotRunning,"simulator stays running");return status.value("ready").toBool()&&!status.value("busy").toBool();},
          "standalone simulated board completes its cold handshake");
     check(sensors.isEmpty()&&waves.isEmpty(),"standalone service does not pre-enable devices for display");

@@ -27,7 +27,7 @@ FPGA 页在界面测试模式中禁用记录按钮，不再伪造记录成功；
 
 1. 双击 `build/Release/StartFpgaSimulator.cmd`，保持控制台运行。
 2. 打开 `build/Release/VaporView.exe`，在标题栏选择“远程”。
-3. 在“设备配置”的天空端连接设置中选择 TCP，地址 `127.0.0.1`、端口 `39100`，点击连接。
+3. 在“设备配置”的天空端连接设置中选择 TCP，填写模拟器所在主机的 IP 和端口 `39100`，点击连接。两端在同一台电脑时可填 `127.0.0.1`。
 4. 标题栏连接会先完成握手和配置同步，再按设备勾选依次连接传感器及 ADC/DLIA；新服务的模块初始关闭，连接后首页、温控页和导航状态收到数据。FPGA 页的单独连接按钮仍仅连接板卡，按需逐项启用也可。
 5. RAW 默认关闭。启动 RAW 后可持续观察两路 ADC，直到手动停止 RAW 或停止采集；停止 RAW 后采集和 DLIA 仍继续。
 
@@ -37,7 +37,7 @@ FPGA 页在界面测试模式中禁用记录按钮，不再伪造记录成功；
 & .\build\Release\VaporViewFpgaSimulator.exe
 ```
 
-服务默认仅监听本机：遥测 TCP `39100`，SkyCore 本机 IPC `39001`。如果已有 SkyCore 占用了这些端口，可指定另一组端口，并让 VaporView 连接对应遥测端口：
+模拟服务的遥测 TCP 默认监听所有 IPv4 接口 `0.0.0.0:39100`。仅供本机使用时，启动服务可加 `--telemetry-host 127.0.0.1`。SkyCore 本机 IPC 默认监听 `127.0.0.1:39001`。如果已有 SkyCore 占用了这些端口，可指定另一组端口，并让 VaporView 连接对应遥测端口：
 
 ```powershell
 & .\build\Release\VaporViewFpgaSimulator.exe --telemetry-tcp-port 39200 --ipc-port 39201
@@ -46,9 +46,9 @@ FPGA 页在界面测试模式中禁用记录按钮，不再伪造记录成功；
 跨工控机/H300 验证时，在工控机目录运行以下入口之一；先退出占用同端口的服务，不同时启动两个：
 
 ```powershell
-.\VaporViewSkyCore.exe --simulate --telemetry-transport tcp --telemetry-host 0.0.0.0 --telemetry-tcp-port 39100
+.\VaporViewSkyCore.exe --simulate
 # 或独立模拟服务
-.\VaporViewFpgaSimulator.exe --telemetry-host 0.0.0.0 --telemetry-tcp-port 39100
+.\VaporViewFpgaSimulator.exe
 ```
 
 远程模拟服务启动时选择 FPGA 中转。VaporView 正常启动并连接 SkyCore 后，在应用菜单的「开发者」中打开「开发者选项」，再用标题栏的「直连 / FPGA」切换。切到直连时，SkyCore 生成模拟传感器数据。切回 FPGA 后，使用「连接」恢复双路模拟采集。整个过程沿用同一个 SkyCore 进程和天地链路。原有 `--fpga-simulate-data` 也可启动同一个模拟服务。
