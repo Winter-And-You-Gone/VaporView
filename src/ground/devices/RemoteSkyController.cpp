@@ -11,6 +11,7 @@
 #include <QRandomGenerator>
 #include <QTimer>
 
+#include <algorithm>
 #include <chrono>
 
 namespace VaporView::Ground::Devices
@@ -95,7 +96,13 @@ RemoteSkyController::RemoteSkyController(QObject *parent)
                     if (!isCurrentOpenEvent(generation)) return;
                     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
                     state_.notePacket(MsgType::Ai8TemperatureControllerStatus, nowMs);
-                    state_.noteDeviceData(SkyDeviceId::Ai8TemperatureController, nowMs);
+                    if (data.valid || data.mainStatusValid || data.alarmStatusValid || data.detailedChannel ||
+                        std::any_of(data.controlStates.cbegin(), data.controlStates.cend(), [](auto state) {
+                            return state != Ai8TemperatureControllerProtocol::ChannelControlState::Unknown;
+                        }))
+                        state_.noteDeviceData(SkyDeviceId::Ai8TemperatureController, nowMs);
+                    else
+                        state_.clearDeviceData(SkyDeviceId::Ai8TemperatureController);
                     emit ai8TemperatureControllerStatusUpdated(data);
                 }, Qt::QueuedConnection);
             }, Qt::DirectConnection);
@@ -115,7 +122,7 @@ RemoteSkyController::RemoteSkyController(QObject *parent)
             const auto now = QDateTime::currentMSecsSinceEpoch();
             state_.notePacket(MsgType::FpgaSensor, now);
             const bool valid = reading.validity.structure && reading.validity.crc &&
-                reading.validity.deviceOnline && reading.validity.measurement;
+                reading.validity.deviceOnline && (reading.source == 0x46 || reading.validity.measurement);
             SkyDeviceId device = SkyDeviceId::All;
             switch (reading.source) {
             case 0x40: device = SkyDeviceId::Ptb; break;

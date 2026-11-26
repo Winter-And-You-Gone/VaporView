@@ -128,6 +128,7 @@ private:
     TelemetryTransportType transport_type_ = TelemetryTransportType::Tcp;
     TelemetryCodec codec_;
     QTimer retry_timer_;
+    bool remote_fpga_relay_ = false;
     quint64 link_generation_ = 0;
     quint16 next_frame_seq_ = 1;
     quint16 next_command_seq_ = 1;

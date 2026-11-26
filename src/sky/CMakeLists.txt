@@ -34,6 +34,7 @@ add_library(vaporview_fpga_device_core STATIC
     ${CMAKE_SOURCE_DIR}/src/ground/devices/FpgaDeviceController.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/devices/FpgaDeviceExtensions.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/devices/FpgaUartExchange.cpp
+    ${CMAKE_SOURCE_DIR}/src/ground/devices/FpgaInstrumentService.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/devices/Tec103GpioProtocol.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/devices/FpgaSensorDecoder.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/devices/FpgaSensorAdapter.cpp

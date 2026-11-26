@@ -665,7 +665,7 @@ QString MainWindow::homeDeviceMeasurementWarning(VaporView::SkyDeviceId device, 
         case 0x41: pollAddress = 0x611c; break;
         case 0x43: pollAddress = 0x6314; break;
         case 0x44: pollAddress = 0x6414; break;
-        case 0x46: pollAddress = 0x662c; break;
+        case 0x46: pollAddress = 0x662c; timeoutMs = 5000; break;
         }
         if (pollAddress)
             timeoutMs = qMax(timeoutMs, qint64(homeFpgaRegisters().value(pollAddress)) * 3);

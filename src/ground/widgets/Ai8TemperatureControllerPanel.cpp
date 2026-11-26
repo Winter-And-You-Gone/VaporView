@@ -552,7 +552,7 @@ QWidget *Ai8TemperatureControllerPanel::createChannelPage()
                     sp_dirty_[i] = true;
                     sp_confirmed_[i] = false;
                     sp_draft_[i] = setpointSpin->value();
-                    sp_status_->setText(english_ ? QStringLiteral("Draft not submitted") : QStringLiteral("草稿尚未提交"));
+                    sp_status_->clear();
                 }
                 updateTemperaturePlot();
             });
@@ -1347,6 +1347,7 @@ void Ai8TemperatureControllerPanel::bindAutoApply(
         }
         assign(*batch, value);
         batch->writeFields |= writeFieldBit(field);
+        setOperationStatus({}, true);
         if (page_commands_enabled_) auto_apply_timer_->start();
     };
     if (auto *combo = qobject_cast<QComboBox *>(editor))
@@ -1358,6 +1359,10 @@ void Ai8TemperatureControllerPanel::bindAutoApply(
     {
         spin->setKeyboardTracking(false);
         spin->setProperty("ai8CommittedValue", spin->property("value"));
+        if (auto *integer = qobject_cast<QSpinBox *>(spin))
+            connect(integer, &QSpinBox::valueChanged, this, [commit](int value) { commit(value); });
+        else if (auto *decimal = qobject_cast<QDoubleSpinBox *>(spin))
+            connect(decimal, &QDoubleSpinBox::valueChanged, this, [commit](double value) { commit(value); });
         connect(spin, &QAbstractSpinBox::editingFinished, this, [spin, commit] { commit(spin->property("value")); });
     }
 }
@@ -1366,6 +1371,7 @@ void Ai8TemperatureControllerPanel::discardPendingWrites()
 {
     auto_apply_timer_->stop();
     pending_writes_.clear();
+    updateStatusText();
 }
 
 void Ai8TemperatureControllerPanel::sendPendingWrite()
@@ -1442,9 +1448,10 @@ void Ai8TemperatureControllerPanel::refreshFpgaSetpoint()
         sp->setMaximum(2147.4);
         if (!sp->hasFocus() && !sp->findChild<QLineEdit*>()->hasFocus()) {
             if (sp_dirty_[i]) sp->setValue(sp_draft_[i]);
-            else if (sp_known_[i]) sp->setValue(sp_actual_[i]);
-            else sp->clear();
-            sp->setProperty("ai8CommittedValue", sp->value());
+            else if (sp_known_[i]) {
+                sp->setValue(sp_actual_[i]);
+                sp->setProperty("ai8CommittedValue", sp->value());
+            } else sp->clear();
         }
         sp->setToolTip(sp_known_[i]
             ? (english_ ? QStringLiteral("Device SP: %1 °C") : QStringLiteral("设备回读 SP：%1 ℃")).arg(sp_actual_[i], 0, 'f', 1)
@@ -1529,7 +1536,7 @@ void Ai8TemperatureControllerPanel::updateStatusText()
     protocol_status_label_->setProperty("protocolReady", backend_connected_);
     protocol_status_label_->setProperty("operationFailed", backend_connected_ && !operation_succeeded_);
     QString text;
-    if (!operation_status_.isEmpty())
+    if (!operation_status_.isEmpty() && pending_writes_.isEmpty())
     {
         text = operation_status_;
     }
@@ -1541,6 +1548,8 @@ void Ai8TemperatureControllerPanel::updateStatusText()
         {
             text += QStringLiteral(" · ") + backend_detail_;
         }
+        if (!pending_writes_.isEmpty())
+            text += english_ ? QStringLiteral(" · Waiting to write changes…") : QStringLiteral(" · 等待自动写入更改…");
     }
     else
     {
@@ -1688,7 +1697,7 @@ void Ai8TemperatureControllerPanel::applyPageData(
             if (!preserveEdit(sp))
             {
                 sp_draft_[i] = pageData.channel.setpointC;
-                sp_dirty_[i] = true;
+                sp_dirty_[i] = false;
                 sp_confirmed_[i] = true;
                 sp_status_->clear();
             }
@@ -1818,8 +1827,9 @@ void Ai8TemperatureControllerPanel::applyLiveData(
     if (fpga_relay_) {
         const auto recordSp = [&](int index, double spValue) {
             if (index < 0 || index >= 8 || !std::isfinite(spValue)) return;
-            if (sp_confirmed_[index] && std::abs(spValue - sp_draft_[index]) < 0.05) {
-                sp_dirty_[index] = false;
+            if (sp_confirmed_[index]) {
+                // Scan telemetry can still carry the SP preceding the page readback.
+                if (std::abs(spValue - sp_actual_[index]) >= 0.05) return;
                 sp_confirmed_[index] = false;
             }
             sp_actual_[index] = spValue;

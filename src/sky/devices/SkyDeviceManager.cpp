@@ -1,6 +1,8 @@
 #include "SkyDeviceManager.h"
 #include "LogContext.h"
 #include "FpgaUsbSimulator.h"
+#include "FpgaExtensions.h"
+#include "ground/devices/FpgaInstrumentService.h"
 #include "TelemetryCodec.h"
 #include "ppk/ObservationStore.h"
 
@@ -1040,6 +1042,10 @@ void SkyDeviceManager::reconnectAll(const QString& correlationId, const QString&
 
 void SkyDeviceManager::shutdown(bool publishLogs)
 {
+    if (ai8_page_worker_) {
+        ai8_page_worker_->requestInterruption();
+        ai8_page_worker_->wait();
+    }
     simulate_timer_.stop();
     simulate_data_ = false;
     disconnectAll(publishLogs);
@@ -2339,6 +2345,57 @@ bool SkyDeviceManager::restoreTemperatureFactoryDefaults(CommandErrorCode *error
     return ok;
 }
 
+void SkyDeviceManager::submitFpgaAi8Page(const Ai8TemperatureControllerProtocol::PageData& page,
+                                         bool write, Ai8PageCompletion completion)
+{
+    using namespace Ground::Devices;
+    const auto status = fpgaStatus();
+    if (!validAi8Page(page.page) || !validAi8Selection(page.selection) ||
+        (write && (!Ai8TemperatureControllerProtocol::validWriteFields(page) || !validAi8PageValues(page)))) {
+        completion(CommandErrorCode::InvalidPayload, QStringLiteral("Invalid AI-8 parameter page."), {});
+        return;
+    }
+    if (!fpga_backend_ || !status.value("ready").toBool()) {
+        completion(CommandErrorCode::DeviceNotConnected, QStringLiteral("FPGA is not ready."), {});
+        return;
+    }
+    if (!(status.value("extensions").toInt() & FpgaExtensions::Ai8Parameters)) {
+        completion(CommandErrorCode::UnknownCommand, QStringLiteral("FPGA firmware does not support AI-8 parameter pages."), {});
+        return;
+    }
+    if (!(status.value("registers").toObject().value(QString::number(0x6604)).toInt() & 1)) {
+        completion(CommandErrorCode::DeviceNotConnected, QStringLiteral("FPGA AI-8 is disabled."), {});
+        return;
+    }
+    if (ai8_page_worker_ && ai8_page_worker_->isRunning()) {
+        completion(CommandErrorCode::DeviceOperationBusy, QStringLiteral("AI-8 page operation in progress."), {});
+        return;
+    }
+    auto code = std::make_shared<CommandErrorCode>(CommandErrorCode::Ok);
+    QPointer<SkyFpgaBackend> backend(fpga_backend_.get());
+    auto call = makeFpgaInstrumentCall(this, [backend, code](const QJsonObject& request, FpgaInstrumentReply reply) {
+        if (!backend) {
+            *code = CommandErrorCode::DeviceNotConnected;
+            reply({{"ok", false}, {"detail", QStringLiteral("FPGA disconnected during the page operation.")}});
+            return;
+        }
+        backend->submit(request, [code, reply = std::move(reply)](CommandErrorCode error, QString detail, QJsonObject status) {
+            *code = error;
+            if (error == CommandErrorCode::Ok) reply(status.value("operation_result").toObject());
+            else reply({{"ok", false}, {"detail", detail}});
+        });
+    });
+    auto result = std::make_shared<LocalAi8OperationResult>();
+    ai8_page_worker_.reset(QThread::create([call, page, write, result] {
+        *result = write ? writeFpgaAi8Page(call, page) : readFpgaAi8Page(call, page.page, page.selection);
+    }));
+    connect(ai8_page_worker_.get(), &QThread::finished, this, [result, code, done = std::move(completion)] {
+        done(result->success ? CommandErrorCode::Ok : (*code == CommandErrorCode::Ok ? CommandErrorCode::ConfigApplyFailed : *code),
+             result->message, result->data);
+    });
+    ai8_page_worker_->start();
+}
+
 bool SkyDeviceManager::readAi8Page(Ai8TemperatureControllerProtocol::Page page,
                                    const Ai8TemperatureControllerProtocol::Selection& selection,
                                    Ai8TemperatureControllerProtocol::PageData& data,
@@ -2346,7 +2403,7 @@ bool SkyDeviceManager::readAi8Page(Ai8TemperatureControllerProtocol::Page page,
                                    QString *errorMessage)
 {
     if (config_.sensor_transport_path == SensorTransportPath::FpgaRelay) { setAi8Error(errorCode,errorMessage,CommandErrorCode::UnknownCommand,
-        QStringLiteral("Unsupported: VLP1 does not expose AI8 parameter pages."));return false; }
+        QStringLiteral("FPGA pages require asynchronous submission."));return false; }
     if (!validAi8Page(page) || !validAi8Selection(selection))
     {
         setAi8Error(errorCode, errorMessage, CommandErrorCode::InvalidPayload,
@@ -2399,7 +2456,7 @@ bool SkyDeviceManager::writeAi8Page(const Ai8TemperatureControllerProtocol::Page
                                     QString *errorMessage)
 {
     if (config_.sensor_transport_path == SensorTransportPath::FpgaRelay) { setAi8Error(errorCode,errorMessage,CommandErrorCode::UnknownCommand,
-        QStringLiteral("Unsupported: VLP1 does not expose AI8 parameter pages."));return false; }
+        QStringLiteral("FPGA pages require asynchronous submission."));return false; }
     if (!validAi8Page(requested.page) || !validAi8Selection(requested.selection) ||
         !Ai8TemperatureControllerProtocol::validWriteFields(requested) || !validAi8PageValues(requested))
     {

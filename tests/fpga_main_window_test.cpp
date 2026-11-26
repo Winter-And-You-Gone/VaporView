@@ -1000,6 +1000,29 @@ static void remoteHomeActions()
     registers[QString::number(0x6304)]=0;status["registers"]=registers;send(MsgType::FpgaStatus,FpgaRemote::encodeStatus(status));
     require(waitUntil([&]{return internalEnvironmentText(internal).count(QStringLiteral("—"))==3;}),"disabled BMP cannot retain a live internal value");
     registers[QString::number(0x6304)]=1;status["registers"]=registers;send(MsgType::FpgaStatus,FpgaRemote::encodeStatus(status));
+    refreshNavigation();
+    send(MsgType::FpgaStatus, FpgaRemote::encodeStatus(status));
+    Ai8TemperatureControllerProtocol::LiveData ai8;
+    ai8.valid = true; ai8.detailedChannel = 3; ai8.measuredC[2] = 21.7;
+    send(MsgType::Ai8TemperatureControllerStatus, TelemetryCodec::serializeAi8TemperatureControllerStatus(ai8));
+    QLabel *capsule = nullptr;
+    for (auto *label : window.findChildren<QLabel*>("homeDeviceStatusCapsule"))
+        if (label->text().contains("AI-8288")) capsule = label;
+    require(capsule, "AI-8 home capsule exists");
+    int received = 0;
+    const auto watch = QObject::connect(remote, &Ground::Devices::RemoteSkyController::fpgaSensorUpdated, &window,
+        [&](const FpgaSensor::Reading& sample) { if (sample.source == 0x46) ++received; });
+    int expected = 0;
+    for (int channel : {3, 4, 1, 2, 3, 8}) {
+        FpgaSensor::Reading sample; sample.source = 0x46; sample.ai8Channel = channel;
+        sample.validity = {true, true, true, channel == 3};
+        send(MsgType::FpgaSensor, FpgaRemote::encodeSensor(sample, ++expected));
+        require(waitUntil([&] { return received == expected; }), "mixed AI-8 channel packet processed");
+        MainWindowRtcmTestAccess::refreshCapsules(window);
+        require(remote->deviceDataFresh(SkyDeviceId::Ai8TemperatureController, QDateTime::currentMSecsSinceEpoch(), 5000) &&
+                capsule->property("state") == "connected", qPrintable(QStringLiteral("AI-8 CH%1 capsule %2: %3").arg(channel).arg(capsule->property("state").toString(), capsule->toolTip())));
+    }
+    QObject::disconnect(watch);
     const QStringList names{"EPSILON","PTB210","SDFM300","AI-8288",QStringLiteral("波形源")};
     const QList<quint16> sources{0x42,0x40,0x45,0x46,0};
     auto *waveEnabled=window.findChild<QCheckBox*>("deviceFpgaAcquisitionEnabledCheck");

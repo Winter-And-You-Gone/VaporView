@@ -114,6 +114,8 @@ public:
     bool restoreTemperatureFactoryDefaults(CommandErrorCode *errorCode = nullptr);
     std::function<CommandErrorCode()> prepareTemperatureOperation(const CommandMessage& command);
     void completeTemperatureOperation(const CommandMessage& command, CommandErrorCode result);
+    using Ai8PageCompletion = std::function<void(CommandErrorCode, QString, Ai8TemperatureControllerProtocol::PageData)>;
+    void submitFpgaAi8Page(const Ai8TemperatureControllerProtocol::PageData& page, bool write, Ai8PageCompletion completion);
     bool readAi8Page(Ai8TemperatureControllerProtocol::Page page,
                      const Ai8TemperatureControllerProtocol::Selection& selection,
                      Ai8TemperatureControllerProtocol::PageData& data,
@@ -192,6 +194,7 @@ private:
     void acceptFpgaMeasurement(const FpgaSensor::AdaptedMeasurements& measurement);
     void invalidateFpgaMeasurements();
     std::unique_ptr<SkyFpgaBackend> fpga_backend_;
+    std::unique_ptr<QThread> ai8_page_worker_;
     std::unique_ptr<Ground::Devices::FpgaUsbTransport> fpga_test_transport_;
     bool simulate_fpga_ = false;
     DeviceStatusItem fpga_status_;

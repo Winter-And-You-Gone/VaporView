@@ -1,6 +1,7 @@
 #include "SkyRuntime.h"
 #include "LogService.h"
 #include "FpgaTelemetry.h"
+#include "FpgaUsbSimulator.h"
 #include "sky_fpga_test_transport.h"
 #include "FailingRecordingStorage.h"
 #include "shared/session/CalibrationRuntime.h"
@@ -72,6 +73,53 @@ static void firstStartFpgaTest()
             "first hardware startup selects the FPGA relay");
     waitUntil([&] { return runtime.currentFpgaStatus().value("ready").toBool(); },
               "first hardware startup completes the FPGA handshake without a ground command");
+    runtime.stop();
+}
+
+static void fpgaAi8PageTest(FpgaSimulatorFirmware firmware)
+{
+    using namespace Ai8TemperatureControllerProtocol;
+    QTemporaryDir directory;
+    SkyRuntimeOptions options;
+    options.config_path = directory.filePath("sky.json");
+    options.telemetry_tcp_port = 0;
+    SkyRuntime runtime(options);
+    runtime.setFpgaTransportForTesting(makeFpgaUsbSimulator(nullptr, FpgaSimulatorStartup::RunningDemo, firmware));
+    require(runtime.start(), "start FPGA AI-8 simulator");
+    waitUntil([&] { return runtime.currentFpgaStatus().value("ready").toBool(); }, "FPGA ready for page command");
+    quint16 seq = 0;
+    const auto pageCommand = [&](DeviceOperation op, const PageData& page) {
+        const DeviceOperationRequest request{++seq, SkyDeviceId::Ai8TemperatureController, op, TelemetryCodec::serializeAi8PageData(page)};
+        CommandMessage cmd;
+        cmd.command_id = CommandId::DeviceOperation;
+        cmd.command_seq = seq;
+        cmd.payload = TelemetryCodec::serializeDeviceOperationRequest(request);
+        std::optional<SkyCommandResult> reply;
+        runtime.submitCommand(cmd, [&](const SkyCommandResult& result) { reply = result; });
+        if (firmware == FpgaSimulatorFirmware::HistoricalExtensions) require(!reply.has_value(), "page is asynchronous");
+        waitUntil([&] { return reply.has_value(); }, "single AI-8 page command completes", 30000);
+        const auto& response = reply->device_operation_response;
+        require(reply->send_device_operation_response && response.request_id == seq && response.operation == op,
+                "one correlated AI-8 page response");
+        PageData confirmed;
+        if (firmware == FpgaSimulatorFirmware::Rd105Integrated) {
+            require(response.error_code == CommandErrorCode::UnknownCommand, "0x3B firmware rejects parameter pages");
+        } else {
+            require(response.error_code == CommandErrorCode::Ok, qPrintable(response.error_message));
+            require(TelemetryCodec::parseAi8PageData(response.payload, confirmed), "confirmed page decodes");
+        }
+        return confirmed;
+    };
+    PageData page;
+    page.selection.channel = 3;
+    const auto original = pageCommand(DeviceOperation::ReadParameters, page);
+    page.writeFields = writeFieldBit(WriteField::Setpoint);
+    page.channel.setpointC = 32.1;
+    const auto confirmed = pageCommand(DeviceOperation::WriteAi8ParameterChanges, page);
+    if (firmware == FpgaSimulatorFirmware::HistoricalExtensions) {
+        require(confirmed.selection.channel == 3 && confirmed.channel.setpointC == 32.1 &&
+                confirmed.channel.proportionalBand == original.channel.proportionalBand, "partial SP write preserves PID and reads back CH3");
+    }
     runtime.stop();
 }
 
@@ -461,6 +509,8 @@ int main(int argc,char **argv)
         return 0;
     }
     if (!app.arguments().contains("--discovery-only")) {
+        fpgaAi8PageTest(FpgaSimulatorFirmware::HistoricalExtensions);
+        fpgaAi8PageTest(FpgaSimulatorFirmware::Rd105Integrated);
         fpgaAutoSaveTest();
         firstStartFpgaTest();
         asyncConnectionLogTest();

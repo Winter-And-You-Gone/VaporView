@@ -1593,7 +1593,12 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
     const bool fpgaDeviceOperation = command.command_id == CommandId::DeviceOperation &&
         TelemetryCodec::parseDeviceOperationRequest(command.payload, request) &&
         request.device_id == SkyDeviceId::Fpga && request.operation == DeviceOperation::FpgaControl;
-    if (fpgaDeviceOperation || !connectionOperation.isEmpty())
+    const bool fpgaAi8Page = command.command_id == CommandId::DeviceOperation &&
+        request.device_id == SkyDeviceId::Ai8TemperatureController &&
+        device_manager_.config().sensor_transport_path == SensorTransportPath::FpgaRelay &&
+        (request.operation == DeviceOperation::ReadParameters || request.operation == DeviceOperation::WriteParameters ||
+         request.operation == DeviceOperation::WriteAi8ParameterChanges);
+    if (fpgaDeviceOperation || fpgaAi8Page || !connectionOperation.isEmpty())
     {
         QJsonObject operation=connectionOperation;
         QString error;
@@ -1607,20 +1612,36 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
         active_command_callbacks_.push_back(std::move(completion));
         command_request_payloads_.insert(key,requestPayload);
         const quint64 generation=device_command_generation_;
-        device_manager_.submitFpgaControl(operation, [this,command,request,key,generation,fpgaDeviceOperation](CommandErrorCode code,QString error,QJsonObject document) {
-            if (generation!=device_command_generation_ || active_command_key_!=key) return;
-            session_recorder_.setFpgaConfiguration(device_manager_.config().fpga.configuration,
-        device_manager_.config().sensor_transport_path == SensorTransportPath::FpgaRelay);
-            SkyCommandResult result; result.ack=makeAck(command,code); result.send_status=true;
-            result.send_device_operation_response=fpgaDeviceOperation;
-            auto status = currentFpgaStatus();
-            if (document.contains("usb_discovery")) status["usb_discovery"] = document.value("usb_discovery");
-            result.device_operation_response={request.request_id,request.device_id,request.operation,code,error,FpgaRemote::encodeStatus(status)};
+        auto finish = [this, command, request, key, generation, fpgaDeviceOperation, fpgaAi8Page](CommandErrorCode code, QString error, QByteArray payload) {
+            if (generation != device_command_generation_ || active_command_key_ != key) return;
+            SkyCommandResult result; result.ack = makeAck(command, code); result.send_status = true;
+            result.send_device_operation_response = fpgaDeviceOperation || fpgaAi8Page;
+            result.device_operation_response = {request.request_id, request.device_id, request.operation, code, error, payload};
             command_results_.insert(key,qMakePair(command_clock_.elapsed(),result)); active_command_key_.clear();
             active_command_log_contexts_.clear();
             const auto callbacks=std::move(active_command_callbacks_); active_command_callbacks_.clear();
             for (const auto& callback:callbacks) callback(result);
-        }, logContext.correlation_id, logContext.session_id);
+        };
+        if (fpgaAi8Page) {
+            Ai8TemperatureControllerProtocol::PageData page;
+            if (!TelemetryCodec::parseAi8PageData(request.payload, page) ||
+                (request.operation == DeviceOperation::WriteAi8ParameterChanges) != (page.writeFields != 0)) {
+                finish(CommandErrorCode::InvalidPayload, QStringLiteral("Invalid AI-8 parameter page payload."), {});
+                return;
+            }
+            device_manager_.submitFpgaAi8Page(page, request.operation != DeviceOperation::ReadParameters,
+                [finish](CommandErrorCode code, QString detail, const Ai8TemperatureControllerProtocol::PageData& data) {
+                    finish(code, detail, code == CommandErrorCode::Ok ? TelemetryCodec::serializeAi8PageData(data) : QByteArray{});
+                });
+        } else {
+            device_manager_.submitFpgaControl(operation, [this, finish](CommandErrorCode code, QString error, QJsonObject document) {
+                session_recorder_.setFpgaConfiguration(device_manager_.config().fpga.configuration,
+                    device_manager_.config().sensor_transport_path == SensorTransportPath::FpgaRelay);
+                auto status = currentFpgaStatus();
+                if (document.contains("usb_discovery")) status["usb_discovery"] = document.value("usb_discovery");
+                finish(code, error, FpgaRemote::encodeStatus(status));
+            }, logContext.correlation_id, logContext.session_id);
+        }
         return;
     }
     if (quint16(command.command_id) >= quint16(CommandId::SetTemperatureTarget) &&

@@ -3,6 +3,7 @@
 #include "ground/main/MainWindow.h"
 #include "ground/main/GroundMainWindowState.h"
 #include "ground/devices/RemoteSkyController.h"
+#include "ground/devices/Ai8DeviceSession.h"
 #include "ground/devices/Rd105DeviceSession.h"
 #include "ground/widgets/SegmentedSwitchButton.h"
 #include "ground/calibration/CalibrationService.h"
@@ -84,6 +85,7 @@ static void workflow(bool fpga)
         {"extensions", int(FpgaExtensions::RawSchema2 | FpgaExtensions::EpsilonMailbox | FpgaExtensions::DliaCutoff)},
         {"configuration", config.fpga.configuration.toJson()}};
     TelemetryCodec encoder, decoder; quint16 sequence = 1;
+    QVector<DeviceOperation> ai8Requests;
     QVector<int> sensorRequests;
     int bulk = 0, operations = 0, failures = 0, disconnects = 0;
     const auto send = [&](MsgType type, const QByteArray &payload) {
@@ -113,8 +115,18 @@ static void workflow(bool fpga)
             if (command.command_id == CommandId::DisconnectAllDevices) ++disconnects;
             if (command.command_id != CommandId::DeviceOperation) continue;
             DeviceOperationRequest request; QJsonObject control;
-            require(TelemetryCodec::parseDeviceOperationRequest(command.payload, request) &&
-                FpgaRemote::parseControl(request.payload, control), "FPGA request parses");
+            require(TelemetryCodec::parseDeviceOperationRequest(command.payload, request), "device request parses");
+            if (request.device_id == SkyDeviceId::Ai8TemperatureController) {
+                Ai8TemperatureControllerProtocol::PageData page;
+                require(TelemetryCodec::parseAi8PageData(request.payload, page), "AI-8 request carries one page");
+                ai8Requests.append(request.operation);
+                page.writeFields = 0;
+                DeviceOperationResponse response{request.request_id, request.device_id, request.operation, CommandErrorCode::Ok, {},
+                                                 TelemetryCodec::serializeAi8PageData(page)};
+                send(MsgType::DeviceOperationResponse, TelemetryCodec::serializeDeviceOperationResponse(response));
+                continue;
+            }
+            require(FpgaRemote::parseControl(request.payload, control), "FPGA request parses");
             ++operations;
             const auto op = control.value("op").toString();
             DeviceOperationResponse response;
@@ -243,6 +255,25 @@ static void workflow(bool fpga)
         require(retries.contains(0x40) && std::all_of(retries.begin(), retries.end(), [](int source){
             return source == 0x40 || source == 0x43;
         }), "reconnect retries failed pressure or invalid BMP measurements and preserves both TEC103 sessions");
+    }
+    if (fpga) {
+        namespace Ai8 = Ai8TemperatureControllerProtocol;
+        const auto beforeFpga = operations;
+        registers[QString::number(0x6604)] = 1;
+        status["extensions"] = 0x3f;
+        publishStatus();
+        auto& session = *state.ai8_device_session_;
+        require(waitUntil([&] { return ai8Requests.size() == 1 && session.operationsAvailable(); }), "0x3F enables the initial remote page read");
+        Ai8::PageData page;
+        page.writeFields = Ai8::writeFieldBit(Ai8::WriteField::Setpoint);
+        page.channel.setpointC = 25;
+        session.writePage(page);
+        require(waitUntil([&] { return ai8Requests.size() == 2 && session.operationsAvailable(); }), "partial write receives one remote page reply");
+        require(ai8Requests == QVector<DeviceOperation>{DeviceOperation::ReadParameters, DeviceOperation::WriteAi8ParameterChanges} &&
+                operations == beforeFpga, "read and write each send exactly one device operation frame");
+        status["extensions"] = 0x3b;
+        publishStatus();
+        require(waitUntil([&] { return !session.operationsAvailable(); }), "0x3B disables page commands");
     }
     require(state.disconnect_btn_->isEnabled(), "title disconnect remains usable with remote devices connected");
     state.disconnect_btn_->trigger();

@@ -278,7 +278,7 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
                     state_->remote_ai8_fault_metadata_ && state_->remote_sky_controller_ &&
                     state_->remote_sky_controller_->deviceDataFresh(item.device_id,
                         QDateTime::currentMSecsSinceEpoch(), 3000);
-                if (state_->ai8_device_session_ && !(keepFaultMetadata && !state_->remote_ai8_system_fault_))
+                if (!isFpgaRelayPath() && state_->ai8_device_session_ && !(keepFaultMetadata && !state_->remote_ai8_system_fault_))
                 {
                     state_->ai8_device_session_->setRemoteAvailable(false);
                 }
@@ -346,7 +346,7 @@ void MainWindow::onRemoteAi8TemperatureControllerStatusUpdated(
         });
     const bool hasSystemFault = liveData.mainStatusValid && (liveData.mainStatusRaw & 0x100) != 0;
     state_->remote_ai8_fault_metadata_ = !liveData.valid && hasChannelOrStatusMetadata;
-    state_->remote_ai8_system_fault_ = state_->remote_ai8_fault_metadata_ && hasSystemFault;
+    state_->remote_ai8_system_fault_ = hasSystemFault;
     if (!state_->ai8_temperature_controller_panel_ && !state_->ai8_temperature_overview_panel_)
     {
         return;
@@ -362,7 +362,7 @@ void MainWindow::onRemoteAi8TemperatureControllerStatusUpdated(
             liveData.valid || hasChannelOrStatusMetadata)
             state_->ai8_temperature_controller_panel_->setBackendConnected(true, detail);
     }
-    if (state_->ai8_device_session_)
+    if (!relay && state_->ai8_device_session_)
     {
         const bool ai8Communicating = liveData.valid || (hasChannelOrStatusMetadata && !hasSystemFault);
         const bool freshRemote = state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen() &&

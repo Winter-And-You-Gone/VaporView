@@ -1,3 +1,4 @@
+#include "SensorTransportPath.h"
 #include "ground/devices/GroundTelemetryService.h"
 
 #include "LogService.h"
@@ -357,7 +358,8 @@ quint16 GroundTelemetryService::sendCommand(CommandId commandId, const QByteArra
         }
     }
     if (isDeviceOperation &&
-        operation.device_id == SkyDeviceId::Fpga && operation.operation == DeviceOperation::FpgaControl)
+        ((operation.device_id == SkyDeviceId::Fpga && operation.operation == DeviceOperation::FpgaControl) ||
+         (remote_fpga_relay_ && operation.device_id == SkyDeviceId::Ai8TemperatureController && operation.operation != DeviceOperation::FactoryReset)))
     {
         pending.retry_interval_ms = 120000;
         pending.retry_count = kCommandMaxRetries; // Never replay hardware writes.
@@ -819,6 +821,9 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         const QJsonDocument document = QJsonDocument::fromJson(frame.payload);
         if (document.isObject())
         {
+            SensorTransportPath path;
+            remote_fpga_relay_ = parseSensorTransportPath(document.object().value("sensor_transport_path").toString(), path) &&
+                                 path == SensorTransportPath::FpgaRelay;
             emit skyConfigReceived(document.object());
         }
         else
@@ -1279,6 +1284,7 @@ void GroundTelemetryService::attachLinkSignals()
 
 void GroundTelemetryService::clearPendingForDisconnect()
 {
+    remote_fpga_relay_ = false;
     QHash<quint16, PendingCommand> pending;
     QHash<quint32, CommandMessage> awaitingResults;
     QHash<quint16, AwaitedConfigResult> awaitingConfigResults;

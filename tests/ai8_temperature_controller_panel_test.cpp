@@ -255,12 +255,40 @@ int main(int argc, char **argv)
         live.setpointC = 26; relay.applyLiveData(live);
         live.setpointC = 27; relay.applyLiveData(live);
         require(sp->value() == 27, "matching telemetry retires page draft");
+        using namespace VaporView::Ai8TemperatureControllerProtocol;
+        auto *mode = dynamic_cast<VaporView::SingleLevelPopupComboBox *>(relay.findChild<QComboBox *>("ai8WorkModeCombo"));
+        int activated = 0, textActivated = 0;
+        QObject::connect(mode, &QComboBox::activated, [&](int index) { require(index == mode->currentIndex(), "activated index"); ++activated; });
+        QObject::connect(mode, &QComboBox::textActivated, [&](const QString& text) { require(text == mode->currentText(), "activated text"); ++textActivated; });
+        mode->showPopup();
+        const int targetMode = mode->findData(3);
+        require(targetMode >= 0, "manual work mode is selectable");
+        for (auto *action : mode->popupMenu()->actions())
+            if (action->data().isValid() && action->data().toInt() == targetMode) action->trigger();
+        mode->hidePopup();
+        waitForAutoApply();
+        require(activated == 1 && textActivated == 1 && writes.size() == 2 &&
+                writes.last().writeFields == writeFieldBit(WriteField::WorkMode) && writes.last().channel.workMode == 3,
+                "one popup selection auto-writes only the work mode");
+        confirmed.channel.workMode = 3;
+        relay.applyPageData(confirmed);
+        relay.setOperationStatus(QStringLiteral("参数已写入并回读确认。"), true);
+        sp->stepUp();
+        const auto stepped = sp->value();
+        relay.applyLiveData(live);
+        waitForAutoApply();
+        require(writes.size() == 3 && writes.last().writeFields == writeFieldBit(WriteField::Setpoint) &&
+                writes.last().channel.setpointC == stepped, "second SP step auto-writes across a telemetry tick without focus loss");
+        confirmed.channel.setpointC = stepped;
+        relay.applyPageData(confirmed);
+        require(sp->value() == stepped && relay.findChild<QLabel*>("ai8FpgaSetpointStatus")->text().isEmpty(),
+                "second readback leaves clean setpoint status");
         sp->setValue(26);
         relay.setBackendConnected(false);
         auto *spStatus = relay.findChild<QLabel*>("ai8FpgaSetpointStatus");
         require(!sp->isEnabled() && spStatus && !spStatus->text().isEmpty(), "page write disabled and disconnect status shown while disconnected");
         relay.setBackendConnected(true);
-        require(sp->value() == 26 && sp->isEnabled() && writes.size() == 1 && spStatus->text().isEmpty(),
+        require(sp->value() == 26 && sp->isEnabled() && writes.size() == 3 && spStatus->text().isEmpty(),
                 "reconnect retains draft without writing and clears stale disconnect status");
         relay.setPageCommandsEnabled(false);
         require(!sp->isEnabled(), "SP requires page write capability");

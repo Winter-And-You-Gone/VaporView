@@ -77,7 +77,10 @@ void MainWindow::syncFpgaDeviceConfigUi()
         ? QStringLiteral("VLP1 does not expose EPSILON parameter commands or RTCM forwarding.")
         : QStringLiteral("当前 VLP1 不支持 EPSILON 参数命令或 RTCM 转发。");
     if (state_->ai8_device_session_) {
-        state_->ai8_device_session_->setFpgaTransport(call,(extensions&VaporView::FpgaExtensions::Ai8Parameters) && (values.value(0x6604)&1));
+        const bool remoteRelay = relay && isRemoteSkyMode() && !isUiTestMode();
+        const bool pageReady = (extensions & VaporView::FpgaExtensions::Ai8Parameters) && (values.value(0x6604) & 1);
+        state_->ai8_device_session_->setFpgaTransport(remoteRelay ? FpgaInstrumentCall{} : call, !remoteRelay && pageReady);
+        if (remoteRelay) state_->ai8_device_session_->setRemoteAvailable(pageReady);
         state_->ai8_device_session_->setTransportSupported(!relay || (extensions&VaporView::FpgaExtensions::Ai8Parameters),relay?ai8Unsupported:QString());
     }
     if (state_->epsilon_device_session_) {

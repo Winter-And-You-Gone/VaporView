@@ -180,6 +180,8 @@ void SingleLevelPopupComboBox::rebuildPopupRows()
             if (i >= 0 && i < count())
             {
                 setCurrentIndex(i);
+                emit activated(i);
+                emit textActivated(itemText(i));
             }
         });
     }
