@@ -10,7 +10,7 @@ namespace VaporView::Map3D::Detail {
 // Updated and queried on the single-threaded viewer's render thread.
 struct GroundDetailEllipse
 {
-    static constexpr double halfWidthM = 30000.0;
+    static constexpr double halfWidthM = 60000.0;
     osg::Vec3d eyeGround, targetGround, up;
     double majorAxisM = 0.0;
     double requiredFarPlaneM = 0.0;
@@ -52,10 +52,12 @@ struct GroundDetailEllipse
                              - (majorAxisM + 2.0 * tile.radius());
         if (excessM <= 0.0) return 99u;
         // Step LOD down gradually outside the focus ellipse so steep mountain
-        // ridges never place an LOD 13/14 mesh directly against an LOD 8 tile.
-        if (excessM <= 20000.0) return (std::max)(minLod, 11u);
-        if (excessM <= 50000.0) return (std::max)(minLod, 10u);
-        if (excessM <= 100000.0) return (std::max)(minLod, 9u);
+        // ridges never place an LOD 13/14 mesh directly against an LOD 8 tile,
+        // while extending LOD 12 coverage to push mid-range imagery transitions farther out.
+        if (excessM <= 30000.0) return (std::max)(minLod, 12u);
+        if (excessM <= 70000.0) return (std::max)(minLod, 11u);
+        if (excessM <= 130000.0) return (std::max)(minLod, 10u);
+        if (excessM <= 200000.0) return (std::max)(minLod, 9u);
         return minLod;
     }
 

@@ -18,7 +18,7 @@ inline constexpr double kEarthProjectionLowAngleMaxFarPlaneM = 120000.0;
 inline constexpr float kEarthSmallFeatureCullPixels = 3.0f;
 inline constexpr float kEarthLowAngleSmallFeatureCullPixels = 9.0f;
 inline constexpr float kEarthCullLODScale = 1.0f;
-inline constexpr float kEarthLowAngleCullLODScale = 2.5f;
+inline constexpr float kEarthLowAngleCullLODScale = 1.6f;
 inline constexpr double kEarthLowAngleStartPitchDeg = -35.0;
 
 struct EarthProjectionProfile {
