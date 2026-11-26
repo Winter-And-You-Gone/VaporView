@@ -1,3 +1,4 @@
+#include "SimulatorModeOptions.h"
 #include <QAbstractAnimation>
 #include <QAbstractItemView>
 #include <QAbstractSpinBox>
@@ -757,6 +758,7 @@ int runApplication(int argc, char *argv[])
                        skyConfigOption,
                        skySimulateOption, skyWaveHostOption, skyWavePortOption,
                        ai8RemoteE2eOption, remoteDeviceE2eOption});
+    VaporView::addSimulatorModeOptions(parser);
     parser.process(app);
 
     quint16 virtualFpgaPort = 0;
@@ -820,6 +822,8 @@ int runApplication(int argc, char *argv[])
         options.telemetry_baud = *telemetryBaud;
         options.config_path = parser.value(skyConfigOption);
         options.simulate_data = parser.isSet(skySimulateOption);
+        if (!VaporView::readSimulatorMode(parser, options.simulate_mode)) return 2;
+        if (options.simulate_data) VaporView::printSimulatorMode(options.simulate_mode);
         options.wave_host = parser.value(skyWaveHostOption);
         options.wave_port = parser.value(skyWavePortOption).toInt();
         if (options.telemetry_transport == VaporView::TelemetryTransportType::Serial &&

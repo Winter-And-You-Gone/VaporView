@@ -40,6 +40,7 @@ struct SkyRuntimeOptions
     bool simulate_fpga = false;
     QString wave_host = QStringLiteral("127.0.0.1");
     int wave_port = 8888;
+    SimulatorDataMode simulate_mode = SimulatorDataMode::Realistic;
 };
 
 struct SkyCommandResult

@@ -1,4 +1,5 @@
 #include "FpgaUsbSimulator.h"
+#include "FpgaHarmonics.h"
 #include "FpgaDeviceController.h"
 #include "FpgaSensorAdapter.h"
 #include "FpgaTelemetry.h"
@@ -112,6 +113,90 @@ void trajectory()
               "heading follows the horizontal direction of travel");
     }
 }
+void soundingProfile()
+{
+    double previous = 5;
+    for (int tick = 0; tick <= 1120; ++tick) {
+        const double t = tick / 10.0;
+        const double height = Sounding::soundingHeightM(t);
+        check(std::abs(height-previous) <= 0.5 && height >= 5 && height <= 200, "bounded sounding velocity/height");
+        if ((t>=16 && t<=21) || (t>=40 && t<=45) || (t>=64 && t<=69))
+            check(height==(t<=21 ? 60 : t<=45 ? 130 : 200), "five-second sounding hover");
+        previous = height;
+    }
+    check(previous == 5, "sounding returns to takeoff height");
+}
+
+// Compare complete, decoded cycles and their co-timed sensor readings during takeoff.
+// RunningDemo enables both DLIAs and the environmental sensors as on a configured board.
+double scanVariance(FpgaSimulatorDataMode mode)
+{
+    const bool realistic = mode == FpgaSimulatorDataMode::Realistic;
+    auto transport = realistic ? makeFpgaUsbSimulator(nullptr, FpgaSimulatorStartup::RunningDemo)
+        : makeFpgaUsbSimulator(nullptr, FpgaSimulatorStartup::RunningDemo, FpgaSimulatorFirmware::Rd105Integrated, mode);
+    check(transport->open(), "sounding board opens");
+    FpgaVlp1::StreamParser parser;
+    FpgaWave::Assembler assembler;
+    FpgaSensor::FpgaSensorAdapter adapter;
+    QVector<double> peaks;
+    double firstHeight = 0, lastHeight = 0, firstPressure = 0, lastPressure = 0;
+    bool secondChannel = false;
+    quint64 takeoffTick = 0;
+    QThread::msleep(350); // Board clock is already running before the first acquisition.
+    wait([&] {
+        QByteArray chunk;
+        while (transport->read(chunk, 16384)>0) {
+            for (const auto &f : parser.feed(reinterpret_cast<const uint8_t*>(chunk.constData()),chunk.size())) {
+                const auto &h = f.header;
+                if (!takeoffTick) takeoffTick=h.timestamp;
+                const double height = Sounding::soundingHeightM((h.timestamp-takeoffTick)/1e8);
+                if (h.source == 0x30 || h.source == 0x31) {
+                    const auto wave = assembler.accept({h.source,h.message,h.flags,h.cycleId,h.timestamp,bytes(f.payload)});
+                    if (!wave) continue;
+                    const auto feature = FpgaWave::normalizedCycleFeature(*wave);
+                    check(feature.validPoints==wave->totalPoints && feature.peak>=0.05 && feature.peak<=0.25,
+                          "all decoded samples are finite and both channels are within calibration");
+                    if (h.source==0x30) peaks.push_back(feature.peak);
+                    else secondChannel = true;
+                    if (realistic) {
+                        const double concentration = 35 + 440*std::exp(-height/240);
+                        check(std::abs(feature.peak*2000-concentration)<2.1, "full-cycle peak matches water profile within measurement noise");
+                        const auto &points = wave->dliaPoints;
+                        const int n = int(points.size());
+                        check(std::abs(feature.peakIndex-(n-1)*0.5)<=1 && feature.minimum < -0.4*feature.peak,
+                              "center peak with negative side lobes");
+                        for (int i=0; i<n/2; ++i) {
+                            const auto &a=points[i], &b=points[n-1-i];
+                            check(std::abs(double(a.h2)/a.h1-double(b.h2)/b.h1)<0.00002, "symmetric normalized 2f scan");
+                        }
+                    }
+                } else if (h.source==0x40 || h.source==0x43 || h.source==0x45) {
+                    const auto reading = adapter.accept(FpgaSensor::FpgaSensorDecoder::decode(bytes(f.payload),h.source,
+                        h.message,h.flags,h.timestamp)).reading;
+                    if (h.source==0x45) {
+                        check(reading.distanceMm.has_value(), "decoded range");
+                        lastHeight = *reading.distanceMm/1000.;
+                        if (!firstHeight) firstHeight=lastHeight;
+                        if (realistic) check(std::abs(lastHeight-height)<0.05, "radar follows sounding within 5 cm");
+                    } else {
+                        check(reading.pressurePa.has_value(), "decoded and compensated pressure");
+                        lastPressure=*reading.pressurePa;
+                        if (!firstPressure) firstPressure=lastPressure;
+                        if (realistic) check(std::abs(lastPressure-101325*std::pow(1-height/44330,5.255))<1,
+                                             "both barometers follow the pressure-height law");
+                    }
+                }
+            }
+        }
+        return peaks.size()>=32 && secondChannel;
+    }, "collect 32 complete sounding cycles");
+    if (realistic) check(lastHeight>firstHeight+5 && lastPressure<firstPressure-20 && peaks.last()<peaks.first()-0.003,
+                         "height rises while decoded pressure and calibrated peak fall");
+    double sum=0, squares=0;
+    for (double peak : peaks) { sum+=peak; squares+=peak*peak; }
+    return squares/peaks.size()-std::pow(sum/peaks.size(),2);
+}
+
 void protocol()
 {
     auto transport=makeFpgaUsbSimulator(nullptr,FpgaSimulatorStartup::RunningDemo);check(transport->open(),"simulator opens without hardware");
@@ -406,6 +491,8 @@ quint16 startSimulator(Child& child, const QTemporaryDir& directory, const QStri
         return output.contains(listening) || child.process.state() == QProcess::NotRunning;
     }, qPrintable(program + " did not report listening on " + endpoint));
     check(output.contains(listening), qPrintable(program + " exited before listening on " + endpoint));
+    const bool random = arguments.contains("random") || arguments.contains("--simulate-random");
+    check(output.contains(QStringLiteral("数据模式：").toUtf8() + (random ? "random" : "realistic")), "startup reports selected data mode");
     return port;
 }
 void processTest()
@@ -421,8 +508,15 @@ void processTest()
     for (const auto& program : {skyCore, simulator}) {
         Child child;
         QStringList arguments{"--telemetry-host", loopback};
-        if (program == skyCore) arguments << "--simulate";
+        if (program == skyCore) arguments << "--simulate" << "--simulate-mode" << "random";
+        else arguments << "--simulate-random";
         startSimulator(child, directory, program, arguments, loopback);
+    }
+    {
+        QProcess invalid;
+        invalid.start(QCoreApplication::applicationDirPath() + '/' + simulator, {"--simulate-mode", "bad"});
+        check(invalid.waitForFinished(5000) && invalid.exitStatus()==QProcess::NormalExit && invalid.exitCode()!=0
+              && invalid.readAllStandardError().contains("--simulate-mode"), "invalid data mode is rejected with a diagnostic");
     }
     Child child;
     const auto port = startSimulator(child, directory, simulator, {}, "0.0.0.0");
@@ -498,7 +592,10 @@ void processTest()
 int main(int argc,char** argv)
 {
     QCoreApplication app(argc,argv);
-    try { if(app.arguments().contains("--process"))processTest();else {trajectory();protocol();currentFirmwareContract();controls();selectiveControls();controllerMotorWatchdog();}
+    try { if(app.arguments().contains("--process"))processTest();else {trajectory();soundingProfile();
+        const double realisticVariance=scanVariance(FpgaSimulatorDataMode::Realistic);
+        check(scanVariance(FpgaSimulatorDataMode::Random)>10*realisticVariance, "random peaks have markedly higher variance");
+        protocol();currentFirmwareContract();controls();selectiveControls();controllerMotorWatchdog();}
         std::cout<<"FPGA simulator test passed\n";return 0; }
     catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}
 }

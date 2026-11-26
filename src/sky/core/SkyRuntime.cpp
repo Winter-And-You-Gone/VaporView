@@ -499,7 +499,7 @@ bool SkyRuntime::start()
     }
     config.normalizeEnvironmentalDevices();
     device_manager_.loadConfig(config);
-    device_manager_.setSimulateData(options_.simulate_data || options_.simulate_fpga);
+    device_manager_.setSimulateData(options_.simulate_data || options_.simulate_fpga, options_.simulate_mode);
 
     auto attachLinkSignals = [this](TelemetryLink *link) {
         connect(link, &TelemetryLink::streamReset, this, [this]() {

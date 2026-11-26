@@ -1,3 +1,4 @@
+#include "SimulatorModeOptions.h"
 #include "SkyLocalIpcClient.h"
 #include "SkyLocalIpcServer.h"
 #include "SkyRuntime.h"
@@ -57,6 +58,7 @@ int main(int argc, char *argv[])
                        telemetryTransportOption, telemetryHostOption, telemetryTcpPortOption,
                        skyConfigOption, skySimulateOption,
                        skyWaveHostOption, skyWavePortOption, ipcHostOption, ipcPortOption});
+    VaporView::addSimulatorModeOptions(parser);
     parser.process(app);
 
     if (parser.isSet(helpOption))
@@ -96,6 +98,8 @@ int main(int argc, char *argv[])
     runtimeOptions.telemetry_baud = *telemetryBaud;
     runtimeOptions.config_path = parser.value(skyConfigOption);
     runtimeOptions.simulate_data = parser.isSet(skySimulateOption);
+    if (!VaporView::readSimulatorMode(parser, runtimeOptions.simulate_mode)) return 2;
+    if (runtimeOptions.simulate_data) VaporView::printSimulatorMode(runtimeOptions.simulate_mode);
     runtimeOptions.wave_host = parser.value(skyWaveHostOption);
     runtimeOptions.wave_port = parser.value(skyWavePortOption).toInt();
 

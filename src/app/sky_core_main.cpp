@@ -1,3 +1,4 @@
+#include "SimulatorModeOptions.h"
 #include "SkyLocalIpcServer.h"
 #include "SkyRuntime.h"
 #include "LogService.h"
@@ -158,6 +159,7 @@ int main(int argc, char *argv[])
                        skyConfigOption, skySimulateOption, fpgaSimulateOption,
                        skyWaveHostOption, skyWavePortOption, ipcHostOption, ipcPortOption,
                        profileOption, noIpcOption});
+    VaporView::addSimulatorModeOptions(parser);
     parser.process(app);
 
     if (parser.isSet(helpOption))
@@ -197,10 +199,12 @@ int main(int argc, char *argv[])
     options.telemetry_baud = *telemetryBaud;
     options.config_path = parser.value(skyConfigOption);
     options.simulate_data = parser.isSet(skySimulateOption);
+    if (!VaporView::readSimulatorMode(parser, options.simulate_mode)) return 2;
     options.simulate_fpga = parser.isSet(fpgaSimulateOption);
 #ifdef VAPORVIEW_FPGA_SIMULATOR
     options.simulate_fpga = true;
 #endif
+    if (options.simulate_fpga || options.simulate_data) VaporView::printSimulatorMode(options.simulate_mode);
     if (options.simulate_fpga)
     {
         if (options.config_path.isEmpty())

@@ -164,8 +164,8 @@ bool readable(quint32 a, bool historical, bool hcd2Scan, bool rd105)
 class Simulator final : public FpgaUsbSimulator
 {
 public:
-    Simulator(QObject *parent, FpgaSimulatorStartup startup, FpgaSimulatorFirmware firmware)
-        : FpgaUsbSimulator(parent), startup_(startup), historical_(firmware == FpgaSimulatorFirmware::HistoricalExtensions),
+    Simulator(QObject *parent, FpgaSimulatorStartup startup, FpgaSimulatorFirmware firmware, FpgaSimulatorDataMode mode)
+        : FpgaUsbSimulator(parent), startup_(startup), mode_(mode), historical_(firmware == FpgaSimulatorFirmware::HistoricalExtensions),
           hcd2Scan_(firmware == FpgaSimulatorFirmware::Hcd2Ai8Scan || firmware == FpgaSimulatorFirmware::Rd105Integrated || firmware==FpgaSimulatorFirmware::SosPps),
           rd105_(historical_ || firmware == FpgaSimulatorFirmware::Rd105Integrated || firmware==FpgaSimulatorFirmware::SosPps),
           sosPps_(firmware==FpgaSimulatorFirmware::SosPps)
@@ -930,13 +930,24 @@ private:
         at<double>(ecef,8,(n+height)*std::cos(latitude)*std::sin(longitude));
         at<double>(ecef,16,(n*(1-0.00669437999014)+height)*std::sin(latitude)); epsilon(0x5d,ecef,ticks);
     }
-    void waveform(int ch, bool raw, double seconds, quint64 ticks)
+    void waveform(int ch, bool raw, double concentration, quint64 ticks)
     {
         const quint32 offset = ch*0x100;
         const auto rate = regs_.value((raw ? 0x4014 : 0x504c)+offset);
         const auto total = quint32(qBound<quint64>(32,quint64(rate)*1000/qMax(1u,regs_[0x2010+offset]),16384));
-        const quint16 format = raw ? 0 : 0;
-        const auto width = raw ? 4u : format == 0 ? 8u : format == 1 ? 16u : 24u;
+        const double peak = (concentration + 2 * Sounding::noise()) / 2000;
+        const bool random = mode_ == FpgaSimulatorDataMode::Random;
+        const double center = 0.5 + (random ? 0.25 * Sounding::noise() : 0);
+        const double sigma = 0.09 + 0.005*ch;
+        // An even-sized scan samples either side of the mathematical center. Keep the
+        // measured peak calibrated even at the minimum 32 points per scan.
+        const double nearest = std::round(center*(total-1))/(total-1);
+        const double sampledPeak = Sounding::secondHarmonic((nearest-center)/sigma);
+        const double intensity = (200000 + ch * 8000) * (1 + (random ? 0.25 : 0.0002) * Sounding::noise());
+        const double phase = regs_[0x2024+offset] * (2*pi/4294967296.0);
+        const double ratio = double(regs_[0x201c+offset]) / qMax(1u,regs_[0x2010+offset]);
+        const quint16 format = 0;
+        const auto width = raw ? 4u : 8u;
         const auto perFragment = 8160/width;
         const auto fragments = (total+perFragment-1)/perFragment;
         for (quint32 index=0; index<fragments; ++index) {
@@ -947,19 +958,19 @@ private:
             put16(p,quint16(index)); put16(p,quint16(fragments)); put32(p,first); put32(p,count);
             if (!raw) put32(p,width); put32(p,0);
             for (quint32 i=0;i<count;++i) {
-                const double x=2*pi*(first+i)/total;
-                const qint32 h1=qint32(200000+40000*std::sin(x+seconds)+ch*10000);
-                const qint32 h2=qint32(30000+8000*std::cos(x*2+seconds));
+                const double u = double(first+i) / (total-1);
+                const double z = (u-center) / sigma;
                 if (raw) {
-                    const double phase=regs_[0x2024+offset]*(2*pi/4294967296.0);
-                    const double ratio=double(regs_[0x201c+offset])/qMax(1u,regs_[0x2010+offset]);
-                    const double code=(qint32(regs_[0x2018+offset])+
-                        qint32(regs_[0x2014+offset])*std::sin(x+phase)+
-                        qint32(regs_[0x2020+offset])*std::sin(ratio*x+seconds+phase))/256.0;
+                    const double scan = 2*u - 1 - peak*Sounding::absorption(z);
+                    const double code = (qint32(regs_[0x2018+offset]) + qint32(regs_[0x2014+offset])*scan +
+                        qint32(regs_[0x2020+offset])*std::sin(ratio*2*pi*u+phase)) / 256.0;
                     put32(p,quint32(qint32(std::llround(qBound(-8388608.0,code,8388607.0)))));
                 }
-                else { if(format!=0) {put32(p,quint32(h1));put32(p,0);put32(p,quint32(h2));put32(p,0);}
-                    if(format!=1) {put32(p,quint32(h1));put32(p,quint32(h2));} }
+                else {
+                    const qint32 h1 = qint32(intensity * (0.94 + 0.12*u));
+                    const qint32 h2 = qint32(std::lround(h1 * peak * Sounding::secondHarmonic(z) / sampledPeak));
+                    put32(p,quint32(h1)); put32(p,quint32(h2));
+                }
             }
             data(quint16((raw?0x20:0x30)+ch),raw?0x1000:0x1001,p,ticks);
         }
@@ -968,6 +979,12 @@ private:
     {
         if (stalled_ || !(regs_[0x7004]&1) || !(regs_[0x8004]&1)) return;
         ++cycle_; const double t=elapsedMs/1000.; const quint64 ticks=quint64(elapsedMs)*100000;
+        // An idle service may wait for its first observer for hours. Start the flight
+        // when an environmental sensor or ADC is first enabled, keeping PPS and GNSS on board time.
+        if (soundingStartMs_ < 0 && ((regs_[0x6004] | regs_[0x6104] | regs_[0x6304] | regs_[0x6404] |
+                                      regs_[0x6504] | regs_[0x4004] | regs_[0x4104]) & 1))
+            soundingStartMs_ = elapsedMs;
+        const auto air = Sounding::observe(soundingStartMs_ < 0 ? 0.0 : (elapsedMs-soundingStartMs_)/1000.0, mode_);
         const auto streamed = [&](quint16 source) { const auto bit=source%64;
             return (regs_[bit<32?0x2c:0x30] & (1u<<(bit%32))) != 0; };
         const auto enabled = [&](quint16 source) {
@@ -976,19 +993,21 @@ private:
             const qint64 interval=poll?qMax(1u,regs_.value(poll,1000)):100;
             if(lastSensorMs_.contains(source)&&elapsedMs-lastSensorMs_.value(source)<interval)return false;
             lastSensorMs_[source]=elapsedMs;return true; };
-        if(enabled(0x40)) {QByteArray p;put16(p,1);put16(p,1);tlv(p,0x12,7,scalar(quint32(101325000+std::sin(t)*28000)));data(0x40,0x1100,p,ticks);}
-        if(enabled(0x43)) {QByteArray p;put16(p,1);put16(p,3);tlv(p,0x100,11,QByteArray::fromHex("986d4c4bf9fd1c4d1706019349005a03fa800f08f5"));
-            tlv(p,0x101,3,scalar(quint32(6461000+std::sin(t)*1000)));tlv(p,0x102,3,scalar(8499712));data(0x43,0x1100,p,ticks);}
+        if(enabled(0x40)) {QByteArray p;put16(p,1);put16(p,1);tlv(p,0x12,7,scalar(quint32(std::lround(air.pressurePa*1000))));data(0x40,0x1100,p,ticks);}
+        // Synthetic BMP390 trim with exact linear compensation: P = 150000 - ADC/128 Pa,
+        // T = (ADC - 7340032)/65536 deg C (Bosch coefficient encoding).
+        if(enabled(0x43)) {QByteArray p;put16(p,1);put16(p,3);tlv(p,0x100,11,QByteArray::fromHex("00700040000020004000003e490000000000000000"));
+            tlv(p,0x101,3,scalar(quint32(std::lround((150000-air.pressurePa)*128))));tlv(p,0x102,3,scalar(quint32(std::lround(7340032+65536*air.temperatureC))));data(0x43,0x1100,p,ticks);}
         if(enabled(0x42)) navigation(t,ticks);
-        if(enabled(0x44)) {QByteArray p;put16(p,1);put16(p,3);tlv(p,0x10,7,scalar(quint32(23500+std::sin(t)*800)));
-            tlv(p,0x11,3,scalar(quint32(47000+std::cos(t)*2000)));tlv(p,1,3,scalar(0));data(0x44,0x1100,p,ticks);}
-        if(enabled(0x45)) {QByteArray p;put16(p,1);put16(p,1);tlv(p,0x13,3,scalar(quint32(120000+std::sin(t)*2400)));data(0x45,0x1100,p,ticks);}
+        if(enabled(0x44)) {QByteArray p;put16(p,1);put16(p,3);tlv(p,0x10,7,scalar(quint32(std::lround(1000*air.cabinC))));
+            tlv(p,0x11,3,scalar(quint32(std::lround(1000*air.cabinHumidityPct))));tlv(p,1,3,scalar(0));data(0x44,0x1100,p,ticks);}
+        if(enabled(0x45)) {QByteArray p;put16(p,1);put16(p,1);tlv(p,0x13,3,scalar(quint32(std::lround(1000*air.heightM))));data(0x45,0x1100,p,ticks);}
         if(enabled(0x41)) {
             if(regs_[0x6114]==99)regs_[0x6114]=0;
             QByteArray p;put16(p,1);put16(p,quint16(1+((regs_[0x6120]&1)?1:0)+((regs_[0x6120]&2)?1:0)));
-            QByteArray value(4,0);at<float>(value,0,float(45+0.6*std::sin(t*0.3)));regs_[0x6124]=word(value,0);
+            QByteArray value(4,0);at<float>(value,0,float(air.humidityPct));regs_[0x6124]=word(value,0);
             if(regs_[0x6120]&1)tlv(p,0x100,9,value);
-            at<float>(value,0,float(23+0.3*std::cos(t*0.2)));regs_[0x6128]=word(value,0);
+            at<float>(value,0,float(air.temperatureC));regs_[0x6128]=word(value,0);
             if(regs_[0x6120]&2)tlv(p,0x101,9,value);
             tlv(p,2,3,scalar(0));regs_[0x6108]=0x11;++regs_[0x6144];regs_[0x6150]+=80;
             data(0x41,0x1100,p,ticks);
@@ -997,7 +1016,8 @@ private:
           for(int ch=regs_[0x6668]?1:int(regs_[0x661c]);ch<=(regs_[0x6668]?8:int(regs_[0x661c]));++ch) {
             const quint32 channelCounter=++ai8GoodCounts_[ch-1];
             target_=qint16(ai8Registers_.value(quint16(ch-1),250));
-            measured_=ai8Measured_[ch-1]+(target_-ai8Measured_[ch-1])*0.02;ai8Measured_[ch-1]=measured_;
+            ai8Measured_[ch-1] += (target_-ai8Measured_[ch-1])*0.08;
+            measured_ = ai8Measured_[ch-1] + 0.35*std::sin(t*0.4+ch);
             ai8Registers_[quint16(0x600+ch-1)]=quint16(std::lround(measured_));
             QByteArray p;put16(p,regs_[0x6668]?3:2);put16(p,regs_[0x6668]?14:13);
             const quint16 tags[]={0x460,0x461,0x462,0x463,0x464,0x465,0x466,0x467,1,2,4,0x14,0x15};
@@ -1013,7 +1033,9 @@ private:
             for(quint16 channel:{1,2}) {
                 const quint16 address=channel*0x1000;
                 const qint32 target=qint32((quint32(rd105Registers_.value(address))<<16)|rd105Registers_.value(address+1))*10;
-                const qint32 actual=(channel==1?23500000:26250000)+qint32(std::sin(t+channel)*30000)*10;
+                double &measured = rd105MeasuredC_[channel-1];
+                measured += (target / 1e6 - measured) * 0.08;
+                const qint32 actual = qint32(std::llround((measured + 0.035*std::sin(t*0.4+channel))*1e6));
                 const quint32 outputEnabled=rd105Registers_.value(address+0x100)!=0;
                 const qint32 duty=outputEnabled?qint32((channel==1?35+8*std::sin(t):-42+6*std::cos(t))*20000):0;
                 rd105Registers_[address+2]=quint16((actual/10)>>16);rd105Registers_[address+3]=quint16(actual/10);
@@ -1032,12 +1054,14 @@ private:
             if (!(regs_[4]&1)) continue;
             if((regs_[0x2004+offset]&1)&&(regs_[0x3004+offset]&1))regs_[0x3028+offset]+=regs_[0x202c+offset]/10;
             if(!(regs_[0x4004+offset]&1)||!(regs_[0x2004+offset]&1))continue;
-            if((regs_[0x5004+offset]&1)&&regs_[0x5020+offset]&&streamed(quint16(0x30+ch)))waveform(ch,false,t,ticks);
-            if((regs_[0x403c+offset]&1)&&(regs_[0x50]&(1u<<ch))&&streamed(quint16(0x20+ch)))waveform(ch,true,t,ticks);
+            if((regs_[0x5004+offset]&1)&&regs_[0x5020+offset]&&streamed(quint16(0x30+ch)))waveform(ch,false,air.concentrationPpmv,ticks);
+            if((regs_[0x403c+offset]&1)&&(regs_[0x50]&(1u<<ch))&&streamed(quint16(0x20+ch)))waveform(ch,true,air.concentrationPpmv,ticks);
         }
         missingCycle_ = false;
     }
     const FpgaSimulatorStartup startup_;
+    const FpgaSimulatorDataMode mode_;
+    std::array<double,2> rd105MeasuredC_{23.5, 26.25};
     const bool historical_;
     const bool hcd2Scan_;
     const bool rd105_;
@@ -1077,6 +1101,7 @@ private:
     QByteArray incoming_;
     QElapsedTimer clock_;
     qint64 lastCycleMs_ = 0;
+    qint64 soundingStartMs_ = -1;
     quint32 sequence_ = 0, cycle_ = 0;
     qint16 target_ = 250;
     double measured_ = 235;
@@ -1085,6 +1110,6 @@ private:
 FpgaSimulatorNavigation fpgaSimulatorNavigationAt(double seconds) { return navigationAt(seconds); }
 double fpgaSimulatorNavigationLoopSeconds() { const auto& route = navigationRoute(); return route.distance.back() / route.speed; }
 std::unique_ptr<FpgaUsbSimulator> makeFpgaUsbSimulator(QObject *parent, FpgaSimulatorStartup startup,
-    FpgaSimulatorFirmware firmware)
-{ return std::make_unique<Simulator>(parent, startup, firmware); }
+    FpgaSimulatorFirmware firmware, FpgaSimulatorDataMode mode)
+{ return std::make_unique<Simulator>(parent, startup, firmware, mode); }
 }

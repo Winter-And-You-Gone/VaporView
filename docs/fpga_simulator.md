@@ -6,6 +6,14 @@
 
 同一模拟后端也已接入 VaporView 的本地 FPGA 控制器。本地模式直接使用它，不需要启动独立服务或连接 TCP；远程模式使用上述独立 EXE。
 
+## 模拟数据模式
+
+启动 `VaporViewFpgaSimulator` 或 `VaporViewSkyCore --simulate` 即使用默认的 `realistic` 模式。SDFM300 从 5 m 起飞，在 60、130、200 m 各悬停 5 秒，再降回 5 m，每 112 秒循环一次。PTB210 与 BMP390 的气压随高度降低，HC2A 的温湿度随高度缓降，SHT45 表示变化较慢的舱内环境。EPSILON 导航继续沿西湖环线运行，查看探空廓线时应选择 SDFM300 离地高度。
+
+两路激光的 RAW 为叠加正弦调制和中心吸收的扫描斜坡。DLIA 的归一化二次谐波有中心正峰和对称负旁瓣。按模拟双波长定标，峰值乘 2000 即为水汽浓度，从 5 m 处约 466 ppmv 下降至 200 m 处约 226 ppmv，逐周期测量噪声约 ±2 ppmv。可用 1 m 或 5 m 高度分箱比较爬升和下降段。
+
+如需观察随机波动，在原启动命令后追加 `--simulate-mode random` 或 `--simulate-random`。启动信息会显示当前数据模式。两个参数也适用于 `VaporViewSky --sky-simulate-data`、`VaporView --mode sky --sky-simulate-data` 和 `VaporViewSkyCore --sky-simulate-data`。直连模拟共用同一探空剖面，气压按直连台架的 900 hPa 基准缩放到 ±1.5 hPa 内。随机模式会独立扰动高度、气压、温湿度及吸收峰的强度与位置。
+
 ## 本地模式
 
 1. 打开 `build/Release/VaporView.exe`，在标题栏选择“本地”和“FPGA”。

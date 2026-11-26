@@ -4,6 +4,7 @@
 #include "Ai8TemperatureControllerCollector.h"
 #include "LogService.h"
 #include "SkyConfig.h"
+#include "SimulatorSounding.h"
 #include "TelemetryTypes.h"
 #include "TcpWaveEncoding.h"
 #include "data_collector.h"
@@ -53,7 +54,7 @@ public:
     explicit SkyDeviceManager(QObject *parent = nullptr);
     ~SkyDeviceManager() override;
 
-    void setSimulateData(bool simulate);
+    void setSimulateData(bool simulate, SimulatorDataMode mode = SimulatorDataMode::Realistic);
     void setFpgaSimulationEnabled(bool enabled);
     void loadConfig(const SkyConfig& config);
     const SkyConfig& config() const;
@@ -244,6 +245,8 @@ private:
 
     SkyConfig config_ = SkyConfig::defaults();
     bool simulate_data_ = false;
+    SimulatorDataMode simulate_mode_ = SimulatorDataMode::Realistic;
+    QElapsedTimer sounding_clock_;
     QTimer simulate_timer_;
     qreal simulate_phase_ = 0.0;
 

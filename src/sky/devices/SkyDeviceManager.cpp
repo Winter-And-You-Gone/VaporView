@@ -647,12 +647,14 @@ void SkyDeviceManager::drainRawEvents()
     }
 }
 
-void SkyDeviceManager::setSimulateData(bool simulate)
+void SkyDeviceManager::setSimulateData(bool simulate, SimulatorDataMode mode)
 {
+    simulate_mode_ = mode;
     simulate_data_ = simulate;
     if (simulate_data_ && config_.sensor_transport_path == SensorTransportPath::DirectDevices)
     {
         stopRtcmWriter();
+        if (!simulate_timer_.isActive()) sounding_clock_.start();
         simulate_timer_.start(100);
     }
     else
@@ -710,7 +712,8 @@ void SkyDeviceManager::ensureFpgaBackend()
     if (fpga_backend_) return;
     // Recreate the simulator on every reconnect; never fall back to USB after
     // the first injected transport has been consumed.
-    auto transport = simulate_fpga_ ? Ground::Devices::makeFpgaUsbSimulator() : std::move(fpga_test_transport_);
+    auto transport = simulate_fpga_ ? Ground::Devices::makeFpgaUsbSimulator(
+        nullptr, Ground::Devices::FpgaSimulatorStartup::Idle, Ground::Devices::FpgaSimulatorFirmware::Rd105Integrated, simulate_mode_) : std::move(fpga_test_transport_);
     fpga_backend_ = std::make_unique<SkyFpgaBackend>(std::move(transport));
     fpga_backend_->setConfiguration(config_.fpga.configuration);
     connect(fpga_backend_.get(), &SkyFpgaBackend::statusChanged, this, [this](QJsonObject document) {
@@ -1098,7 +1101,7 @@ ApplyConfigResult SkyDeviceManager::applyConfig(const SkyConfig& requestedConfig
     }
     config_ = newConfig;
     if (diff.sensor_transport_path_changed && simulate_data_)
-        setSimulateData(true);
+        setSimulateData(true, simulate_mode_);
 
     if (newConfig.sensor_transport_path == SensorTransportPath::FpgaRelay)
     {
@@ -2608,6 +2611,11 @@ void SkyDeviceManager::generateSimulatedData()
 {
     if (config_.sensor_transport_path == SensorTransportPath::FpgaRelay) return;
     simulate_phase_ += 0.04;
+    const double seconds = sounding_clock_.elapsed() / 1000.0;
+    const auto air = Sounding::observe(seconds, simulate_mode_);
+    // The direct bench fixture uses a 900 hPa reference with a compressed pressure span.
+    const double pressureHpa = simulate_mode_ == SimulatorDataMode::Realistic
+        ? 901.4 + (air.pressurePa - 101325) * 0.00115 : air.pressurePa / 100;
     const quint64 t = nowUs();
     for(auto id:{SkyDeviceId::Bmp390,SkyDeviceId::Sht45}) {
         auto &item=mutableStatus(id);const auto &bridge=id==SkyDeviceId::Bmp390?config_.bmp390:config_.sht45;
@@ -2615,8 +2623,8 @@ void SkyDeviceManager::generateSimulatedData()
         FpgaSensor::Reading reading;reading.source=id==SkyDeviceId::Bmp390?0x43:0x44;
         reading.kind=id==SkyDeviceId::Bmp390?FpgaSensor::SensorKind::Bmp390:FpgaSensor::SensorKind::Sht45;
         reading.validity={true,true,true,true};
-        if(id==SkyDeviceId::Bmp390)reading.pressurePa=101500+50*std::sin(simulate_phase_);
-        else{reading.temperatureC=24+std::sin(simulate_phase_);reading.humidityPct=45+std::sin(simulate_phase_);}
+        if(id==SkyDeviceId::Bmp390)reading.pressurePa=pressureHpa*100;
+        else{reading.temperatureC=air.cabinC;reading.humidityPct=air.cabinHumidityPct;}
         ++item.rx_count;item.last_data_time_us=t;emit internalEnvironmentUpdated(reading);
     }
 
@@ -2625,7 +2633,9 @@ void SkyDeviceManager::generateSimulatedData()
         const double phaseRateRadPerSecond = 0.65;
         const double northAmplitudeM = 24.0;
         const double eastAmplitudeM = 16.0;
-        const double downAmplitudeM = 4.0;
+        const double height = Sounding::soundingHeightM(seconds);
+        const double previousHeight = Sounding::soundingHeightM(std::max(0.0, seconds - 0.1));
+        const double nextHeight = Sounding::soundingHeightM(seconds + 0.1);
         const double rollAmplitudeDeg = 12.5;
         const double pitchAmplitudeDeg = 8.5;
         latest_epsilon_.valid = true;
@@ -2639,16 +2649,16 @@ void SkyDeviceManager::generateSimulatedData()
         latest_epsilon_.gnss_satellites = 18 + static_cast<int>(std::lround(std::sin(simulate_phase_ * 0.12) * 2.0));
         latest_epsilon_.latitude_deg = 31.2304 + std::sin(simulate_phase_) * 0.0001;
         latest_epsilon_.longitude_deg = 121.4737 + std::cos(simulate_phase_) * 0.0001;
-        latest_epsilon_.height_m = 1200.0 + std::sin(simulate_phase_ * 0.7) * 3.0;
+        latest_epsilon_.height_m = 1200.0 + height;
         latest_epsilon_.ecef_x_m = 1000.0 + std::sin(simulate_phase_) * 5.0;
         latest_epsilon_.ecef_y_m = 2000.0 + std::cos(simulate_phase_) * 5.0;
         latest_epsilon_.ecef_z_m = 3000.0 + std::sin(simulate_phase_ * 0.5) * 5.0;
         latest_epsilon_.ned_n_m = std::sin(simulate_phase_ * 0.8) * northAmplitudeM;
         latest_epsilon_.ned_e_m = std::cos(simulate_phase_ * 0.6) * eastAmplitudeM;
-        latest_epsilon_.ned_d_m = -std::sin(simulate_phase_ * 0.4) * downAmplitudeM;
+        latest_epsilon_.ned_d_m = -height;
         latest_epsilon_.vel_n_mps = northAmplitudeM * 0.8 * phaseRateRadPerSecond * std::cos(simulate_phase_ * 0.8);
         latest_epsilon_.vel_e_mps = -eastAmplitudeM * 0.6 * phaseRateRadPerSecond * std::sin(simulate_phase_ * 0.6);
-        latest_epsilon_.vel_d_mps = -downAmplitudeM * 0.4 * phaseRateRadPerSecond * std::cos(simulate_phase_ * 0.4);
+        latest_epsilon_.vel_d_mps = (previousHeight - nextHeight) / 0.2;
         latest_epsilon_.body_vel_x_mps = latest_epsilon_.vel_n_mps * 0.95 + std::sin(simulate_phase_ * 0.3) * 0.05;
         latest_epsilon_.body_vel_y_mps = latest_epsilon_.vel_e_mps * 0.95 + std::cos(simulate_phase_ * 0.3) * 0.05;
         latest_epsilon_.body_vel_z_mps = latest_epsilon_.vel_d_mps;
@@ -2657,7 +2667,7 @@ void SkyDeviceManager::generateSimulatedData()
         latest_epsilon_.body_acc_y_mps2 =
             -eastAmplitudeM * std::pow(0.6 * phaseRateRadPerSecond, 2.0) * std::cos(simulate_phase_ * 0.6);
         latest_epsilon_.body_acc_z_mps2 =
-            downAmplitudeM * std::pow(0.4 * phaseRateRadPerSecond, 2.0) * std::sin(simulate_phase_ * 0.4);
+            (2 * height - previousHeight - nextHeight) / 0.01;
         latest_epsilon_.roll_deg = std::sin(simulate_phase_ * 0.5) * rollAmplitudeDeg;
         latest_epsilon_.pitch_deg = std::cos(simulate_phase_ * 0.45) * pitchAmplitudeDeg;
         latest_epsilon_.yaw_deg = positiveDegrees(85.0 + simulate_phase_ * 8.0 + std::sin(simulate_phase_ * 0.2) * 3.0);
@@ -2752,7 +2762,7 @@ void SkyDeviceManager::generateSimulatedData()
     {
         latest_ptb_.valid = true;
         latest_ptb_.timestamp = timestamp;
-        latest_ptb_.pressure_hpa = 900.0 + std::sin(simulate_phase_ * 0.3) * 1.5;
+        latest_ptb_.pressure_hpa = pressureHpa;
         ptb_status_.rx_count++;
         ptb_status_.last_data_time_us = t;
         emit ptbDataUpdated(latest_ptb_);
@@ -2762,8 +2772,8 @@ void SkyDeviceManager::generateSimulatedData()
     {
         latest_hc2a_.valid = true;
         latest_hc2a_.timestamp = timestamp;
-        latest_hc2a_.temperature = 23.0 + std::sin(simulate_phase_ * 0.2) * 2.0;
-        latest_hc2a_.humidity = 45.0 + std::cos(simulate_phase_ * 0.15) * 5.0;
+        latest_hc2a_.temperature = air.temperatureC;
+        latest_hc2a_.humidity = air.humidityPct;
         hc2a_status_.rx_count++;
         hc2a_status_.last_data_time_us = t;
         emit hc2aDataUpdated(latest_hc2a_);
@@ -2773,7 +2783,7 @@ void SkyDeviceManager::generateSimulatedData()
     {
         latest_lidar_.valid = true;
         latest_lidar_.timestamp = timestamp;
-        latest_lidar_.distance_m = 120.0 + std::sin(simulate_phase_ * 0.6) * 8.0;
+        latest_lidar_.distance_m = air.heightM;
         lidar_status_.rx_count++;
         lidar_status_.last_data_time_us = t;
         emit lidarDataUpdated(latest_lidar_);
@@ -2798,7 +2808,7 @@ void SkyDeviceManager::generateSimulatedData()
             const double target = std::isfinite(channel.target_temperature_c)
                 ? channel.target_temperature_c
                 : 25.0;
-            channel.measured_temperature_c += (target - channel.measured_temperature_c) * 0.06;
+            channel.measured_temperature_c += (target + 0.035 * std::sin(seconds*0.4) - channel.measured_temperature_c) * 0.06;
             if (channel.output_enabled)
             {
                 const double demand = std::abs(target - channel.measured_temperature_c) * 18.0;
@@ -2827,8 +2837,10 @@ void SkyDeviceManager::generateSimulatedData()
         latest_ai8_temperature_controller_.errorMessage.clear();
         for (int i = 0; i < Ai8TemperatureControllerProtocol::kChannelCount; ++i)
         {
-            latest_ai8_temperature_controller_.measuredC[static_cast<size_t>(i)] =
-                24.0 + i * 0.35 + std::sin(simulate_phase_ * 0.18 + i * 0.7) * 1.2;
+            auto &measured = latest_ai8_temperature_controller_.measuredC[i];
+            const double target = simulated_ai8_pages_initialized_ ? simulated_ai8_channels_[i].setpointC : 25.0;
+            if (!std::isfinite(measured)) measured = 24.0 + i * 0.1;
+            measured += (target + 0.035 * std::sin(seconds*0.4+i) - measured) * 0.06;
             latest_ai8_temperature_controller_.controlStates[static_cast<size_t>(i)] =
                 (i % 2 == 0)
                     ? Ai8TemperatureControllerProtocol::ChannelControlState::ApidOutput
@@ -2850,12 +2862,14 @@ void SkyDeviceManager::generateSimulatedData()
         {
             latest_waveform_.resize(50000);
         }
+        const double peak = (air.concentrationPpmv + 2 * Sounding::noise()) / 2000;
+        const double center = simulate_mode_ == SimulatorDataMode::Random ? 0.5 + 0.25*Sounding::noise() : 0.5;
         for (int i = 0; i < latest_waveform_.size(); ++i)
         {
-            const double x = static_cast<double>(i) / 500.0;
-            latest_raw_waveform_[i] = static_cast<float>(0.4 * std::sin(x * 0.37 + simulate_phase_ * 0.8) +
-                                                         0.15 * std::sin(x * 2.2));
-            latest_waveform_[i] = static_cast<float>(std::sin(x + simulate_phase_) * 0.05 + std::exp(-std::pow((i - 24000) / 3500.0, 2.0)));
+            const double u = double(i) / (latest_waveform_.size()-1);
+            const double z = (u-center) / 0.09;
+            latest_raw_waveform_[i] = float(u - 0.5 + 0.1*std::sin(2*3.141592653589793*24*u) - peak*Sounding::absorption(z));
+            latest_waveform_[i] = float(peak*Sounding::secondHarmonic(z));
         }
         wave_tcp_status_.rx_count++;
         wave_tcp_status_.last_data_time_us = t;

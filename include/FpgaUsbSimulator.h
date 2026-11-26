@@ -1,11 +1,13 @@
 #pragma once
 
 #include "FpgaUsbTransport.h"
+#include "SimulatorSounding.h"
 
 namespace VaporView::Ground::Devices
 {
 // Produces and consumes VLP1 wire bytes through the same boundary as USB.
 // No OS device is registered and no physical USB/serial endpoint is opened.
+using FpgaSimulatorDataMode = SimulatorDataMode;
 enum class FpgaSimulatorStartup { RunningDemo, Idle };
 // Rd105Integrated models the new firmware. The two HCD2 profiles retain older
 // capability sets; HistoricalExtensions additionally exposes withdrawn AI8
@@ -23,5 +25,6 @@ public:
 // not power-cycle it. RunningDemo is an explicit fixture for protocol tests.
 std::unique_ptr<FpgaUsbSimulator> makeFpgaUsbSimulator(QObject *parent = nullptr,
     FpgaSimulatorStartup startup = FpgaSimulatorStartup::Idle,
-    FpgaSimulatorFirmware firmware = FpgaSimulatorFirmware::Rd105Integrated);
+    FpgaSimulatorFirmware firmware = FpgaSimulatorFirmware::Rd105Integrated,
+    FpgaSimulatorDataMode mode = FpgaSimulatorDataMode::Realistic);
 }
