@@ -292,10 +292,16 @@ int main(int argc,char **argv)
     r.service->fitProject();
     r.service->synchronize();
     checkSteps({true, true, true, true, true, false});
-    r.service->selectFile(view.files.first());
+    tabs->setCurrentIndex(2);
+    r.bus.setDevice(true, {{"backend", "winusb"}, {"serial", "PAGE_TEST_DEVICE"}});
+    control<QPushButton>(page,"calibrationSelectFile")->click();
     r.service->synchronize();
     checkSteps({true, true, true, true, true, false});
-    tabs->setCurrentIndex(2);
+    const auto selectionStatus = control<QLabel>(page,"calibrationStatus")->text();
+    check(r.service->view().selected.filename == view.files.first() && !r.service->view().error &&
+          selectionStatus.contains(QStringLiteral("设备身份不同")) && selectionStatus.contains(QStringLiteral("模拟定标")),
+          "one click selects the simulator file on hardware and shows both advisories");
+    r.bus.setDevice(true,r.identity);
     control<QPushButton>(page,"calibrationInspectFile")->click();
     r.service->synchronize();
     QApplication::processEvents();

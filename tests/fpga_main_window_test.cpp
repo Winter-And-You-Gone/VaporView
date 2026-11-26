@@ -1306,7 +1306,7 @@ static void confirmRecordingCalibration(MainWindow& window)
     auto *dialog = recordingCalibrationDialog(window);
     require(dialog, "formal recording presents the calibration confirmation");
     auto *confirm = dialog->findChild<QAbstractButton*>(QStringLiteral("recordingCalibrationConfirm"));
-    require(confirm && confirm->isEnabled(), "valid current calibration can be confirmed");
+    require(confirm && waitUntil([&] { return confirm->isEnabled(); }), "valid current calibration can be confirmed");
     confirm->click();
 }
 
@@ -1820,14 +1820,14 @@ static void localSimulatorRouting()
     check(waitUntil([&]{return raw->isEnabled()&&raw->text().contains(QStringLiteral("开始"));}),"local monitor stops RAW upload");
     check(harmonic->text().contains(QStringLiteral("停止")),"local RAW stop preserves DLIA acquisition");
     raw->click();check(waitUntil([&]{return raw->isEnabled()&&raw->text().contains(QStringLiteral("停止"));}),"local RAW restarts without resetting running acquisition");
-    calibration.service->selectFile(calibrationFile.filename,true);calibration.service->synchronize();
+    calibration.service->selectFile(calibrationFile.filename);calibration.service->synchronize();
     auto *record = page->findChild<QAbstractButton*>("fpgaRecord");
     record->click();
     auto *confirmation = recordingCalibrationDialog(window);
     check(confirmation, "local recording asks which calibration to use");
-    auto *identity = confirmation->findChild<QCheckBox*>(QStringLiteral("recordingCalibrationIdentityConfirmed"));
-    check(identity, "local confirmation provides an explicit device identity override");
-    identity->setChecked(true); // The synthetic fixture and the local FPGA simulator report different identities.
+    auto *status = confirmation->findChild<QLabel*>(QStringLiteral("recordingCalibrationStatus"));
+    check(status && status->isVisible() && status->text().contains(QStringLiteral("设备身份不同")),
+          "local confirmation shows the current file's identity warning");
     confirmRecordingCalibration(window);
     if (!waitUntil([&] { return record->text().contains(QStringLiteral("停止")); })) {
         const auto *dialog = recordingCalibrationDialog(window);
@@ -2842,7 +2842,13 @@ static void remoteRecordingCalibrationUi()
 {
     using namespace VaporView;
     IndependentCalibrationTest::Rig calibration;
+    calibration.bus.setDevice(true, {{"backend", "winusb"}, {"serial", "CALIBRATION_DEVICE"}});
     const auto file = calibration.complete();
+    IndependentCalibrationTest::Rig simulator;
+    const auto simulated = simulator.complete();
+    const auto simulatedPath = QFileInfo(file.filename).dir().filePath(QStringLiteral("simulated.vcal"));
+    require(QFile::copy(simulated.filename, simulatedPath), "install the simulator calibration alongside the hardware file");
+    calibration.service->refreshFiles();
     TcpTelemetryLink server;
     require(server.listen(QStringLiteral("127.0.0.1"), 0), "manual recording fake Sky listens");
     MainWindow window(nullptr, calibration.service);
@@ -2851,7 +2857,7 @@ static void remoteRecordingCalibrationUi()
     auto *remote = window.testRemoteSkyController();
     require(remote && remote->openTcp(QStringLiteral("127.0.0.1"), server.localPort()) &&
             waitUntil([&] { return remote->isOpen(); }), "manual recording fake Sky connection");
-    auto differentDevice = calibration.identity;
+    auto differentDevice = file.project.deviceIdentity;
     differentDevice.insert(QStringLiteral("serial"), QStringLiteral("OTHER_TEST_DEVICE"));
     calibration.bus.setDevice(true, differentDevice);
     calibration.service->synchronize();
@@ -2878,23 +2884,25 @@ static void remoteRecordingCalibrationUi()
     auto *files = dialog->findChild<QComboBox*>(QStringLiteral("recordingCalibrationFile"));
     require(files && files->findData(file.filename) >= 0, "remote recording lists installed calibration");
     files->setCurrentIndex(files->findData(file.filename));
-    processFor(30);
-    require(starts.isEmpty() && !calibration.service->view().locked,
-            "remote confirmation does not send or lock before acceptance");
-    confirmRecordingCalibration(window);
     auto *status = dialog->findChild<QLabel*>(QStringLiteral("recordingCalibrationStatus"));
-    auto *identity = dialog->findChild<QCheckBox*>(QStringLiteral("recordingCalibrationIdentityConfirmed"));
-    require(status && identity && waitUntil([&] { return status->text().contains(QStringLiteral("身份不一致")); }) &&
-            starts.isEmpty() && !calibration.service->view().selected.valid && !calibration.service->view().locked,
-            "unconfirmed device mismatch keeps the popup open and recording stopped");
-    identity->setChecked(true);
+    require(status && waitUntil([&] { return status->isVisible() && status->text().contains(QStringLiteral("设备身份不同")); }) &&
+            !status->text().contains(QStringLiteral("模拟定标")), "hardware file previews only the device mismatch");
+    require(files->findData(simulatedPath) >= 0, "remote recording lists the simulator calibration");
+    files->setCurrentIndex(files->findData(simulatedPath));
+    require(waitUntil([&] { return status->isVisible() && status->text().contains(QStringLiteral("模拟定标")); }) &&
+            status->text().contains(QStringLiteral("设备身份不同")), "simulator file previews both warnings on hardware");
+    const auto warning = status->text();
+    require(!dialog->findChild<QCheckBox*>() && starts.isEmpty() &&
+            !calibration.service->view().selected.valid && !calibration.service->view().locked,
+            "preview needs no checkbox and leaves selection and recording untouched");
     confirmRecordingCalibration(window);
     require(waitUntil([&] { return starts.size() == 1; }), "remote start is sent once after confirmation");
     requestStart();
     require(!recordingCalibrationDialog(window), "remote start in flight cannot open another confirmation");
     const auto command = starts.front();
     const auto payload = QJsonDocument::fromJson(command.payload).object();
-    require(payload.value("file_sha256").toString() == file.sha256 && calibration.service->view().locked,
+    require(payload.value("file_sha256").toString() == simulated.sha256 && payload.value("identity_warning").toString() == warning &&
+            calibration.service->view().locked,
             "remote StartRecording carries and locks the selected calibration snapshot");
     CommandAck ack;
     ack.command_id = command.command_id;

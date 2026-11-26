@@ -59,6 +59,16 @@ bool isSimulationIdentity(const QJsonObject& identity)
 }
 bool isSimulationCalibration(const CalibrationProject& project)
 { return project.origin==QStringLiteral("software_test") && isSimulationIdentity(project.deviceIdentity); }
+QString calibrationIdentityWarning(const CalibrationFile& file, bool connected, const QJsonObject& device)
+{
+    if (!file.valid || !connected) return {};
+    QStringList warnings;
+    if (!file.project.deviceIdentity.isEmpty() && file.project.deviceIdentity != device)
+        warnings << QStringLiteral("定标文件与当前设备身份不同");
+    if (isSimulationCalibration(file.project) && !isSimulationIdentity(device))
+        warnings << QStringLiteral("当前使用 FPGA 模拟定标文件，测量结果仅作参考");
+    return warnings.join(QStringLiteral("；"));
+}
 HarmonicPeakFeature simulationFeature(int wavelength, double peak, quint64 sequence)
 {
     HarmonicPeakFeature feature;
@@ -126,6 +136,10 @@ CalibrationView CalibrationService::view() const
     std::lock_guard lock(mutex_);
     auto view = state_;
     view.locked |= externalSessionOpen_;
+    if (!view.error && !view.identityWarning.isEmpty()) {
+        if (!view.message.isEmpty()) view.message += '\n';
+        view.message += view.identityWarning;
+    }
     if (!view.connected) return view;
 
     const auto now = VaporView::Session::harmonicReceptionTimeUs();
@@ -248,8 +262,7 @@ void CalibrationService::setDevice(bool connected,const QJsonObject& identity)
             latestValid_.clear();sensorReadings_={};state_.live.clear();state_.recentPeaks.clear();environment_={};alignment_="unavailable";
         }
         state_.connected=connected;device_=identity;
-        state_.identityWarning=state_.selected.valid && !state_.selected.project.deviceIdentity.isEmpty() && state_.selected.project.deviceIdentity!=device_
-            ?QStringLiteral("当前设备与所选定标文件身份不同，开始录制前必须核对并确认"):QString();
+        state_.identityWarning=calibrationIdentityWarning(state_.selected,connected,identity);
     });
 }
 void CalibrationService::ensureSimulationFile(const QJsonObject& identity)
@@ -271,6 +284,7 @@ void CalibrationService::ensureSimulationFile(const QJsonObject& identity)
                     message(error,true);return;
                 }
                 state_.selected=file;
+                state_.identityWarning=calibrationIdentityWarning(file,state_.connected,device_);
                 message(QStringLiteral("已选择 FPGA 模拟定标文件：%1").arg(QFileInfo(file.filename).fileName()));
                 return;
             }
@@ -285,6 +299,7 @@ void CalibrationService::ensureSimulationFile(const QJsonObject& identity)
             message(error,true);return;
         }
         state_.selected=file;
+        state_.identityWarning=calibrationIdentityWarning(file,state_.connected,device_);
         listFiles();
         message(QStringLiteral("已创建并选择 FPGA 模拟定标文件：%1").arg(QFileInfo(file.filename).fileName()));
     });
@@ -534,11 +549,11 @@ void CalibrationService::openProject(const QString& filename,bool draft)
         dirty_=true;if(persist())message(QStringLiteral("草稿/修订任务已加载；恢复前请核对设备及标气稳定状态"));
     });
 }
-void CalibrationService::selectFile(const QString& filename, bool confirmed,
+void CalibrationService::selectFile(const QString& filename,
                                     std::function<void(const QString&)> completion)
 {
-    const bool accepted = submit([this, filename, confirmed, completion] {
-        const QString error = selectFileImpl(filename, confirmed, {}, false);
+    const bool accepted = submit([this, filename, completion] {
+        const QString error = selectFileImpl(filename, {}, false);
         if (!error.isEmpty()) message(error, true);
         if (completion) completion(error);
     });
@@ -546,14 +561,25 @@ void CalibrationService::selectFile(const QString& filename, bool confirmed,
         completion(QStringLiteral("定标服务当前不可用或操作队列繁忙，请稍后重试"));
 }
 
-void CalibrationService::selectFileForRecording(const QString& filename, bool confirmed, const QString& expectedSha256,
+void CalibrationService::previewFileForRecording(const QString& filename,
+                                                std::function<void(const QString&, const QString&)> completion)
+{
+    if (!submit([this, filename, completion] {
+        QString error;
+        const auto file = outsideStateLock([&] { return store_.read(filename, false, &error); });
+        completion(file.valid ? file.sha256 : QString(),
+                   file.valid ? calibrationIdentityWarning(file, state_.connected, device_) : error);
+    })) completion({}, QStringLiteral("定标服务当前不可用或操作队列繁忙，请稍后重试"));
+}
+
+void CalibrationService::selectFileForRecording(const QString& filename, const QString& expectedSha256,
                                                 std::function<void(const QString&)> completion)
 {
     {
         std::lock_guard lock(mutex_);
         if (!stopping_ && commands_.size() < 32) {
-            commands_.push_back({[this, filename, confirmed, expectedSha256, completion = std::move(completion)] {
-                completion(selectFileImpl(filename, confirmed, expectedSha256, true));
+            commands_.push_back({[this, filename, expectedSha256, completion = std::move(completion)] {
+                completion(selectFileImpl(filename, expectedSha256, true));
             }, admittedSerial_});
             wake_.notify_all();
             return;
@@ -562,7 +588,7 @@ void CalibrationService::selectFileForRecording(const QString& filename, bool co
     completion(QStringLiteral("定标服务当前不可用或操作队列繁忙，请稍后重试"));
 }
 
-QString CalibrationService::selectFileImpl(const QString& filename, bool confirmed, const QString& expectedSha256,
+QString CalibrationService::selectFileImpl(const QString& filename, const QString& expectedSha256,
                                            bool forRecording)
 {
     if (state_.acquiring || state_.locked || externalSessionOpen_)
@@ -578,23 +604,17 @@ QString CalibrationService::selectFileImpl(const QString& filename, bool confirm
     if (forRecording) {
         if (!state_.connected)
             return QStringLiteral("用于水汽测量的 FPGA 未连接。请先连接 FPGA，再开始正式记录。");
-        if (isSimulationCalibration(file.project) && !isSimulationIdentity(device_))
-            return QStringLiteral("FPGA 模拟定标文件仅可用于 FPGA 模拟器，真实设备请先选择实机定标文件");
         error = VaporView::Session::validateRuntimeCalibration(runtimeParameters(file));
         if (!error.isEmpty()) return error;
     }
-    const bool mismatch = state_.connected && !file.project.deviceIdentity.isEmpty() && file.project.deviceIdentity != device_;
-    if (mismatch && !confirmed)
-        return QStringLiteral("定标文件设备身份不一致，请核对详情后明确确认使用");
     if (!atomicJson(QDir(store_.directory()).filePath("selection.json"),
                     {{"filename", file.filename}, {"sha256", file.sha256}}, &error))
         return error;
 
     state_.selected = file;
-    state_.identityWarning = mismatch ? QStringLiteral("设备身份不一致，用户已核对并确认使用") : QString();
+    state_.identityWarning = calibrationIdentityWarning(file, state_.connected, device_);
     state_.live.clear();
-    message(QStringLiteral("已选择 %1；验证用线性模型，初始浓度未进行温压补偿").arg(QFileInfo(filename).fileName()) +
-            (mismatch ? "\n" + state_.identityWarning : QString()));
+    message(QStringLiteral("已选择 %1；验证用线性模型，初始浓度未进行温压补偿").arg(QFileInfo(filename).fileName()));
     return {};
 }
 void CalibrationService::copyFile(const QString& filename,const QString& name)
@@ -602,7 +622,7 @@ void CalibrationService::copyFile(const QString& filename,const QString& name)
 void CalibrationService::removeFile(const QString& filename,bool archive)
 {submit([this,filename,archive]{QString e;const auto locked=(state_.locked || externalSessionOpen_)?state_.selected.sha256:QString();
     if(!(archive?store_.archive(filename,locked,&e):store_.remove(filename,locked,&e)))message(e,true);
-    else{if(state_.selected.filename==filename){state_.selected={};state_.live.clear();}listFiles();message(archive?QStringLiteral("文件已归档"):QStringLiteral("文件已删除"));}});}
+    else{if(state_.selected.filename==filename){state_.selected={};state_.identityWarning.clear();state_.live.clear();}listFiles();message(archive?QStringLiteral("文件已归档"):QStringLiteral("文件已删除"));}});}
 void CalibrationService::importLegacy(const QString& filename,const QString& a,const QString& b)
 {submit([this,filename,a,b]{if(!editable())return;Library library;QString e;if(!Store(filename).load(library,&e)){message(e,true);return;}
     const Fit *fa=nullptr,*fb=nullptr;for(const auto& f:library.fits){if(f.id==a)fa=&f;if(f.id==b)fb=&f;}
@@ -672,10 +692,7 @@ bool CalibrationService::prepareImpl(QJsonObject& snapshot,QString *error)
     }
     const auto selectedFilename=state_.selected.filename;auto f=outsideStateLock([&]{return store_.read(selectedFilename,false,error);});if(!f.valid)return false;
     if(f.sha256!=state_.selected.sha256){*error=QStringLiteral("所选定标文件已变化，请重新选择并核对");return false;}
-    if(isSimulationCalibration(f.project) && !isSimulationIdentity(device_)) {
-        *error=QStringLiteral("FPGA 模拟定标文件仅可用于 FPGA 模拟器，真实设备请先选择实机定标文件");return false;
-    }
-    if(!state_.identityWarning.isEmpty() && !state_.identityWarning.contains(QStringLiteral("用户已核对"))){*error=state_.identityWarning;return false;}
+    state_.identityWarning = calibrationIdentityWarning(f, state_.connected, device_);
     lockSnapshot_={{"kind","vaporview_session_calibration"},{"schema_version",1},{"file_id",f.id},{"file_sha256",f.sha256},
         {"filename",QFileInfo(f.filename).fileName()},{"task_name",f.project.name},{"vcal_document",f.document()},
         {"identity_warning",state_.identityWarning}};

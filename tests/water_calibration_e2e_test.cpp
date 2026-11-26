@@ -36,8 +36,19 @@ int main(int argc,char **argv)
                                             {"locator","USB\\VID_0000&PID_0000"},
                                             {"usb",QJsonObject{{"mode","hardware"},{"serial","REAL"}}}});
         service->synchronize();
-        check(!recorder.start(options,nullptr,&error)&&error.contains(QStringLiteral("仅可用于 FPGA 模拟器")),
-              "simulator calibration is rejected on a real device");
+        const auto selected = service->view().selected;
+        const auto warning = service->view().identityWarning;
+        check(warning.contains(QStringLiteral("设备身份不同")) && warning.contains(QStringLiteral("模拟定标")),
+              "connecting real hardware refreshes both warnings on the selected simulator file");
+        service->selectFile(selected.filename);
+        service->synchronize();
+        check(!service->view().error && service->view().message.contains(warning), "simulator file can be selected on hardware");
+        check(recorder.start(options,nullptr,&error),qPrintable(error));
+        const auto directory = recorder.status().sessionDirectory;
+        check(!recorder.stop().writeFailed, "recording with simulator calibration stops cleanly");
+        const auto snapshot = QJsonDocument::fromJson(read(QDir(directory).filePath("calibration_snapshot.json"))).object();
+        check(snapshot["identity_warning"].toString() == warning && snapshot["runtime"].toObject()["origin"] == "software_test",
+              "hardware recording retains both warnings and the simulator provenance");
     }
     Rig r;auto f=r.complete();
     Ground::Session::GroundRecordingService recorder;recorder.setCalibrationPolicy(r.service);
@@ -53,6 +64,22 @@ int main(int argc,char **argv)
     check(r.service->view().selected.sha256==f.sha256&&!r.service->view().locked,
           "offline rejection preserves selected calibration and leaves the session unlocked");
     r.bus.setDevice(true,r.identity);r.service->synchronize();
+    auto differentDevice = r.identity;
+    differentDevice.insert("serial", "OTHER_TEST_DEVICE");
+    r.bus.setDevice(true,differentDevice);
+    r.service->selectFile(f.filename);
+    r.service->synchronize();
+    const auto mismatch = r.service->view().identityWarning;
+    check(!r.service->view().error && mismatch.contains(QStringLiteral("设备身份不同")) &&
+          !mismatch.contains(QStringLiteral("模拟定标")) && r.service->view().message.contains(mismatch),
+          "mismatched identity allows direct selection with an advisory");
+    QJsonObject snapshot;
+    check(r.service->prepare(snapshot,&error) && snapshot["identity_warning"].toString() == mismatch,
+          "mismatched identity allows recording and is recorded in the snapshot");
+    r.service->finish();
+    r.bus.setDevice(true,r.identity);r.service->synchronize();
+    check(r.service->view().identityWarning.isEmpty() && !r.service->view().message.contains(mismatch),
+          "returning to matching hardware clears the advisory");
     r.service->setExternalSessionOpen(true);r.service->synchronize();
     check(!recorder.start(options,nullptr,&error)&&error.contains(QStringLiteral("请先停止机载记录")),
           "open external session gets a remote stop instruction");

@@ -187,7 +187,7 @@ struct WaterCalibrationPage::State
     QComboBox *unit,*wave,*files,*drafts,*reviewStage;
     QDoubleSpinBox *concentration;
     QSpinBox *seconds,*samplePage;
-    QCheckBox *stable,*identityConfirmed;
+    QCheckBox *stable;
     QTableWidget *stages,*samples,*statistics;
     QLabel *status,*progressText,*currentFile,*live,*fitSummary;
     QProgressBar *progress;
@@ -359,10 +359,9 @@ WaterCalibrationPage::WaterCalibrationPage(QWidget *parent,const QString& root,s
     s.filename=new QLineEdit;s.filename->setObjectName("calibrationFilename");s.filename->setPlaceholderText(QStringLiteral("自定义中文文件名（不覆盖已有文件）"));fileRow->addWidget(s.filename,1);
     button(QStringLiteral("生成 .vcal"),"calibrationGenerate",fileRow,[this]{state_->service->generateFile(state_->filename->text());});f->addLayout(fileRow);
     s.files=new QComboBox;s.files->setObjectName("calibrationFiles");f->addWidget(s.files);
-    s.identityConfirmed=new QCheckBox(QStringLiteral("已核对文件与当前设备的身份差异，明确确认使用"));f->addWidget(s.identityConfirmed);
     auto *manage=new QHBoxLayout;
     button(QStringLiteral("查看文件详情"),"calibrationInspectFile",manage,[this]{state_->service->inspectFile(state_->files->currentData().toString());});
-    button(QStringLiteral("选择用于测量 / 校验"),"calibrationSelectFile",manage,[this]{state_->service->selectFile(state_->files->currentData().toString(),state_->identityConfirmed->isChecked());});
+    button(QStringLiteral("选择用于测量 / 校验"),"calibrationSelectFile",manage,[this]{state_->service->selectFile(state_->files->currentData().toString());});
     button(QStringLiteral("导入外部 .vcal"),"calibrationBrowseFile",manage,[this]{const auto path=QFileDialog::getOpenFileName(this,QStringLiteral("导入定标文件"),{},"Calibration (*.vcal)");if(!path.isEmpty())state_->service->copyFile(path,QFileInfo(path).fileName());});
     button(QStringLiteral("创建修订任务"),"calibrationRevise",manage,[this]{state_->service->openProject(state_->files->currentData().toString(),false);});
     button(QStringLiteral("刷新文件"),"calibrationRefreshFiles",manage,[this]{state_->service->refreshFiles();});f->addLayout(manage);

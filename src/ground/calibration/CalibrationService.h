@@ -56,10 +56,13 @@ public:
     void generateFile(const QString& name);
     void openProject(const QString& filename, bool draft);
     // If supplied, completion receives the error (or an empty string) and may run on the worker.
-    void selectFile(const QString& filename, bool identityConfirmed = false,
+    void selectFile(const QString& filename,
                     std::function<void(const QString&)> completion = {});
+    // Read a candidate without selecting it. An empty SHA indicates a read error in status.
+    void previewFileForRecording(const QString& filename,
+                                 std::function<void(const QString& sha256, const QString& status)> completion);
     // A nonempty completion result describes the failure. Callback may run on the service worker.
-    void selectFileForRecording(const QString& filename, bool identityConfirmed, const QString& expectedSha256,
+    void selectFileForRecording(const QString& filename, const QString& expectedSha256,
                                 std::function<void(const QString&)> completion);
     void copyFile(const QString& filename, const QString& name);
     void removeFile(const QString& filename, bool archive);
@@ -118,7 +121,7 @@ private:
     bool saveLock(QString *error);
     void restoreLock();
     void listFiles();
-    QString selectFileImpl(const QString& filename, bool identityConfirmed, const QString& expectedSha256, bool forRecording);
+    QString selectFileImpl(const QString& filename, const QString& expectedSha256, bool forRecording);
     bool prepareImpl(QJsonObject&,QString *error);
     template<class Work> auto outsideStateLock(Work work)
     {

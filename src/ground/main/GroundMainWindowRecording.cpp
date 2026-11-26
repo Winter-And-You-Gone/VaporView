@@ -27,6 +27,7 @@ public:
     }
     bool applying = false;
     QString startError;
+    QString expectedSha256;
 };
 
 RecordingCalibrationDialog *activeRecordingConfirmation(const QWidget *window)
@@ -66,10 +67,6 @@ QDialog *showRecordingCalibrationDialog(QWidget *parent,
     files->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     files->setMinimumContentsLength(26);
     layout->addWidget(files);
-    auto *identity = new QCheckBox(english ? QStringLiteral("I checked the device identity and accept a mismatch")
-                                           : QStringLiteral("我已核对设备身份，确认可使用不匹配的文件"), dialog);
-    identity->setObjectName(QStringLiteral("recordingCalibrationIdentityConfirmed"));
-    layout->addWidget(identity);
     auto *status = makeLabel();
     status->setObjectName(QStringLiteral("recordingCalibrationStatus"));
     status->setStyleSheet(QStringLiteral("color: %1;").arg(appThemeColorName(AppThemeColor::Warning, dark)));
@@ -100,10 +97,27 @@ QDialog *showRecordingCalibrationDialog(QWidget *parent,
     const QString selectedSha256 = shown.selected.sha256;
     const QString identityWarning = shown.identityWarning;
     const auto updateChoice = [=]() {
-        identity->setChecked(false);
-        status->setText(files->currentData().toString() == selectedPath ? identityWarning : QString());
-        status->setVisible(!status->text().isEmpty());
-        confirm->setEnabled(!files->currentData().toString().isEmpty());
+        const auto path = files->currentData().toString();
+        dialog->expectedSha256 = path == selectedPath ? selectedSha256 : QString();
+        confirm->setEnabled(!dialog->expectedSha256.isEmpty());
+        if (path.isEmpty() || path == selectedPath) {
+            status->setText(path.isEmpty() ? QString() : identityWarning);
+            status->setVisible(!status->text().isEmpty());
+            return;
+        }
+        status->setText(english ? QStringLiteral("Checking calibration file…") : QStringLiteral("正在校验定标文件…"));
+        status->show();
+        service->previewFileForRecording(path,
+            [context = service.get(), guard = QPointer<RecordingCalibrationDialog>(dialog), files, confirm, status, path]
+            (const QString& sha256, const QString& text) {
+                QMetaObject::invokeMethod(context, [=] {
+                    if (!guard || guard->applying || files->currentData().toString() != path) return;
+                    guard->expectedSha256 = sha256;
+                    status->setText(text);
+                    status->setVisible(!text.isEmpty());
+                    confirm->setEnabled(!sha256.isEmpty());
+                }, Qt::QueuedConnection);
+            });
     };
     updateChoice();
     QObject::connect(files, &QComboBox::currentIndexChanged, dialog, updateChoice);
@@ -115,14 +129,12 @@ QDialog *showRecordingCalibrationDialog(QWidget *parent,
         confirm->setEnabled(false);
         cancel->setEnabled(false);
         files->setEnabled(false);
-        identity->setEnabled(false);
         status->setText(english ? QStringLiteral("Checking calibration file…") : QStringLiteral("正在校验定标文件…"));
         status->show();
-        const QString expectedSha256 = path == selectedPath ? selectedSha256 : QString();
-        service->selectFileForRecording(path, identity->isChecked(), expectedSha256,
+        service->selectFileForRecording(path, dialog->expectedSha256,
             [serviceContext = service.get(), guard = QPointer<RecordingCalibrationDialog>(dialog),
-             confirm, cancel, files, identity, status, start](const QString& error) {
-                QMetaObject::invokeMethod(serviceContext, [guard, confirm, cancel, files, identity, status, start, error]() {
+             confirm, cancel, files, status, start](const QString& error) {
+                QMetaObject::invokeMethod(serviceContext, [guard, confirm, cancel, files, status, start, error]() {
                     if (!guard) return;
                     const QString failure = error.isEmpty() ? start() : error;
                     if (!guard) return;
@@ -134,7 +146,6 @@ QDialog *showRecordingCalibrationDialog(QWidget *parent,
                     confirm->setEnabled(true);
                     cancel->setEnabled(true);
                     files->setEnabled(true);
-                    identity->setEnabled(true);
                     status->setText(failure);
                 }, Qt::QueuedConnection);
             });

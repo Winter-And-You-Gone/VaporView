@@ -6346,16 +6346,14 @@ void MainWindow::setupDataPanels()
             english ? QStringLiteral("Select a .vcal file") : QStringLiteral("选择 .vcal 定标文件"),
             names, std::max(0, int(view.files.indexOf(view.selected.filename))), false, &confirmed);
         if (!confirmed) return;
-        state_->calibration_service_->selectFile(view.files.value(names.indexOf(name)), false,
+        state_->calibration_service_->selectFile(view.files.value(names.indexOf(name)),
             [this](const QString &error) {
                 if (error.isEmpty()) return;
                 QMetaObject::invokeMethod(this, [this, error] {
                     const bool english = state_->is_english_;
                     QMessageBox::warning(this,
                         english ? QStringLiteral("Calibration File") : QStringLiteral("定标文件"),
-                        error + QStringLiteral("\n\n") + (english
-                            ? QStringLiteral("To review the file and confirm a device identity mismatch, open Water Calibration → Calibration File Management.")
-                            : QStringLiteral("如需核对设备身份并确认使用，请打开定标页面的「定标文件管理」。")));
+                        error);
                 }, Qt::QueuedConnection);
             });
     });
