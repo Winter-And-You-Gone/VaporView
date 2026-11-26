@@ -77,23 +77,33 @@ static void firstStartFpgaTest()
     runtime.stop();
 }
 
-static void fpgaAi8PageTest(FpgaSimulatorFirmware firmware, bool directSimulation = false)
+enum class Ai8Startup { Fpga, DirectSimulation, SavedRelaySimulation };
+
+static void fpgaAi8PageTest(FpgaSimulatorFirmware firmware, Ai8Startup startup = Ai8Startup::Fpga)
 {
     using namespace Ai8TemperatureControllerProtocol;
     QTemporaryDir directory;
     SkyRuntimeOptions options;
-    options.config_path = directory.filePath("sky.json");
+    options.config_path = directory.filePath("sky_config.json");
     options.telemetry_tcp_port = 0;
-    options.simulate_data = directSimulation;
-    options.simulate_fpga = !directSimulation && firmware == FpgaSimulatorFirmware::SkySimulation;
+    const bool directSimulation = startup == Ai8Startup::DirectSimulation;
+    options.simulate_data = startup != Ai8Startup::Fpga;
+    options.simulate_fpga = !options.simulate_data && firmware == FpgaSimulatorFirmware::SkySimulation;
+    if (startup == Ai8Startup::SavedRelaySimulation) {
+        auto config = SkyConfig::defaults();
+        config.sensor_transport_path = SensorTransportPath::FpgaRelay;
+        config.fpga.enabled = true;
+        config.fpga.configuration.backend = QStringLiteral("auto");
+        require(config.saveToFile(options.config_path), "save relay config before --simulate startup");
+    }
     SkyRuntime runtime(options);
-    if (!options.simulate_fpga && !directSimulation)
+    if (!options.simulate_fpga && !options.simulate_data)
         runtime.setFpgaTransportForTesting(makeFpgaUsbSimulator(nullptr, FpgaSimulatorStartup::RunningDemo, firmware));
     require(runtime.start(), "start FPGA AI-8 simulator");
     if (!directSimulation)
         waitUntil([&] { return runtime.currentFpgaStatus().value("ready").toBool(); }, "FPGA ready for page command");
     quint16 seq = 0;
-    if (options.simulate_fpga) {
+    if (options.simulate_fpga || startup == Ai8Startup::SavedRelaySimulation) {
         require(runtime.currentFpgaStatus().value("extensions").toInt() & FpgaExtensions::Ai8Parameters,
                 "Sky simulator advertises parameter pages");
         DeviceOperationRequest request{++seq, SkyDeviceId::Fpga, DeviceOperation::FpgaControl,
@@ -141,7 +151,7 @@ static void fpgaAi8PageTest(FpgaSimulatorFirmware firmware, bool directSimulatio
         require(confirmed.selection.channel == 3 && confirmed.channel.setpointC == 32.1 &&
                 confirmed.channel.proportionalBand == original.channel.proportionalBand, "partial SP write preserves PID and reads back CH3");
     }
-    if (options.simulate_fpga || directSimulation) {
+    if (options.simulate_fpga || options.simulate_data) {
         auto read = [&] {
             auto request = page;
             request.writeFields = 0;
@@ -570,7 +580,8 @@ int main(int argc,char **argv)
         fpgaAi8PageTest(FpgaSimulatorFirmware::HistoricalExtensions);
         fpgaAi8PageTest(FpgaSimulatorFirmware::Rd105Integrated);
         fpgaAi8PageTest(FpgaSimulatorFirmware::SkySimulation);
-        fpgaAi8PageTest(FpgaSimulatorFirmware::SkySimulation, true);
+        fpgaAi8PageTest(FpgaSimulatorFirmware::SkySimulation, Ai8Startup::DirectSimulation);
+        fpgaAi8PageTest(FpgaSimulatorFirmware::SkySimulation, Ai8Startup::SavedRelaySimulation);
         fpgaAutoSaveTest();
         firstStartFpgaTest();
         asyncConnectionLogTest();

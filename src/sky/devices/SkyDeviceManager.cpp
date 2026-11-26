@@ -702,7 +702,7 @@ QJsonObject SkyDeviceManager::fpgaStatus() const
     auto document = fpga_backend_ ? fpga_backend_->statusDocument() : QJsonObject{{"version",1},{"connected",false},{"ready",false},
         {"busy",false},{"detail",QStringLiteral("FPGA disconnected")},{"configuration",config_.fpga.configuration.toJson()},
         {"registers",QJsonObject{}},{"archived_records",QStringLiteral("0")}};
-    if (simulate_fpga_) {
+    if (simulate_fpga_ || (simulate_data_ && config_.sensor_transport_path == SensorTransportPath::FpgaRelay)) {
         document["simulation"] = true;
         document["detail"] = QStringLiteral("FPGA 协议模拟 · ") + document.value("detail").toString();
     }
@@ -712,10 +712,11 @@ QJsonObject SkyDeviceManager::fpgaStatus() const
 void SkyDeviceManager::ensureFpgaBackend()
 {
     if (fpga_backend_) return;
-    // Recreate the simulator on every reconnect; never fall back to USB after
-    // the first injected transport has been consumed.
-    auto transport = simulate_fpga_ ? Ground::Devices::makeFpgaUsbSimulator(
-        nullptr, Ground::Devices::FpgaSimulatorStartup::Idle, Ground::Devices::FpgaSimulatorFirmware::SkySimulation, simulate_mode_) : std::move(fpga_test_transport_);
+    auto transport = std::move(fpga_test_transport_);
+    if (!transport && (simulate_fpga_ || simulate_data_)) {
+        transport = Ground::Devices::makeFpgaUsbSimulator(nullptr, Ground::Devices::FpgaSimulatorStartup::Idle,
+            Ground::Devices::FpgaSimulatorFirmware::SkySimulation, simulate_mode_);
+    }
     fpga_backend_ = std::make_unique<SkyFpgaBackend>(std::move(transport));
     fpga_backend_->setConfiguration(config_.fpga.configuration);
     connect(fpga_backend_.get(), &SkyFpgaBackend::statusChanged, this, [this](QJsonObject document) {
@@ -765,7 +766,7 @@ void SkyDeviceManager::submitFpgaControl(QJsonObject operation, SkyFpgaBackend::
                 emit fpgaConfigurationApplied();
             }
         }
-        if (simulate_fpga_) document["simulation"] = true;
+        if (simulate_fpga_ || (simulate_data_ && config_.sensor_transport_path == SensorTransportPath::FpgaRelay)) document["simulation"] = true;
         completion(code, error, document);
     }, correlationId, sessionId);
 }
