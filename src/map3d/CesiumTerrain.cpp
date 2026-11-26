@@ -199,7 +199,7 @@ private:
         const osgEarth::TileKey& key, osgEarth::ProgressCallback* progress) const override
     {
         const int z = int(key.getLOD()), x = int(key.getTileX());
-        if (z > 19 || shouldDeferDownload() || (progress && progress->isCanceled())) return {};
+        if (z > 19 || shouldDeferDownload(key.getExtent()) || (progress && progress->isCanceled())) return {};
         ScopedMapLoadTask loadTask(MapLoadCategory::Dem);
         const int y = (1 << z) - 1 - int(key.getTileY());
         QByteArray rejected;

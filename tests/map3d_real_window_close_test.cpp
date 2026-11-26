@@ -212,6 +212,22 @@ int main(int argc, char** argv)
         return view && view->hasEarthMap();
     }, 10000);
     require(view != nullptr, QStringLiteral("real OSG/osgEarth 3D view exists"));
+    const auto requireAlienOverlay = [](QWidget* widget, const QString& label) {
+        require(widget != nullptr, label + QStringLiteral(" exists"));
+        require(!widget->testAttribute(Qt::WA_NativeWindow) && widget->internalWinId() == 0,
+                label + QStringLiteral(" stays an alien widget for alpha RHI compositing over QOpenGLWidget"));
+        require(!widget->testAttribute(Qt::WA_TranslucentBackground),
+                label + QStringLiteral(" does not set WA_TranslucentBackground on a child widget"));
+    };
+    requireAlienOverlay(view, QStringLiteral("map3DView"));
+    requireAlienOverlay(window->findChild<QWidget*>(QStringLiteral("map3DCornerControls")),
+                        QStringLiteral("map3DCornerControls"));
+    requireAlienOverlay(window->findChild<QWidget*>(QStringLiteral("map3DLoadingProgressBubble")),
+                        QStringLiteral("map3DLoadingProgressBubble"));
+    requireAlienOverlay(window->findChild<QWidget*>(QStringLiteral("map3DNoticeBubble")),
+                        QStringLiteral("map3DNoticeBubble"));
+    requireAlienOverlay(view->findChild<QWidget*>(QStringLiteral("map3DTrajectoryInfoCard")),
+                        QStringLiteral("map3DTrajectoryInfoCard"));
     const auto startupDiagnostics = view->earthLoadDiagnostics();
     require(startupLoaded,
             QStringLiteral("lightweight startup map loads before selecting local detail: %1: %2")

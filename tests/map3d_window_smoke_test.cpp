@@ -870,10 +870,12 @@ int main(int argc, char** argv)
             "clearing manual overrides restores automatic degradation defaults");
 
     auto* cornerControls = window.findChild<QWidget*>(QStringLiteral("map3DCornerControls"));
-    require(cornerControls && cornerControls->testAttribute(Qt::WA_TranslucentBackground)
+    require(cornerControls
+                && !cornerControls->testAttribute(Qt::WA_TranslucentBackground)
+                && !cornerControls->testAttribute(Qt::WA_NativeWindow)
                 && !cornerControls->autoFillBackground()
                 && cornerControls->styleSheet().contains(QStringLiteral("background: transparent")),
-            "floating corner controls use transparent backing over the map");
+            "floating corner controls remain alien transparent overlays over the map");
 
     auto* mapStatus = statusLabel(window);
     require(mapStatus

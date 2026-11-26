@@ -15,10 +15,13 @@
 #include <QCache>
 #include <QDateTime>
 #include <QMutex>
+#include <QSemaphore>
 #include <QUrl>
 #include <algorithm>
 #include <cmath>
+#include <deque>
 #include <memory>
+#include <utility>
 #include <vector>
 
 namespace VaporView::Map3D::Detail {
@@ -52,31 +55,61 @@ private:
         return status;
     }
 
-    GDALDatasetUniquePtr openCell(int lat, int lon) const
+    static QString cellName(int lat, int lon)
     {
-        const QString cell = QStringLiteral("Copernicus_DSM_COG_10_%1%2_00_%3%4_00_DEM")
+        return QStringLiteral("Copernicus_DSM_COG_10_%1%2_00_%3%4_00_DEM")
             .arg(lat < 0 ? 'S' : 'N').arg(std::abs(lat), 2, 10, QLatin1Char('0'))
             .arg(lon < 0 ? 'W' : 'E').arg(std::abs(lon), 3, 10, QLatin1Char('0'));
+    }
+
+    GDALDatasetUniquePtr borrowCell(int lat, int lon, QString& outCell) const
+    {
+        outCell = cellName(lat, lon);
+        {
+            QMutexLocker poolLock(&cellPoolMutex_);
+            for (auto it = cellPool_.begin(); it != cellPool_.end(); ++it)
+            {
+                if (it->first == outCell)
+                {
+                    GDALDatasetUniquePtr ds = std::move(it->second);
+                    cellPool_.erase(it);
+                    return ds;
+                }
+            }
+        }
         {
             QMutexLocker lock(&retryMutex_);
-            const auto* retry = retryAfter_.object(cell);
+            const auto* retry = retryAfter_.object(outCell);
             if (retry && *retry > QDateTime::currentSecsSinceEpoch()) return {};
         }
-        const QString url = QStringLiteral("https://copernicus-dem-30m.s3.eu-central-1.amazonaws.com/%1/%1.tif").arg(cell);
+        const QString url = QStringLiteral("https://copernicus-dem-30m.s3.eu-central-1.amazonaws.com/%1/%1.tif").arg(outCell);
         const QByteArray path = "/vsicurl?empty_dir=yes&connecttimeout=4&timeout=10&url=" + QUrl::toPercentEncoding(url);
         GDALDatasetUniquePtr dataset(GDALDataset::Open(path.constData(), GDAL_OF_RASTER | GDAL_OF_READONLY));
         if (!dataset)
         {
             QMutexLocker lock(&retryMutex_);
-            retryAfter_.insert(cell, new qint64(QDateTime::currentSecsSinceEpoch() + 30));
+            retryAfter_.insert(outCell, new qint64(QDateTime::currentSecsSinceEpoch() + 30));
         }
         return dataset;
+    }
+
+    void returnCell(QString cell, GDALDatasetUniquePtr dataset) const
+    {
+        if (!dataset) return;
+        QMutexLocker poolLock(&cellPoolMutex_);
+        constexpr std::size_t kMaxPooledCells = 16;
+        while (cellPool_.size() >= kMaxPooledCells)
+        {
+            cellPool_.pop_front();
+        }
+        cellPool_.emplace_back(std::move(cell), std::move(dataset));
     }
 
     osgEarth::GeoHeightField createHeightFieldImplementation(const osgEarth::TileKey& key,
         osgEarth::ProgressCallback* progress) const override
     {
         using namespace osgEarth;
+        if (progress && progress->isCanceled()) return {};
         const auto& extent = key.getExtent();
         const auto cacheKey = Cache::makeCacheKey(key.str());
         static Threading::Gate<std::string> tileRequests;
@@ -89,7 +122,27 @@ private:
                 return GeoHeightField(field, extent);
         }
 
-        if (shouldDeferDownload()) return {};
+        if (shouldDeferDownload(extent)) return {};
+
+        // Limit simultaneous remote GDAL COG warps so mountain bursts cannot
+        // saturate GDAL's global raster cache mutex or starve the GUI thread,
+        // while letting off-screen queued tiles cancel within 25 ms.
+        while (!fetchSlots_.tryAcquire(1, 25))
+        {
+            if (progress && progress->isCanceled()) return {};
+        }
+        struct SlotReleaser {
+            QSemaphore& sem;
+            ~SlotReleaser() { sem.release(); }
+        } releaseSlot{fetchSlots_};
+
+        if (progress && progress->isCanceled()) return {};
+        if (cache_)
+        {
+            const auto cached = cache_->readObject(cacheKey, getReadOptions());
+            if (auto* field = cached.get<osg::HeightField>())
+                return GeoHeightField(field, extent);
+        }
 
         ScopedMapLoadTask loadTask(MapLoadCategory::Dem);
         // Copernicus registers heights at pixel centres. The first sample of
@@ -98,7 +151,18 @@ private:
         constexpr double lonMargin = 5.0 / 3600.0;
         const int south = std::max(-90, int(std::floor(extent.yMin() - latMargin)));
         const int east = std::min(179, int(std::floor(extent.xMax() + lonMargin)));
-        std::vector<GDALDatasetUniquePtr> datasets;
+        std::vector<std::pair<QString, GDALDatasetUniquePtr>> borrowed;
+        struct CellReturnGuard {
+            const OnlineCopernicusLayer* self;
+            std::vector<std::pair<QString, GDALDatasetUniquePtr>>& items;
+            ~CellReturnGuard()
+            {
+                for (auto& item : items)
+                {
+                    self->returnCell(std::move(item.first), std::move(item.second));
+                }
+            }
+        } returnGuard{this, borrowed};
         std::vector<GDALDatasetH> handles;
         bool complete = true;
         for (int lat = south; lat <= std::min(89, int(std::floor(extent.yMax()))); ++lat)
@@ -110,11 +174,12 @@ private:
                     loadTask.cancel();
                     return {};
                 }
-                auto dataset = openCell(lat, lon);
+                QString cell;
+                auto dataset = borrowCell(lat, lon, cell);
                 if (dataset)
                 {
                     handles.push_back(GDALDataset::ToHandle(dataset.get()));
-                    datasets.push_back(std::move(dataset));
+                    borrowed.emplace_back(std::move(cell), std::move(dataset));
                 }
                 else complete = false;
             }
@@ -188,6 +253,9 @@ private:
     osg::ref_ptr<osgEarth::CacheBin> cache_;
     mutable QMutex retryMutex_;
     mutable QCache<QString, qint64> retryAfter_{256};
+    mutable QMutex cellPoolMutex_;
+    mutable std::deque<std::pair<QString, GDALDatasetUniquePtr>> cellPool_;
+    mutable QSemaphore fetchSlots_{3};
 };
 
 } // namespace VaporView::Map3D::Detail

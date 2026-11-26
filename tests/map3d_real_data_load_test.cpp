@@ -245,14 +245,27 @@ void checkTerrainLevels(osgEarth::Map* map)
     require(fallbackTile->getTileKey().getLOD() == VaporView::Map3D::kTerrainMinLevel - 1
                 && fallbackTile->getHeightField()->getHeight(32, 32) > 4000.0f,
             QStringLiteral("deferred level 12 fallback inherits > 4000 m level-7 relief instead of 0 m"));
+    bool sawLocalizedMiss = false;
     for (const auto& layer : layers)
     {
         if (auto* online = dynamic_cast<VaporView::Map3D::Detail::OnlineTerrainLayer*>(layer.get()))
         {
-            online->resumeDownloads();
+            osgEarth::GeoExtent missedExtent = osgEarth::GeoExtent::INVALID;
+            if (online->resumeDownloads(&missedExtent))
+            {
+                require(missedExtent.isValid() && missedExtent.intersects(deferredKey.getExtent()),
+                        QStringLiteral("deferred online terrain tracks the localized missed extent instead of global invalidation"));
+                require(missedExtent.width() < 5.0 && missedExtent.height() < 5.0,
+                        QStringLiteral("deferred online terrain missed extent stays bounded to the panned area"));
+                sawLocalizedMiss = true;
+            }
+            osgEarth::GeoExtent clearedExtent = osgEarth::GeoExtent::INVALID;
+            require(!online->resumeDownloads(&clearedExtent) && !clearedExtent.isValid(),
+                    QStringLiteral("resuming online terrain clears recorded missed extent"));
             online->dirty();
         }
     }
+    require(sawLocalizedMiss, QStringLiteral("at least one online terrain layer recorded the deferred Tibetan tile extent"));
     pool->setMap(map);
 }
 

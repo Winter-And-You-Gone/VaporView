@@ -156,6 +156,11 @@ void initializeMap3DRuntime()
         setEnvironmentIfMissing("GDAL_DATA", gdalData);
         setEnvironmentIfMissing("PROJ_LIB", projData);
         setEnvironmentIfMissing("PROJ_DATA", projData);
+        setEnvironmentIfMissing("GDAL_HTTP_MULTIPLEX", QStringLiteral("YES"));
+        setEnvironmentIfMissing("GDAL_HTTP_MERGE_CONSECUTIVE_RANGES", QStringLiteral("YES"));
+        setEnvironmentIfMissing("GDAL_DISABLE_READDIR_ON_OPEN", QStringLiteral("EMPTY_DIR"));
+        setEnvironmentIfMissing("VSI_CACHE", QStringLiteral("TRUE"));
+        setEnvironmentIfMissing("VSI_CACHE_SIZE", QStringLiteral("33554432"));
         if (!pluginDir.isEmpty())
         {
             osgDB::Registry::instance()->getLibraryFilePathList().push_front(pluginDir.toStdString());

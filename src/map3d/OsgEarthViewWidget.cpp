@@ -91,6 +91,7 @@
 #include <limits>
 #include <mutex>
 #include <optional>
+#include <thread>
 
 namespace VaporView::Map3D {
 namespace {
@@ -221,7 +222,6 @@ public:
         setObjectName(QStringLiteral("map3DTrajectoryInfoCard"));
         setAccessibleName(mapText(QStringLiteral("轨迹点详细信息")));
         setAttribute(Qt::WA_ShowWithoutActivating);
-        setAttribute(Qt::WA_TranslucentBackground, true);
         setAttribute(Qt::WA_Hover, true);
         setAutoFillBackground(false);
         setFocusPolicy(Qt::NoFocus);
@@ -623,8 +623,11 @@ void configureHighResolutionTerrain(osgEarth::MapNode* mapNode)
     terrainOptions.setTilePixelSize(kTerrainTilePixelSize);
     terrainOptions.setScreenSpaceError(0.0f);
     terrainOptions.setHeightFieldSkirtRatio(0.02f);
-    terrainOptions.setProgressive(false);
-    terrainOptions.setConcurrency(12u);
+    terrainOptions.setProgressive(true);
+    terrainOptions.setMergesPerFrame(2u);
+    terrainOptions.setMaxTilesToUnloadPerFrame(4u);
+    const unsigned hwThreads = (std::max)(2u, std::thread::hardware_concurrency());
+    terrainOptions.setConcurrency(std::clamp(hwThreads / 2u, 2u, 4u));
     terrainOptions.setMorphImagery(false);
     mapNode->setScreenSpaceError(0.0f);
 
@@ -952,15 +955,30 @@ OsgEarthViewWidget::OsgEarthViewWidget(QWidget* parent, bool deferRendering)
         if (!map_node_ || shutdown_) return;
         auto* map = map_node_->getMap();
         std::vector<const osgEarth::Layer*> refresh;
+        osgEarth::GeoExtent missedExtent = osgEarth::GeoExtent::INVALID;
+        bool hasUnboundedMiss = false;
         osgEarth::ElevationLayerVector layers;
         map->getLayers(layers);
         for (const auto& layer : layers)
         {
+            osgEarth::GeoExtent layerExtent = osgEarth::GeoExtent::INVALID;
             if (auto* online = dynamic_cast<Detail::OnlineTerrainLayer*>(layer.get());
-                online && online->resumeDownloads() && online->isOpen())
+                online && online->resumeDownloads(&layerExtent) && online->isOpen())
             {
                 online->dirty();
                 refresh.push_back(online);
+                if (!layerExtent.isValid())
+                {
+                    hasUnboundedMiss = true;
+                }
+                else if (!missedExtent.isValid())
+                {
+                    missedExtent = layerExtent;
+                }
+                else
+                {
+                    missedExtent.expandToInclude(layerExtent);
+                }
             }
         }
         if (!refresh.empty())
@@ -969,9 +987,14 @@ OsgEarthViewWidget::OsgEarthViewWidget(QWidget* parent, bool deferRendering)
             // so tiles built while online DEM was deferred re-query 30 m data.
             if (auto* pool = map->getElevationPool())
                 pool->setMap(map);
-            // Reload just elevation. The current imagery stays on screen.
+            // Reload only the deferred region's elevation so resident tiles outside
+            // the newly visited area do not trigger another full-globe rebuild.
             if (auto* engine = map_node_->getTerrainEngine())
-                engine->invalidateRegion(refresh, osgEarth::GeoExtent::INVALID, kTerrainMinLevel, INT_MAX);
+                engine->invalidateRegion(
+                    refresh,
+                    hasUnboundedMiss ? osgEarth::GeoExtent::INVALID : missedExtent,
+                    kTerrainMinLevel,
+                    INT_MAX);
         }
     });
     frameTimer_.setSingleShot(true);
@@ -1002,8 +1025,9 @@ OsgEarthViewWidget::OsgEarthViewWidget(QWidget* parent, bool deferRendering)
         const bool active = loading || (viewer_ && viewer_->getRequestContinousUpdate())
             || !camera_activity_clock_.isValid()
             || camera_activity_clock_.elapsed() < 1000;
-        // Include drawing/composition time in the frame budget; never queue a backlog.
-        const int delay = active ? (std::max)(0, 16 - static_cast<int>(last_frame_ms_ + present_ms_)) : 100;
+        // Include drawing/composition time in the frame budget and leave a small
+        // event-loop slice so mouse/wheel/UI events stay responsive under DEM bursts.
+        const int delay = active ? (std::max)(4, 16 - static_cast<int>(last_frame_ms_ + present_ms_)) : 100;
         idle_rendering_ = !active;
         frameTimer_.start(delay);
         if (!performance_publish_clock_.isValid() || performance_publish_clock_.elapsed() >= 500)
@@ -1406,10 +1430,9 @@ void OsgEarthViewWidget::loadEarthFilePreservingViewAsync(const QString& earthPa
 
 void OsgEarthViewWidget::prioritizeSatelliteImagery()
 {
-    if (!map_node_ || !layerVisible(Map3DLayer::DigitalElevation) ||
-        !layerVisible(Map3DLayer::SatelliteImagery)) return;
+    if (!map_node_ || !layerVisible(Map3DLayer::DigitalElevation)) return;
     auto* map = map_node_->getMap();
-    if (!map->getLayerByName(kTiandituSatelliteLayerName)) return;
+    if (!map) return;
     if (!online_terrain_timer_.isActive())
     {
         osgEarth::ElevationLayerVector layers;
@@ -2880,7 +2903,8 @@ void OsgEarthViewWidget::mouseMoveEvent(QMouseEvent* event)
         graphics_window_->getEventQueue()->mouseMotion(
             static_cast<float>(event->position().x() * dpr),
             static_cast<float>(event->position().y() * dpr));
-        update();
+        if (!frame_pending_presentation_ || !present_clock_.isValid() || present_clock_.elapsed() >= 50)
+            update();
         event->accept();
         return;
     }
@@ -2903,7 +2927,8 @@ void OsgEarthViewWidget::wheelEvent(QWheelEvent* event)
                 ? osgGA::GUIEventAdapter::SCROLL_UP
                 : osgGA::GUIEventAdapter::SCROLL_DOWN;
         graphics_window_->getEventQueue()->mouseScroll(motion);
-        update();
+        if (!frame_pending_presentation_ || !present_clock_.isValid() || present_clock_.elapsed() >= 50)
+            update();
         event->accept();
         return;
     }

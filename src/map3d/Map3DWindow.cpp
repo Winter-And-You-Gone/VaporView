@@ -895,10 +895,8 @@ protected:
     void paintEvent(QPaintEvent*) override
     {
         const bool dark = VaporView::isDarkThemeEnabled();
-        QColor bg = VaporView::appThemeColor(VaporView::AppThemeColor::SurfaceRaised, dark);
-        bg.setAlpha(dark ? 236 : 242);
-        QColor border = VaporView::appThemeColor(VaporView::AppThemeColor::BorderStrong, dark);
-        border.setAlpha(dark ? 190 : 225);
+        const QColor bg = VaporView::appThemeColor(VaporView::AppThemeColor::SurfaceRaised, dark);
+        const QColor border = VaporView::appThemeColor(VaporView::AppThemeColor::BorderStrong, dark);
 
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
@@ -982,7 +980,6 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     map_notice_label_ = new MapNoticeBubbleLabel(centralWidget());
     map_notice_label_->setObjectName(QStringLiteral("map3DNoticeBubble"));
     map_notice_label_->setAttribute(Qt::WA_TransparentForMouseEvents);
-    map_notice_label_->setAttribute(Qt::WA_TranslucentBackground);
     map_notice_label_->setAutoFillBackground(false);
     map_notice_label_->setWordWrap(true);
     map_notice_label_->setAlignment(Qt::AlignCenter);
@@ -995,7 +992,6 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     map_loading_bubble_ = new MapLoadingProgressBubble(centralWidget());
     map_loading_bubble_->setObjectName(QStringLiteral("map3DLoadingProgressBubble"));
     map_loading_bubble_->setAttribute(Qt::WA_TransparentForMouseEvents);
-    map_loading_bubble_->setAttribute(Qt::WA_TranslucentBackground);
     map_loading_bubble_->setAutoFillBackground(false);
     auto* loadingLayout = new QVBoxLayout(map_loading_bubble_);
     loadingLayout->setContentsMargins(12, 8, 12, 8);
@@ -1728,10 +1724,6 @@ void Map3DWindow::startRendering()
     render_host_ = new QWidget;
     render_host_->setCursor(Qt::ArrowCursor);
     render_host_->installEventFilter(this);
-#ifdef Q_OS_WIN
-    render_host_->setAttribute(Qt::WA_DontCreateNativeAncestors);
-    render_host_->setAttribute(Qt::WA_NativeWindow);
-#endif
     auto* viewLayout = new QVBoxLayout(render_host_);
     viewLayout->setContentsMargins(0, 0, 0, 0);
     view_ = new OsgEarthViewWidget(render_host_, true);
@@ -1739,7 +1731,10 @@ void Map3DWindow::startRendering()
     view_->setCursor(Qt::ArrowCursor);
     view_->installEventFilter(this);
     viewLayout->addWidget(view_);
-    render_stack_->addWidget(render_host_);
+    // Reparent overlays into view_ before render_host_ becomes a native child
+    // HWND in render_stack_, so Qt does not promote those sibling overlays (and
+    // transitively view_ and TrajectorySampleInfoCard) into native Win32 child
+    // HWNDs whose alpha=0 corners/gaps render as opaque black.
     map_notice_label_->setParent(view_);
     if (map_loading_bubble_)
     {
@@ -1749,6 +1744,11 @@ void Map3DWindow::startRendering()
     {
         controls->setParent(view_);
     }
+#ifdef Q_OS_WIN
+    render_host_->setAttribute(Qt::WA_DontCreateNativeAncestors);
+    render_host_->setAttribute(Qt::WA_NativeWindow);
+#endif
+    render_stack_->addWidget(render_host_);
     configureViewSignals();
     // Showing the native GL child under a stationary pointer can leave a
     // previous window's or resize handle's diagonal resize cursor cached.
@@ -1835,7 +1835,6 @@ void Map3DWindow::createLayerMenu(QToolBar* toolbar)
 
     auto* controls = new QWidget(centralWidget());
     controls->setObjectName(QStringLiteral("map3DCornerControls"));
-    controls->setAttribute(Qt::WA_TranslucentBackground);
     controls->setAutoFillBackground(false);
     auto* layout = new QVBoxLayout(controls);
     layout->setContentsMargins(0, 0, 0, 0);
