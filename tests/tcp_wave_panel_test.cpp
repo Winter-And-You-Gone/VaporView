@@ -5,6 +5,7 @@
 #include "ground/widgets/SegmentedSwitchButton.h"
 #include "LogService.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
+#include "shared/theme/SingleLevelPopupComboBox.h"
 
 #include <QApplication>
 #include <QAction>
@@ -541,7 +542,21 @@ void testPeakPlotModeSwitch()
     auto* plot=panel.findChild<QWidget*>("tcpWavePeakTrendPlot");
     require(mode&&mode->switchChecked()&&mode->leftSegmentText()==QStringLiteral("折线")&&mode->rightSegmentText()==QStringLiteral("散点"),
             "home trend capsule shows the current scatter mode");
+    auto *secondMode = panel.findChild<VaporView::Ground::Widgets::SegmentedSwitchButton *>("tcpWavePeakPlotModeSwitch1");
+    auto *secondPlot = panel.findChild<QWidget *>("tcpWavePeakTrendPlot1");
+    require(secondMode && secondPlot && secondMode->switchChecked(), "second lane has its own scatter switch");
+    for (quint32 cycle = 1; cycle <= 4; ++cycle)
+        panel.setFpgaSecondHarmonicPeak(0x31, cycle, cycle, cycle % 2 ? 12 : 21, false);
+    const auto secondScatter = secondPlot->grab().toImage();
+    secondMode->click();
+    QApplication::processEvents();
+    require(!secondMode->switchChecked() && mode->switchChecked() && secondPlot->grab().toImage() != secondScatter,
+            "second lane changes to a line plot independently");
     const auto values=panel.testPeakValues();
+    auto *secondClear = secondPlot->parentWidget()->findChild<QPushButton *>("compactTcpButton");
+    require(secondClear, "second lane has a clear button");
+    secondClear->click();
+    require(panel.testPeakValues(1).isEmpty() && panel.testPeakValues() == values, "clearing the second trend preserves the first");
     const auto scatter=plot->grab().toImage();
     mode->click();QApplication::processEvents();
     require(!mode->switchChecked()&&mode->accessibleName().endsWith(QStringLiteral("折线"))&&plot->grab().toImage()!=scatter,
@@ -579,7 +594,7 @@ void testNormalizedWaveformGapsRender()
 
 void testFpgaPeakHeaderStaysStable()
 {
-    TcpWavePanel panel; panel.setFpgaMode(true); panel.resize(1200,900); panel.show();
+    TcpWavePanel panel; panel.setFpgaMode(true); panel.resize(2200,900); panel.show();
     panel.findChild<QAction *>("tcpWaveDisplayShowAllMenuAction")->trigger();
     auto *info=panel.findChild<QLabel*>("fpgaMonitorPeakInfo");
     auto *valueLabel=panel.findChild<QLabel*>("fpgaMonitorPeakValue");
@@ -704,12 +719,23 @@ void testFpgaWaveDisplaySelection()
         menu->hide();
         QApplication::processEvents();
     };
+    require(!panel.findChild<QComboBox *>("fpgaMonitorChannelCombo"), "FPGA channels have no selector");
     const auto checkPlots = [&](int mask) {
+        for (int index = 0; index < 4; ++index) {
+            auto *right = panel.findChild<QWidget *>(plots[index]->objectName() + QStringLiteral("1"));
+            const bool shown = panel.isFpgaMode() && (mask & (1 << index));
+            require(right && right->isVisible() == shown, "second FPGA channel follows every display selection");
+            if (shown) {
+                const auto a = plots[index]->parentWidget()->geometry(), b = right->parentWidget()->geometry();
+                require(a.top() == b.top() && a.right() < b.left() && std::abs(a.width() - b.width()) <= 1,
+                        "each selected harmonic or peak occupies matching cells on the same row");
+            }
+        }
         for (int index = 0; index < plots.size(); ++index)
             require(plots[index] && plots[index]->isVisible() == bool(mask & (1 << index)),
                     "selected waveform subset matches actual plot visibility");
         require(panel.hasVisibleWaveDisplay() == (mask != 0), "empty selection reports no visible plots");
-        require(panel.usesExpandedPanelHeight() == (mask && (mask & (mask - 1))),
+        require(panel.usesExpandedPanelHeight() == (panel.isFpgaMode() ? mask != 0 : bool(mask && (mask & (mask - 1)))),
                 "expanded height follows the number of selected graphs");
     };
     clickRow(actions[0]); // Remember a different selection for direct mode.
@@ -728,7 +754,7 @@ void testFpgaWaveDisplaySelection()
     const QString showAll = QStringLiteral("tcpWaveDisplayShowAllMenuAction");
     clickRow(showAll);
     checkPlots(255);
-    require(equalRow(0, 1) && equalRow(4, 6) && equalRow(5, 7), "both water channels stay aligned in the all-graphs view");
+    require(equalRow(4, 6) && equalRow(5, 7), "both water channels stay aligned in the all-graphs view");
     const int allHeight = panel.preferredPanelHeight();
     int acquisitionRequests = 0;
     QObject::connect(&panel, &TcpWavePanel::fpgaAcquisitionRequested, &panel,
@@ -833,19 +859,19 @@ void testFpgaWaveDisplaySelection()
     require(plots[4]->property("sampleCount").toInt() == 2 && plots[5]->property("sampleCount").toInt() == 2,
             "a timely later height completes the profile point without duplicating concentration");
     panel.appendWaterSample(1, "other", now, 4.0, 60.0);
-    panel.findChild<QComboBox *>("fpgaMonitorChannelCombo")->setCurrentIndex(1);
     require(plots[4]->property("sampleCount").toInt() == 2 && plots[5]->property("sampleCount").toInt() == 2 &&
             plots[6]->property("sampleCount").toInt() == 1 && plots[7]->property("sampleCount").toInt() == 1,
-            "both water channels are independent of the harmonic selector");
+            "both water channels display independent samples");
     auto *profile = plots[5];
     auto *summary = panel.findChild<QLabel *>("waterProfileSummary");
     auto *profileCard = profile->parentWidget();
-    auto *resolutionMenu = profileCard->findChild<VaporView::SingleLevelPopupMenu *>();
-    auto *resolutionButton = qobject_cast<QPushButton *>(resolutionMenu ? resolutionMenu->parentWidget() : nullptr);
+    auto *resolution = dynamic_cast<VaporView::SingleLevelPopupComboBox *>(profileCard->findChild<QComboBox *>("waterProfileResolution0"));
+    require(resolution && resolution->currentData().toInt() == 5 && resolution->count() == 5, "profile defaults to five meters");
+    auto *resolutionMenu = resolution->popupMenu();
     QPushButton *clearProfile = nullptr;
     for (auto *candidate : profileCard->findChildren<QPushButton *>())
         if (candidate->text() == QStringLiteral("清空")) clearProfile = candidate;
-    require(summary && resolutionButton && clearProfile, "profile controls available");
+    require(summary && resolutionMenu && clearProfile, "profile controls available");
     QPushButton *clearOther = nullptr;
     for (auto *button : plots[7]->parentWidget()->findChildren<QPushButton *>())
         if (button->text() == QStringLiteral("清空")) clearOther = button;
@@ -854,15 +880,14 @@ void testFpgaWaveDisplaySelection()
     panel.appendWaterSample(1, "other", now, 4.0, 60.0);
     require(plots[6]->property("sampleCount").toInt() == 1 && plots[7]->property("layerCount").toInt() == 0,
             "manual clear preserves concentration and excludes republished current reading");
-    panel.findChild<QComboBox *>("fpgaMonitorChannelCombo")->setCurrentIndex(0);
     require(profile->property("layerCount").toInt() == 2, "manual clear is channel-local");
     const auto chooseResolution = [&](int meters) {
-        resolutionButton->click();
+        resolution->showPopup();
         require(waitUntil([&] { return resolutionMenu->isVisible(); }), "resolution popup opens");
         for (auto *action : resolutionMenu->actions()) if (action->text() == QStringLiteral("%1 m").arg(meters)) {
             action->trigger();
             resolutionMenu->hide();
-            require(resolutionButton->text() == action->text(), "resolution selection updates button");
+            require(resolution->currentData().toInt() == meters, "resolution selection updates the combo");
             return;
         }
         require(false, "resolution option exists");
@@ -1016,49 +1041,51 @@ int main(int argc, char **argv)
         require(panel.testFirstHarmonicSamples()==QVector<float>({20,30,10}),"ADC updates cannot replace the H1 graph");
         require(!raw->property("xAxisTimeMode").toBool()&&panel.testRawXAxisLabel()=="2",
             "FPGA x axis uses sample position rather than invented wall-clock time");
-        auto *channel=panel.findChild<QComboBox*>("fpgaMonitorChannelCombo");
+        require(!panel.findChild<QComboBox*>("fpgaMonitorChannelCombo"), "both FPGA channels are displayed without a selector");
         require(!panel.findChild<QComboBox*>("fpgaMonitorComponentCombo")&&panel.testHarmonicSamples()==QVector<float>({2.5,2,4}),
             "FPGA displays the validated normalized samples rather than raw H2 amplitudes");
         panel.setFpgaSecondHarmonicPeak(0x30,1,100,4,false);
         panel.setFpgaSecondHarmonicPeak(0x30,1,100,4,false);
         panel.setEnglish(true);panel.setEnglish(false);
         require(panel.testPeakValues()==QVector<float>({4}),"duplicate cycles and language refresh do not add peaks");
-        channel->setCurrentIndex(1);
-        require(raw->property("sampleCount").toInt()==0&&h2->property("sampleCount").toInt()==0&&dlia->property("sampleCount").toInt()==0&&peaks->property("sampleCount").toInt()==0,
-            "channel switch shows only that channel's waveforms and peak history");
+        auto *otherH1 = panel.findChild<QWidget *>("tcpWaveRawPlot1");
+        auto *otherH2 = panel.findChild<QWidget *>("fpgaWaveH2Plot1");
+        auto *otherNorm = panel.findChild<QWidget *>("tcpWaveHarmonicPlot1");
+        auto *otherTrend = panel.findChild<QWidget *>("tcpWavePeakTrendPlot1");
+        require(otherH1 && otherH2 && otherNorm && otherTrend, "home has a second FPGA lane");
+        require(otherH1->property("sampleCount").toInt()==0&&otherH2->property("sampleCount").toInt()==0&&otherNorm->property("sampleCount").toInt()==0&&otherTrend->property("sampleCount").toInt()==0,
+            "the second lane starts empty while the first retains its data");
         panel.setFpgaWaveform(0x31,{{1,2},{3,4},{5,6},{7,8},{std::hypot(5,7)/std::hypot(1,3),std::hypot(6,8)/std::hypot(2,4)}},
             {"I1","Q1","I2","Q2","H2/max(H1)"},"IQ complete",2);
-        require(panel.testHarmonicSamples().size()==2&&std::abs(panel.testHarmonicSamples().first()-std::hypot(5,7)/std::hypot(1,3))<0.0001,
+        require(panel.testHarmonicSamples(1).size()==2&&std::abs(panel.testHarmonicSamples(1).first()-std::hypot(5,7)/std::hypot(1,3))<0.0001,
             "IQ-only format displays the normalized harmonic magnitudes");
-        require(panel.testFirstHarmonicSamples().size()==2&&panel.testSecondHarmonicSamples().size()==2
-            &&std::abs(panel.testFirstHarmonicSamples().first()-std::hypot(1,3))<0.0001
-            &&std::abs(panel.testSecondHarmonicSamples().first()-std::hypot(5,7))<0.0001,
+        require(panel.testFirstHarmonicSamples(1).size()==2&&panel.testSecondHarmonicSamples(1).size()==2
+            &&std::abs(panel.testFirstHarmonicSamples(1).first()-std::hypot(1,3))<0.0001
+            &&std::abs(panel.testSecondHarmonicSamples(1).first()-std::hypot(5,7))<0.0001,
             "IQ-only H1 and H2 graphs display magnitudes of their respective quadrature pairs");
         panel.setFpgaWaveform(0x31,{{1,2,3,4},{8,4,1,2},{2,1,0.25,0.5}},
             {"H1","H2","H2/max(H1)"},"complete",4);
-        require(panel.testFirstHarmonicSamples()==QVector<float>({3,4,1,2})
-            &&panel.testSecondHarmonicSamples()==QVector<float>({1,2,8,4})
-            &&panel.testHarmonicSamples()==QVector<float>({0.25,0.5,2,1}),
+        require(panel.testFirstHarmonicSamples(1)==QVector<float>({3,4,1,2})
+            &&panel.testSecondHarmonicSamples(1)==QVector<float>({1,2,8,4})
+            &&panel.testHarmonicSamples(1)==QVector<float>({0.25,0.5,2,1}),
             "channel 1 centers a boundary H2 peak and shifts both companion traces identically");
         panel.setFpgaSecondHarmonicPeak(0x31,2,200,10,true);
-        require(panel.findChild<QLabel*>("fpgaMonitorPeakInfo")->text()=="预览峰值 · 最新："
-            &&panel.findChild<QLabel*>("fpgaMonitorPeakValue")->text()=="10","bounded previews show the latest peak and retain the preview label");
+        require(panel.findChild<QLabel*>("fpgaMonitorPeakInfo1")->text()=="预览峰值 · 最新："
+            &&panel.findChild<QLabel*>("fpgaMonitorPeakValue1")->text()=="10","bounded previews show the latest peak and retain the preview label");
         panel.setFpgaWaveform(0x31,{{},{},{},{},{}},{"I1","Q1","I2","Q2","H2/max(H1)"},"incomplete",2);
-        require(raw->property("sampleCount").toInt()==0&&h2->property("sampleCount").toInt()==0
-            &&dlia->property("sampleCount").toInt()==0,"invalid FPGA cycle clears all three harmonic waveforms");
+        require(otherH1->property("sampleCount").toInt()==0&&otherH2->property("sampleCount").toInt()==0
+            &&otherNorm->property("sampleCount").toInt()==0,"invalid FPGA cycle clears all three harmonic waveforms");
         panel.setFpgaSecondHarmonicPeak(0x31,3,300,std::numeric_limits<double>::quiet_NaN(),false);
-        require(panel.testPeakValues().size()==2&&std::isnan(panel.testPeakValues().last()),"invalid cycles leave a gap in the trend");
-        require(panel.findChild<QLabel*>("fpgaMonitorPeakValue")->text()==QStringLiteral("—"), "invalid latest peaks never retain the previous numeric result");
-        channel->setCurrentIndex(0);
-        require(panel.testPeakValues()==QVector<float>({4}),"switching back restores the independent channel trend");
+        require(panel.testPeakValues(1).size()==2&&std::isnan(panel.testPeakValues(1).last()),"invalid cycles leave a gap in the trend");
+        require(panel.findChild<QLabel*>("fpgaMonitorPeakValue1")->text()==QStringLiteral("—"), "invalid latest peaks never retain the previous numeric result");
+        require(panel.testPeakValues()==QVector<float>({4}),"the first lane still shows its own peak history");
         QMetaObject::invokeMethod(&panel,"onClearPeakPlotClicked");
         panel.setEnglish(true);panel.setEnglish(false);
         panel.setFpgaSecondHarmonicPeak(0x30,1,100,4,false);
         require(panel.testPeakValues().isEmpty(),"cleared peaks are not replayed by display refresh or a duplicate cycle");
-        channel->setCurrentIndex(1);
-        require(panel.testPeakValues().size()==2,"clearing one channel preserves the other channel's history");
+        require(panel.testPeakValues(1).size()==2,"clearing one channel preserves the other channel's history");
         panel.setRemoteSkyMode(true);
-        require(panel.testHarmonicSamples().isEmpty()&&panel.testPeakValues().isEmpty(),"changing data hosts discards the previous FPGA waveforms and trends");
+        require(panel.testHarmonicSamples(1).isEmpty()&&panel.testPeakValues(1).isEmpty(),"changing data hosts discards the previous FPGA waveforms and trends");
         panel.setRemoteSkyMode(false);
         panel.injectRemoteRawSignalFrame(1,{99,99});panel.testFlushLiveDisplay();
         require(raw->property("sampleCount").toInt()==0,"TCP data cannot overwrite FPGA data");
@@ -1067,7 +1094,7 @@ int main(int argc, char **argv)
         panel.setFpgaWaveform(0x21,{{1,2,3}},{"ADC"},"Simulated RAW",3);
         panel.setFpgaSecondHarmonicPeak(0x31,10,1000,23,false);
         panel.setUiTestMode(false);
-        require(raw->property("sampleCount").toInt()==0&&peaks->property("sampleCount").toInt()==0,
+        require(otherH1->property("sampleCount").toInt()==0&&otherTrend->property("sampleCount").toInt()==0,
             "leaving UI test mode discards simulated FPGA waveforms and peaks");
         panel.setFpgaMode(false);
         require(!h2->isVisible()&&panel.testSecondHarmonicSamples().isEmpty(),"direct mode hides and clears the FPGA H2 graph");

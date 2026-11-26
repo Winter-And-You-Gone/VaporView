@@ -5,6 +5,9 @@
 #include <QPainter>
 #include <QWidget>
 
+#include <algorithm>
+#include <cmath>
+
 namespace VaporView::WavePlotFrame
 {
 struct PlotTheme
@@ -36,7 +39,13 @@ inline PlotTheme plotThemeFor(const QWidget *widget)
     };
 }
 
-inline void drawGrid(QPainter &painter, const QRectF &plotRect, int intervals, const PlotTheme &theme)
+inline int adaptiveYIntervals(qreal plotHeight, int labelHeight, int minIntervals = 3, int maxIntervals = 12)
+{
+    const qreal step = std::max<qreal>(34.0, static_cast<qreal>(std::max(10, labelHeight)) * 2.2);
+    return std::clamp(static_cast<int>(std::floor(plotHeight / step)), minIntervals, maxIntervals);
+}
+
+inline void drawGrid(QPainter &painter, const QRectF &plotRect, int intervals, const PlotTheme &theme, int yIntervals = 6)
 {
     painter.setPen(QPen(theme.grid, 1));
     for (int i = 0; i <= intervals; ++i)
@@ -44,9 +53,10 @@ inline void drawGrid(QPainter &painter, const QRectF &plotRect, int intervals, c
         const qreal x = plotRect.left() + plotRect.width() * i / static_cast<qreal>(intervals);
         painter.drawLine(QPointF(x, plotRect.top()), QPointF(x, plotRect.bottom()));
     }
-    for (int i = 0; i <= 6; ++i)
+    const int horizontalIntervals = std::max(1, yIntervals);
+    for (int i = 0; i <= horizontalIntervals; ++i)
     {
-        const qreal y = plotRect.top() + plotRect.height() * i / 6.0;
+        const qreal y = plotRect.top() + plotRect.height() * i / static_cast<qreal>(horizontalIntervals);
         painter.drawLine(QPointF(plotRect.left(), y), QPointF(plotRect.right(), y));
     }
 

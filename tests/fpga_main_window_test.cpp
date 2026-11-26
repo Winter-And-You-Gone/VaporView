@@ -1,4 +1,6 @@
 #include "shared/theme/SingleLevelPopupMenu.h"
+#include "shared/theme/SingleLevelPopupComboBox.h"
+#include "ground/wave/WaveformRowWidgets.h"
 #include <QScrollArea>
 #include <QGroupBox>
 #include "test_settings_sandbox.h"
@@ -2224,7 +2226,11 @@ static void harmonicHomeGraphs()
     for (int scale : {100, 130}) {
         qApp->setFont(standardFont);
         settings.setValue("font_scale_percent", scale);
-        MainWindow window;
+        IndependentCalibrationTest::Rig calibration;
+        const auto file = calibration.complete();
+        calibration.service->selectFile(file.filename);
+        calibration.service->synchronize();
+        MainWindow window(nullptr, calibration.service);
         QMetaObject::invokeMethod(&window, "onDataSourceModeChanged", Q_ARG(int, 0));
         auto *path = window.findChild<QComboBox*>("deviceSensorTransportPathCombo");
         path->setCurrentIndex(path->findData("fpga_relay"));
@@ -2250,13 +2256,28 @@ static void harmonicHomeGraphs()
         auto *wavePage = window.findChild<QScrollArea *>("waveformMonitorPage");
         QPushButton *nav = nullptr;
         for (auto *button : window.findChildren<QPushButton *>("appSidebarButton"))
-            if (button->property("_vv_sidebar_icon_name").toString() == "audio-waveform") nav = button;
+            if (button->accessibleName() == QStringLiteral("波形") || button->accessibleName() == QStringLiteral("Waveforms")) nav = button;
         require(wavePage && nav, "waveforms page and navigation exist");
         nav->click();
         require(stack->currentWidget() == wavePage, "waveform navigation opens the page");
-        require(wavePage->findChildren<QGroupBox *>("sensorGroupBox").size() == 14,
-                "waveforms page has seven chart cards in each channel");
-        monitor->setWaterCalibration("test", "test.vcal", "ppmv", false, {});
+        const auto rows = wavePage->findChildren<QWidget *>("waveformPageRow");
+        require(rows.size() == 7 && wavePage->findChildren<QGroupBox *>().isEmpty(), "seven waveform rows replace individual plot cards");
+        for (auto *row : rows) {
+            require(dynamic_cast<VaporView::Ground::Wave::VerticalRowLabel *>(row->findChild<QWidget *>("waveformRowLabel")) &&
+                    dynamic_cast<VaporView::Ground::Wave::RowResizeHandle *>(row->findChild<QWidget *>("waveformRowResizeHandle")),
+                    "each row has a vertical label and its own resize handle");
+        }
+        for (bool english : {true, false}) {
+            monitor->setEnglish(english);
+            const QStringList headings = english
+                ? QStringList{"ADC 0 / DLIA 0 · 1368 nm (In-situ)", "ADC 1 / DLIA 1 · 816 nm (Remote)"}
+                : QStringList{"ADC 0 / DLIA 0 · 1368 nm（原位）", "ADC 1 / DLIA 1 · 816 nm（遥测）"};
+            for (QWidget *view : {static_cast<QWidget *>(monitor), static_cast<QWidget *>(wavePage)}) {
+                QStringList actual;
+                for (auto *label : view->findChildren<QLabel *>("sectionTitleLabel")) actual << label->text();
+                require(actual.contains(headings[0]) && actual.contains(headings[1]), "both views identify both channel wavelengths and roles");
+            }
+        }
         for (int channel = 0; channel < 2; ++channel) {
             wave.source = 0x30 + channel;
             page->updateWaveform(wave);
@@ -2277,13 +2298,53 @@ static void harmonicHomeGraphs()
             }
         }
 
+        // Exercise the drag and paint paths for all three plot widget types.
+        for (const auto &plotName : {"wavePageRawChannel0", "wavePageTrendChannel0", "waterProfilePlot"}) {
+            auto *plot = wavePage->findChild<QWidget *>(plotName);
+            auto *row = plot->parentWidget()->parentWidget();
+            auto *handle = row->findChild<QWidget *>("waveformRowResizeHandle");
+            require(handle && rows.contains(row), "plot belongs to a resizable waveform row");
+            const int initialHeight = row->height();
+            wavePage->ensureWidgetVisible(handle);
+            QApplication::processEvents();
+            const int smallHeight = plot->height();
+            plot->grab();
+            const int smallTicks = plot->property("yTickCount").toInt();
+            const QPointF local(handle->rect().center()), global(handle->mapToGlobal(handle->rect().center()));
+            QMouseEvent press(QEvent::MouseButtonPress, local, global, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+            QApplication::sendEvent(handle, &press);
+            const QPointF destination = global + QPointF(0, 420 - initialHeight);
+            QMouseEvent move(QEvent::MouseMove, local, destination, Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+            QApplication::sendEvent(handle, &move);
+            QMouseEvent release(QEvent::MouseButtonRelease, local, destination, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+            QApplication::sendEvent(handle, &release);
+            QApplication::processEvents();
+            plot->grab();
+            require(row->height() == 420 && plot->height() > smallHeight && smallTicks >= 4 &&
+                    plot->property("yTickCount").toInt() > smallTicks, "dragging increases plot height and adds vertical scale labels");
+            for (auto *neighbor : rows) if (neighbor != row) require(neighbor->height() == initialHeight, "drag keeps neighboring row heights stable");
+            row->setFixedHeight(initialHeight);
+            QApplication::processEvents();
+        }
         auto *profileCard = wavePage->findChild<QWidget *>("waterProfilePlot1")->parentWidget();
-        auto *resolution = profileCard->findChild<VaporView::SingleLevelPopupMenu *>();
-        require(resolution, "waveforms resolution uses the custom popup");
-        resolution->actions().last()->trigger();
-        auto *homeMenu = monitor->findChild<QWidget *>("waterProfilePlot1")->parentWidget()->findChild<VaporView::SingleLevelPopupMenu *>();
-        require(qobject_cast<QPushButton *>(homeMenu->parent())->text() == resolution->actions().last()->text(),
-                "changing resolution on the waveforms page updates the home profile");
+        auto *resolution = dynamic_cast<VaporView::SingleLevelPopupComboBox *>(profileCard->findChild<QComboBox *>("waterProfileResolution1"));
+        auto *homeResolution = dynamic_cast<VaporView::SingleLevelPopupComboBox *>(monitor->findChild<QComboBox *>("waterProfileResolution1"));
+        require(resolution && homeResolution && resolution->currentData().toInt() == 5, "both views use the shared profile resolution combo");
+        wavePage->ensureWidgetVisible(resolution);
+        resolution->showPopup();
+        auto *popup = resolution->popupMenu();
+        require(popup->isVisible() && popup->actions().size() == 5, "profile combo opens a five-row SingleLevelPopupMenu");
+        popup->actions().last()->trigger();
+        resolution->hidePopup();
+        require(homeResolution->currentData().toInt() == 50, "page resolution updates the corresponding home lane");
+        monitor->appendWaterSample(1, "height-15", 1001, 20, 15);
+        auto *homeProfile = monitor->findChild<QWidget *>("waterProfilePlot1");
+        auto *pageProfile = wavePage->findChild<QWidget *>("waterProfilePlot1");
+        require(homeProfile->property("layerCount").toInt() == 1 && pageProfile->property("layerCount").toInt() == 1,
+                "both views combine neighboring heights at fifty meters");
+        homeResolution->setCurrentIndex(homeResolution->findData(5));
+        require(resolution->currentData().toInt() == 5 && homeProfile->property("layerCount").toInt() == 2 &&
+                pageProfile->property("layerCount").toInt() == 2, "home resolution immediately rebins both views");
         for (auto *button : profileCard->findChildren<QPushButton *>())
             if (button->text() == QStringLiteral("清空") || button->text() == "Clear") button->click();
         require(monitor->findChild<QWidget *>("waterProfilePlot1")->property("sampleCount").toInt() == 0 &&

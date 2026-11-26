@@ -1813,17 +1813,37 @@ void requireRtkSidebarPage(
                 deviceButton->y() < temperatureButton->y() &&
                 temperatureButton->y() < rtkButton->y(),
             "sidebar order is home, waveforms, device configuration, thermal, combination navigation");
+    require(waveformButton->property("_vv_sidebar_icon_name").toString() == QStringLiteral("chart-line") &&
+                !waveformButton->icon().isNull(),
+            "waveform sidebar uses the chart-line icon distinct from the viewer audio-waveform icon");
     require(homeButton->focusPolicy() == Qt::TabFocus &&
                 deviceButton->focusPolicy() == Qt::TabFocus &&
                 temperatureButton->focusPolicy() == Qt::TabFocus &&
                 rtkButton->focusPolicy() == Qt::TabFocus,
             "sidebar navigation buttons are reachable by keyboard tab focus");
+    auto *homePane = window.findChild<QWidget *>(QStringLiteral("mainCardsPane"));
+    require(homePane != nullptr, "home card pane exists for the waveform background comparison");
+    const auto backgroundPixel = [](QWidget *widget) {
+        QImage pixel(1, 1, QImage::Format_ARGB32);
+        pixel.fill(Qt::transparent);
+        widget->render(&pixel, QPoint(), QRegion(1, 1, 1, 1), QWidget::DrawWindowBackground);
+        return pixel.pixelColor(0, 0);
+    };
+    const QColor homeBackground = backgroundPixel(homePane);
     homeButton->setFocus(Qt::OtherFocusReason);
     QKeyEvent sidebarDown(QEvent::KeyPress, Qt::Key_Down, Qt::NoModifier);
     QApplication::sendEvent(homeButton, &sidebarDown);
     processEventsFor(60);
-    require(waveformButton->isChecked() && window.findChild<QStackedWidget *>("mainPageStack")->currentWidget()->objectName() == "waveformMonitorPage",
+    auto *wavePage = qobject_cast<QScrollArea *>(window.findChild<QStackedWidget *>("mainPageStack")->currentWidget());
+    require(waveformButton->isChecked() && wavePage && wavePage->objectName() == QStringLiteral("waveformMonitorPage"),
             "sidebar Down arrow opens waveforms from home");
+    const bool dark = VaporView::isDarkThemeEnabled();
+    const QColor waveBackground = VaporView::appThemeColor(VaporView::AppThemeColor::Surface, dark);
+    require(wavePage->widget() && backgroundPixel(wavePage->widget()) == waveBackground &&
+                backgroundPixel(wavePage->viewport()) == waveBackground,
+            "waveform page body and viewport render the theme surface");
+    require(dark || waveBackground == homeBackground,
+            "light waveform background matches the home card pane");
     QKeyEvent sidebarUp(QEvent::KeyPress, Qt::Key_Up, Qt::NoModifier);
     QApplication::sendEvent(waveformButton, &sidebarUp);
     processEventsFor(60);
@@ -8736,6 +8756,11 @@ int main(int argc, char **argv)
                 QColor(24, 24, 24),
             "dark top-level card background uses the requested rgb(24, 24, 24) surface");
     const QString darkOverviewStyleSheet = VaporView::appStyleSheet();
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet, QStringLiteral("QWidget#waveformPageRow {"),
+        QStringLiteral("background-color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::Surface, true)),
+        "waveform rows follow the dark theme surface");
     requireLastStyleRuleContains(
         darkOverviewStyleSheet,
         QStringLiteral("QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"],"),

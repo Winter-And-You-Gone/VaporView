@@ -17,7 +17,7 @@ class WaterProfileAccumulator;
 #include <QVector>
 
 class QLabel;
-class QComboBox;
+namespace VaporView { class SingleLevelPopupComboBox; }
 class QLineEdit;
 class QEvent;
 class QPushButton;
@@ -82,10 +82,10 @@ public:
     void testSetConnectionEndpoint(const QString& host, const QString& portText);
     qsizetype testBufferedByteCount() const;
     void testFlushLiveDisplay();
-    QVector<float> testHarmonicSamples() const;
-    QVector<float> testFirstHarmonicSamples() const;
-    QVector<float> testSecondHarmonicSamples() const;
-    QVector<float> testPeakValues() const;
+    QVector<float> testHarmonicSamples(int channel = 0) const;
+    QVector<float> testFirstHarmonicSamples(int channel = 0) const;
+    QVector<float> testSecondHarmonicSamples(int channel = 0) const;
+    QVector<float> testPeakValues(int channel = 0) const;
     QString testRawXAxisLabel() const;
     QString testHarmonicXAxisLabel() const;
     QString testPeakXAxisLabel() const;
@@ -177,6 +177,7 @@ private:
     struct WaterCards;
     struct CalibrationControls;
     void createWaterPlots(WaterCards &cards, QWidget *parent, int channel);
+    void clearFpgaPeakTrend(int channel);
     void addCalibrationControls(CalibrationControls &controls, QHBoxLayout *row);
     void refreshWaterPlots(int changedChannel = -1);
     struct WaveDisplayMode {
@@ -263,9 +264,10 @@ private:
     bool peak_header_wrapped_ = false;
     QWidget *fpga_peak_controls_ = nullptr;
     struct WaterCards {
-        QGroupBox *concentration, *profile;
+        QWidget *concentration, *profile;
         QLabel *concentrationTitle, *profileTitle, *summary;
-        QPushButton *resolution, *clear;
+        VaporView::SingleLevelPopupComboBox *resolution;
+        QPushButton *clear;
         PeakTrendPlotWidget *series;
         WaterProfilePlotWidget *layers;
     };
@@ -347,7 +349,17 @@ private:
         bool preview = false;
     };
     bool fpga_mode_ = false;
-    QComboBox *fpga_channel_combo_ = nullptr;
+    struct HomeHarmonics {
+        std::array<QGroupBox *, 3> cards;
+        std::array<QLabel *, 3> titles, info;
+        std::array<WavePlotWidget *, 3> plots;
+    };
+    std::array<HomeHarmonics, 2> home_harmonics_{};
+    QGroupBox *second_peak_card_ = nullptr;
+    QLabel *second_peak_title_ = nullptr, *second_peak_info_ = nullptr, *second_peak_value_ = nullptr;
+    PeakTrendPlotWidget *second_peak_plot_ = nullptr;
+    VaporView::Ground::Widgets::SegmentedSwitchButton *second_peak_mode_ = nullptr;
+    QPushButton *second_peak_clear_ = nullptr;
     QLabel *fpga_peak_info_label_ = nullptr;
     QLabel *fpga_peak_value_label_ = nullptr;
     QMap<quint16, FpgaWaveDisplay> fpga_waves_;

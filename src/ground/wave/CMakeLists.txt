@@ -5,6 +5,7 @@ add_library(vaporview_ground_wave STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/WaterProfileAccumulator.h
     ${CMAKE_CURRENT_SOURCE_DIR}/TcpWavePanel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/TcpWavePanel.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/WaveformRowWidgets.h
 )
 
 target_include_directories(vaporview_ground_wave PUBLIC

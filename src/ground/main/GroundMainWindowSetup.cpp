@@ -2473,7 +2473,7 @@ void MainWindow::setupCentralWidget()
         return button;
     };
     state_->home_nav_btn_ = createNavButton(QStringLiteral("首页"), QStringLiteral("square-activity"));
-    state_->waveform_nav_btn_ = createNavButton(QStringLiteral("波形"), QStringLiteral("audio-waveform"));
+    state_->waveform_nav_btn_ = createNavButton(QStringLiteral("波形"), QStringLiteral("chart-line"));
     state_->device_config_nav_btn_ = createNavButton(QStringLiteral("设备配置"), QStringLiteral("sliders-vertical"));
     state_->temperature_nav_btn_ = createNavButton(QStringLiteral("温控"), QStringLiteral("thermometer"));
     state_->rtk_config_nav_btn_ = createNavButton(QStringLiteral("组合导航"), QStringLiteral("satellite"));

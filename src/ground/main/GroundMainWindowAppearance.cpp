@@ -56,7 +56,7 @@ void MainWindow::loadModernStyleSheet()
         state_->base_style_sheet_ =
             "* { font-family: \"Segoe UI\", \"Microsoft YaHei\", \"PingFang SC\", sans-serif; }"
             "QMainWindow { background-color: @vv-surface; }"
-            "QWidget#appCentralWidget, QWidget#mainCardsPane, QScrollArea#waveformMonitorPage, QScrollArea#waveformMonitorPage > QWidget, QScrollArea#waveformMonitorPage > QWidget > QWidget, QFrame#appSidebar, QStackedWidget#mainPageStack, QWidget#temperaturePage, QWidget#deviceConfigPage, QWidget#logSidePanel, QMainWindow#sessionViewerWindow, QWidget#sessionViewerWorkspace, QWidget#sessionViewerCentralWidget, QWidget#sessionViewerViewport, QWidget#sessionViewerContentPane, QScrollArea#mainCardsScrollArea, QScrollArea#sessionViewerScrollArea, QWidget#mainCardsViewport, QScrollArea#mainCardsScrollArea > QWidget, QScrollArea#mainCardsScrollArea > QWidget > QWidget, QScrollArea#sessionViewerScrollArea > QWidget, QScrollArea#sessionViewerScrollArea > QWidget > QWidget, QSplitter#appLayoutSplitter, QSplitter#mainContentSplitter, QSplitter#homeOverviewSplitter, QSplitter#homeOverviewSplitter > QWidget, QSplitter#homeSensorCardSplitter, QSplitter#homeSensorCardSplitter > QWidget, QSplitter#sessionViewerContentSplitter { background-color: @vv-surface; }"
+            "QWidget#appCentralWidget, QWidget#mainCardsPane, QFrame#appSidebar, QStackedWidget#mainPageStack, QWidget#temperaturePage, QWidget#deviceConfigPage, QWidget#logSidePanel, QMainWindow#sessionViewerWindow, QWidget#sessionViewerWorkspace, QWidget#sessionViewerCentralWidget, QWidget#sessionViewerViewport, QWidget#sessionViewerContentPane, QScrollArea#mainCardsScrollArea, QScrollArea#sessionViewerScrollArea, QWidget#mainCardsViewport, QScrollArea#mainCardsScrollArea > QWidget, QScrollArea#mainCardsScrollArea > QWidget > QWidget, QScrollArea#sessionViewerScrollArea > QWidget, QScrollArea#sessionViewerScrollArea > QWidget > QWidget, QSplitter#appLayoutSplitter, QSplitter#mainContentSplitter, QSplitter#homeOverviewSplitter, QSplitter#homeOverviewSplitter > QWidget, QSplitter#homeSensorCardSplitter, QSplitter#homeSensorCardSplitter > QWidget, QSplitter#sessionViewerContentSplitter { background-color: @vv-surface; }"
             "QFrame#appSidebar { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
             "QPushButton#appSidebarButton { background-color: transparent; border: 1px solid transparent; border-radius: 6px; color: @vv-text; font-weight: 600; min-height: 34px; max-height: 34px; padding: 6px 8px; text-align: left; outline: none; }"
             "QPushButton#appSidebarButton:focus { outline: none; }"
@@ -287,6 +287,17 @@ void MainWindow::loadModernStyleSheet()
             "QFrame#recordingStatusCard[vaporViewTopLevelCard=\"true\"] > QWidget#recordingStatusBody { background-color: @vv-surface-raised; border-bottom-left-radius: 11px; border-bottom-right-radius: 11px; }";
     }
 
+    state_->base_style_sheet_ += QStringLiteral(R"(
+QScrollArea#waveformMonitorPage,
+QScrollArea#waveformMonitorPage > QWidget,
+QScrollArea#waveformMonitorPage > QWidget > QWidget,
+QWidget#waveformPageViewport,
+QWidget#waveformPageBody,
+QWidget#waveformPageHeaderBar,
+QWidget#waveformPageRow {
+    background-color: @vv-surface;
+}
+)");
     state_->base_style_sheet_.replace("url(lucide/chevron-down.svg)", QString("url(%1)").arg(chevronDownIconPath));
     state_->base_style_sheet_.replace("url(lucide/chevron-down-primary.svg)", QString("url(%1)").arg(chevronDownPrimaryIconPath));
     state_->base_style_sheet_.replace("url(lucide/chevron-up.svg)", QString("url(%1)").arg(chevronUpIconPath));
