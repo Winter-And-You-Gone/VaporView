@@ -1,4 +1,5 @@
 #include "FpgaControlPage.h"
+#include <QMessageBox>
 #include "FpgaVirtualTcpTransport.h"
 #include "FpgaDeviceController.h"
 #include "FpgaUsbSimulator.h"
@@ -476,6 +477,23 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout, QVB
             return;
         }
         emit applyWmsRequested(config);
+    });
+    restoreWms_ = new QPushButton(wmsPage);
+    restoreWms_->setObjectName("fpgaRestoreWmsDefaults");
+    label(restoreWms_, QStringLiteral("恢复出厂默认"), QStringLiteral("Restore defaults"));
+    wmsActions->addWidget(restoreWms_, 0, 1);
+    connect(restoreWms_, &QPushButton::clicked, this, [this] {
+        if (QMessageBox::question(this, restoreWms_->text(),
+            text("将双路 WMS / DAC 参数恢复为出厂默认值？设备就绪时会立即应用并保存，离线时仅恢复界面参数。",
+                 "Restore factory settings for both WMS / DAC channels? When ready, the device will apply and save them immediately. Offline, only the form is updated."),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes || busy_) return;
+        auto config = configuration();
+        const auto defaults = FpgaControlConfig::factoryDefaults();
+        config.wms = defaults.wms;
+        config.dac = defaults.dac;
+        setConfiguration(config);
+        emit configurationChanged(config);
+        if (ready_) { lockOperation(); emit applyWmsRequested(config); }
     });
     auto *dliaActions=new QGridLayout;dliaLayout->addLayout(dliaActions);
     action(dliaActions,0,0,"应用 DLIA 参数","Apply DLIA","fpgaApplyDlia",[this]{emit applyDliaRequested(configuration());});
@@ -1181,6 +1199,7 @@ void FpgaControlPage::updateActions(){
     connect_->setEnabled(!connected_&&!busy_&&!usbDiscovering_&&usbHostAvailable_&&usable);
     locator_->setEnabled(!connected_&&!busy_&&!usbDiscovering_&&usbHostAvailable_);
     backend_->setEnabled(!virtualTcp && !connected_ && !busy_ && !usbDiscovering_);
+    restoreWms_->setEnabled(!busy_);
     discover_->setEnabled(!busy_&&!usbDiscovering_&&usbHostAvailable_);
     disconnect_->setEnabled(connected_&&!busy_);for(auto *w:onlineControls_) {
         const quint32 bit=w->property("fpgaExtension").toUInt();const bool safety=w->property("fpgaSafetyControl").toBool();
@@ -1849,7 +1868,7 @@ void FpgaControlPage::simulateOperation(const QJsonObject &request)
             else controller->setSensorEnabled(quint16(request.value("source").toInt()),false);
         }
         else if(op=="sensor_config")controller->configureSensor(request);
-        else if(op=="acquisition")controller->setAcquisition(enabled, request.value("enableDacs").toBool());
+        else if(op=="acquisition")controller->setAcquisition(enabled, request.value("enableDacs").toBool(), config);
         else if(op=="raw")controller->setRawEnabled(enabled);
         else if(op=="wms")controller->setWaveform(request.value("channel").toInt(),enabled);
         else if(op=="dac")controller->setDac(request.value("channel").toInt(),enabled);

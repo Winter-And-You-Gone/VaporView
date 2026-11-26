@@ -141,6 +141,7 @@ public:
 
 signals:
     void internalEnvironmentUpdated(const VaporView::FpgaSensor::Reading& reading);
+    void fpgaConfigurationApplied();
     void fpgaStatusChanged(QJsonObject document);
     void fpgaSensorUpdated(const VaporView::FpgaSensor::Reading& reading);
     void fpgaWaveformUpdated(const VaporView::FpgaWave::CompletedStream& stream);

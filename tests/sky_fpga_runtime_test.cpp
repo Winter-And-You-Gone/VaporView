@@ -75,6 +75,76 @@ static void firstStartFpgaTest()
     runtime.stop();
 }
 
+static void fpgaAutoSaveTest()
+{
+    QTemporaryDir directory;
+    require(directory.isValid(), "isolated FPGA autosave directory");
+    SkyRuntimeOptions options;
+    options.config_path = directory.filePath("sky.json");
+    options.telemetry_tcp_port = 0;
+    options.simulate_fpga = true;
+    const auto start = [](SkyRuntime& runtime) {
+        bool connected = false;
+        const auto observer = QObject::connect(&runtime, &SkyRuntime::logRecord, [&](const LogRecord& record) {
+            if (record.fields.value("event") == "fpga_async_connection_result")
+                connected = record.fields.value("result_code", -1).toInt() == int(CommandErrorCode::Ok);
+        });
+        require(runtime.start(), "start autosave simulator");
+        waitUntil([&] { return connected; }, "simulator connection complete");
+        QObject::disconnect(observer);
+    };
+    int sequence = 0;
+    const auto apply = [&](SkyRuntime& runtime, const QJsonObject& control) {
+        DeviceOperationRequest request;
+        request.request_id = ++sequence;
+        request.device_id = SkyDeviceId::Fpga;
+        request.operation = DeviceOperation::FpgaControl;
+        request.payload = FpgaRemote::encodeControl(control);
+        CommandMessage command;
+        command.command_id = CommandId::DeviceOperation;
+        command.command_seq = sequence;
+        command.payload = TelemetryCodec::serializeDeviceOperationRequest(request);
+        bool complete = false;
+        runtime.submitCommand(command, [&](const SkyCommandResult& result) {
+            require(result.ack.error_code == CommandErrorCode::Ok, qPrintable(result.device_operation_response.error_message));
+            complete = true;
+        });
+        waitUntil([&] { return complete; }, "remote configuration operation completes");
+        SkyConfig disk;
+        require(SkyConfig::loadFromFile(options.config_path, disk), "SkyCore automatically saves into configured path");
+        require(disk.fpga.configuration.toJson() == runtime.currentFpgaStatus().value("configuration").toObject(),
+            "status and reloaded disk configuration agree");
+        return disk.fpga.configuration;
+    };
+    FpgaControlConfig started;
+    {
+        SkyRuntime runtime(options);
+        start(runtime);
+        auto desired = runtime.currentConfig().fpga.configuration;
+        desired.ai8.pollIntervalMs = 456;
+        desired.wms[1].scanMilliHz = 42000;
+        const auto partial = apply(runtime, {{"op","configure"},{"section","ai8"},{"configuration",desired.toJson()}});
+        require(partial.ai8.pollIntervalMs == 456 && partial.wms[1].scanMilliHz != 42000,
+            "partial configure saves only applied section");
+        desired.ai8.pollIntervalMs = 999;
+        started = apply(runtime, {{"op","acquisition"},{"enabled",true},{"enableDacs",true},{"configuration",desired.toJson()}});
+        require(started.wms[1].scanMilliHz == 42000 && started.ai8.pollIntervalMs == 456
+            && started.dac[0].minCode == FpgaDac1Calibration::MinDacCode && started.dac[0].maxCode == FpgaDac1Calibration::MaxDacCode,
+            "remote start persists actual WMS, normalized limits and previous AI8 settings");
+        runtime.stop();
+    }
+    SkyRuntime runtime(options);
+    start(runtime);
+    require(runtime.currentConfig().fpga.configuration.toJson() == started.toJson(), "restart restores full persisted configuration");
+    apply(runtime, {{"op","acquisition"},{"enabled",true},{"enableDacs",true}});
+    const auto registers = runtime.currentFpgaStatus().value("registers").toObject();
+    require(registers.value(QString::number(0x2110)).toInt() == 42000 && registers.value(QString::number(0x4104)).toInt() == 1,
+        "legacy acquisition uses saved waveform on new hardware session");
+    const auto sensor = apply(runtime, {{"op","sensor_config"},{"source",0x46},{"poll_ms",543}});
+    require(sensor.ai8.pollIntervalMs == 543, "sensor readback is saved without a separate save command");
+    runtime.stop();
+}
+
 static void ai8FaultStatusTest()
 {
     namespace Ai8 = VaporView::Ai8TemperatureControllerProtocol;
@@ -391,6 +461,7 @@ int main(int argc,char **argv)
         return 0;
     }
     if (!app.arguments().contains("--discovery-only")) {
+        fpgaAutoSaveTest();
         firstStartFpgaTest();
         asyncConnectionLogTest();
     }

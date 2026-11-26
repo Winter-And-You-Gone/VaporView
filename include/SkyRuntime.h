@@ -143,6 +143,7 @@ private:
                            const char *file = VAPORVIEW_LOG_FILE,
                            const char *function = VAPORVIEW_LOG_FUNCTION,
                            int line = VAPORVIEW_LOG_LINE);
+    bool saveSkyConfig();
     void updateTimerIntervals();
     quint64 currentTimestampUs() const;
     QVector<float> waveformPreview(const QVector<float>& samples, int maxPoints) const;

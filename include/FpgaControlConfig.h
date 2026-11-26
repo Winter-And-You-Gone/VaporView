@@ -46,6 +46,19 @@ struct FpgaControlConfig
     quint16 pressureSource = 0x0040;
     bool recordSensors = true, recordDlia = true, recordRaw = false;
 
+    static FpgaControlConfig factoryDefaults() {
+        namespace Dac1 = VaporView::FpgaDac1Calibration;
+        FpgaControlConfig config;
+        auto& dac = config.dac[0];
+        dac.deviceCtrl = Dac1::DeviceControl;
+        dac.clearCode = Dac1::ClearCode;
+        dac.minCode = Dac1::MinDacCode;
+        dac.maxCode = Dac1::MaxDacCode;
+        dac.gain = Dac1::UnityGain;
+        dac.offset = 0;
+        return config;
+    }
+
     QJsonObject toJson() const {
         QJsonObject sensors;for(auto it=sensorParameters.begin();it!=sensorParameters.end();++it)sensors[QString::number(it.key())]=it.value();
         QJsonArray channels;

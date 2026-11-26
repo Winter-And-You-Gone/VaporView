@@ -317,7 +317,7 @@ void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion,
             }, Qt::QueuedConnection);
             return;
         }
-        auto finish = [self, identity, operation, controller,cancelled](CommandErrorCode code, const QString& detail) {
+        auto finish = [self, identity, controller,cancelled](CommandErrorCode code, const QString& detail, QJsonObject configuration = {}) {
             if(cancelled->exchange(true,std::memory_order_acq_rel))return;
             controller->clearOperationLogContext(identity);
             if (!self) return;
@@ -325,14 +325,13 @@ void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion,
             const auto& values=controller->hardwareValues();
             for(auto i=values.begin();i!=values.end();++i) registers[QString::number(i.key())]=double(i.value());
             const auto result=controller->extensionResult();
-            QMetaObject::invokeMethod(self, [self, identity, code, detail, operation, registers, result] {
+            QMetaObject::invokeMethod(self, [self, identity, code, detail, configuration, registers, result] {
                 if (!self || self->activeRequest_ != identity) return;
                 self->status_["registers"]=registers;
                 self->status_["operation_result"]=result;
                 if(code!=CommandErrorCode::Ok) self->status_["detail"]=detail;
-                if(code==CommandErrorCode::Ok && operation.value("op").toString()=="configure") {
-                    self->status_["configuration"]=operation.value("configuration").toObject();
-                }
+                if (code == CommandErrorCode::Ok && !configuration.isEmpty())
+                    self->status_["configuration"] = configuration;
                 const QJsonObject status = self->status_;
                 emit self->statusChanged(status);
                 // A direct status listener may shut down or destroy the backend.
@@ -359,7 +358,7 @@ void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion,
                 if (document.value("interrupted_by_motor_stop").toBool()) return;
                 QObject::disconnect(*observer);
                 finish(event == "operation_completed" ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed,
-                       document.value("detail").toString());
+                       document.value("detail").toString(), document.value("configuration").toObject());
             });
         if (op == "connect") controller->connectDevice(operation.value("locator").toString(), operation.value("backend").toString("auto"),
             operation.value("recover").toBool(true) ? Ground::Devices::FpgaDeviceController::ConnectMode::RecoverEnabledModules
@@ -370,7 +369,8 @@ void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion,
             const auto config = FpgaControlConfig::fromJson(operation.value("configuration").toObject());
             controller->applyConfiguration(config,operation.value("section").toString("all"));
         }
-        else if (op == "acquisition") controller->setAcquisition(operation.value("enabled").toBool(), operation.value("enableDacs").toBool());
+        else if (op == "acquisition") controller->setAcquisition(operation.value("enabled").toBool(), operation.value("enableDacs").toBool(),
+            operation.contains("configuration") ? std::optional{FpgaControlConfig::fromJson(operation.value("configuration").toObject())} : std::nullopt);
         else if (op == "wms") controller->setWaveform(operation.value("channel").toInt(), operation.value("enabled").toBool());
         else if (op == "dac") controller->setDac(operation.value("channel").toInt(), operation.value("enabled").toBool());
         else if (op == "sensor") {

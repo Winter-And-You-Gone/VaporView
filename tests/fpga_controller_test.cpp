@@ -980,17 +980,29 @@ void laserDriverProtection(){
     f.controller.setDac(0,true);
     f.finish();
     require(f.transport->writes().isEmpty()&&!f.diagnostics.isEmpty(),"channel 1 cannot enable before limits are committed");
-    f.transport->clear(); f.controller.setAcquisition(true,true); f.finish();
-    require(f.transport->writes().isEmpty(),"linked start checks protection even with DAC1 off");
     f.transport->regs[0x3004]=1; // Already enabled outside this session.
     f.transport->clear();
     f.controller.setWaveform(0,true);
     f.finish();
     require(f.transport->writes().isEmpty(),"WMS checks live DAC enable before starting an unprotected output");
-    f.controller.setAcquisition(true);
-    f.finish();
-    require(f.transport->writes().isEmpty(),"acquisition cannot start an unprotected analog output");
     f.transport->regs[0x3004]=0;
+    FpgaControlConfig desired;
+    desired.wms[1].scanMilliHz=42000;
+    f.diagnostics.clear();
+    f.controller.setAcquisition(true,true,desired); f.finish();
+    require(f.diagnostics.isEmpty() && f.transport->regs.value(0x2110)==42000
+        && f.transport->regs.value(0x301c)==Dac1::MaxDacCode && f.transport->regs.value(0x4104)==1,
+        "first linked start applies current WMS and verified DAC protection before capture");
+    f.transport->clear(); f.controller.setAcquisition(true,true); f.finish();
+    for (const auto& command : f.transport->commands)
+        require(!(command.message==5 && (command.source==0x10 || command.source==0x11)),
+            "confirmed limits avoid both WMS/DAC reinitialization commits");
+    f.transport->regs[0x301c]=0xfffff;
+    f.transport->clear(); f.controller.setAcquisition(true); f.finish();
+    require(indexOfWrite(f.transport->writes(),0x301c,Dac1::MaxDacCode)>=0,
+        "live DAC1 enable requires repair even without the link checkbox");
+    f.controller.setDac(0,false); f.finish();
+    f.controller.setDac(1,false); f.finish();
 
     FpgaControlConfig config;
     config.dac[0].gain=0x80000000u;
@@ -1010,6 +1022,11 @@ void laserDriverProtection(){
         require(f.transport->writes().isEmpty() && !f.diagnostics.isEmpty() && f.diagnostics.back().contains(QStringLiteral("额定输入")),
             "a rated input violation rejects the transaction before any write, including a half-millivolt excursion");
     }
+    f.transport->regs[0x301c]=0xfffff;
+    f.transport->clear(); f.diagnostics.clear();
+    f.controller.setAcquisition(true,true,config); f.finish();
+    require(f.transport->writes().isEmpty() && !f.diagnostics.isEmpty() && f.diagnostics.back().contains(QStringLiteral("额定输入")),
+        "automatic WMS application rejects an unsafe waveform before any enable or configuration write");
     for (const auto valid : {wave(0,0,0), wave(5,0,0), wave(2.5,-4.8,0.2), wave(2,2,0.2)}) {
         config.wms[0]=valid;
         f.transport->clear(); f.diagnostics.clear();

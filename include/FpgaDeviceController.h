@@ -51,7 +51,7 @@ public slots:
     void setConfiguration(const FpgaControlConfig& config);
     void refresh();
     void executeOperation(const QJsonObject& request);
-    void setAcquisition(bool enable, bool enableDacs = false);
+    void setAcquisition(bool enable, bool enableDacs = false, std::optional<FpgaControlConfig> config = std::nullopt);
     void setWaveform(int channel, bool enable);
     void setDac(int channel, bool enable);
     void setSensorEnabled(quint16 source, bool enable);
@@ -120,6 +120,10 @@ private:
     void waitFor(quint32 address, quint32 mask, quint32 expected);
     void commit(quint16 source, quint32 base);
     void readAll();
+    bool dac1ProtectionConfirmed() const;
+    bool validateWms(const FpgaControlConfig& config);
+    void queueWmsConfiguration(FpgaControlConfig config);
+    void queueAcquisitionStart(bool enableDacs, const FpgaControlConfig& config);
     void checkDac1Protection(bool enablingDac = false);
     void readExtensions();
     void callback(std::function<void()> action);

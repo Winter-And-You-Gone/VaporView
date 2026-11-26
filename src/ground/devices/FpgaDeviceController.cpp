@@ -917,15 +917,7 @@ void FpgaDeviceController::applyConfiguration(const FpgaControlConfig& config, c
     const bool acquisition=combined || section=="adc";
     const bool ai8=combined || section=="ai8";
     if (!wms && !dlia && !acquisition && !ai8) { fail(QStringLiteral("未知参数分区。")); return; }
-    if (wms) {
-        const auto &wave = config.wms[0];
-        const auto range = Dac1::targetRange(wave.bias, wave.scanAmplitude, wave.sineAmplitude);
-        if (!range.withinInputRange()) {
-            fail(QStringLiteral("DAC1 目标波形 %1 至 %2 V，超出驱动板额定输入 0–5 V。本次参数未下发。")
-                .arg(range.lowV, 0, 'f', 4).arg(range.highV, 0, 'f', 4), true, true);
-            return;
-        }
-    }
+    if (wms && !validateWms(config)) return;
     const quint32 adcRate=acquisition?config.adcRateHz:registers_.value(0x4014);
     for(int ch=0;ch<2;++ch) {
         const quint32 base=0x5000+ch*0x100;
@@ -954,12 +946,8 @@ void FpgaDeviceController::applyConfiguration(const FpgaControlConfig& config, c
         fail(QStringLiteral("AI8 地址、通道、轮询、超时或重试参数超出协议范围。")); return;
     }
     for (int ch=0; ch<2; ++ch) {
-        const auto& w=config.wms[ch]; const auto& d=config.dlia[ch]; const auto& dac=config.dac[ch];
-        const auto& f=config.frontend[ch];
-        if ((wms && (!w.scanMilliHz || !w.sineMilliHz || !w.updateRateHz || w.phaseMode>2
-            || (ch == 1 && (dac.deviceCtrl>0x3ff || dac.clearCode>0xfffff
-                || dac.minCode>dac.maxCode || dac.maxCode>0xfffff)) || !dac.spiClockHz || dac.spiClockHz>20000000))
-            || (dlia && (!d.referenceMilliHz || d.mode>7 || !(d.mode&2) || d.fragmentPoints<1 || d.fragmentPoints>256))
+        const auto& d=config.dlia[ch]; const auto& f=config.frontend[ch];
+        if ((dlia && (!d.referenceMilliHz || d.mode>7 || !(d.mode&2) || d.fragmentPoints<1 || d.fragmentPoints>256))
             || (acquisition && (!std::isfinite(f.voltsPerCode) || f.voltsPerCode<=0 || (f.polarity!=1 && f.polarity!=-1)))) {
             fail(QStringLiteral("通道 %1 的波形、DAC、解调或前端标定参数不合法。").arg(ch)); return;
         }
@@ -975,47 +963,8 @@ void FpgaDeviceController::applyConfiguration(const FpgaControlConfig& config, c
         fail(QStringLiteral("AI8 地址、通道或轮询配置只能在禁用时修改；请先禁用 AI8。")); return;
     }
     if (!begin(QStringLiteral("提交并核对配置"))) return;
-    if (section=="ai8") {
-        configuration_.ai8=config.ai8;
-    } else {
-        if (section=="adc") {
-            configuration_.adcRateHz=config.adcRateHz;
-            configuration_.adcCnvTicks=config.adcCnvTicks;
-            configuration_.adcBusyTimeoutTicks=config.adcBusyTimeoutTicks;
-            configuration_.adcExpectedPoints=config.adcExpectedPoints;
-            configuration_.frontend=config.frontend;
-        } else {
-            configuration_=config;
-        }
-        stopAndDrain();
-    }
-    if (wms) {
-        dac1ProtectionApplied_ = false;
-        auto &dac = configuration_.dac[0];
-        dac.deviceCtrl = Dac1::DeviceControl;
-        dac.clearCode = Dac1::ClearCode;
-        dac.minCode = Dac1::MinDacCode;
-        dac.maxCode = Dac1::MaxDacCode;
-        dac.gain = Dac1::UnityGain;
-        dac.offset = 0;
-    }
-    if (wms) for (int ch=0; ch<2; ++ch) {
-        const auto &dac=configuration_.dac[ch]; const quint32 db=0x3000+quint32(ch)*0x100;
-        const QMap<quint32,quint32> dacWords{{0x10,dac.deviceCtrl},{0x14,dac.clearCode},
-            {0x18,dac.minCode},{0x1c,dac.maxCode},{0x24,dac.spiClockHz},{0x34,dac.gain},{0x38,quint32(dac.offset)}};
-        for (auto i=dacWords.cbegin();i!=dacWords.cend();++i) { write(db+i.key(),i.value()); verify(db+i.key(),i.value()); }
-        const auto &w=config.wms[ch]; const quint32 b=0x2000+quint32(ch)*0x100;
-        const quint32 vals[]={w.scanMilliHz,quint32(w.scanAmplitude),quint32(w.bias),w.sineMilliHz,
-            quint32(w.sineAmplitude),w.phase,w.updateRateHz};
-        for (quint32 i=0;i<7;++i) { write(b+0x10+i*4,vals[i]); verify(b+0x10+i*4,vals[i]); }
-        write(b+0x40,w.phaseMode); verify(b+0x40,w.phaseMode);
-        // WMS COMMIT coordinates the DAC and restores the existing WMS enable.
-        commit(quint16(0x10+ch),b); read(b+0x2c,1);
-        if (ch == 0) {
-            waitFor(db+8,kDacReadyMask,kDacReady);
-            callback([this] { dac1ProtectionApplied_ = true; });
-        }
-    }
+    if (section!="ai8") stopAndDrain();
+    if (wms) queueWmsConfiguration(config);
     if (ai8Changed) {
         write(0x6610,19200); write(0x6618,0);
         write(0x6614,config.ai8.slaveAddress); verify(0x6614,config.ai8.slaveAddress);
@@ -1042,7 +991,90 @@ void FpgaDeviceController::applyConfiguration(const FpgaControlConfig& config, c
         commit(quint16(0x30+ch),b); read(b+0x4c,2);
         if(builtin && (extensions()&FpgaExtensions::DliaCutoff))verify(b+0x5c,d.cutoffHz);
     }
+    callback([this, config, section, acquisition, dlia, ai8] {
+        if (section == "all") {
+            const auto normalizedDacs = configuration_.dac;
+            configuration_ = config;
+            configuration_.dac = normalizedDacs;
+        } else {
+            if (acquisition) {
+                configuration_.adcRateHz = config.adcRateHz;
+                configuration_.adcCnvTicks = config.adcCnvTicks;
+                configuration_.adcBusyTimeoutTicks = config.adcBusyTimeoutTicks;
+                configuration_.adcExpectedPoints = config.adcExpectedPoints;
+                configuration_.frontend = config.frontend;
+            }
+            if (dlia) configuration_.dlia = config.dlia;
+            if (ai8) configuration_.ai8 = config.ai8;
+        }
+    });
     readAll(); advance();
+}
+
+bool FpgaDeviceController::validateWms(const FpgaControlConfig& config)
+{
+    const auto &wave = config.wms[0];
+    const auto range = Dac1::targetRange(wave.bias, wave.scanAmplitude, wave.sineAmplitude);
+    if (!range.withinInputRange()) {
+        fail(QStringLiteral("DAC1 目标波形 %1 至 %2 V，超出驱动板额定输入 0–5 V。本次参数未下发。")
+            .arg(range.lowV, 0, 'f', 4).arg(range.highV, 0, 'f', 4), true, true);
+        return false;
+    }
+    for (int ch = 0; ch < 2; ++ch) {
+        const auto& w = config.wms[ch];
+        const auto& dac = config.dac[ch];
+        if (!w.scanMilliHz || !w.sineMilliHz || !w.updateRateHz || w.phaseMode > 2
+            || !dac.spiClockHz || dac.spiClockHz > 20000000
+            || (ch == 1 && (dac.deviceCtrl > 0x3ff || dac.clearCode > 0xfffff
+                || dac.minCode > dac.maxCode || dac.maxCode > 0xfffff))) {
+            fail(QStringLiteral("通道 %1 的波形或 DAC 参数不合法。").arg(ch + 1), true, true);
+            return false;
+        }
+    }
+    return true;
+}
+
+void FpgaDeviceController::queueWmsConfiguration(FpgaControlConfig config)
+{
+    dac1ProtectionApplied_ = false;
+    {
+        auto &dac = config.dac[0];
+        dac.deviceCtrl = Dac1::DeviceControl;
+        dac.clearCode = Dac1::ClearCode;
+        dac.minCode = Dac1::MinDacCode;
+        dac.maxCode = Dac1::MaxDacCode;
+        dac.gain = Dac1::UnityGain;
+        dac.offset = 0;
+    }
+    for (int ch=0; ch<2; ++ch) {
+        const auto &dac=config.dac[ch]; const quint32 db=0x3000+quint32(ch)*0x100;
+        const QMap<quint32,quint32> dacWords{{0x10,dac.deviceCtrl},{0x14,dac.clearCode},
+            {0x18,dac.minCode},{0x1c,dac.maxCode},{0x24,dac.spiClockHz},{0x34,dac.gain},{0x38,quint32(dac.offset)}};
+        for (auto i=dacWords.cbegin();i!=dacWords.cend();++i) { write(db+i.key(),i.value()); verify(db+i.key(),i.value()); }
+        const auto &w=config.wms[ch]; const quint32 b=0x2000+quint32(ch)*0x100;
+        const quint32 vals[]={w.scanMilliHz,quint32(w.scanAmplitude),quint32(w.bias),w.sineMilliHz,
+            quint32(w.sineAmplitude),w.phase,w.updateRateHz};
+        for (quint32 i=0;i<7;++i) { write(b+0x10+i*4,vals[i]); verify(b+0x10+i*4,vals[i]); }
+        write(b+0x40,w.phaseMode); verify(b+0x40,w.phaseMode);
+        // WMS COMMIT coordinates the DAC and restores the existing WMS enable.
+        commit(quint16(0x10+ch),b); read(b+0x2c,1);
+        if (ch == 0) {
+            waitFor(db+8,kDacReadyMask,kDacReady);
+        }
+    }
+    callback([this, config] {
+        configuration_.wms = config.wms;
+        configuration_.dac = config.dac;
+        dac1ProtectionApplied_ = true;
+    });
+}
+
+bool FpgaDeviceController::dac1ProtectionConfirmed() const
+{
+    return dac1ProtectionApplied_ && (registers_.value(0x3008) & kDacReadyMask) == kDacReady
+        && registers_.value(0x3010) == Dac1::DeviceControl && registers_.value(0x3014) == Dac1::ClearCode
+        && registers_.value(0x3018) == Dac1::MinDacCode && registers_.value(0x301c) == Dac1::MaxDacCode
+        && registers_.value(0x3034) == Dac1::UnityGain && registers_.value(0x3038) == 0;
 }
 
 void FpgaDeviceController::checkDac1Protection(bool enablingDac)
@@ -1050,47 +1082,23 @@ void FpgaDeviceController::checkDac1Protection(bool enablingDac)
     read(0x3004, 14); // CONTROL through the gain and offset shadows.
     callback([this, enablingDac] {
         if (!enablingDac && !(registers_.value(0x3004) & 1)) return;
-        if (dac1ProtectionApplied_ && (registers_.value(0x3008) & kDacReadyMask) == kDacReady
-            && registers_.value(0x3010) == Dac1::DeviceControl && registers_.value(0x3014) == Dac1::ClearCode
-            && registers_.value(0x3018) == Dac1::MinDacCode && registers_.value(0x301c) == Dac1::MaxDacCode
-            && registers_.value(0x3034) == Dac1::UnityGain && registers_.value(0x3038) == 0) return;
+        if (dac1ProtectionConfirmed()) return;
         dac1ProtectionApplied_ = false;
         fail(QStringLiteral("请先应用 WMS / DAC 参数，确认通道 1 的激光驱动板限幅已生效。"), true, true);
     });
 }
 
-void FpgaDeviceController::setAcquisition(bool enable, bool enableDacs)
+void FpgaDeviceController::setAcquisition(bool enable, bool enableDacs, std::optional<FpgaControlConfig> config)
 {
     if (!ready_ || !begin(enable?QStringLiteral("启动采集"):QStringLiteral("停止并排空采集"))) return;
     if (enable) {
-        checkDac1Protection(enableDacs);
-        if (enableDacs) waitFor(0x3108, kDacReadyMask, kDacReady);
-        trackConnection(0);
+        read(0x3004, 14);
+        callback([this, enableDacs, desired = config.value_or(configuration_)] {
+            queueAcquisitionStart(enableDacs, desired);
+        });
+        // Check the USB path before sending even the protection read. Upload writes
+        // execute after validation and before the start steps appended by the callback.
         if (!enableUpload()) return;
-        // DLIA stop latches cycle_partial; enable alone cannot clear it. Reset
-        // only after both ADC producers and DLIA consumers have drained. ADC0
-        // reset also reinitializes the shared PHY, so both lanes must be idle.
-        stopAndDrain();
-        resetAcquisition();
-        // WMS supplies cycle labels even with independent DLIA references.
-        write(0x0004,registers_.value(4)|1u);
-        if (enableDacs) {
-            for (const quint32 base : {0x3000u, 0x3100u}) {
-                read(base + 4);
-                callback([this, base] {
-                    if (registers_.value(base + 4) & 1) return;
-                    Step enable;
-                    enable.kind = Kind::Write;
-                    enable.address = base + 4;
-                    enable.values = {1};
-                    steps_.push_front(enable);
-                });
-                waitFor(base + 8, kDacReadyMask | 1u, kDacReady | 1u);
-            }
-        }
-        for (quint32 b:{0x2000u,0x2100u}) { write(b+4,1); verify(b+4,1); }
-        for (quint32 b:{0x5000u,0x5100u}) { write(b+4,1); waitFor(b+8,7,3); }
-        for (quint32 b:{0x4000u,0x4100u}) { write(b+4,1); waitFor(b+8,5,1); }
     } else {
         if (pendingConnections_.contains(0))
             reportConnection(0, QStringLiteral("cancelled"), QStringLiteral("ACQUISITION_STOPPED"),
@@ -1099,10 +1107,47 @@ void FpgaDeviceController::setAcquisition(bool enable, bool enableDacs)
         pendingConnectionLogContexts_.remove(0);
         stopAndDrain();
         write(0x403c,0); write(0x413c,0); write(0x0050,0);
+        readAll();
     }
-    readAll();
-    if(enable) {Step confirmed;confirmed.kind=Kind::ConfirmConnection;confirmed.source=0;steps_.push_back(confirmed);}
     advance();
+}
+
+void FpgaDeviceController::queueAcquisitionStart(bool enableDacs, const FpgaControlConfig& config)
+{
+    const bool needsDac1 = enableDacs || (registers_.value(0x3004) & 1);
+    if (needsDac1 && !validateWms(config)) return;
+    trackConnection(0);
+    // DLIA stop latches cycle_partial; enable alone cannot clear it. Reset
+    // only after both ADC producers and DLIA consumers have drained. ADC0
+    // reset also reinitializes the shared PHY, so both lanes must be idle.
+    stopAndDrain();
+    if (needsDac1 && !dac1ProtectionConfirmed()) {
+        queueWmsConfiguration(config);
+        callback([this] { extensionResult_["wms_applied"] = true; });
+    }
+    if (enableDacs) waitFor(0x3108, kDacReadyMask, kDacReady);
+    resetAcquisition();
+    // WMS supplies cycle labels even with independent DLIA references.
+    write(0x0004,registers_.value(4)|1u);
+    if (enableDacs) {
+        for (const quint32 base : {0x3000u, 0x3100u}) {
+            read(base + 4);
+            callback([this, base] {
+                if (registers_.value(base + 4) & 1) return;
+                Step enable;
+                enable.kind = Kind::Write;
+                enable.address = base + 4;
+                enable.values = {1};
+                steps_.push_front(enable);
+            });
+            waitFor(base + 8, kDacReadyMask | 1u, kDacReady | 1u);
+        }
+    }
+    for (quint32 b:{0x2000u,0x2100u}) { write(b+4,1); verify(b+4,1); }
+    for (quint32 b:{0x5000u,0x5100u}) { write(b+4,1); waitFor(b+8,7,3); }
+    for (quint32 b:{0x4000u,0x4100u}) { write(b+4,1); waitFor(b+8,5,1); }
+    readAll();
+    Step confirmed; confirmed.kind=Kind::ConfirmConnection; confirmed.source=0; steps_.push_back(confirmed);
 }
 
 void FpgaDeviceController::setWaveform(int channel, bool enable)

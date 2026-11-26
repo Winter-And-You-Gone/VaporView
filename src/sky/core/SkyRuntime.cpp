@@ -352,6 +352,7 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
         },Qt::DirectConnection);
     connect(&device_manager_, &SkyDeviceManager::fpgaSnapshotReceived, this,
         [this](quint64 t,const QJsonObject& o){session_recorder_.recordFpgaSnapshot(t,o);}, Qt::DirectConnection);
+    connect(&device_manager_, &SkyDeviceManager::fpgaConfigurationApplied, this, &SkyRuntime::saveSkyConfig);
     connect(&device_manager_, &SkyDeviceManager::fpgaStatusChanged, this, [this](const QJsonObject&) {
         // A connection transaction produces many intermediate register/status snapshots.
         // Commands still receive their final readback response immediately; coalesce display status.
@@ -2331,6 +2332,7 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
             break;
         }
         const ApplyConfigResult applyResult = device_manager_.applyConfig(config, command.correlation_id, sessionId);
+        if (applyResult.success) saveSkyConfig();
         updateTimerIntervals();
         const CommandErrorCode errorCode = applyResult.error_code == CommandErrorCode::Ok
             ? CommandErrorCode::ConfigApplyFailed
@@ -2342,20 +2344,7 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
     }
     case CommandId::SaveSkyConfig:
     {
-        QString error;
-        const QString configPath = options_.config_path.isEmpty() ? defaultConfigPath() : options_.config_path;
-        if (!device_manager_.config().saveToFile(configPath, &error))
-        {
-            publishRuntimeLog(LogLevel::Error,
-                              QStringLiteral("config.save"),
-                              QStringLiteral("sky_config_save_failed"),
-                              QStringLiteral("无法保存天空端配置。"),
-                              {{QStringLiteral("error_code"), QStringLiteral("SKY_CONFIG_SAVE_FAILED")},
-                               {QStringLiteral("config_path"), configPath},
-                               {QStringLiteral("system_error"), error}});
-            result.ack = makeAck(command, CommandErrorCode::ConfigSaveFailed);
-            break;
-        }
+        if (!saveSkyConfig()) result.ack = makeAck(command, CommandErrorCode::ConfigSaveFailed);
         break;
     }
     case CommandId::RebootDevice:
@@ -2578,6 +2567,24 @@ void SkyRuntime::sendSkyConfig()
 void SkyRuntime::sendSkyConfigApplyResult(const QJsonObject& result)
 {
     sendFrame(MsgType::SkyConfigApplyResult, QJsonDocument(result).toJson(QJsonDocument::Compact));
+}
+
+bool SkyRuntime::saveSkyConfig()
+{
+    QString error;
+    const QString configPath = options_.config_path.isEmpty() ? defaultConfigPath() : options_.config_path;
+    if (!device_manager_.config().saveToFile(configPath, &error))
+    {
+        publishRuntimeLog(LogLevel::Error,
+                          QStringLiteral("config.save"),
+                          QStringLiteral("sky_config_save_failed"),
+                          QStringLiteral("无法保存天空端配置。"),
+                          {{QStringLiteral("error_code"), QStringLiteral("SKY_CONFIG_SAVE_FAILED")},
+                           {QStringLiteral("config_path"), configPath},
+                           {QStringLiteral("system_error"), error}});
+        return false;
+    }
+    return true;
 }
 
 void SkyRuntime::updateTimerIntervals()

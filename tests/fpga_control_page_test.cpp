@@ -18,6 +18,8 @@
 #include <QJsonArray>
 #include <QLabel>
 #include <QKeyEvent>
+#include <QMessageBox>
+#include <QTimer>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QScrollArea>
@@ -192,6 +194,7 @@ void motorPresets() {
 }
 
 int main(int argc,char **argv) {
+    QApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
     QApplication app(argc,argv);
 #ifdef Q_OS_WIN
     auto *windowsStyle=QStyleFactory::create("windows11");
@@ -460,6 +463,30 @@ int main(int argc,char **argv) {
         "applying volts emits the calibrated pure sawtooth for channel 1 and preserves channel 2 scaling");
     page.setConnectionState(true,false);page.findChild<QPushButton*>("fpgaApplyDlia")->click();
     require(wmsApplied==accepted+1&&dliaApplied==1&&submitted==2,"DLIA has independent apply signal");
+    page.setConnectionState(true,false);
+    auto *restore = page.findChild<QPushButton*>("fpgaRestoreWmsDefaults");
+    require(restore, "WMS restore action exists");
+    const auto original = page.configuration();
+    auto edited = original;
+    edited.dac[1].offset = -42;
+    auto expected = edited;
+    expected.wms = FpgaControlConfig::factoryDefaults().wms;
+    expected.dac = FpgaControlConfig::factoryDefaults().dac;
+    for (bool online : {false, true}) {
+        page.setConfiguration(edited);
+        page.setConnectionState(online, false);
+        const int before = wmsApplied;
+        QTimer::singleShot(0, &page, [&] {
+            auto *dialog = page.findChild<QMessageBox*>();
+            require(dialog, "restore requires confirmation");
+            dialog->button(QMessageBox::Yes)->click();
+        });
+        restore->click();
+        require(page.configuration().toJson() == expected.toJson(), "restore replaces both WMS/DAC pairs only");
+        require(wmsApplied == before + int(online) && (!online || requestedWms.toJson() == expected.toJson()),
+            "restore sends the defaults only while ready");
+    }
+    page.setConfiguration(original);
     page.setConnectionState(true,false);
     int acquisitions=0,dacs=0;
     QObject::connect(&page,&FpgaControlPage::acquisitionRequested,&page,[&](bool){++acquisitions;});
@@ -749,7 +776,7 @@ int main(int argc,char **argv) {
     sensorChoice->setCurrentIndex(5);app.processEvents();app.processEvents();
     require(sensorForms->parentWidget()->height()<=shortForm,"SDFM300 receive-only form no longer reserves space for withdrawn TFA controls");
     sensorChoice->setCurrentIndex(0);advancedTabs->setCurrentIndex(previousTab);app.processEvents();
-    for(bool dark : {false,true}) for(bool english : {false,true}) for(int scale : {100,150}) {
+    for(bool dark : {false,true}) for(bool english : {false,true}) for(int scale : {100,130,150}) {
         page.setLanguage(english); page.setTheme(dark,scale);
         QFont font=app.font();font.setPointSizeF(app.font().pointSizeF()*scale/100.0);page.setFont(font);
         auto *tabs=page.findChild<QTabWidget*>();
@@ -761,6 +788,13 @@ int main(int argc,char **argv) {
                 app.processEvents();
                 auto *scroll=qobject_cast<QScrollArea*>(tabs->widget(i));
                 require(scroll&&scroll->widgetResizable(),"all tabs remain scrollable at large fonts");require(scroll->viewport()->width()>0,"tab viewport remains visible");
+                if (channelSettings && subtab == 0) {
+                    require(applyWms->geometry().right() < restore->geometry().left()
+                        && applyWms->geometry().top() == restore->geometry().top()
+                        && applyWms->width() >= applyWms->minimumSizeHint().width()
+                        && restore->width() >= restore->minimumSizeHint().width(),
+                        "both WMS actions fit side by side at narrow widths and scaled fonts");
+                }
                 for(const auto *name : {"fpgaDliaChannels","fpgaWaveChannels","fpgaRecordingCards"}) {
                     auto *row=page.findChild<QHBoxLayout*>(name);
                     require(row&&row->count()==2,"each paired row contains two cards");

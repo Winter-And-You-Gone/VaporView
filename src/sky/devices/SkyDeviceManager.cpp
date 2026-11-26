@@ -751,14 +751,14 @@ void SkyDeviceManager::submitFpgaControl(QJsonObject operation, SkyFpgaBackend::
         if (!operation.contains("backend")) operation["backend"] = config_.fpga.configuration.backend;
     }
     fpga_backend_->submit(operation, [this, operation, completion = std::move(completion)](CommandErrorCode code, QString error, QJsonObject document) {
-        if (code == CommandErrorCode::Ok && operation.value("op").toString() == "configure")
-            config_.fpga.configuration = FpgaControlConfig::fromJson(operation.value("configuration").toObject());
-        if (code == CommandErrorCode::Ok && (operation.value("op").toString() == "sensor_config" || operation.value("op").toString() == "sensor")
-            && operation.value("source").toInt()==0x46)
-            config_.fpga.configuration.ai8.pollIntervalMs=FpgaControlConfig::fromJson(document.value("configuration").toObject()).ai8.pollIntervalMs;
-        if(code==CommandErrorCode::Ok && (operation.value("op")=="sensor" || operation.value("op")=="sensor_config")) {
-            const auto source=quint16(operation.value("source").toInt());const auto parameters=operation.value("parameters").toObject();
-            for(auto it=parameters.begin();it!=parameters.end();++it)config_.fpga.configuration.sensorParameters[source][it.key()]=it.value();
+        const auto op = operation.value("op").toString();
+        const bool applied = op == "configure" || (op == "acquisition" && document.value("operation_result").toObject().value("wms_applied").toBool());
+        if (code == CommandErrorCode::Ok && (applied || op == "sensor" || op == "sensor_config")) {
+            const auto configuration = document.value("configuration").toObject();
+            if (!configuration.isEmpty() && (applied || configuration != config_.fpga.configuration.toJson())) {
+                config_.fpga.configuration = FpgaControlConfig::fromJson(configuration);
+                emit fpgaConfigurationApplied();
+            }
         }
         if (simulate_fpga_) document["simulation"] = true;
         completion(code, error, document);

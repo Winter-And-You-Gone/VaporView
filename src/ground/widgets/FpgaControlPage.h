@@ -174,6 +174,7 @@ private:
     quint64 usbDiscoveryGeneration_ = 0;
     bool usbRemote_ = false, usbHostAvailable_ = true, usbDiscovering_ = false;
     QAbstractButton *connect_ = nullptr, *disconnect_ = nullptr;
+    QAbstractButton *restoreWms_ = nullptr;
     QAbstractButton *refresh_ = nullptr;
     QAbstractButton *record_ = nullptr;
     QLabel *status_ = nullptr, *captureStatus_ = nullptr, *recordStatus_ = nullptr, *managementStatus_ = nullptr;

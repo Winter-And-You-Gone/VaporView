@@ -992,10 +992,12 @@ void MainWindow::setupFpgaControlPage()
     connect(page, &FpgaControlPage::refreshRequested, this, [dispatch, controller] {
         dispatch({{"op", "refresh"}}, [controller] { controller->refresh(); });
     });
-    connect(page, &FpgaControlPage::acquisitionRequested, this, [dispatch, controller](bool enabled, bool enableDacs) {
+    connect(page, &FpgaControlPage::acquisitionRequested, this, [page, dispatch, controller](bool enabled, bool enableDacs) {
         QJsonObject request{{"op", "acquisition"}, {"enabled", enabled}};
         if (enableDacs) request.insert("enableDacs", true);
-        dispatch(request, [controller, enabled, enableDacs] { controller->setAcquisition(enabled, enableDacs); });
+        const auto config = page->configuration();
+        if (enabled) request.insert("configuration", config.toJson());
+        dispatch(request, [controller, enabled, enableDacs, config] { controller->setAcquisition(enabled, enableDacs, config); });
     });
     connect(page, &FpgaControlPage::waveformRequested, this, [dispatch, controller](int channel, bool enabled) {
         dispatch({{"op", "wms"}, {"channel", channel}, {"enabled", enabled}}, [controller, channel, enabled] { controller->setWaveform(channel, enabled); });
