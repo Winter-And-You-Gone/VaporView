@@ -257,7 +257,7 @@ bool validateControl(const QJsonObject& control, QString *error)
         const auto encoded=control.value("data").toString().toLatin1(),data=QByteArray::fromBase64(encoded);
         if(data.toBase64()!=encoded || (action==1?!data.isEmpty():data.size()!=count*2))return fail();
         if(src==0x46 && (count!=1 || action==3 || !((address<=0x4df) || (address>=0x600 && address<=0x6ef) || (address>=0x800 && address<=0x85f))))return fail();
-        if(src==0x46 && action==2 && ((address>=0x480 && address<0x800) || (address>=0x842 && address<=0x844) || address==0x851 || (address>=0x853 && address<=0x855)))return fail();
+        if(src==0x46 && action==2 && ((address>=0x480 && address<0x800) || (address>=0x842 && address<=0x843) || address==0x851 || (address>=0x853 && address<=0x855)))return fail();
         if(src==0x4a) {
             if(action==3)return fail();
             if(action==2)for(int word:{0,1,2,3,7,8,9,12})

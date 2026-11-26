@@ -26,6 +26,12 @@ enum class ChannelControlState : quint8
     Stopped,
 };
 
+inline quint8 simulatedControlByte(int workMode, quint16 runState)
+{
+    if (runState == 9655 || workMode == 4) return 2; // Stop All or channel Stop
+    return workMode == 1 ? 0 : 1; // auto-tuning or active control
+}
+
 enum class Page
 {
     Channel = 0,

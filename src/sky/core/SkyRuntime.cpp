@@ -481,6 +481,8 @@ bool SkyRuntime::start()
                            {QStringLiteral("reason_code"), QStringLiteral("SKY_CONFIG_LOAD_FAILED")}});
         config = SkyConfig::defaults();
     }
+    if (options_.simulate_data && !QFileInfo::exists(configPath))
+        config.ai8_temperature_controller.enabled = true;
     if (!options_.wave_host.isEmpty())
     {
         config.wave_tcp.host = options_.wave_host;

@@ -1,6 +1,7 @@
 #include "ground/widgets/CustomTitleBar.h"
 #include "LogService.h"
 #include "shared/theme/AppTheme.h"
+#include "shared/theme/TopLevelCardStyle.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
 #include "TcpWavePanel.h"
 #include "WaterProfileAccumulator.h"
@@ -1032,6 +1033,19 @@ struct TimeAxisState
     QStringList labels;
 };
 
+template<typename LabelAt>
+int fittingXAxisIntervals(int maximum, qreal width, const QFontMetrics &metrics, LabelAt labelAt)
+{
+    for (int count : {12, 8, 6, 4, 2}) {
+        if (count > maximum) continue;
+        int widest = 0;
+        for (int i = 0; i <= count; ++i)
+            widest = std::max(widest, metrics.horizontalAdvance(labelAt(i, count)));
+        if (width >= count * (widest + 6)) return count;
+    }
+    return 1;
+}
+
 TimeAxisState makeTimeAxisState(qint64 minWallMsecs,
                                 qint64 maxWallMsecs,
                                 qreal plotWidth,
@@ -1115,7 +1129,8 @@ void drawTimeAxis(QPainter& painter,
                   const QRectF& plotRect,
                   const TimeAxisState& state,
                   const QFontMetrics& metrics,
-                  const QColor& color)
+                  const QColor& color,
+                  bool compactLabels = false)
 {
     if (state.labels.isEmpty() || plotRect.width() <= 1.0)
     {
@@ -1128,7 +1143,8 @@ void drawTimeAxis(QPainter& painter,
     for (int index = 0; index < static_cast<int>(state.labels.size()); ++index)
     {
         const qreal x = plotRect.left() + plotRect.width() * index / static_cast<qreal>(intervals);
-        const qreal labelWidth = std::max<qreal>(36.0, metrics.horizontalAdvance(state.labels.at(index)));
+        const qreal labelWidth = compactLabels ? metrics.horizontalAdvance(state.labels.at(index)) + 4
+                                               : std::max(36, metrics.horizontalAdvance(state.labels.at(index)));
         const qreal labelLeft = std::clamp(x - labelWidth / 2.0,
                                            0.0,
                                            std::max<qreal>(0.0, painter.device()->width() -
@@ -1217,6 +1233,13 @@ public:
         update();
     }
 
+    void setSampleAxisMaxIntervals(int intervals)
+    {
+        sample_axis_max_intervals_ = intervals;
+        updateXAxisLabelProperty();
+        update();
+    }
+
     void setSampleAxis(bool enabled, quint32 totalPoints = 0)
     {
         sample_axis_ = enabled;
@@ -1272,7 +1295,7 @@ protected:
         if (!std::isfinite(minValue))
         {
             drawGrid();
-            drawTimeAxis(painter, plotRect, timeAxis, fm, theme.text);
+            drawTimeAxis(painter, plotRect, timeAxis, fm, theme.text, sample_axis_ && sample_axis_max_intervals_ > 4);
             painter.setPen(theme.mutedText);
             painter.drawText(plotRect, Qt::AlignCenter, empty_text_);
             return;
@@ -1321,7 +1344,7 @@ protected:
 
         painter.setPen(theme.text);
         drawYLabels(painter, plotRect, yIntervals, minValue, maxValue, 3);
-        drawTimeAxis(painter, plotRect, timeAxis, fm, theme.text);
+        drawTimeAxis(painter, plotRect, timeAxis, fm, theme.text, sample_axis_ && sample_axis_max_intervals_ > 4);
     }
 
 private:
@@ -1329,8 +1352,12 @@ private:
     {
         if (!sample_axis_) return makeTimeAxisState(0, frame_wall_msecs_, width, metrics);
         TimeAxisState state;
-        for (int i = 0; i < 5; ++i)
-            state.labels.append(QString::number(quint64(total_points_ ? total_points_ - 1 : 0) * i / 4));
+        const auto labelAt = [this](int i, int count) {
+            return QString::number(quint64(total_points_ ? total_points_ - 1 : 0) * i / count);
+        };
+        const int count = sample_axis_max_intervals_ == 4 ? 4
+            : fittingXAxisIntervals(sample_axis_max_intervals_, width, metrics, labelAt);
+        for (int i = 0; i <= count; ++i) state.labels.append(labelAt(i, count));
         return state;
     }
     void updateXAxisLabelProperty()
@@ -1349,6 +1376,7 @@ private:
     QColor line_color_;
     QVector<float> samples_;
     qint64 frame_wall_msecs_ = 0;
+    int sample_axis_max_intervals_ = 4;
     bool sample_axis_ = false;
     quint32 total_points_ = 0;
     QString empty_text_ = QStringLiteral("No data");
@@ -1747,6 +1775,12 @@ public:
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     }
 
+    void setMaxXAxisIntervals(int intervals)
+    {
+        max_x_axis_intervals_ = intervals;
+        update();
+    }
+
     void setProfile(QVector<WaterProfileAccumulator::Layer> layers, std::optional<WaterProfileAccumulator::Point> latest,
                     int resolution, const QString &unit, bool english, const QString &emptyText)
     {
@@ -1817,7 +1851,12 @@ protected:
                                            metrics.horizontalAdvance(formatWaveValue(xMin, 2)) / 2});
         const QRectF area = QRectF(rect()).adjusted(leftMargin, 4, -rightMargin, -metrics.height() - 8);
         if (area.width() < 2 || area.height() < 2) return;
-        const int columns = area.width() >= 4 * (rightMargin * 2 + 8) ? 4 : 2;
+        const auto labelAt = [&](int i, int count) {
+            return formatWaveValue(xMin + (xMax - xMin) * (double(i) / count), 2);
+        };
+        const int columns = max_x_axis_intervals_ == 4 ? (area.width() >= 4 * (rightMargin * 2 + 8) ? 4 : 2)
+            : fittingXAxisIntervals(max_x_axis_intervals_, area.width(), metrics, labelAt);
+        setProperty("xAxisTickCount", layers_.isEmpty() ? 0 : columns + 1);
         const int yIntervals = VaporView::WavePlotFrame::adaptiveYIntervals(area.height(), metrics.height());
         setProperty("yTickCount", yIntervals + 1);
         VaporView::WavePlotFrame::drawGrid(painter, area, columns, theme, yIntervals);
@@ -1829,7 +1868,7 @@ protected:
         painter.setPen(theme.text);
         for (int i = 0; i <= columns; ++i) {
             const double ratio = double(i) / columns;
-            const QString label = formatWaveValue(xMin + (xMax - xMin) * ratio, 2);
+            const QString label = labelAt(i, columns);
             const int labelWidth = metrics.horizontalAdvance(label) + 2;
             const qreal x = area.left() + area.width() * ratio;
             painter.drawText(QRectF(x - labelWidth / 2.0, area.bottom() + 2, labelWidth, metrics.height()),
@@ -1869,6 +1908,7 @@ private:
     QVector<WaterProfileAccumulator::Layer> layers_;
     QVector<QPointF> nodes_;
     std::optional<WaterProfileAccumulator::Point> latest_;
+    int max_x_axis_intervals_ = 4;
     int resolution_ = 5;
     bool english_ = false;
     QString empty_text_, axes_, unit_;
@@ -3019,8 +3059,8 @@ QWidget *TcpWavePanel::createWaveformPage(QWidget *parent)
     auto *body = new QWidget(scroll);
     setSurface(body, QStringLiteral("waveformPageBody"));
     auto *list = new QVBoxLayout(body);
-    list->setContentsMargins(12, 8, 12, 8);
-    list->setSpacing(2);
+    list->setContentsMargins(12, 12, 12, 12);
+    list->setSpacing(0);
     list->setSizeConstraint(QLayout::SetMinAndMaxSize);
     auto *bar = new QWidget(body);
     setSurface(bar, QStringLiteral("waveformPageHeaderBar"));
@@ -3045,7 +3085,7 @@ QWidget *TcpWavePanel::createWaveformPage(QWidget *parent)
     using VaporView::Ground::Wave::VerticalRowLabel;
     using VaporView::Ground::Wave::RowResizeHandle;
     auto *headings = new QHBoxLayout;
-    headings->setSpacing(4);
+    headings->setSpacing(6);
     // Use the same font-dependent width as the seven row labels.
     auto *headingSpacer = new VerticalRowLabel(body);
     auto spacerPolicy = headingSpacer->sizePolicy();
@@ -3058,17 +3098,18 @@ QWidget *TcpWavePanel::createWaveformPage(QWidget *parent)
         headings->addWidget(page.lanes[channel].heading, 1);
     }
     list->addLayout(headings);
+    list->addSpacing(6);
     const QStringList plotNames{"Raw", "H1", "H2", "Normalized"};
     for (int index = 0; index < 7; ++index) {
         auto *row = new QWidget(body);
         setSurface(row, QStringLiteral("waveformPageRow"));
-        row->setFixedHeight(186);
+        row->setFixedHeight(index < 4 ? 136 : index == 6 ? 154 : 186);
         list->addWidget(row);
         auto *rowLayout = new QVBoxLayout(row);
         rowLayout->setContentsMargins(0, 0, 0, 0);
         rowLayout->setSpacing(0);
         auto *columns = new QHBoxLayout;
-        columns->setSpacing(4);
+        columns->setSpacing(6);
         rowLayout->addLayout(columns, 1);
         page.labels[index] = new VerticalRowLabel(row);
         page.labels[index]->setObjectName(QStringLiteral("waveformRowLabel"));
@@ -3076,10 +3117,12 @@ QWidget *TcpWavePanel::createWaveformPage(QWidget *parent)
         for (int channel = 0; channel < 2; ++channel) {
             auto &lane = page.lanes[channel];
             auto *cell = new QFrame(row);
-            cell->setFrameShape(QFrame::StyledPanel);
+            cell->setObjectName(QStringLiteral("waveformPageCard"));
+            cell->setFrameShape(QFrame::NoFrame);
+            VaporView::configureTopLevelCard(cell);
             cell->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
             auto *layout = new QVBoxLayout(cell);
-            layout->setContentsMargins(3, 1, 3, 1);
+            layout->setContentsMargins(8, 6, 8, 6);
             layout->setSpacing(0);
             columns->addWidget(cell, 1);
             if (index == 5) { lane.water.concentration = cell; continue; }
@@ -3097,6 +3140,7 @@ QWidget *TcpWavePanel::createWaveformPage(QWidget *parent)
                 const auto color = index < 2 ? AppThemeColor::PlotSeriesWaveBlue : AppThemeColor::PlotSeriesWaveOrange;
                 auto *wave = new WavePlotWidget(appThemeColor(color, false), cell);
                 wave->setObjectName(QStringLiteral("wavePage%1Channel%2").arg(plotNames[index]).arg(channel));
+                wave->setSampleAxisMaxIntervals(12);
                 wave->setMinimumHeight(0);
                 wave->setMaximumHeight(QWIDGETSIZE_MAX);
                 layout->addWidget(wave, 1);
@@ -3173,6 +3217,7 @@ void TcpWavePanel::createWaterPlots(WaterCards &cards, QWidget *parent, int chan
     cards.summary->setIndent(6);
     cards.summary->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
     if (listCell) {
+        cards.layers->setMaxXAxisIntervals(12);
         cards.layers->setMinimumHeight(0);
         profileHeader->addWidget(cards.summary, 1);
     } else {

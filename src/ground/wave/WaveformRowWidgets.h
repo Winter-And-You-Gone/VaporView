@@ -99,16 +99,14 @@ public:
     {
         setHeightBounds(minHeight, maxHeight);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        setFixedHeight(7);
+        setFixedHeight(6);
         setCursor(Qt::SplitVCursor);
-        setAttribute(Qt::WA_Hover);
     }
 
     void setTargetRow(QWidget *targetRow)
     {
         targetRow_ = targetRow;
         dragging_ = false;
-        update();
     }
 
     void setHeightBounds(int minHeight, int maxHeight)
@@ -118,20 +116,6 @@ public:
     }
 
 protected:
-    void paintEvent(QPaintEvent *) override
-    {
-        QPainter painter(this);
-        const bool dark = isDarkThemePalette(palette());
-        const int y = height() / 2;
-        const int x = width() / 2;
-        const bool active = dragging_ || underMouse();
-        painter.setPen(appThemeColor(AppThemeColor::Border, dark));
-        painter.drawLine(0, y, width(), y);
-        painter.setPen(QPen(appThemeColor(active ? AppThemeColor::Primary : AppThemeColor::BorderStrong, dark),
-                            active ? 3 : 2, Qt::SolidLine, Qt::RoundCap));
-        painter.drawLine(x - 12, y, x + 12, y);
-    }
-
     void mousePressEvent(QMouseEvent *event) override
     {
         if (event->button() != Qt::LeftButton || !targetRow_)
@@ -141,7 +125,6 @@ protected:
         startY_ = event->globalPosition().y();
         startHeight_ = targetRow_->height();
         event->accept();
-        update();
     }
 
     void mouseMoveEvent(QMouseEvent *event) override
@@ -160,7 +143,6 @@ protected:
 
         dragging_ = false;
         event->accept();
-        update();
         if (targetRow_)
             resizeRow(event->globalPosition().y());
     }

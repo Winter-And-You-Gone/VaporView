@@ -13,7 +13,7 @@ enum class FpgaSimulatorStartup { RunningDemo, Idle };
 // capability sets; HistoricalExtensions additionally exposes withdrawn AI8
 // parameter transactions for explicit compatibility tests. All profiles also
 // model two explicitly simulated TEC103 devices on the LC0/LC1 raw UARTs.
-enum class FpgaSimulatorFirmware { CurrentHcd2, Hcd2Ai8Scan, HistoricalExtensions, Rd105Integrated, SosPps };
+enum class FpgaSimulatorFirmware { CurrentHcd2, Hcd2Ai8Scan, HistoricalExtensions, Rd105Integrated, SosPps, SkySimulation };
 class FpgaUsbSimulator : public FpgaUsbTransport
 {
 public:

@@ -715,7 +715,7 @@ void SkyDeviceManager::ensureFpgaBackend()
     // Recreate the simulator on every reconnect; never fall back to USB after
     // the first injected transport has been consumed.
     auto transport = simulate_fpga_ ? Ground::Devices::makeFpgaUsbSimulator(
-        nullptr, Ground::Devices::FpgaSimulatorStartup::Idle, Ground::Devices::FpgaSimulatorFirmware::Rd105Integrated, simulate_mode_) : std::move(fpga_test_transport_);
+        nullptr, Ground::Devices::FpgaSimulatorStartup::Idle, Ground::Devices::FpgaSimulatorFirmware::SkySimulation, simulate_mode_) : std::move(fpga_test_transport_);
     fpga_backend_ = std::make_unique<SkyFpgaBackend>(std::move(transport));
     fpga_backend_->setConfiguration(config_.fpga.configuration);
     connect(fpga_backend_.get(), &SkyFpgaBackend::statusChanged, this, [this](QJsonObject document) {
@@ -2497,6 +2497,7 @@ bool SkyDeviceManager::writeAi8Page(const Ai8TemperatureControllerProtocol::Page
         switch (requested.page)
         {
         case Ai8TemperatureControllerProtocol::Page::Channel:
+            effective.channel.displayedSetpointC = effective.channel.setpointC;
             simulated_ai8_channels_[static_cast<size_t>(requested.selection.channel - 1)] = effective.channel;
             break;
         case Ai8TemperatureControllerProtocol::Page::InputGroup:
@@ -2899,9 +2900,9 @@ void SkyDeviceManager::generateSimulatedData()
             if (!std::isfinite(measured)) measured = 24.0 + i * 0.1;
             measured += (target + 0.035 * std::sin(seconds*0.4+i) - measured) * 0.06;
             latest_ai8_temperature_controller_.controlStates[static_cast<size_t>(i)] =
-                (i % 2 == 0)
-                    ? Ai8TemperatureControllerProtocol::ChannelControlState::ApidOutput
-                    : Ai8TemperatureControllerProtocol::ChannelControlState::Stopped;
+                Ai8TemperatureControllerProtocol::decodeChannelControlState(
+                    Ai8TemperatureControllerProtocol::simulatedControlByte(
+                        simulated_ai8_channels_[i].workMode, simulated_ai8_global_.runStateRaw), 2);
         }
         latest_ai8_temperature_controller_.alarmStatusRegisters.fill(0);
         ai8_temperature_controller_status_.rx_count++;

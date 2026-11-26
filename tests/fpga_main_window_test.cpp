@@ -2262,7 +2262,20 @@ static void harmonicHomeGraphs()
         require(stack->currentWidget() == wavePage, "waveform navigation opens the page");
         const auto rows = wavePage->findChildren<QWidget *>("waveformPageRow");
         require(rows.size() == 7 && wavePage->findChildren<QGroupBox *>().isEmpty(), "seven waveform rows replace individual plot cards");
+        QApplication::processEvents();
+        require(wavePage->findChild<QWidget *>("vaporViewTopLevelCardShadowLayer", Qt::FindDirectChildrenOnly),
+                "waveform scroll area hosts the card shadows");
+        QFrame *previousCard = nullptr;
         for (auto *row : rows) {
+            const auto cards = row->findChildren<QFrame *>("waveformPageCard", Qt::FindDirectChildrenOnly);
+            require(cards.size() == 2 && cards[0]->property("vaporViewTopLevelCard").toBool() &&
+                    cards[1]->property("vaporViewTopLevelCard").toBool(), "each waveform row has two top-level cards");
+            require(cards[1]->x() - cards[0]->geometry().right() - 1 == qRound(6 * scale / 100.0), "horizontal card gap is six pixels");
+            if (previousCard)
+                require(cards[0]->mapTo(wavePage->widget(), QPoint()).y() -
+                        previousCard->mapTo(wavePage->widget(), QPoint(0, previousCard->height())).y() == qRound(6 * scale / 100.0),
+                        "vertical card gap is six pixels");
+            previousCard = cards[0];
             require(dynamic_cast<VaporView::Ground::Wave::VerticalRowLabel *>(row->findChild<QWidget *>("waveformRowLabel")) &&
                     dynamic_cast<VaporView::Ground::Wave::RowResizeHandle *>(row->findChild<QWidget *>("waveformRowResizeHandle")),
                     "each row has a vertical label and its own resize handle");
@@ -2298,6 +2311,31 @@ static void harmonicHomeGraphs()
             }
         }
 
+        const QSize originalWindowSize = window.size();
+        window.resize(2000, window.height());
+        QApplication::processEvents();
+        QVector<int> initialHeights;
+        for (auto *row : rows) initialHeights.append(row->height());
+        QVector<int> expectedHeights{136, 136, 136, 136, 186, 186, 154};
+        for (int &height : expectedHeights) height = qRound(height * scale / 100.0);
+        require(initialHeights == expectedHeights,
+                "waveform rows are compact while peak and concentration rows keep their height");
+        for (int channel = 0; channel < 2; ++channel) {
+            for (const QString &kind : {"Raw", "H1", "H2", "Normalized"}) {
+                auto *plot = wavePage->findChild<QWidget *>(QStringLiteral("wavePage%1Channel%2").arg(kind).arg(channel));
+                plot->grab();
+                require(plot->property("xAxisTickCount").toInt() == 13 && plot->property("yTickCount").toInt() == 4,
+                        "wide waveform plots have twelve horizontal intervals and three vertical intervals");
+            }
+            auto *profile = wavePage->findChild<QWidget *>(channel ? "waterProfilePlot1" : "waterProfilePlot");
+            profile->grab();
+            require(profile->property("xAxisTickCount").toInt() == 13 && profile->property("yTickCount").toInt() == 4,
+                    "wide water profile has the same grid density as the waveform plots");
+        }
+
+        window.resize(originalWindowSize);
+        QApplication::processEvents();
+
         // Exercise the drag and paint paths for all three plot widget types.
         for (const auto &plotName : {"wavePageRawChannel0", "wavePageTrendChannel0", "waterProfilePlot"}) {
             auto *plot = wavePage->findChild<QWidget *>(plotName);
@@ -2322,7 +2360,8 @@ static void harmonicHomeGraphs()
             plot->grab();
             require(row->height() == 420 && plot->height() > smallHeight && smallTicks >= 4 &&
                     plot->property("yTickCount").toInt() > smallTicks, "dragging increases plot height and adds vertical scale labels");
-            for (auto *neighbor : rows) if (neighbor != row) require(neighbor->height() == initialHeight, "drag keeps neighboring row heights stable");
+            for (int i = 0; i < rows.size(); ++i)
+                if (rows[i] != row) require(rows[i]->height() == initialHeights[i], "drag keeps neighboring row heights stable");
             row->setFixedHeight(initialHeight);
             QApplication::processEvents();
         }

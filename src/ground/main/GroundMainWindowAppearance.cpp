@@ -289,13 +289,15 @@ void MainWindow::loadModernStyleSheet()
 
     state_->base_style_sheet_ += QStringLiteral(R"(
 QScrollArea#waveformMonitorPage,
-QScrollArea#waveformMonitorPage > QWidget,
-QScrollArea#waveformMonitorPage > QWidget > QWidget,
 QWidget#waveformPageViewport,
 QWidget#waveformPageBody,
 QWidget#waveformPageHeaderBar,
 QWidget#waveformPageRow {
     background-color: @vv-surface;
+}
+QFrame#waveformPageCard > .QWidget,
+QFrame#waveformPageCard > QLabel {
+    background-color: @vv-surface-raised;
 }
 )");
     state_->base_style_sheet_.replace("url(lucide/chevron-down.svg)", QString("url(%1)").arg(chevronDownIconPath));

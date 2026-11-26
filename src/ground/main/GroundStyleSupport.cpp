@@ -382,13 +382,15 @@ QSplitter {
     background-color: @vv-window;
 }
 QScrollArea#waveformMonitorPage,
-QScrollArea#waveformMonitorPage > QWidget,
-QScrollArea#waveformMonitorPage > QWidget > QWidget,
 QWidget#waveformPageViewport,
 QWidget#waveformPageBody,
 QWidget#waveformPageHeaderBar,
 QWidget#waveformPageRow {
     background-color: @vv-surface;
+}
+QFrame#waveformPageCard > .QWidget,
+QFrame#waveformPageCard > QLabel {
+    background-color: @vv-surface-raised;
 }
 QSplitter#appLayoutSplitter,
 QSplitter#appLayoutSplitter > QWidget,

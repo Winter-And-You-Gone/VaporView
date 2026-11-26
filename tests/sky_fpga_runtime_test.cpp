@@ -2,6 +2,7 @@
 #include "LogService.h"
 #include "FpgaTelemetry.h"
 #include "FpgaUsbSimulator.h"
+#include "FpgaExtensions.h"
 #include "sky_fpga_test_transport.h"
 #include "FailingRecordingStorage.h"
 #include "shared/session/CalibrationRuntime.h"
@@ -76,18 +77,38 @@ static void firstStartFpgaTest()
     runtime.stop();
 }
 
-static void fpgaAi8PageTest(FpgaSimulatorFirmware firmware)
+static void fpgaAi8PageTest(FpgaSimulatorFirmware firmware, bool directSimulation = false)
 {
     using namespace Ai8TemperatureControllerProtocol;
     QTemporaryDir directory;
     SkyRuntimeOptions options;
     options.config_path = directory.filePath("sky.json");
     options.telemetry_tcp_port = 0;
+    options.simulate_data = directSimulation;
+    options.simulate_fpga = !directSimulation && firmware == FpgaSimulatorFirmware::SkySimulation;
     SkyRuntime runtime(options);
-    runtime.setFpgaTransportForTesting(makeFpgaUsbSimulator(nullptr, FpgaSimulatorStartup::RunningDemo, firmware));
+    if (!options.simulate_fpga && !directSimulation)
+        runtime.setFpgaTransportForTesting(makeFpgaUsbSimulator(nullptr, FpgaSimulatorStartup::RunningDemo, firmware));
     require(runtime.start(), "start FPGA AI-8 simulator");
-    waitUntil([&] { return runtime.currentFpgaStatus().value("ready").toBool(); }, "FPGA ready for page command");
+    if (!directSimulation)
+        waitUntil([&] { return runtime.currentFpgaStatus().value("ready").toBool(); }, "FPGA ready for page command");
     quint16 seq = 0;
+    if (options.simulate_fpga) {
+        require(runtime.currentFpgaStatus().value("extensions").toInt() & FpgaExtensions::Ai8Parameters,
+                "Sky simulator advertises parameter pages");
+        DeviceOperationRequest request{++seq, SkyDeviceId::Fpga, DeviceOperation::FpgaControl,
+            FpgaRemote::encodeControl({{"op","sensor"},{"source",0x46},{"enabled",true},{"poll_ms",500}})};
+        CommandMessage command;
+        command.command_seq = seq;
+        command.command_id = CommandId::DeviceOperation;
+        command.payload = TelemetryCodec::serializeDeviceOperationRequest(request);
+        bool enabled = false;
+        runtime.submitCommand(command, [&](const SkyCommandResult& result) {
+            require(result.ack.error_code == CommandErrorCode::Ok, qPrintable(result.device_operation_response.error_message));
+            enabled = true;
+        });
+        waitUntil([&] { return enabled; }, "enable simulated AI-8");
+    }
     const auto pageCommand = [&](DeviceOperation op, const PageData& page) {
         const DeviceOperationRequest request{++seq, SkyDeviceId::Ai8TemperatureController, op, TelemetryCodec::serializeAi8PageData(page)};
         CommandMessage cmd;
@@ -119,6 +140,43 @@ static void fpgaAi8PageTest(FpgaSimulatorFirmware firmware)
     if (firmware == FpgaSimulatorFirmware::HistoricalExtensions) {
         require(confirmed.selection.channel == 3 && confirmed.channel.setpointC == 32.1 &&
                 confirmed.channel.proportionalBand == original.channel.proportionalBand, "partial SP write preserves PID and reads back CH3");
+    }
+    if (options.simulate_fpga || directSimulation) {
+        auto read = [&] {
+            auto request = page;
+            request.writeFields = 0;
+            return pageCommand(DeviceOperation::ReadParameters, request);
+        };
+        auto write = [&] { pageCommand(DeviceOperation::WriteAi8ParameterChanges, page); };
+        require(read().channel.displayedSetpointC == 32.1, "displayed channel setpoint readback");
+        page.page = Page::InputGroup;
+        page.selection.inputGroup = 2;
+        page = read();
+        page.input.filter = 5;
+        page.writeFields = 0;
+        pageCommand(DeviceOperation::WriteParameters, page);
+        require(read().input.filter == 5, "input group filter readback");
+        page.page = Page::OutputGroup;
+        page.selection.outputGroup = 3;
+        page = read();
+        page.output.outputHighPercent = 85;
+        page.writeFields = writeFieldBit(WriteField::OutputHigh);
+        write();
+        require(read().output.outputHighPercent == 85, "output group limit readback");
+        page.page = Page::Global;
+        page = read();
+        require(page.global.baudRate == 19200 && page.global.controlChannelCount == 8, "global simulation defaults");
+        page.global.controlChannelCount = 6;
+        page.global.controlCycleS = 2.5;
+        page.writeFields = writeFieldBit(WriteField::ControlChannelCount) | writeFieldBit(WriteField::ControlCycle);
+        write();
+        const auto global = read().global;
+        require(global.controlChannelCount == 6 && global.controlCycleS == 2.5, "global control settings readback");
+        if (directSimulation) {
+            page.writeFields = 0;
+            const auto reset = pageCommand(DeviceOperation::FactoryReset, page);
+            require(reset.global.controlChannelCount == 8 && reset.global.controlCycleS == 1, "direct factory reset");
+        }
     }
     runtime.stop();
 }
@@ -511,6 +569,8 @@ int main(int argc,char **argv)
     if (!app.arguments().contains("--discovery-only")) {
         fpgaAi8PageTest(FpgaSimulatorFirmware::HistoricalExtensions);
         fpgaAi8PageTest(FpgaSimulatorFirmware::Rd105Integrated);
+        fpgaAi8PageTest(FpgaSimulatorFirmware::SkySimulation);
+        fpgaAi8PageTest(FpgaSimulatorFirmware::SkySimulation, true);
         fpgaAutoSaveTest();
         firstStartFpgaTest();
         asyncConnectionLogTest();

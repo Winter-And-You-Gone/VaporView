@@ -1,5 +1,6 @@
 #include "SerialBaudRateCapabilities.h"
 #include "FpgaUsbSimulator.h"
+#include "Ai8TemperatureControllerProtocol.h"
 #include "FpgaAdvancedParameters.h"
 #include "FpgaControlConfig.h"
 #include "ground/devices/FpgaSimulatorTrajectory.h"
@@ -134,7 +135,7 @@ void tlv(QByteArray &b, quint16 tag, quint8 type, const QByteArray &v)
     put16(b, tag); b.append(char(type)); b.append(char(v.size())); b.append(v);
     while (b.size() % 4) b.append(char(0));
 }
-bool readable(quint32 a, bool historical, bool hcd2Scan, bool rd105)
+bool readable(quint32 a, bool ai8Parameters, bool hcd2Scan, bool rd105)
 {
     if (a % 4) return false;
     if (a <= 0x10 || (a >= 0x20 && a <= 0x40) || (a >= 0x48 && a <= 0x50) ||
@@ -150,7 +151,7 @@ bool readable(quint32 a, bool historical, bool hcd2Scan, bool rd105)
     if (base == 0x6300) return offset <= 0x40;
     if (base == 0x6500) return offset<=0x10 || offset==0x1c || offset==0x20 || (offset>=0x28 && offset<=0x40) || offset==0x48 || offset==0x5c;
     if (base == 0x6600) return offset <= 0x64 ||
-        (historical && (offset == 0x68 || offset == 0x6c || (offset>=0x80 && offset<=0xb4) || offset==0xfc)) ||
+        (ai8Parameters && (offset == 0x68 || offset == 0x6c || (offset>=0x80 && offset<=0xb4) || offset==0xfc)) ||
         (hcd2Scan && (offset == 0x68 || offset == 0x6c || offset == 0x98 || (offset>=0xa0 && offset<=0xbc) || offset==0xfc));
     if (base == 0x6a00 && rd105) return offset <= 0x4c || (offset>=0x80 && offset<=0x90) || offset>=0xc0;
     if (base == 0x6800 || base == 0x6900) return offset <= 0x3c;
@@ -165,9 +166,9 @@ class Simulator final : public FpgaUsbSimulator
 {
 public:
     Simulator(QObject *parent, FpgaSimulatorStartup startup, FpgaSimulatorFirmware firmware, FpgaSimulatorDataMode mode)
-        : FpgaUsbSimulator(parent), startup_(startup), mode_(mode), historical_(firmware == FpgaSimulatorFirmware::HistoricalExtensions),
-          hcd2Scan_(firmware == FpgaSimulatorFirmware::Hcd2Ai8Scan || firmware == FpgaSimulatorFirmware::Rd105Integrated || firmware==FpgaSimulatorFirmware::SosPps),
-          rd105_(historical_ || firmware == FpgaSimulatorFirmware::Rd105Integrated || firmware==FpgaSimulatorFirmware::SosPps),
+        : FpgaUsbSimulator(parent), startup_(startup), mode_(mode), ai8Parameters_(firmware == FpgaSimulatorFirmware::HistoricalExtensions || firmware == FpgaSimulatorFirmware::SkySimulation),
+          hcd2Scan_(firmware == FpgaSimulatorFirmware::SkySimulation || firmware == FpgaSimulatorFirmware::Hcd2Ai8Scan || firmware == FpgaSimulatorFirmware::Rd105Integrated || firmware==FpgaSimulatorFirmware::SosPps),
+          rd105_(ai8Parameters_ || firmware == FpgaSimulatorFirmware::Rd105Integrated || firmware==FpgaSimulatorFirmware::SosPps),
           sosPps_(firmware==FpgaSimulatorFirmware::SosPps)
     { initialize(); clock_.start(); }
     bool open(const QString &) override
@@ -303,7 +304,7 @@ private:
     {
         regs_.clear();
         uart_ = {};
-        extensions_ = historical_ ? 0x3f : rd105_ ? 0x3b : hcd2Scan_ ? 0x2b : 0x29;
+        extensions_ = ai8Parameters_ ? 0x3f : rd105_ ? 0x3b : hcd2Scan_ ? 0x2b : 0x29;
         regs_ = {{0x4000,0x00200101},{0x4100,0x00210101},{0x4018,0x00011800},{0x4118,0x00011800},
             {0x5000,0x00300101},{0x5100,0x00310101},{0x5024,0x00040101},{0x5124,0x00040101},
             {0x6600,0x00460200},{0x0004,0},{0x7004,1},{0x8004,1},{0x002c,0xffffffff},{0x0030,0xffffffff},
@@ -329,11 +330,41 @@ private:
                 {"TC1:STARTUPDELAY",3},{"TC1:PWMDUTY",0},{"CONTMODE",0},
                 {"OVERTTEMP",1},{"ERRORCODE",0},{"SINTERIORTEMP",33}};
         }
-        if(historical_ || hcd2Scan_) {regs_[0x66fc]=historical_?0x0f:0x0b;regs_[0x6698]=1;}
+        if(ai8Parameters_ || hcd2Scan_) {regs_[0x66fc]=ai8Parameters_?0x0f:0x0b;regs_[0x6698]=1;}
         regs_[0x6270]=2000;regs_[0x6278]=115200;
         for(int ch=1;ch<=8;++ch) {ai8Registers_[quint16(ch-1)]=250+ch;ai8Registers_[quint16(0x600+ch-1)]=230+ch;ai8Registers_[quint16(0x480+ch-1)]=250+ch;}
         for(int i=0;i<8;++i)ai8Measured_[i]=230+i;
-        ai8Registers_[0x840]=1;ai8Registers_[0x841]=2;
+        using namespace Ai8TemperatureControllerProtocol;
+        const auto set = [&](Register reg, int offset, quint16 value) {
+            ai8Registers_[quint16(reg) + offset] = value;
+        };
+        for (int i = 0; i < kChannelCount; ++i) {
+            set(Register::ProportionalBandBase, i, encodeUnsignedTenths(10));
+            set(Register::IntegralTimeBase, i, encodeUnsignedTenths(20));
+            set(Register::DerivativeTimeBase, i, encodeSignedHundredths(5));
+            set(Register::ChannelInputBase, i, encodeChannelInput(1, 0));
+            set(Register::ChannelOutputBase, i, 1);
+            set(Register::HighAlarmBase, i, encodeSignedTenths(80));
+            set(Register::LowAlarmBase, i, encodeSignedTenths(-20));
+        }
+        for (int i = 0; i < kParameterGroupCount; ++i) {
+            set(Register::InputTypeBase, i, 1);
+            set(Register::ScaleHighBase, i, encodeSignedTenths(100));
+            set(Register::FilterBase, i, 1);
+            set(Register::DeviationHighAlarmBase, i, encodeSignedTenths(80));
+            set(Register::DeviationLowAlarmBase, i, encodeSignedTenths(-20));
+            set(Register::OutputHighBase, i, 100);
+            set(Register::OutputHighThresholdBase, i, encodeSignedTenths(100));
+            set(Register::SetpointLowLimitBase, i, encodeSignedTenths(-999));
+            set(Register::SetpointHighLimitBase, i, encodeSignedTenths(3200));
+        }
+        set(Register::Address, 0, 1);
+        set(Register::BaudRate, 0, encodeBaudRate(19200));
+        set(Register::LocalInputChannelCount, 0, kChannelCount);
+        set(Register::ExpansionInputChannelCount, 0, kChannelCount);
+        set(Register::ControlChannelCount, 0, kChannelCount);
+        set(Register::ControlCycle, 0, encodeUnsignedTenths(1));
+        set(Register::DecimalPoint, 0, 1);
         for(quint16 channel:{1,2}) {
             const quint16 base=channel*0x1000;
             const quint32 target=(25+2*(channel-1))*100000;
@@ -458,7 +489,11 @@ private:
         if (address >= 0x2000 && address <= 0x5104 && (address & 255) == 4) setControl(base, value);
         else if (address >= 0x6000 && address <= 0x6a0c && (address & 255) == 12) regs_[address] &= ~value;
         else regs_[address] = value;
-        if(address==0x6680 || address==0x6a80) {regs_[address+12]=0x10000;pendingParameters_[base]={value,clock_.elapsed()+30};}
+        if (address == 0x6680 || address == 0x6a80) {
+            regs_[address + 12] = 0x10000;
+            const int delayMs = address == 0x6680 && hcd2Scan_ && ai8Parameters_ ? 8 : 30;
+            pendingParameters_[base] = {value, clock_.elapsed() + delayMs};
+        }
         if(address==0x6244) {mailbox_.clear();regs_[0x626c]=0;}
         if(address==0x6268) {put32(mailbox_,value);++regs_[0x626c];}
         if(address==0x6260) {
@@ -544,7 +579,7 @@ private:
                 }
                 else instrument[quint16(address)]=quint16(regs_[base+0x88]);
                 if(!rd && address==0x840) {ai8Address_=instrument.value(0x840);if(ai8Address_!=regs_[0x6614])result=2;}
-                if(!rd && address==0x841) {const auto code=instrument.value(0x841);ai8Baud_=code==2?19200:code==3?38400:9600;if(ai8Baud_!=19200)result=2;}
+                if(!rd && address==0x841) {ai8Baud_=Ai8TemperatureControllerProtocol::decodeBaudRate(instrument.value(0x841));if(ai8Baud_!=19200)result=2;}
                 if(!rd && address<8)instrument[quint16(0x480+address)]=instrument.value(quint16(address));
                 if(fault_=="parameter_mismatch") {instrument[quint16(address)]^=1;result=3;}
             }
@@ -705,7 +740,7 @@ private:
             if(base==0x6600) {
                 const auto a=regs_.value(0x6684);
                 if(!((a<=0x4df) || (a>=0x600&&a<=0x6ef) || (a>=0x800&&a<=0x85f)))return 7;
-                if(value==2 && ((a>=0x480&&a<0x800) || (a>=0x842&&a<=0x844) || a==0x851 || (a>=0x853&&a<=0x855)))return 7;
+                if(value==2 && ((a>=0x480&&a<0x800) || (a>=0x842&&a<=0x843) || a==0x851 || (a>=0x853&&a<=0x855)))return 7;
             }
             if(base==0x6a00 && (regs_.value(0x6a88)<1 || regs_.value(0x6a88)>16))return 7;
             if(base==0x6a00) {
@@ -754,7 +789,7 @@ private:
                 const quint32 address = word(p,0); const auto count = qFromLittleEndian<quint16>(p.constData()+4);
                 if (!count || count > 1000 || p.size() != (message == 2 ? 8 : 8 + count * 4)) status = 2;
                 for (int i = 0; !status && i < count; ++i)
-                    if ((!readable(address + i * 4,historical_,hcd2Scan_,rd105_) && !newRegister(address+i*4) && !(message==3 && address+i*4==0x44)) || address + quint64(i) * 4 > 0xffff) status = 5;
+                    if ((!readable(address + i * 4,ai8Parameters_,hcd2Scan_,rd105_) && !newRegister(address+i*4) && !(message==3 && address+i*4==0x44)) || address + quint64(i) * 4 > 0xffff) status = 5;
                 if(!status && message==2)for(quint32 pop:{0x681cu,0x691cu})
                     if(address<=pop && address+quint32(count)*4>pop
                         && uart_[(pop-0x681c)/0x100].receive.isEmpty())status=11;
@@ -779,7 +814,7 @@ private:
                     if (mask & (quint64(1) << source)) commit(source);
             }
         } else if (message == 4) {
-            if (p.size() != 12 || !readable(word(p,0),historical_,hcd2Scan_,rd105_)) status = 5;
+            if (p.size() != 12 || !readable(word(p,0),ai8Parameters_,hcd2Scan_,rd105_)) status = 5;
             else {const auto a=word(p,0),v=(regs_.value(a)&~word(p,4))|(word(p,8)&word(p,4));
                 status=sensorWriteStatus(a,v);if(!status)setRegister(a,v);}
         } else if (message == 0xa) {
@@ -1021,9 +1056,11 @@ private:
             ai8Registers_[quint16(0x600+ch-1)]=quint16(std::lround(measured_));
             QByteArray p;put16(p,regs_[0x6668]?3:2);put16(p,regs_[0x6668]?14:13);
             const quint16 tags[]={0x460,0x461,0x462,0x463,0x464,0x465,0x466,0x467,1,2,4,0x14,0x15};
-            const qint32 values[]={qint32(std::lround(measured_)),target_,target_,500,0,1,0, qint32(regs_[0x664c]),1,0,qint32(hcd2Scan_ && regs_[0x6668]?channelCounter:cycle_),target_*100000,qint32(measured_*100000)};
+            const quint8 control = Ai8TemperatureControllerProtocol::simulatedControlByte(
+                ai8Registers_.value(0x300 + ch - 1), ai8Registers_.value(0x845));
+            const qint32 values[]={qint32(std::lround(measured_)),target_,target_,500,0,control,0, qint32(regs_[0x664c]),1,0,qint32(hcd2Scan_ && regs_[0x6668]?channelCounter:cycle_),target_*100000,qint32(measured_*100000)};
             for(int i=0;i<13;++i)tlv(p,tags[i],i<3||i>=11?7:3,scalar(quint32(values[i])));
-            ai8Cache_[ch-1]={{3u,quint32(quint16(values[0]))|(quint32(quint16(target_))<<16),500u|(quint32(quint16(target_))<<16),0x100u,quint32(ticks),quint32(ticks>>32),channelCounter,0u}};
+            ai8Cache_[ch-1]={{3u,quint32(quint16(values[0]))|(quint32(quint16(target_))<<16),500u|(quint32(quint16(target_))<<16),quint32(control)<<8,quint32(ticks),quint32(ticks>>32),channelCounter,0u}};
             if(regs_.value(0x6698,1)==quint32(ch))for(int i=0;i<(hcd2Scan_?8:6);++i)regs_[0x66a0+quint32(i*4)]=ai8Cache_[ch-1][i];
             if(regs_[0x6668])tlv(p,0x468,3,scalar(quint32(ch)));
             data(0x46,0x1100,p,ticks);
@@ -1062,7 +1099,7 @@ private:
     const FpgaSimulatorStartup startup_;
     const FpgaSimulatorDataMode mode_;
     std::array<double,2> rd105MeasuredC_{23.5, 26.25};
-    const bool historical_;
+    const bool ai8Parameters_;
     const bool hcd2Scan_;
     const bool rd105_;
     const bool sosPps_;

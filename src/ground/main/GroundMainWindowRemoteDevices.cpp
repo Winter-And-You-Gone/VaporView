@@ -1725,7 +1725,6 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
     appendSummaryStructureTokens(sections.linkStatusItems);
     appendSummaryStructureTokens(sections.deviceItems);
     const QString summaryStructureKey = summaryStructureTokens.join(QChar(0x1f));
-    const QString deviceConfigSummaryStructureKey = summaryStructureKey + (isUiTestMode() ? QStringLiteral("\x1fpreview") : QStringLiteral("\x1flive"));
     constexpr auto kSummaryStructureKeyProperty = "vaporViewTelemetrySummaryStructureKey";
 
     if (state_->data_telemetry_summary_card_)
@@ -1793,6 +1792,15 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             }
         }
     }
+    // The device card renders row pairs: telemetry on the left, waveform acquisition on the right.
+    if (deviceConfigRateItems.size() == 6) {
+        if (!isFpgaRelayPath())
+            deviceConfigRateItems.move(1, 4); // Direct mode supplies the feature rate second.
+        deviceConfigRateItems.swapItemsAt(1, 2);
+    }
+    appendSummaryStructureTokens(deviceConfigRateItems);
+    summaryStructureTokens << (isUiTestMode() ? QStringLiteral("preview") : QStringLiteral("live"));
+    const QString deviceConfigSummaryStructureKey = summaryStructureTokens.join(QChar(0x1f));
     QList<RemoteTelemetrySummarySections::Item> deviceConfigDataItems = deviceConfigStatusItems;
     for (const RemoteTelemetrySummarySections::Item& item : deviceConfigDeviceItems)
     {
@@ -2138,7 +2146,16 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                                       borderAllowance;
             if (useSideTitle)
             {
-                section->setMinimumWidth(sectionLayout->minimumSize().width());
+                // Rebuilt rows may still be waiting for Qt's queued show event.
+                // Their explicit widths already include both aligned pill columns.
+                int rowWidth = 0;
+                for (const auto &line : renderedLines)
+                    rowWidth = std::max(rowWidth, line.line->minimumWidth());
+                const auto *bodyLayout = lineParent->parentWidget()->layout();
+                const QMargins margins = sectionLayout->contentsMargins() + bodyLayout->contentsMargins()
+                                       + linesLayout->contentsMargins() + section->contentsMargins();
+                section->setMinimumWidth(margins.left() + kEpsilonSideTitleWidth + bodyLayout->spacing()
+                                         + rowWidth + margins.right());
             }
             section->setFixedHeight(sectionHeight);
             section->adjustSize();

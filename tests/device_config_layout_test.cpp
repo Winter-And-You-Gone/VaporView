@@ -809,18 +809,29 @@ int main(int argc, char **argv)
         return left->mapTo(summaryContainer, QPoint(0, 0)).x() <
                right->mapTo(summaryContainer, QPoint(0, 0)).x();
     });
-    const QList<QList<QFrame *>> rateRows = pillRows(subCards.at(0));
-    require(rateRows.size() == 3 &&
-                rateRows.at(0).size() == 2 &&
-                rateRows.at(1).size() == 2 &&
-                rateRows.at(2).size() == 2,
-            "data-rate subcard arranges its pills as two aligned columns");
-    requireAlignedColumns(subCards.at(0), 2,
-                          "data-rate subcard keeps all rows aligned to two columns");
-    requirePillsUseWidestColumnWidth(subCards.at(0),
-                                     "data-rate subcard uses each column's widest pill");
-    requirePillLabelsFit(subCards.at(0),
-                         "data-rate subcard pill labels fit without clipping");
+    const auto requireRateColumns = [&](const QStringList& expected) {
+        QFrame *card = subCards.at(0);
+        const auto rows = pillRows(card);
+        require(rows.size() == 3, "data-rate subcard has three rows");
+        for (int row = 0; row < rows.size(); ++row)
+            require(pillNames(rows.at(row)) == expected.mid(2 * row, 2),
+                    "data-rate rows pair telemetry on the left with waveform acquisition on the right");
+        requireAlignedColumns(card, 2, "data-rate subcard keeps all rows aligned to two columns");
+        requirePillsUseWidestColumnWidth(card, "data-rate subcard uses each column's widest pill");
+        requirePillLabelsFit(card, "data-rate subcard pill labels fit without clipping");
+    };
+    const auto checkRateLanguages = [&](const QStringList& chinese, const QStringList& english) {
+        const auto switchLanguage = [&]() {
+            require(QMetaObject::invokeMethod(&window, "onSwitchLanguage", Qt::DirectConnection),
+                    "device configuration can switch languages");
+            VaporViewTest::processEventsFor(100);
+            activateLayouts(&window);
+        };
+        requireRateColumns(chinese);
+        switchLanguage();
+        requireRateColumns(english);
+        switchLanguage();
+    };
     requirePillsUseWidestColumnWidth(subCards.at(1),
                                      "link-rate subcard uses each column's widest pill");
     requirePillLabelsFit(subCards.at(1),
@@ -1940,6 +1951,14 @@ int main(int argc, char **argv)
                 ai8EnabledCheck->toolTip().contains(QStringLiteral("批量连接")) &&
                 temperatureEnabledCheck->toolTip().contains(QStringLiteral("批量连接")),
             "remote FPGA enable checkboxes select bulk-connection membership without starting hardware");
+    VaporViewTest::processEventsFor(100);
+    activateLayouts(&window);
+    checkRateLanguages({QStringLiteral("基础遥测"), QStringLiteral("原始波形预览（H1/H2）"),
+                        QStringLiteral("遥测状态"), QStringLiteral("归一化二次谐波预览"),
+                        QStringLiteral("波形特征值"), QStringLiteral("采集周期频率")},
+                       {QStringLiteral("Basic telemetry"), QStringLiteral("H1/H2 preview"),
+                        QStringLiteral("Telemetry status"), QStringLiteral("Normalized H2 preview"),
+                        QStringLiteral("Waveform features"), QStringLiteral("Acquisition cycles")});
     // The remaining serial/TCP endpoint regressions exercise Direct mode.
     remoteConfig.sensor_transport_path = VaporView::SensorTransportPath::DirectDevices;
     window.testInjectRemoteSkyConfig(remoteConfig.toJson());
@@ -1952,6 +1971,12 @@ int main(int argc, char **argv)
             scrollArea->horizontalScrollBar()->maximum() == 0 &&
             !scrollArea->horizontalScrollBar()->isVisible();
     });
+    checkRateLanguages({QStringLiteral("基础"), QStringLiteral("原始波形"),
+                        QStringLiteral("状态"), QStringLiteral("谐波波形"),
+                        QStringLiteral("特征值"), QStringLiteral("波形采集")},
+                       {QStringLiteral("Basic"), QStringLiteral("Wave raw"),
+                        QStringLiteral("Status"), QStringLiteral("Wave harm."),
+                        QStringLiteral("Feature"), QStringLiteral("Wave capture")});
     require(remoteConfigFits, "loaded remote SkyConfig still fits horizontally");
     require(remoteStatus->property("status").toString() == QStringLiteral("success"),
             "loaded remote SkyConfig is marked successful while the sky link is connected");
