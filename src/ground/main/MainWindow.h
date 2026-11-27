@@ -172,6 +172,8 @@ private slots:
     void onClearLogClicked();
     void onRefreshPortsClicked();
     void onAutoDetectPortsClicked();
+    void onRestoreDeviceConfigDefaultsClicked();
+    bool anySensorDeviceConnectedOrBusy() const;
     void onChooseRecordingDirectoryClicked();
     void onSwitchLanguage();
     void onReconfigureEpsilonClicked();

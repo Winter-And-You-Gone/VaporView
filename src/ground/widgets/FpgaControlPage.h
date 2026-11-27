@@ -60,6 +60,7 @@ public:
     void updateWaveform(const VaporView::FpgaWave::CompletedStream &stream, bool replay = false);
     void appendDiagnostic(const QString &text);
     void setLanguage(bool english);
+    void selectSamplingTab();
     void setTheme(bool dark, int fontScalePercent = 100);
     void setRecordingState(bool active, const QString &detail = {});
     void setSensorTransportPath(VaporView::SensorTransportPath path);
@@ -195,7 +196,6 @@ private:
     std::array<QComboBox*,2> cutoff_{{nullptr,nullptr}};
     QCheckBox *linkDacs_ = nullptr;
     QCheckBox *waveformTrigger_ = nullptr;
-    QCheckBox* ai8Scan_=nullptr;
     QCheckBox *recordSensors_ = nullptr, *recordDlia_ = nullptr;
     QTabWidget *tabs_ = nullptr;
     QString connectionDetail_, recordingDetail_;

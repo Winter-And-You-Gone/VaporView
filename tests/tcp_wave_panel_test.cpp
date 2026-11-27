@@ -697,6 +697,17 @@ static void testLiveWaterCards()
     QWidget owner;
     panel.setFpgaMode(true);
     QWidget *page = panel.createWaveformPage(&owner);
+    auto *combo = page->findChild<QComboBox *>("waterCalibrationComboBox");
+    auto *settings = page->findChild<QPushButton *>("wavePageDetailedSettingsButton");
+    require(combo && combo->minimumWidth() == 280 && combo->maximumWidth() == 520, "wave calibration selector has double width");
+    require(settings && settings->text() == QStringLiteral("详细设置"), "wave page provides detailed settings");
+    panel.setEnglish(true);
+    require(settings->text() == QStringLiteral("Detailed Settings"), "detailed settings follows UI language");
+    panel.setEnglish(false);
+    int requests = 0;
+    QObject::connect(&panel, &TcpWavePanel::fpgaSamplingSettingsRequested, settings, [&]{ ++requests; });
+    settings->click();
+    require(requests == 1, "detailed settings requests FPGA sampling settings once");
     const auto label = [](QWidget *view, int channel) {
         auto *reading = view->findChild<QLabel *>(QStringLiteral("waterConcentrationReading%1").arg(channel));
         require(reading, "each water concentration card has a reading");

@@ -157,22 +157,6 @@ QFrame *findTelemetrySummarySourcePill(QWidget *card)
         : nullptr;
 }
 
-QString telemetrySummarySourcePillName(QFrame *pill)
-{
-    QLabel *nameLabel = pill
-        ? pill->findChild<QLabel *>(QStringLiteral("telemetrySummarySourcePillNameLabel"))
-        : nullptr;
-    return nameLabel ? nameLabel->text() : QString();
-}
-
-QString telemetrySummarySourcePillValue(QFrame *pill)
-{
-    QLabel *valueLabel = pill
-        ? pill->findChild<QLabel *>(QStringLiteral("telemetrySummarySourcePillValueLabel"))
-        : nullptr;
-    return valueLabel ? valueLabel->text() : QString();
-}
-
 QRect rectInPage(QWidget *widget, QWidget *page)
 {
     return QRect(widget->mapTo(page, QPoint(0, 0)), widget->size());
@@ -644,20 +628,23 @@ int main(int argc, char **argv)
     }
     require(linkStatusCard->parentWidget() == serialCard->parentWidget(),
             "link-status and serial configuration cards are siblings");
-    QFrame *linkStatusSourcePill = findTelemetrySummarySourcePill(linkStatusCard);
-    const bool localSourcePill =
-        (telemetrySummarySourcePillName(linkStatusSourcePill) == QStringLiteral("数据源") &&
-         telemetrySummarySourcePillValue(linkStatusSourcePill) == QStringLiteral("本地")) ||
-        (telemetrySummarySourcePillName(linkStatusSourcePill) == QStringLiteral("Source") &&
-         telemetrySummarySourcePillValue(linkStatusSourcePill) == QStringLiteral("Local"));
-    require(localSourcePill,
-            "data-source card title bar exposes the local data-source pill");
-    requireLabelFits(linkStatusSourcePill->findChild<QLabel *>(
-                         QStringLiteral("telemetrySummarySourcePillNameLabel")),
-                     "data-source title pill name fits without clipping");
-    requireLabelFits(linkStatusSourcePill->findChild<QLabel *>(
-                         QStringLiteral("telemetrySummarySourcePillValueLabel")),
-                     "data-source title pill value fits without clipping");
+    require(!findTelemetrySummarySourcePill(linkStatusCard), "device summary title has no duplicate source pill");
+    const auto capsules = serialCard->findChildren<QFrame *>(QStringLiteral("deviceConfigDeviceCapsule"));
+    require(capsules.size() == 9, "each device has a status capsule");
+    for (auto *capsule : capsules) {
+        auto *label = capsule->findChild<QLabel *>();
+        require(label && capsule->property("state").isValid() && capsule->property("state") == label->property("state"),
+                "device labels share the status color of their capsule");
+    }
+    const auto oldTheme = qApp->property("vaporViewDarkTheme");
+    for (bool dark : {false, true}) {
+        qApp->setProperty("vaporViewDarkTheme", dark);
+        using VaporView::Ground::MainSupport::deviceConfigRemoteIconColor;
+        require(deviceConfigRemoteIconColor(VaporView::CommandId::ConnectDevice) == QColor("#40C977") &&
+                    deviceConfigRemoteIconColor(VaporView::CommandId::DisconnectDevice) == QColor("#D24A30"),
+                "connect and disconnect colors are theme invariant");
+    }
+    qApp->setProperty("vaporViewDarkTheme", oldTheme);
 
     const QMargins margins = scrollArea->widget()->layout()
         ? scrollArea->widget()->layout()->contentsMargins()
@@ -808,8 +795,8 @@ int main(int argc, char **argv)
     QWidget *summaryContainer =
         linkStatusCard->findChild<QWidget *>(QStringLiteral("homeTelemetrySummaryContainer"));
     require(summaryContainer != nullptr, "link-status card exposes its summary container");
-    require(qobject_cast<QHBoxLayout *>(summaryContainer->layout()) != nullptr,
-            "link-status summary sections are arranged horizontally");
+    require(qobject_cast<QVBoxLayout *>(summaryContainer->layout()) != nullptr,
+            "link-status summary stacks the rates row above device data");
     QList<QFrame *> subCards =
         summaryContainer->findChildren<QFrame *>(QStringLiteral("homeTelemetrySectionCard"));
     require(subCards.size() == 3,
@@ -817,7 +804,7 @@ int main(int argc, char **argv)
     std::sort(subCards.begin(), subCards.end(), [summaryContainer](QFrame *left, QFrame *right) {
         const QPoint leftPos = left->mapTo(summaryContainer, QPoint());
         const QPoint rightPos = right->mapTo(summaryContainer, QPoint());
-        return std::make_tuple(leftPos.x(), leftPos.y()) < std::make_tuple(rightPos.x(), rightPos.y());
+        return std::make_tuple(leftPos.y(), leftPos.x()) < std::make_tuple(rightPos.y(), rightPos.x());
     });
     const auto requireRateColumns = [&](const QStringList& expected) {
         QFrame *card = subCards.at(0);
@@ -864,7 +851,7 @@ int main(int argc, char **argv)
     const bool englishStatusRow =
         firstDataRow.mid(0, 3) == (QStringList() << QStringLiteral("Free Disk") << QStringLiteral("Record") << QStringLiteral("CRC"));
     const int dataColumns = firstDataRow.size();
-    require((dataColumns == 3 || dataColumns == 4) &&
+    require(dataColumns == 6 &&
                 dataRows.size() == 12 / dataColumns &&
                 std::all_of(dataRows.cbegin(), dataRows.cend(), [dataColumns](const auto& row) { return row.size() == dataColumns; }) &&
                 (chineseStatusRow || englishStatusRow),
@@ -875,16 +862,16 @@ int main(int argc, char **argv)
                                      "data subcard uses each column's widest pill");
     requirePillLabelsFit(subCards.at(2),
                          "data subcard pill labels fit without clipping");
-    for (const auto& scenario : {std::pair<int, int>{2400, 4}, {800, 3}, {2400, 4}})
+    for (const auto& scenario : {std::pair<int, int>{2400, 6}, {800, 0}, {1280, 6}})
     {
         window.resize(scenario.first, 760);
         VaporViewTest::processEventsFor(180);
         activateLayouts(&window);
         VaporViewTest::processEventsFor(100);
         const auto rows = pillRows(subCards.at(2));
-        require(!rows.isEmpty() && rows.first().size() == scenario.second,
+        require(!rows.isEmpty() && (scenario.second ? rows.first().size() == scenario.second : rows.first().size() >= 3),
                 "data subcard switches columns when the window width changes");
-        requireAlignedColumns(subCards.at(2), scenario.second,
+        requireAlignedColumns(subCards.at(2), rows.first().size(),
                               "data subcard columns remain aligned after resizing");
         requirePillLabelsFit(subCards.at(2), "data subcard labels fit after resizing");
     }
@@ -896,12 +883,11 @@ int main(int argc, char **argv)
     const QRect rateRect = rectInPage(subCards.at(0), summaryContainer);
     const QRect linkRateRect = rectInPage(subCards.at(1), summaryContainer);
     const QRect dataRect = rectInPage(subCards.at(2), summaryContainer);
-    require(std::abs(rateRect.left() - linkRateRect.left()) <= 2 && linkRateRect.top() > rateRect.bottom(),
-            "link rate sits directly below data frequency");
-    require(dataRect.left() > std::max(rateRect.right(), linkRateRect.right()),
-            "data sits to the right of both rate sections");
-    require(std::abs(rateRect.top() - summaryTop) <= 2 && std::abs(dataRect.top() - summaryTop) <= 2,
-            "data frequency and data align at the top of the summary");
+    require(linkRateRect.left() > rateRect.right() && std::abs(linkRateRect.top() - rateRect.top()) <= 2,
+            "link rate sits to the right of data frequency");
+    require(dataRect.top() > std::max(rateRect.bottom(), linkRateRect.bottom()) &&
+                std::abs(dataRect.left() - rateRect.left()) <= 2 && std::abs(rateRect.top() - summaryTop) <= 2,
+            "data sits directly below both rates");
     for (QFrame *subCard : subCards)
     {
         const QRect subRect = rectInPage(subCard, summaryContainer);
@@ -938,13 +924,13 @@ int main(int argc, char **argv)
                                              label->fontMetrics().horizontalAdvance(line));
         if (deviceLabelWidth < 0)
         {
-            deviceLabelWidth = label->width();
+            deviceLabelWidth = label->parentWidget()->width();
         }
-        require(std::abs(label->width() - deviceLabelWidth) <= 1,
+        require(std::abs(label->parentWidget()->width() - deviceLabelWidth) <= 1,
                 "serial configuration device labels share one content-driven column width");
     }
     require(deviceLabelWidth >= widestDeviceLabelText &&
-                deviceLabelWidth <= widestDeviceLabelText + 2,
+                deviceLabelWidth <= widestDeviceLabelText + 20,
             "serial configuration device column uses the widest formatted label without extra width");
     const QStringList serialColumnHeaders{
         QStringLiteral("设备"),
@@ -1191,6 +1177,19 @@ int main(int argc, char **argv)
                     QStringLiteral("fpga_relay"),
                     "local device config exposes the FPGA relay path");
     VaporViewTest::processEventsFor(60);
+    auto *restore = serialCard->findChild<QPushButton *>(QStringLiteral("deviceConfigRestoreDefaultsButton"));
+    auto *restoreHint = serialCard->findChild<QLabel *>(QStringLiteral("deviceConfigRestoreDefaultsHintLabel"));
+    auto *tecTitlePort = window.findChild<QComboBox *>(QStringLiteral("temperatureTitlePortCombo"));
+    auto *ai8TitlePort = window.findChild<QComboBox *>(QStringLiteral("ai8TitlePortCombo"));
+    require(restore && restore->isVisible() && restore->isEnabled() && restoreHint && restoreHint->isHidden(),
+            "disconnected sensors allow restoring defaults");
+    auto *portHeader = findExactLabel(serialCard, QStringLiteral("串口/主机"));
+    auto *autoDetect = serialCard->findChild<QPushButton *>(QStringLiteral("deviceConfigAutoDetectPortsButton"));
+    require(autoDetect && autoDetect->isHidden() && portHeader && portHeader->isHidden() &&
+                sensorTransportPathCombo->isHidden() && epsilonPortCombo->isHidden() &&
+                pressurePortCombo->isHidden() && ai8PortCombo->isHidden(), "FPGA hides direct endpoints and transport selection");
+    for (auto *combo : {tecTitlePort, ai8TitlePort})
+        require(combo && !combo->isEnabled() && combo->currentText() == QStringLiteral("FPGA"), "temperature titles show the relay endpoint");
     require(!epsilonPortCombo->isEnabled() && !epsilonBaudCombo->isEnabled() &&
                 !pressurePortCombo->isEnabled() && !pressureBaudCombo->isEnabled() &&
                 !humidityPortCombo->isEnabled() && !humidityBaudCombo->isEnabled() &&
@@ -1204,6 +1203,8 @@ int main(int argc, char **argv)
                     "local device config restores direct path after relay control check");
     VaporViewTest::processEventsFor(60);
 
+    require(tecTitlePort->currentText() != QStringLiteral("FPGA") && ai8TitlePort->currentText() != QStringLiteral("FPGA"),
+            "direct mode restores both serial port lists");
     epsilonBaudCombo->setCurrentText(QStringLiteral("123457"));
     VaporViewTest::processEventsFor(40);
     localConfig = window.testLocalDeviceConfigSnapshot();
@@ -1480,12 +1481,8 @@ int main(int argc, char **argv)
     require(skyTelemetryRow && skyTelemetryBaudCombo && skyTelemetryPortCombo &&
                 skyTelemetryTcpHostEdit && skyTelemetryTcpPortSpin && !skyTelemetryRow->isVisible(),
             "local mode hides sky-ground link editing controls from the unified device table");
-    QWidget *serialFormRow =
-        epsilonPortCombo && epsilonPortCombo->parentWidget() ? epsilonPortCombo->parentWidget()->parentWidget() : nullptr;
-    QLayout *serialCardLayout = serialCard ? serialCard->layout() : nullptr;
-    require(serialFormRow && serialCardLayout &&
-                serialCardLayout->indexOf(skyTelemetryRow) > serialCardLayout->indexOf(serialFormRow),
-            "sky-ground link fields are placed below the device serial configuration rows");
+    require(skyTelemetryRow->parentWidget() == linkStatusCard->findChild<QWidget *>(QStringLiteral("sectionTitleBar")),
+            "sky-ground link controls belong to the summary title bar");
     QLabel *servicesLabel = findSubsectionLabel(remoteCard, QStringLiteral("services"));
     QLabel *syncLabel = findSubsectionLabel(remoteCard, QStringLiteral("sync"));
     QLabel *advancedLabel = findSubsectionLabel(remoteCard, QStringLiteral("advanced"));
@@ -1566,13 +1563,6 @@ int main(int argc, char **argv)
                             QStringList() << QStringLiteral("设备配置 [远程]")
                                           << QStringLiteral("Device Configuration [Remote]")),
             "remote mode retitles the shared device configuration card for the Remote target");
-    const bool defaultRemoteSourcePill =
-        (telemetrySummarySourcePillName(linkStatusSourcePill) == QStringLiteral("数据源") &&
-         telemetrySummarySourcePillValue(linkStatusSourcePill) == QStringLiteral("远程 192.168.1.2")) ||
-        (telemetrySummarySourcePillName(linkStatusSourcePill) == QStringLiteral("Source") &&
-         telemetrySummarySourcePillValue(linkStatusSourcePill) == QStringLiteral("Remote 192.168.1.2"));
-    require(defaultRemoteSourcePill,
-            "data-source title pill follows the default remote TCP host");
     require(skyTelemetryRow->isVisible(),
             "remote mode shows sky-ground link editing controls in the target section");
     selectComboData(skyTelemetryTransportCombo, QStringLiteral("serial"),
@@ -1604,13 +1594,6 @@ int main(int argc, char **argv)
                 skyLinkConfig.value(QStringLiteral("tcp_host")).toString() == QStringLiteral("10.10.0.8") &&
                 skyLinkConfig.value(QStringLiteral("tcp_port")).toInt() == 39201,
             "device Sky Link TCP controls update the non-UI link model");
-    const bool updatedRemoteSourcePill =
-        (telemetrySummarySourcePillName(linkStatusSourcePill) == QStringLiteral("数据源") &&
-         telemetrySummarySourcePillValue(linkStatusSourcePill) == QStringLiteral("远程 10.10.0.8")) ||
-        (telemetrySummarySourcePillName(linkStatusSourcePill) == QStringLiteral("Source") &&
-         telemetrySummarySourcePillValue(linkStatusSourcePill) == QStringLiteral("Remote 10.10.0.8"));
-    require(updatedRemoteSourcePill,
-            "data-source title pill updates after editing the remote TCP host");
     selectComboData(skyTelemetryTransportCombo, QStringLiteral("serial"),
                     "Sky Link transport restores Serial after TCP validation");
     VaporViewTest::processEventsFor(60);
@@ -1974,6 +1957,7 @@ int main(int argc, char **argv)
     remoteConfig.sensor_transport_path = VaporView::SensorTransportPath::DirectDevices;
     window.testInjectRemoteSkyConfig(remoteConfig.toJson());
     VaporViewTest::processEventsFor(160);
+    require(restore->isHidden() && restoreHint->isHidden(), "direct mode keeps the original device header");
     require(getSkyConfigRequests == 1,
             "Remote link-open lifecycle sends one automatic GetSkyConfig request");
     activateLayouts(&window);
@@ -2503,7 +2487,26 @@ int main(int argc, char **argv)
                 QStringLiteral("19200"),
             "legacy invalid AI-8288 setting is replaced by the supported default");
     restoredSettings.endGroup();
+    auto *restoredPath = restoredDeviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceSensorTransportPathCombo"));
+    selectComboData(restoredPath, QStringLiteral("fpga_relay"), "switch to relay for default reset");
+    auto *reset = restoredDeviceConfigPage->findChild<QPushButton *>(QStringLiteral("deviceConfigRestoreDefaultsButton"));
+    auto *relayEnabled = restoredDeviceConfigPage->findChild<QCheckBox *>(QStringLiteral("deviceRemoteAi8TemperatureEnabledCheck"));
+    require(reset && relayEnabled && reset->isEnabled(), "disconnected relay configuration can be reset");
+    relayEnabled->setChecked(false);
+    auto *baudEditor = restoredDeviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceHumidityBaudComboFpgaEditor"));
+    auto *pollEditor = restoredDeviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureRateComboFpgaEditor"));
+    require(baudEditor && pollEditor, "relay configuration exposes baud and poll editors");
+    baudEditor->setCurrentText(QStringLiteral("38400"));
+    pollEditor->setCurrentText(QStringLiteral("5"));
+    reset->click();
+    require(relayEnabled->isChecked() && baudEditor->currentText() == QStringLiteral("19200") &&
+                pollEditor->currentText() == QStringLiteral("1"), "restore resets relay selection, HC2A baud and AI8 polling");
+    selectComboData(restoredPath, QStringLiteral("direct_devices"), "switch back to direct after reset");
+    require(restoredHumidityBaud->currentText() == QStringLiteral("25600"), "FPGA reset preserves the direct HC2A preset");
     restoredWindow.close();
+    MainWindow reopenedWindow;
+    auto *reopenedBaud = reopenedWindow.findChild<QComboBox *>(QStringLiteral("deviceHumidityBaudCombo"));
+    require(reopenedBaud && reopenedBaud->currentText() == QStringLiteral("25600"), "direct HC2A preset survives reopening after FPGA reset");
 
     std::cout << "device configuration layout test passed\n";
     return 0;

@@ -10,6 +10,8 @@
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QFrame>
+#include <QHeaderView>
+#include <QProgressBar>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
@@ -27,6 +29,55 @@
 #include <QScreen>
 using namespace IndependentCalibrationTest;
 template<class T>T *control(QWidget& page,const char *id){auto *w=page.findChild<T*>(id);check(w,"named independent UI control exists");return w;}
+static void checkDarkSurfaces(WaterCalibrationPage &page, QTabWidget *tabs)
+{
+    page.setTheme(true, 100);
+    auto *progress = control<QProgressBar>(page, "calibrationProgress");
+    const int previousValue = progress->value();
+    for (int view = 0; view < 4; ++view) {
+        if (view < 3) tabs->setCurrentIndex(view);
+        else control<QPushButton>(page, "calibrationSectionButton2")->click();
+        QApplication::processEvents();
+        const auto image = page.grab().toImage();
+        // Look for solid near-white blocks without mistaking light glyphs for surfaces.
+        const int step = qRound(8 * image.devicePixelRatio());
+        for (int y = 0; y + 2 * step < image.height(); y += step) {
+            for (int x = 0; x + 2 * step < image.width(); x += step) {
+                bool white = true;
+                for (int dy = 0; dy <= 2 * step && white; dy += step)
+                    for (int dx = 0; dx <= 2 * step && white; dx += step)
+                        white = image.pixelColor(x + dx, y + dy).lightness() > 225;
+                check(!white, "dark workspace has no bright background blocks");
+            }
+        }
+        for (auto *table : tabs->currentWidget()->findChildren<QTableWidget *>()) {
+            if (!table->isVisible()) continue;
+            const auto header = table->horizontalHeader()->grab().toImage();
+            int dark = 0, light = 0;
+            for (int y = 0; y < header.height(); ++y)
+                for (int x = 0; x < header.width(); ++x) {
+                    const int value = header.pixelColor(x,y).lightness();
+                    dark += value < 90;
+                    light += value > 140;
+                }
+            check(dark > header.width() * header.height() / 2 && light > 0,
+                  "table headers have dark backgrounds and contrasting text");
+        }
+        if (view == 0) {
+            for (int value : {0, progress->maximum() / 2}) {
+                progress->setValue(value);
+                const auto bar = progress->grab().toImage();
+                check(bar.pixelColor(bar.width() * 3 / 4, bar.height() / 2).lightness() < 90,
+                      "unfilled progress track remains dark");
+            }
+        }
+    }
+    if (previousValue < progress->minimum()) progress->reset();
+    else progress->setValue(previousValue);
+    control<QPushButton>(page, "calibrationSectionButton1")->click();
+    tabs->setCurrentIndex(0);
+    page.setTheme(false, 100);
+}
 void largeReview()
 {
     Rig r;auto file=r.complete();auto project=file.project;project.stages.reserve(20);auto& stage=project.stages[0];
@@ -151,6 +202,7 @@ int main(int argc,char **argv)
     for (size_t i = 0; i < steps.size(); ++i)
         check(steps[i]->toolTip().contains(expectedInstructions[i]), "each node carries its own detailed instructions");
     auto *tabs=control<QTabWidget>(page,"calibrationWorkspaces");auto *navigation=control<QFrame>(page,"calibrationNavigationBar");
+    checkDarkSurfaces(page, tabs);
     auto *workspaceCard=control<QFrame>(page,"calibrationWorkspaceCard");
     for(int i=0;i<tabs->count();++i) {
         auto *selector=control<QPushButton>(page,qPrintable(QStringLiteral("calibrationPageSelectorButton%1").arg(i+1)));

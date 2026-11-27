@@ -731,8 +731,6 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout, QVB
     field(ai8grid,2,"轮询间隔 / ms","Polling interval / ms","fpgaAi8Interval",0x662c,1,3600000,0,[](const auto &c){return c.ai8.pollIntervalMs;},[](auto &c,double v){c.ai8.pollIntervalMs=quint32(v);});
     field(ai8grid,3,"通信超时 / ms","Communication timeout / ms","fpgaAi8Timeout",0x6660,1,65535,0,[](const auto &c){return c.ai8.timeoutMs;},[](auto &c,double v){c.ai8.timeoutMs=quint32(v);});
     field(ai8grid,4,"重试上限","Retry limit","fpgaAi8Retry",0x6664,0,3,0,[](const auto &c){return c.ai8.retryLimit;},[](auto &c,double v){c.ai8.retryLimit=quint32(v);});
-    ai8Scan_=new FpgaCheckBox(ai8config);label(ai8Scan_,QStringLiteral("扫描全部 8 通道（间隔表示整轮扫描周期）"),QStringLiteral("Scan all 8 channels (interval is a complete scan cycle)"));ai8Scan_->setObjectName("fpgaAi8Scan");ai8Scan_->setProperty("fpgaExtension",VaporView::FpgaExtensions::Ai8Scan);onlineControls_.append(ai8Scan_);ai8grid->addWidget(ai8Scan_,6,0,1,3);
-    connect(ai8Scan_,&QCheckBox::toggled,this,[this](bool checked){config_.ai8.scan=checked;emit configurationChanged(configuration());});
     auto *ai8hint=new QLabel(ai8config);label(ai8hint,QStringLiteral("共享总线固定 19200 / 8N1。保留仪表报警与超时；不会自动修改仪表参数。"),QStringLiteral("Shared bus: 19200 / 8N1. Instrument alarms and timeouts are retained; instrument parameters are not automatically changed."));ai8hint->setWordWrap(true);ai8grid->addWidget(ai8hint,5,0,1,3);
     auto* runtimeChannel=new VaporView::SingleLevelPopupComboBox(ai8config);runtimeChannel->setObjectName("fpgaAi8RuntimeChannel");
     for(int i=1;i<=8;++i)runtimeChannel->addItem(QStringLiteral("CH%1").arg(i),i);
@@ -1136,7 +1134,6 @@ void FpgaControlPage::updateDac1Target(const FpgaControlConfig &config) {
 void FpgaControlPage::setConfiguration(const FpgaControlConfig &c) {
     config_=c;
     for(int i=0;i<2;++i)if(cutoff_[i]) {const QSignalBlocker block(cutoff_[i]);cutoff_[i]->setCurrentIndex(cutoff_[i]->findData(c.dlia[i].cutoffHz));}
-    if(ai8Scan_) {const QSignalBlocker block(ai8Scan_);ai8Scan_->setChecked(c.ai8.scan && (extensions_&VaporView::FpgaExtensions::Ai8Scan));}
     if(auto* channel=findChild<QComboBox*>("fpgaAi8RuntimeChannel")) {const QSignalBlocker block(channel);channel->setCurrentIndex(channel->findData(c.ai8.channel));}
     for(const auto& spec:VaporView::FpgaRemote::sensorParameters())if(auto *input=sensorParameterInputs_.value(spec.address)){const QSignalBlocker block(input);input->setValue(c.sensorParameters.value(spec.source).value(spec.key).toDouble(hardwareValues_.value(spec.address,spec.fallback)));}
     for(const auto &f:fields_){const QSignalBlocker block(f.input);f.input->setValue(f.read(c));}
@@ -1287,7 +1284,6 @@ void FpgaControlPage::updateActions(){
     if(auto *module=findChild<QComboBox*>("fpgaMaintenanceModule"))if(module->currentData().toInt()==0x47 && motorBlocked)
         for(const char *name:{"fpgaModuleReset","fpgaModuleClearErrors","fpgaSensorClearFifo"})
             if(auto *button=findChild<QPushButton*>(QString::fromLatin1(name)))button->setEnabled(false);
-    if(ai8Scan_)ai8Scan_->setEnabled(ready_&&!busy_&&(extensions_&VaporView::FpgaExtensions::Ai8Scan)&&!(hardwareValues_.value(0x6604)&1));
     if(auto *applyAi8=findChild<QPushButton*>("fpgaApplyAi8"))
         applyAi8->setEnabled(ready_ && !busy_ && hardwareValues_.contains(0x6604) && !(hardwareValues_.value(0x6604)&1));
 }
@@ -1319,7 +1315,6 @@ void FpgaControlPage::updateCaptureStatus(){
 }
 void FpgaControlPage::setExtensions(quint32 bits) {
     extensions_=bits;
-    if(ai8Scan_) {const QSignalBlocker block(ai8Scan_);ai8Scan_->setChecked(config_.ai8.scan && (bits&VaporView::FpgaExtensions::Ai8Scan));}
     updateActions();
 }
 void FpgaControlPage::setTemperatureConnectionState(bool connected,const QString& detail,bool identifying)
@@ -1762,6 +1757,12 @@ void FpgaControlPage::setLanguage(bool en){
     if(!usbDiscovering_)rebuildUsbDevices();setConnectionState(ready_,busy_,connectionDetail_);setRecordingState(recording_,recordingDetail_);
 }
 void FpgaControlPage::refreshMeasurements(){rerendering_=true;const auto readings=latestReadings_;for(const auto &reading:readings)updateSensor(reading);const auto waves=latestWaves_;for(const auto &wave:waves)updateWaveform(wave,!waveTimes_.contains(wave.source));rerendering_=false;}
+void FpgaControlPage::selectSamplingTab()
+{
+    if (tabs_ && tabs_->count() > 0)
+        tabs_->setCurrentIndex(0);
+}
+
 void FpgaControlPage::setTheme(bool dark,int fontScalePercent){
     using namespace VaporView;setProperty(kAppDarkThemeProperty,dark);setPalette(appThemePalette(dark,palette()));
     const qreal scale=qBound(60,fontScalePercent,180)/100.0;
@@ -1826,7 +1827,8 @@ void FpgaControlPage::setTheme(bool dark,int fontScalePercent){
         QIcon icon;
         for (auto mode : {QIcon::Normal,QIcon::Disabled}) {
             const auto color=mode==QIcon::Disabled ? AppThemeColor::ToolbarDisabled
-                : (button==disconnect_ ? AppThemeColor::ToolbarRed : AppThemeColor::Primary);
+                : (button==disconnect_ ? AppThemeColor::ToolbarRed
+                   : (button==connect_ ? AppThemeColor::ToolbarGreen : AppThemeColor::Primary));
             auto svg=source; svg.replace("currentColor",appThemeColorName(color,dark).toUtf8());
             const qreal dpr=button->devicePixelRatioF(); const int size=pixels(20);
             QPixmap pixmap(qRound(size*dpr),qRound(size*dpr)); pixmap.setDevicePixelRatio(dpr); pixmap.fill(Qt::transparent);

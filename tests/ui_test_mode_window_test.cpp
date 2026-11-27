@@ -2309,14 +2309,14 @@ int main(int argc, char **argv)
                     QStringLiteral("deviceConfigSourceModeOverviewSwitch")) == nullptr,
             "unified device configuration uses the shared title-bar source-mode selector");
     QFrame *deviceSummaryCard = findDeviceConfigTelemetrySummaryCard(deviceConfigPage);
-    QFrame *deviceSourcePill = findTelemetrySummarySourcePill(deviceSummaryCard);
-    require(deviceSourcePill && telemetrySummarySourcePillName(deviceSourcePill) == QStringLiteral("数据源") &&
-                telemetrySummarySourcePillValue(deviceSourcePill) == QStringLiteral("本地"),
-            "device configuration data-source card title bar shows the local source");
+    auto *linkHeader = deviceSummaryCard ? deviceSummaryCard->findChild<QWidget *>(QStringLiteral("sectionTitleBar")) : nullptr;
+    auto *linkHost = linkHeader ? linkHeader->findChild<QLineEdit *>(QStringLiteral("deviceSkyTelemetryTcpHostEdit")) : nullptr;
+    require(linkHost && !findTelemetrySummarySourcePill(deviceSummaryCard),
+            "device configuration title bar contains Sky link controls without a duplicate source pill");
     deviceSourceMode->click();
     processEvents();
-    require(telemetrySummarySourcePillValue(deviceSourcePill) == QStringLiteral("远程 192.168.1.2"),
-            "device configuration data-source card title bar shows the remote Sky TCP host");
+    require(linkHost->text() == QStringLiteral("192.168.1.2"),
+            "device configuration title bar shows the remote Sky TCP host");
     auto *deviceRemoteCard =
         deviceConfigPage->findChild<QGroupBox *>(QStringLiteral("deviceRemoteSkyConfigCard"));
     auto *deviceRemoteRead =

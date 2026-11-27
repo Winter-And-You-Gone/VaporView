@@ -204,11 +204,13 @@ void testDeveloperOptions(QSettings &settings)
         auto *option = optionRow();
         require(!option->defaultAction()->isChecked(), "Developer Options starts unchecked");
         sendMouseClick(option);
-        require(source->isVisible() && path->isVisible() && !transport->isHidden() &&
+        require(source->isVisible() && path->isVisible() && transport->isHidden() &&
                     source->switchChecked() && path->switchChecked(),
-                "Developer Options reveals the selectors with Remote FPGA still selected");
+                "Remote FPGA shows both title switches and hides the device-card selector");
         source->click();
-        require(!source->switchChecked() && !path->switchChecked(), "Local Direct remains selectable");
+        require(source->isVisible() && path->isVisible() && !source->switchChecked() &&
+                    !path->switchChecked() && !transport->isHidden(),
+                "Local Direct shows both title switches and the device-card selector");
 
         option = optionRow();
         require(option->defaultAction()->isChecked(), "Developer Options reflects its enabled state");
@@ -227,8 +229,11 @@ void testDeveloperOptions(QSettings &settings)
     {
         MainWindow restarted;
         auto *source = restarted.findChild<SegmentedSwitchButton *>(QStringLiteral("sourceModeOverviewSwitch"));
-        require(source && !source->isHidden() && !source->switchChecked(),
-                "a new window restores enabled Developer Options and the selected Local source");
+        auto *path = restarted.findChild<SegmentedSwitchButton *>(QStringLiteral("titleSensorTransportSwitch"));
+        auto *transport = restarted.findChild<QComboBox *>(QStringLiteral("deviceSensorTransportPathCombo"));
+        require(source && path && transport && !source->isHidden() && !path->isHidden() &&
+                    !source->switchChecked() && !path->switchChecked() && !transport->isHidden(),
+                "a new window restores Local Direct with both title switches and the device-card selector");
     }
 }
 

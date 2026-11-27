@@ -585,7 +585,7 @@ bool MainWindow::updateHomeMotionDeviceControls(qint64 nowMs, bool animationOnly
         {
             const QString iconName = connected ? QStringLiteral("unlink") : QStringLiteral("link");
             const QColor iconColor = toolbarColor(connected ? AppThemeColor::ToolbarRed
-                : (ready ? AppThemeColor::ToolbarBlue : AppThemeColor::ToolbarDisabled));
+                : (ready ? AppThemeColor::ToolbarGreen : AppThemeColor::ToolbarDisabled));
             const QString iconKey = QStringLiteral("%1|%2").arg(iconName, iconColor.name(QColor::HexArgb));
             if (button->property(kHomeDeviceIconKeyProperty).toString() != iconKey)
             {
@@ -760,12 +760,48 @@ QString MainWindow::homeDeviceMeasurementWarning(VaporView::SkyDeviceId device, 
     return english ? QStringLiteral("No valid measurement received") : QStringLiteral("尚未收到有效测量数据");
 }
 
+bool MainWindow::anySensorDeviceConnectedOrBusy() const
+{
+    using Id = VaporView::SkyDeviceId;
+    using State = VaporView::DeviceState;
+    if (state_->connection_attempt_in_progress_ || state_->port_detection_in_progress_ || state_->epsilon_reconfigure_in_progress_) return true;
+    const auto busy = [](State state) {
+        return state == State::Connected || state == State::Connecting || state == State::Reconnecting;
+    };
+    const auto now = QDateTime::currentMSecsSinceEpoch();
+    for (Id id : {Id::Epsilon, Id::Ptb, Id::Hc2a, Id::Lidar, Id::TemperatureController, Id::Tec103InSitu,
+                  Id::Tec103Remote, Id::Ai8TemperatureController, Id::WaveTcp, Id::Bmp390, Id::Sht45}) {
+        if (busy(homeDeviceActionState(id)) || (isFpgaRelayPath() && busy(homeFpgaDeviceState(id))) || homeDeviceActionSpinnerActive(id, now)) return true;
+    }
+    return false;
+}
+
 void MainWindow::updateHomeDeviceStatusCapsules()
 {
     updateTelemetryLinkAction();
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    if (state_->device_config_.restore_defaults_btn) {
+        state_->device_config_.restore_defaults_btn->setVisible(isFpgaRelayPath());
+        const bool busy = isFpgaRelayPath() && anySensorDeviceConnectedOrBusy();
+        state_->device_config_.restore_defaults_btn->setEnabled(isFpgaRelayPath() && !busy);
+        state_->device_config_.restore_defaults_hint_lbl->setVisible(busy);
+    }
+    auto syncConfigCapsule = [this](VaporView::SkyDeviceId id, const QString &status, bool connected) {
+        auto *frame = state_->device_config_.device_capsules.value(id);
+        if (!frame) return;
+        for (QWidget *widget : {static_cast<QWidget *>(frame), static_cast<QWidget *>(frame->findChild<QLabel *>())}) {
+            if (!widget) continue;
+            bool changed = setDynamicPropertyIfChanged(widget, "state", status);
+            changed |= setDynamicPropertyIfChanged(widget, "connected", connected);
+            if (changed) {
+                widget->style()->unpolish(widget);
+                widget->style()->polish(widget);
+                widget->update();
+            }
+        }
+    };
     bool anySpinnerActive = false;
-    auto updateCapsule = [this, &anySpinnerActive, nowMs](QLabel *label, QToolButton *button, VaporView::SkyDeviceId device) {
+    auto updateCapsule = [this, &anySpinnerActive, &syncConfigCapsule, nowMs](QLabel *label, QToolButton *button, VaporView::SkyDeviceId device) {
         if (!label)
         {
             return;
@@ -837,6 +873,8 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         } else {
             displayState = warning.isEmpty() ? QStringLiteral("connected") : QStringLiteral("warning");
         }
+        if (channelEnabled && connecting) displayState = QStringLiteral("connecting");
+        syncConfigCapsule(device, displayState, displayConnected);
         const QString deviceName = homeDeviceDisplayName(device, state_->is_english_);
         QString connectionState = displayState;
         if (channelEnabled) {
@@ -947,7 +985,7 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         {
             const QString iconName = connected ? QStringLiteral("unlink") : QStringLiteral("link");
             const QColor iconColor = toolbarColor(buttonDisabled
-                ? AppThemeColor::ToolbarDisabled : (connected ? AppThemeColor::ToolbarRed : AppThemeColor::ToolbarBlue));
+                ? AppThemeColor::ToolbarDisabled : (connected ? AppThemeColor::ToolbarRed : AppThemeColor::ToolbarGreen));
             const QString iconKey = QStringLiteral("%1|%2").arg(iconName, iconColor.name(QColor::HexArgb));
             if (button->property(kHomeDeviceIconKeyProperty).toString() != iconKey)
             {
@@ -1000,6 +1038,19 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         }
     }
     if (dualTec) updateCapsule(state_->home_tec_remote_lbl_, state_->home_tec_remote_btn_, VaporView::SkyDeviceId::Tec103Remote);
+    if (dualTec && state_->home_temperature_status_lbl_ && state_->home_tec_remote_lbl_) {
+        using Id = VaporView::SkyDeviceId;
+        auto *first = state_->home_temperature_status_lbl_;
+        auto *second = state_->home_tec_remote_lbl_;
+        const bool connected = first->property("connected").toBool() || second->property("connected").toBool();
+        const QString a = first->property("state").toString(), b = second->property("state").toString();
+        const bool selected = homeFpgaDeviceSelected(Id::TemperatureController);
+        const QString status = !selected ? QStringLiteral("disabled")
+            : a == "connecting" || b == "connecting" ? QStringLiteral("connecting")
+            : a == "connected" && b == "connected" ? QStringLiteral("connected")
+            : connected ? QStringLiteral("warning") : QStringLiteral("disconnected");
+        syncConfigCapsule(Id::TemperatureController, status, selected && connected);
+    }
     updateCapsule(state_->home_wave_status_lbl_, state_->home_wave_action_btn_, VaporView::SkyDeviceId::WaveTcp);
     updateHomeFpgaWaveActions();
     updateCapsule(state_->home_ai8_temperature_status_lbl_, state_->home_ai8_temperature_action_btn_, VaporView::SkyDeviceId::Ai8TemperatureController);

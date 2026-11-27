@@ -390,8 +390,21 @@ void Ai8TemperatureControllerPanel::setupUi()
                              QStringLiteral("读取当前页"),
                              QStringLiteral("Read Page")});
     statusLayout->addWidget(readButton);
-    connect(readButton, &QPushButton::clicked, this,
-            &Ai8TemperatureControllerPanel::readPageRequested);
+    channel_read_debounce_timer_ = new QTimer(this);
+    channel_read_debounce_timer_->setSingleShot(true);
+    channel_read_debounce_timer_->setTimerType(Qt::PreciseTimer);
+    channel_read_debounce_timer_->setInterval(1000);
+    connect(channel_read_debounce_timer_, &QTimer::timeout, this, [this] {
+        if (page_stack_->currentIndex() != 0 || !backend_connected_ || !page_commands_enabled_ ||
+            !pending_writes_.isEmpty()) return;
+        fpga_page_read_requested_ = fpga_relay_;
+        emit readPageRequested();
+    });
+    connect(readButton, &QPushButton::clicked, this, [this] {
+        channel_read_debounce_timer_->stop();
+        fpga_page_read_requested_ = fpga_relay_;
+        emit readPageRequested();
+    });
 
     plot_view_button_ = VaporView::Ground::Widgets::createTemperaturePlotViewButton(statusRow);
     plot_view_button_->setObjectName(QStringLiteral("ai8PlotViewToggle"));
@@ -427,8 +440,11 @@ void Ai8TemperatureControllerPanel::setupUi()
         fpga_page_read_requested_ = false;
         refreshPageCommandControls();
     };
-    connect(page_stack_, &QStackedWidget::currentChanged, this, selectionChanged);
-    for (const char *name : {"ai8ChannelSpin", "ai8InputGroupSpin", "ai8OutputGroupSpin"}) {
+    connect(page_stack_, &QStackedWidget::currentChanged, this, [this, selectionChanged] {
+        channel_read_debounce_timer_->stop();
+        selectionChanged();
+    });
+    for (const char *name : {"ai8InputGroupSpin", "ai8OutputGroupSpin"}) {
         connect(findChild<QSpinBox *>(QString::fromLatin1(name)),
                 qOverload<int>(&QSpinBox::valueChanged), this, selectionChanged);
     }
@@ -549,9 +565,13 @@ QWidget *Ai8TemperatureControllerPanel::createChannelPage()
     commonLayout->setVerticalSpacing(8);
 
     auto *channelSpin = createSpinBox(page, QStringLiteral("ai8ChannelSpin"), 1, 8, 1);
+    channelSpin->setWrapping(true);
     connect(channelSpin, qOverload<int>(&QSpinBox::valueChanged), this,
             [this]() {
-                refreshFpgaSetpoint();
+                fpga_page_read_requested_ = false;
+                if (backend_connected_ && page_stack_->currentIndex() == 0)
+                    channel_read_debounce_timer_->start();
+                refreshPageCommandControls();
                 updateMeasuredValue();
                 updateAlarmStatusDisplay();
                 if(auto *sv=findChild<QLineEdit*>(QStringLiteral("ai8DisplayedSetpointEdit"));sv && latest_live_data_.detailedChannel)
@@ -1253,6 +1273,7 @@ void Ai8TemperatureControllerPanel::setEnglish(bool english)
 void Ai8TemperatureControllerPanel::setBackendConnected(bool connected, const QString& detail)
 {
     if (!connected) {
+        channel_read_debounce_timer_->stop();
         fpga_page_read_requested_ = false;
         discardPendingWrites();
     }
@@ -1409,13 +1430,15 @@ void Ai8TemperatureControllerPanel::refreshPageCommandControls()
 {
     refreshFpgaSetpoint();
     const bool commandsEnabled = backend_connected_ && page_commands_enabled_;
-    if (fpga_relay_ && commandsEnabled && pending_writes_.isEmpty() && !fpga_page_read_requested_ && !fpga_page_read_pending_) {
+    if (fpga_relay_ && commandsEnabled && pending_writes_.isEmpty() && !fpga_page_read_requested_ && !fpga_page_read_pending_ &&
+        !channel_read_debounce_timer_->isActive()) {
         fpga_page_read_pending_ = true;
         // Defer until connection/capability updates have finished. Busy transitions
         // must not turn every completed operation into another automatic read.
         QTimer::singleShot(0, this, [this] {
             fpga_page_read_pending_ = false;
-            if (!fpga_relay_ || !backend_connected_ || !page_commands_enabled_ || !pending_writes_.isEmpty() || fpga_page_read_requested_) return;
+            if (!fpga_relay_ || !backend_connected_ || !page_commands_enabled_ || !pending_writes_.isEmpty() ||
+                fpga_page_read_requested_ || channel_read_debounce_timer_->isActive()) return;
             fpga_page_read_requested_ = true;
             emit readPageRequested();
         });
@@ -1444,6 +1467,7 @@ void Ai8TemperatureControllerPanel::refreshPageCommandControls()
 void Ai8TemperatureControllerPanel::setFpgaSetpointMode(bool relay)
 {
     if (fpga_relay_ != relay) {
+        channel_read_debounce_timer_->stop();
         discardPendingWrites();
         fpga_page_read_requested_ = false;
         sp_dirty_.fill(false);

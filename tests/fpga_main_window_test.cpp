@@ -88,6 +88,8 @@
 
 struct MainWindowRtcmTestAccess
 {
+    static void applyExternalReading(MainWindow& window, const VaporView::FpgaSensor::Reading& reading)
+    { window.applyExternalFpgaReading(reading); }
     static auto summary(MainWindow& window) { return window.remoteTelemetrySummarySections(); }
     static void refreshSummary(MainWindow& window) { window.updateRemoteTelemetrySummaryLabel(); }
     static void advanceRelayBatch(MainWindow& window) { window.connectNextHomeFpgaDevice(); }
@@ -1390,7 +1392,7 @@ static void localSimulatorRouting()
     auto settings=VaporView::applicationConfigSettings();
     QSettings native("VaporView","MainWindow");
     native.setValue("recording_directory",output.path());
-    FpgaControlConfig oldConfiguration;oldConfiguration.ai8.scan=false;
+    FpgaControlConfig oldConfiguration;
     settings.setValue("Fpga/desiredConfiguration",QJsonDocument(oldConfiguration.toJson()).toJson(QJsonDocument::Compact));
     settings.setValue("Fpga/remoteDesiredConfiguration",QJsonDocument(oldConfiguration.toJson()).toJson(QJsonDocument::Compact));
     settings.remove("Fpga/ai8EightChannelDefaultApplied");
@@ -1463,6 +1465,10 @@ static void localSimulatorRouting()
         "individual home action starts only the requested device on an idle simulated FPGA");
     QObject::disconnect(commandObserver);
     check(onlyPressureConnected(window),"connecting one simulated device leaves all six other sensors and waveform acquisition disconnected");
+    auto *restoreDefaults = window.findChild<QPushButton *>("deviceConfigRestoreDefaultsButton");
+    auto *restoreHint = window.findChild<QLabel *>("deviceConfigRestoreDefaultsHintLabel");
+    check(restoreDefaults && !restoreDefaults->isEnabled() && restoreHint && !restoreHint->isHidden(),
+          "connected FPGA pressure sensor locks restore defaults and shows the disconnect hint");
     verifyRelayIndicators(window,{"Pressure"});
     check(waitUntil([&]{return onlyPressureDataAvailable(window);}),"local summary reports only actual PTB data and no fabricated telemetry");
     check(!selectiveCommands.isEmpty(),"individual home action performs a real protocol handshake");
@@ -1556,15 +1562,21 @@ static void localSimulatorRouting()
     auto *pressureSelected=window.findChild<QCheckBox*>("deviceRemotePressureEnabledCheck");
     pressureSelected->setChecked(true);
     QMetaObject::invokeMethod(&window,"onConnectClicked");
-    check(waitUntil([&]{return connectionSuccesses.contains(0x40)&&pressureAction->isEnabled();},15000),
-        "bulk connect starts the selected PTB210");
+    const auto pressureRunning = [&] {
+        return lastRegisters.value(0x6004) == 1 && pressureAction->isEnabled()
+            && pressureAction->property("connected").toBool() && pressureAction->property("state") == "connected";
+    };
+    check(waitUntil([&]{return connectionSuccesses.contains(0x40) && pressureRunning();},15000),
+        "bulk connect starts the selected PTB210 and exposes its disconnect action");
     check(connectionSuccesses==QSet<quint16>{0x40}&&lastRegisters.value(0x6204)==0
         &&lastRegisters.value(0x6304)==0&&lastRegisters.value(0x6404)==0&&lastRegisters.value(0x4004)==0,
         "bulk connect skips unchecked serial, internal and ADC/DLIA devices");
     pressureSelected->setChecked(false);processFor(100);
-    check(lastRegisters.value(0x6004)==1&&pressureAction->isEnabled()&&pressureAction->property("connected").toBool(),
-        "clearing selection leaves the running channel and its disconnect action intact");
-    pressureAction->click();
+    auto *pressureConfigAction = MainWindowRtcmTestAccess::state(window).device_config_.ptb_remote_action_btn;
+    check(!pressureSelected->isChecked() && !pressureAction->isEnabled() && lastRegisters.value(0x6004) == 1
+        && pressureConfigAction && pressureConfigAction->isEnabled() && pressureConfigAction->property("connected").toBool(),
+        "clearing selection disables the overview action and leaves the running channel stoppable from configuration");
+    pressureConfigAction->click();
     const bool stopped=waitUntil([&]{return lastRegisters.value(0x6004)==0&&disconnect->isEnabled();});
     if(!stopped)std::cerr<<"PTB stop: state="<<pressureAction->property("state").toString().toStdString()
         <<" control="<<lastRegisters.value(0x6004)<<" disconnect="<<disconnect->isEnabled()<<"\n";
@@ -1657,8 +1669,11 @@ static void localSimulatorRouting()
             check(control&&!control->isEnabled(),"FPGA mode disables unsupported RD105 communication maintenance");
         }
         auto* readAi=window.findChild<QAbstractButton*>("ai8ReadParametersButton");
-        check(readAi&&!readAi->isEnabled(),"current AI8 firmware keeps unsupported parameter transactions disabled");
-        check(aiReads==0,"RD105 configuration reads never access unsupported AI8 parameter commands");
+        check(aiReads==0,"RD105 configuration reads never access AI8 parameter commands");
+        check(readAi && readAi->isEnabled(),"AI8 parameter extension enables configuration reads");
+        readAi->click();
+        check(waitUntil([&]{return aiReads > 0 && readAi->isEnabled();},15000),
+            "AI8 parameter read reaches its own mailbox and finishes");
         auto* readEpsilon=window.findChild<QAbstractButton*>("epsilonSettingsReadButton");
         check(readEpsilon&&readEpsilon->isEnabled(),"EPSILON existing settings page is enabled by extension capabilities");readEpsilon->click();
         check(waitUntil([&]{return asciiStarts>5&&readEpsilon->isEnabled();},12000),"EPSILON existing parameter page uses the mailbox through its production worker");
@@ -1823,8 +1838,19 @@ static void localSimulatorRouting()
     check(internal && waitUntil([&]{return !internalEnvironmentText(internal).contains(QStringLiteral("—"));}),
         "both internal sensors reach the home capsules through real VLP frames");
     auto *environmentPressure=window.findChild<PtbPanel*>()->findChild<QLabel*>("highlightedValue");
-    const double pressureHpa=QRegularExpression("([0-9]+\\.[0-9]+)").match(environmentPressure->text()).captured(1).toDouble();
-    check(pressureHpa>=1012.97&&pressureHpa<=1013.53,"BMP pressure never replaces environmental PTB pressure across the PTB simulation cycle");
+    check(waitUntil([&] {
+        return batchState.current_ptb_.valid && environmentPressure->text().simplified()
+            == QStringLiteral("%1 hPa").arg(batchState.current_ptb_.pressure_hpa, 0, 'f', 2);
+    }), "PTB panel displays the current simulated sounding pressure");
+    const auto ptbBefore = batchState.current_ptb_;
+    VaporView::FpgaSensor::Reading bmpProbe;
+    bmpProbe.source = 0x43;
+    bmpProbe.kind = VaporView::FpgaSensor::SensorKind::Bmp390;
+    bmpProbe.validity = {true, true, true, true};
+    bmpProbe.pressurePa = (ptbBefore.pressure_hpa + 50) * 100;
+    MainWindowRtcmTestAccess::applyExternalReading(window, bmpProbe);
+    check(batchState.current_ptb_.pressure_hpa == ptbBefore.pressure_hpa && batchState.current_ptb_.timestamp == ptbBefore.timestamp,
+          "BMP pressure never replaces environmental PTB pressure across the PTB simulation cycle");
     check(homeAction(window,"HC2A")->isEnabled(),"HC2A firmware channel is available through the common home connection action");
 
     QWidget *deviceConfig=path;
@@ -1841,21 +1867,23 @@ static void localSimulatorRouting()
     QLabel *channel8=nullptr;
     for(auto *label:window.findChildren<QLabel*>("ai8TemperatureOverviewValueLabel"))
         if(label->property("channelIndex").toInt()==7)channel8=label;
-    check(ai8Channel&&ai8Scan&&apply&&channel8&&!ai8Scan->isChecked()&&!ai8Scan->isEnabled(),"current firmware keeps automatic eight-channel scanning disabled");
-    check(!FpgaControlConfig::fromJson(QJsonDocument::fromJson(settings.value("Fpga/remoteDesiredConfiguration").toByteArray()).object()).ai8.scan,
-        "remote FPGA preferences preserve supported single-channel defaults");
-    check(waitUntil([&]{
-        const auto measured=window.findChildren<QLabel*>("ai8TemperatureOverviewValueLabel");
-        const auto targets=window.findChildren<QLabel*>("ai8TemperatureOverviewTargetLabel");
-        if(measured.size()!=8||targets.size()!=8)return false;
-        for(auto *label:measured)if(label->text().contains("°C")!=(label->property("channelIndex").toInt()==0))return false;
-        for(auto *label:targets)if(label->text().contains("°C")!=(label->property("channelIndex").toInt()==0))return false;
+    check(ai8Channel&&!ai8Scan&&apply&&channel8,"AI8 exposes channel selection with automatic scanning");
+    const auto allAi8ChannelsShown = [&] {
+        const auto measured = window.findChildren<QLabel*>("ai8TemperatureOverviewValueLabel");
+        const auto targets = window.findChildren<QLabel*>("ai8TemperatureOverviewTargetLabel");
+        if (lastRegisters.value(0x6668) != 1 || measured.size() != 8 || targets.size() != 8) return false;
+        for (auto *label : measured) if (!label->text().contains("°C")) return false;
+        for (auto *label : targets) {
+            const int channel = label->property("channelIndex").toInt() + 1;
+            if (label->text() != QStringLiteral("%1 °C").arg(25 + channel / 10., 0, 'f', 1)) return false;
+        }
         return true;
-    }),"home connection populates only the selected AI8 channel and does not fabricate other channels");
+    };
+    check(waitUntil(allAi8ChannelsShown), "AI8 scanning displays each measured channel and its distinct simulator setpoint");
     ai8Action->click();
     check(waitUntil([&]{return ai8Action->isEnabled()&&ai8Channel->isEnabled();}),
         "AI8 disconnect unlocks channel selection");
-    ai8Scan->setChecked(false);ai8Channel->setValue(8);apply->click();
+    ai8Channel->setValue(8);apply->click();
     check(waitUntil([&]{
         for(auto *label:page->findChildren<QLabel*>())
             if(label->text().contains("0x661c = 8"))return apply->isEnabled();
@@ -1864,9 +1892,7 @@ static void localSimulatorRouting()
     ai8Action->click();
     check(waitUntil([&]{return ai8Action->isEnabled()&&channel8->text()!="---";}),
         "AI8 channel eight traverses simulator, register readback, adapter and home overview");
-    for(auto *label:window.findChildren<QLabel*>("ai8TemperatureOverviewValueLabel"))
-        if(label->property("channelIndex").toInt()>0&&label->property("channelIndex").toInt()<7)
-            check(label->text()=="---","a selected-channel snapshot never fabricates other AI8 channels");
+    check(waitUntil(allAi8ChannelsShown), "reconnecting the selected AI8 channel restores eight-channel scanning");
 
     acquisition->click();
     auto *resumedHarmonic=window.findChild<TcpWavePanel*>()->findChild<QAbstractButton*>("fpgaMonitorHarmonicButton");
@@ -2342,7 +2368,8 @@ static void harmonicHomeGraphs()
                 require(!button->property("waterCalibrationButton").toBool(), "waveform header has no calibration button");
             QList<QWidget *> headerItems{title, bar->findChild<QPushButton *>("wavePageRawButton"),
                 bar->findChild<QPushButton *>("wavePageHarmonicButton"), bar->findChild<QLabel *>("waterCalibrationLabel"),
-                dynamic_cast<VaporView::SingleLevelPopupComboBox *>(bar->findChild<QComboBox *>("waterCalibrationComboBox"))};
+                dynamic_cast<VaporView::SingleLevelPopupComboBox *>(bar->findChild<QComboBox *>("waterCalibrationComboBox")),
+                bar->findChild<QPushButton *>("wavePageDetailedSettingsButton")};
             QRect previous;
             for (auto *item : headerItems) {
                 require(item && item->isVisibleTo(wavePage), "waveform header item visible");
@@ -2360,6 +2387,12 @@ static void harmonicHomeGraphs()
                 require(actual.contains(headings[0]) && actual.contains(headings[1]), "both views identify both channel wavelengths and roles");
             }
         }
+        auto *fpga = window.findChild<FpgaControlPage *>("fpgaControlPage");
+        auto *tabs = fpga->findChild<QTabWidget *>("fpgaTabs");
+        tabs->setCurrentIndex(1);
+        bar->findChild<QPushButton *>("wavePageDetailedSettingsButton")->click();
+        require(stack->currentWidget() == fpga && tabs->currentIndex() == 0, "detailed settings opens FPGA sampling");
+        nav->click();
         calibration.service->copyFile(file.filename, QStringLiteral("second_cal"));
         calibration.service->synchronize();
         QApplication::processEvents();
@@ -2788,13 +2821,21 @@ static void relayConfigurationPresentation()
     if(VaporView::isDarkThemeEnabled()!=originalDark) {
         QMetaObject::invokeMethod(&window,"onToggleTheme");processFor(80);
     }
+    auto *headerItem = grid->itemAtPosition(0, 1);
+    auto *portHeader = headerItem ? headerItem->widget() : nullptr;
+    require(portHeader && portHeader->isHidden(), "relay hides the serial/host column header");
+    for (const auto *name : {"deviceTcpWaveHostEdit", "deviceTcpWavePortSpin",
+                             "deviceInternalPortBMP390", "deviceInternalPortSHT45"}) {
+        auto *endpoint = configPage->findChild<QWidget *>(name);
+        require(endpoint && endpoint->isHidden(), "relay hides direct TCP and internal sensor endpoints");
+    }
     for(int i=0;i<devices.size();++i) {
         const auto name="device"+devices[i]+"PortCombo";
         auto *port=window.findChild<QComboBox*>(name);
         auto *endpoint=window.findChild<QLabel*>(name+"FpgaEndpoint");
         auto *baud=window.findChild<QComboBox*>("device"+devices[i]+"BaudCombo");
-        require(endpoint&&endpoint->isVisible()&&endpoint->text()=="FPGA"&&!port->isVisible()&&!port->isEnabled(),
-            "all six relay serial ports are replaced by a read-only FPGA endpoint");
+        require(port && port->isHidden() && !port->isEnabled() && (!endpoint || endpoint->isHidden()),
+            "relay hides each direct serial port and its FPGA endpoint placeholder");
         auto *readback=window.findChild<QLabel*>(baud->objectName()+"FpgaReadback");
         auto *editor=window.findChild<QComboBox*>(baud->objectName()+"FpgaEditor");
         require(baud&&!baud->isVisible()&&!baud->isEnabled()&&((editor&&editor->isVisible())||(readback&&readback->isVisible())),
@@ -2846,6 +2887,7 @@ static void relayConfigurationPresentation()
     require(window.findChild<QWidget*>("deviceInternalNameBMP390")->isVisible() && window.findChild<QWidget*>("deviceInternalNameSHT45")->isVisible(),
         "BMP390 and SHT45 have independent relay device rows");
     path->setCurrentIndex(path->findData("direct_devices"));processFor(50);
+    require(portHeader->isVisible(), "Direct restores the serial/host column header");
     for(int i=0;i<presetNames.size();++i) {
         auto *check=window.findChild<QCheckBox*>(presetNames[i]);
         require(check->isChecked()==enabledPresets[i],"switching back to Direct restores every original startup preset");
@@ -3750,8 +3792,8 @@ static void tec103PidLayout()
                          Qt::NoButton, Qt::NoButton, Qt::NoModifier);
         QCoreApplication::sendEvent(p, &move);
         QCoreApplication::processEvents();
-        require(p->property("spinArrowHover").toString() == QStringLiteral("up") && sameHeight(),
-                "Hovering the P arrow preserves the TEC103 PID editor heights");
+        require(p->property("spinArrowHover").toString() == QStringLiteral("up"), "Hover marks the TEC103 P up arrow");
+        require(sameHeight(), "Hovering the P arrow preserves the TEC103 PID editor heights");
 
         QEvent leave(QEvent::Leave);
         QCoreApplication::sendEvent(p, &leave);
@@ -3770,6 +3812,12 @@ static void tec103PidLayout()
     device->click();
     require(checkPidEditors(1) == normalHeight && normalHeight > compactHeight,
             "Both TEC103 devices use the same larger editor height at 100% scale");
+    device->click();
+    MainWindowRtcmTestAccess::state(window).font_extra_large_action_->trigger();
+    const int largeHeight = checkPidEditors(0);
+    device->click();
+    require(checkPidEditors(1) == largeHeight && largeHeight > normalHeight,
+            "Both TEC103 devices use the same larger editor height at 130% scale");
     device->click();
 }
 

@@ -3200,7 +3200,7 @@ void RtkConfigDialog::updateButtonStates()
     {
         setServiceStatus(textFor("Status: Running", "状态: 运行中"),
                          QStringLiteral("link"),
-                         AppThemeColor::Success);
+                         AppThemeColor::ToolbarGreen);
     }
     else
     {
@@ -3270,7 +3270,7 @@ void RtkConfigDialog::handleRtkServiceStatus(const RtkStreamStats& stats, bool f
                 .arg(stats.inputBps)
                 .arg(stats.outputBps),
             QStringLiteral("link"),
-            AppThemeColor::Success);
+            AppThemeColor::ToolbarGreen);
     }
 }
 

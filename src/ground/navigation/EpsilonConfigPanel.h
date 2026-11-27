@@ -74,11 +74,12 @@ signals:
 
 protected:
     void changeEvent(QEvent *event) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
 
 private:
     void arrangeOverviewCards();
-    void arrangePacketFields(bool twoColumns);
+    void arrangePacketFields();
     void applyAppearance();
     void updatePacketLabelWidths();
     void updateLivePacketRateTexts();
@@ -171,8 +172,7 @@ private:
 
     bool is_english_ = false;
     bool is_available_ = true;
-    bool packet_layout_initialized_ = false;
-    bool two_column_layout_ = true;
+    int packet_column_count_ = 0;
     QGridLayout *packet_grid_ = nullptr;
     QGridLayout *overview_grid_ = nullptr;
     QWidget *summary_card_ = nullptr;

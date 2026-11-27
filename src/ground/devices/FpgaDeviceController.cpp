@@ -959,7 +959,7 @@ void FpgaDeviceController::applyConfiguration(const FpgaControlConfig& config, c
     const bool ai8Changed=ai8 && (registers_.value(0x6614)!=config.ai8.slaveAddress ||
         registers_.value(0x661c)!=config.ai8.channel || registers_.value(0x662c)!=config.ai8.pollIntervalMs
         || registers_.value(0x6660)!=config.ai8.timeoutMs || registers_.value(0x6664)!=config.ai8.retryLimit
-        || ((extensions()&FpgaExtensions::Ai8Scan) && bool(registers_.value(0x6668))!=config.ai8.scan));
+        || ((extensions()&FpgaExtensions::Ai8Scan) && registers_.value(0x6668)!=1));
     if (ai8Changed && (registers_.value(0x6604)&1)) {
         fail(QStringLiteral("AI8 地址、通道或轮询配置只能在禁用时修改；请先禁用 AI8。")); return;
     }
@@ -973,7 +973,7 @@ void FpgaDeviceController::applyConfiguration(const FpgaControlConfig& config, c
         write(0x662c,config.ai8.pollIntervalMs); verify(0x662c,config.ai8.pollIntervalMs);
         write(0x6660,config.ai8.timeoutMs); verify(0x6660,config.ai8.timeoutMs);
         write(0x6664,config.ai8.retryLimit); verify(0x6664,config.ai8.retryLimit);
-        if(extensions()&FpgaExtensions::Ai8Scan) {write(0x6668,config.ai8.scan?1:0);verify(0x6668,config.ai8.scan?1:0);}
+        if(extensions()&FpgaExtensions::Ai8Scan) {write(0x6668,1);verify(0x6668,1);}
     }
     if (acquisition) {
         write(0x4010,config.adcRateHz); verify(0x4010,config.adcRateHz);
@@ -1464,9 +1464,9 @@ bool FpgaDeviceController::appendSensorEnable(quint16 source, bool enable)
     // that do not submit the acquisition configuration. Legacy firmware has no
     // scan register and continues to report its selected channel.
     if (source==0x46 && enable && (extensions()&FpgaExtensions::Ai8Scan)
-        && !(registers_.value(0x6604)&1) && bool(registers_.value(0x6668))!=configuration_.ai8.scan) {
-        write(0x6668,configuration_.ai8.scan?1:0);
-        verify(0x6668,configuration_.ai8.scan?1:0);
+        && !(registers_.value(0x6604)&1) && registers_.value(0x6668)!=1) {
+        write(0x6668,1);
+        verify(0x6668,1);
     }
     if (source==0x40 && enable && registers_.value(0x600c)) {
         // PTB firmware marks every new pressure sample invalid while any old
@@ -1638,7 +1638,7 @@ void FpgaDeviceController::executeOperation(const QJsonObject& request)
         if(!pendingSequence_)fail(QStringLiteral("DM422 停止命令未发送。"));
         return;
     }
-    if(requestedOp=="instrument" || requestedOp=="epsilon_mailbox" || requestedOp=="ai8_scan" || requestedOp=="ai8_cache" || requestedOp=="dlia_cutoff" || requestedOp=="dlia_sos" || requestedOp=="wms_trigger" || requestedOp=="pps_snapshot" || requestedOp=="device_temperature") {
+    if(requestedOp=="instrument" || requestedOp=="epsilon_mailbox" || requestedOp=="ai8_cache" || requestedOp=="dlia_cutoff" || requestedOp=="dlia_sos" || requestedOp=="wms_trigger" || requestedOp=="pps_snapshot" || requestedOp=="device_temperature") {
         deferExtensionOperation(request,tec103Generation_,QDateTime::currentMSecsSinceEpoch()+10000);return;
     }
     if(busy_ && !backgroundRefresh_) {report(QStringLiteral("FPGA 操作被拒绝：已有事务正在执行。"));return;}

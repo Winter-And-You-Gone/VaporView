@@ -1995,6 +1995,8 @@ struct TcpWavePanel::WaveformPage {
     QPushButton *raw, *harmonic;
     QScrollArea *scroll = nullptr;
     std::array<QWidget *, 7> rows{};
+    std::array<int, 7> preferredRowHeights{};
+    std::array<int, 7> appliedRowHeights{};
     std::array<VaporView::Ground::Wave::RowResizeHandle *, 7> handles{};
     std::array<std::array<QFrame *, 2>, 7> cards{};
     std::array<std::array<QLayout *, 2>, 7> headerLayouts{};
@@ -2549,6 +2551,11 @@ void TcpWavePanel::saveRememberedInputState() const
 
 void TcpWavePanel::setEnglish(bool english)
 {
+    if (waveform_page_) {
+        auto *button = waveform_page_->calibration.detailedSettings;
+        button->setText(english ? QStringLiteral("Detailed Settings") : QStringLiteral("详细设置"));
+        button->setToolTip(english ? QStringLiteral("Open FPGA sampling settings") : QStringLiteral("跳转到 FPGA 采样设置页面"));
+    }
     is_english_ = english;
     for (int channel = 0; channel < 2; ++channel) {
         const QString text = channel == 0
@@ -3152,6 +3159,7 @@ QWidget *TcpWavePanel::createWaveformPage(QWidget *parent)
     bar->setMinimumHeight(kTcpMainTitleBarHeight);
     bar->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     auto *controls = new QHBoxLayout(bar);
+    controls->setHorizontalSizeConstraint(QLayout::SetMinimumSize);
     controls->setContentsMargins(8, 2, 8, 2);
     controls->setSpacing(6);
     outerLayout->addWidget(bar, 0, Qt::AlignTop);
@@ -3174,7 +3182,7 @@ QWidget *TcpWavePanel::createWaveformPage(QWidget *parent)
         connect(button, &QPushButton::clicked, homeButton, &QPushButton::click);
         (raw ? page.raw : page.harmonic) = button;
     }
-    addCalibrationControls(page.calibration, controls);
+    addCalibrationControls(page.calibration, controls, true);
     page.scroll = scroll;
     using VaporView::Ground::Wave::VerticalRowLabel;
     using VaporView::Ground::Wave::RowResizeHandle;
@@ -3204,7 +3212,10 @@ QWidget *TcpWavePanel::createWaveformPage(QWidget *parent)
         auto *row = new QWidget(content);
         page.rows[index] = row;
         setSurface(row, QStringLiteral("waveformPageRow"));
-        row->setFixedHeight(index < 4 ? 136 : index == 6 ? 154 : 186);
+        const int baseHeight = index < 4 ? 136 : index == 6 ? 154 : 186;
+        row->setProperty("_vv_base_min_height", baseHeight);
+        row->setProperty("_vv_base_max_height", baseHeight);
+        row->setFixedHeight(baseHeight);
         contentLayout->addWidget(row);
         auto *rowLayout = new QVBoxLayout(row);
         rowLayout->setContentsMargins(0, 0, 0, 0);
@@ -3269,9 +3280,15 @@ QWidget *TcpWavePanel::createWaveformPage(QWidget *parent)
                 connect(lane.clear, &QPushButton::clicked, this, [this, channel] { clearFpgaPeakTrend(channel); });
             }
         }
-        auto *handle = new RowResizeHandle(row, 0, 640, {}, row);
+        auto *handle = new RowResizeHandle(row, 0, 640, [this, index](int height) {
+            waveform_page_->preferredRowHeights[index] = height;
+        }, row);
         page.handles[index] = handle;
-        handle->setMinHeightProvider([this, index] { return waveformPageRowMinimumHeight(index); });
+        handle->setMinHeightProvider([this, index, row] {
+            const int minimum = waveformPageRowMinimumHeight(index);
+            row->setProperty("waveformRowMinHeight", minimum);
+            return minimum;
+        });
         handle->setObjectName(QStringLiteral("waveformRowResizeHandle"));
         rowLayout->addWidget(handle);
     }
@@ -3320,11 +3337,17 @@ void TcpWavePanel::updateWaveformPageRowMinimumHeights()
         handle->setHeightBounds(minimum, std::max(minimum, 640));
         auto *row = waveform_page_->rows[index];
         row->setProperty("waveformRowMinHeight", minimum);
-        if (row->height() < minimum || row->maximumHeight() < minimum) row->setFixedHeight(minimum);
+        auto &preferred = waveform_page_->preferredRowHeights[index];
+        auto &applied = waveform_page_->appliedRowHeights[index];
+        // UI scaling can supply a new fixed height between layout passes. Keep
+        // that request separate from temporary minima while the plots settle.
+        if (row->maximumHeight() != applied) preferred = row->maximumHeight();
+        applied = std::max(preferred, minimum);
+        if (row->maximumHeight() != applied) row->setFixedHeight(applied);
     }
 }
 
-void TcpWavePanel::addCalibrationControls(CalibrationControls &controls, QHBoxLayout *row)
+void TcpWavePanel::addCalibrationControls(CalibrationControls &controls, QHBoxLayout *row, bool waveformPage)
 {
     controls.label = new QLabel(row->parentWidget());
     controls.label->setObjectName(QStringLiteral("waterCalibrationLabel"));
@@ -3337,15 +3360,25 @@ void TcpWavePanel::addCalibrationControls(CalibrationControls &controls, QHBoxLa
     combo->setFixedHeight(kTcpButtonHeight);
     combo->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     combo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-    combo->setMinimumContentsLength(12);
-    combo->setMinimumWidth(140);
-    combo->setMaximumWidth(260);
+    combo->setMinimumContentsLength(waveformPage ? 24 : 12);
+    combo->setMinimumWidth(waveformPage ? 280 : 140);
+    combo->setMaximumWidth(waveformPage ? 520 : 260);
     combo->setPopupFitContents(true);
     combo->setSelectionCheckIconProvider([] {
         return createMenuCheckIcon(appThemeColor(AppThemeColor::MenuCheckText, isDarkThemeEnabled()));
     });
     row->addWidget(controls.label, 0, Qt::AlignVCenter);
     row->addWidget(combo, 0, Qt::AlignVCenter);
+    if (waveformPage) {
+        auto *button = controls.detailedSettings = new QPushButton(row->parentWidget());
+        button->setObjectName(QStringLiteral("wavePageDetailedSettingsButton"));
+        button->setProperty("styleSheetManagedHeight", true);
+        button->setFixedHeight(kTcpButtonHeight);
+        button->setFocusPolicy(Qt::TabFocus);
+        button->setCursor(Qt::PointingHandCursor);
+        connect(button, &QPushButton::clicked, this, &TcpWavePanel::fpgaSamplingSettingsRequested);
+        row->addWidget(button, 0, Qt::AlignVCenter);
+    }
     row->addStretch(1);
     connect(combo, &QComboBox::activated, this, [this, combo](int index) {
         if (water_calibration_locked_ || index < 0 || index >= combo->count()) return;

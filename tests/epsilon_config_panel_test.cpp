@@ -1,3 +1,4 @@
+#include <QMap>
 #include "ground/devices/DeviceRatePolicy.h"
 #include "ground/navigation/EpsilonConfigPanel.h"
 #include "shared/theme/AppTheme.h"
@@ -495,29 +496,33 @@ int main(int argc, char *argv[])
                 require(label->width() >= label->fontMetrics().horizontalAdvance(label->text()),
                         "narrow live rate labels and values remain fully visible");
         }
-    for (QComboBox *combo : combos)
+    QSet<int> packetColumnCounts;
+    for (int width = 360; width <= 1320; width += 60)
     {
-        require(combo->property("epsilonPacketGridColumn").toInt() == 0,
-                "narrow panel collapses packet-rate fields to one visual column");
-        require(combo->property("epsilonPacketGroupFieldColumn").toInt() == 0,
-                "narrow panel keeps packet-rate fields in one internal category column");
-        const QRect comboRect(combo->mapTo(&panel, QPoint(0, 0)), combo->size());
-        require(panel.rect().contains(comboRect),
-                "narrow packet-rate controls remain inside the panel");
-        const QRect fieldRect(combo->mapTo(combo->parentWidget(), QPoint()), combo->size());
-        require(combo->parentWidget()->rect().contains(fieldRect),
-                "narrow packet-rate controls remain fully inside their field containers");
+        panel.resize(width, 1800);
+        VaporViewTest::processEventsFor(40);
+        require(VaporViewTest::processEventsUntil(2000, [&] {
+            return std::all_of(combos.cbegin(), combos.cend(), [&](QComboBox *combo) {
+                const QRect rect(combo->mapTo(&panel, QPoint()), combo->size());
+                return panel.rect().contains(rect) && rect.right() < width;
+            });
+        }), "packet combos settle inside the requested width");
+        QMap<int, int> lefts;
+        for (auto *combo : combos)
+        {
+            const int col = combo->property("epsilonPacketGridColumn").toInt();
+            const QRect rect(combo->mapTo(&panel, QPoint()), combo->size());
+            require(panel.rect().contains(rect) && rect.right() < width, "packet combo fits the requested width");
+            require(lefts.value(col, rect.left()) == rect.left(), "packet combos align within each column");
+            lefts.insert(col, rect.left());
+            auto *label = combo->parentWidget()->findChild<QLabel *>();
+            require(label && label->width() >= label->fontMetrics().horizontalAdvance(label->text()),
+                    "packet labels fit at each breakpoint");
+        }
+        packetColumnCounts.insert(lefts.size());
     }
-    panel.resize(1100, 420);
-    QApplication::processEvents();
-    wideColumns.clear();
-    for (QComboBox *combo : combos)
-    {
-        wideColumns.insert(combo->property("epsilonPacketGridColumn").toInt());
-    }
-    require(wideColumns == QSet<int>{0, 1, 2, 3},
-            "wide panel restores the outer two-by-two and inner two-column packet-rate layout");
-
+    require(packetColumnCounts == QSet<int>{1, 2, 3, 4},
+            "packet categories reflow across all four column counts");
     panel.setEnglish(true);
     require(panel.accessibleName() == QStringLiteral("EPSILON Configuration"),
             "English accessible name follows panel language");

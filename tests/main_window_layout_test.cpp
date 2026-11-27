@@ -12379,7 +12379,7 @@ int main(int argc, char **argv)
     std::sort(telemetrySubCards.begin(), telemetrySubCards.end(), [deviceTelemetrySummaryCard](QFrame *left, QFrame *right) {
         const QPoint leftPos = left->mapTo(deviceTelemetrySummaryCard, QPoint());
         const QPoint rightPos = right->mapTo(deviceTelemetrySummaryCard, QPoint());
-        return std::make_tuple(leftPos.x(), leftPos.y()) < std::make_tuple(rightPos.x(), rightPos.y());
+        return std::make_tuple(leftPos.y(), leftPos.x()) < std::make_tuple(rightPos.y(), rightPos.x());
     });
     const QVector<QStringList> expectedTelemetrySubCardTitles = {
         {QStringLiteral("数据频率"), QStringLiteral("Data stream rates")},
@@ -12392,11 +12392,15 @@ int main(int argc, char **argv)
     const QRect rateRect = telemetryRect(telemetrySubCards.at(0));
     const QRect linkRect = telemetryRect(telemetrySubCards.at(1));
     const QRect dataRect = telemetryRect(telemetrySubCards.at(2));
-    require(std::abs(linkRect.left() - rateRect.left()) <= 2 && linkRect.top() > rateRect.bottom(),
-            "link rate sits directly below data frequency");
-    require(dataRect.left() > std::max(rateRect.right(), linkRect.right()) &&
-                std::abs(dataRect.top() - rateRect.top()) <= 2,
-            "data sits to the right of both rates and aligns with data frequency");
+    require(linkRect.left() > rateRect.right() && std::abs(linkRect.top() - rateRect.top()) <= 2,
+            "link rate sits beside data frequency");
+    require(dataRect.top() > std::max(rateRect.bottom(), linkRect.bottom()) &&
+                std::abs(dataRect.left() - rateRect.left()) <= 2,
+            "data sits below the rate sections");
+    auto *summaryTitle = deviceTelemetrySummaryCard->findChild<QWidget *>(QStringLiteral("sectionTitleBar"));
+    require(summaryTitle && summaryTitle->findChild<QComboBox *>(QStringLiteral("deviceSkyTelemetryTransportCombo")) &&
+                !summaryTitle->findChild<QFrame *>(QStringLiteral("telemetrySummarySourcePill")),
+            "device summary title contains sky-link controls");
     for (int i = 0; i < telemetrySubCards.size(); ++i)
     {
         QFrame *subCard = telemetrySubCards.at(i);
@@ -12470,6 +12474,8 @@ int main(int argc, char **argv)
                 "device telemetry summary field name uses device-config text styling");
         if (i == 2)
         {
+            if (deviceTelemetrySummaryCard->width() >= 1150)
+                require(subCard->property("dataColumns").toInt() == 6, "wide data section has two six-item rows");
             QStringList dataFieldNames;
             const QList<QFrame*> dataPills =
                 subCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));

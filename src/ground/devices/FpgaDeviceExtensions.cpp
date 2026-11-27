@@ -54,7 +54,7 @@ void FpgaDeviceController::executeExtension(const QJsonObject& request, bool pol
         reject(QStringLiteral("现场 TEC103 使用 LC0/LC1 GPIO UART；旧 6A RS485 温控事务已停用。"));return;
     }
     const quint32 required=(op=="uart_exchange" || op=="dlia_sos" || op=="wms_trigger" || op=="pps_snapshot")?0:op=="epsilon_mailbox"?FpgaExtensions::EpsilonMailbox:
-        op=="dlia_cutoff"?FpgaExtensions::DliaCutoff:(op=="ai8_scan" || op=="ai8_cache")?FpgaExtensions::Ai8Scan:
+        op=="dlia_cutoff"?FpgaExtensions::DliaCutoff:op=="ai8_cache"?FpgaExtensions::Ai8Scan:
         source==0x4a?FpgaExtensions::Rd105:op=="instrument"?FpgaExtensions::Ai8Parameters:
         request.value("channel").toInt()?FpgaExtensions::Ai8Scan:0;
     if(required && !(extensions()&required)) {reject(QStringLiteral("当前固件未报告此扩展能力；请更新下位机后重新连接。"));return;}
@@ -67,7 +67,7 @@ void FpgaDeviceController::executeExtension(const QJsonObject& request, bool pol
         op=="device_temperature"?(source==0x4a?QStringLiteral("RD105 设温与确认"):QStringLiteral("AI8 设温与确认")):
         op=="instrument"?(source==0x4a?QStringLiteral("RD105 参数事务与回读"):QStringLiteral("AI8 参数事务与回读")):
         op=="epsilon_mailbox"?QStringLiteral("EPSILON 命令与 RTCM 转发"):op=="ai8_cache"?QStringLiteral("AI8 通道缓存读回"):
-        op=="ai8_scan"?QStringLiteral("AI8 扫描配置"):op=="dlia_sos"?QStringLiteral("停止采集并提交 SOS 滤波器"):
+        op=="dlia_sos"?QStringLiteral("停止采集并提交 SOS 滤波器"):
         op=="wms_trigger"?QStringLiteral("停止采集并设置 PPS 触发"):op=="pps_snapshot"?QStringLiteral("读取 PPS 扫描快照"):QStringLiteral("DLIA 截止频率配置");
     if(!begin(label,false,!polling))return;
     tec103PollExchange_=polling;
@@ -168,11 +168,6 @@ void FpgaDeviceController::executeExtension(const QJsonObject& request, bool pol
             extensionResult_["alarm_control_host"]=double(registers_.value(0x66ac));
             extensionResult_["tick"]=QString::number((quint64(registers_.value(0x66b4))<<32)|registers_.value(0x66b0));extensionResult_["verified"]=true;
         });
-    } else if(op=="ai8_scan") {
-        if(registers_.value(0x6604)&1) {fail(QStringLiteral("切换 AI8 扫描模式前请先断开 AI8。"));return;}
-        const quint32 enable=request.value("enabled").toBool()?1:0;
-        write(0x6668,enable);verify(0x6668,enable);
-        callback([this,enable]{configuration_.ai8.scan=enable!=0;extensionResult_["verified"]=true;});
     } else if(op=="wms_trigger") {
         const quint32 base=0x2000+channel*0x100;
         write(base+4,0);verify(base+4,0);waitFor(base+0x54,2,0);waitFor(base+8,4,0);

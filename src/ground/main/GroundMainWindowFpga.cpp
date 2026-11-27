@@ -3,6 +3,8 @@
 #include "FpgaVirtualTcpTransport.h"
 #include "ground/devices/UiTestDataModel.h"
 #include "BaudRateComboSupport.h"
+#include "Sdfm300Protocol.h"
+#include "ground/devices/DeviceRatePolicy.h"
 #include <QFileDialog>
 #include <QJsonDocument>
 #include <QJsonArray>
@@ -72,6 +74,15 @@ void MainWindow::scheduleFpgaDeviceConfigUi()
 void MainWindow::syncFpgaDeviceConfigUi()
 {
     const bool relay = isFpgaRelayPath();
+    updateTemperatureControllerTitleText();
+    auto &config = state_->device_config_;
+    if (config.ai8_temperature_port_combo && state_->ai8_temperature_title_port_combo_ &&
+        (state_->ai8_temperature_title_port_combo_->currentText() == QStringLiteral("FPGA")) != relay) {
+        QStringList ports;
+        for (int i = 0; i < config.ai8_temperature_port_combo->count(); ++i)
+            ports.append(localSerialPortItemValue(config.ai8_temperature_port_combo, i));
+        refreshAi8TemperatureTitlePortOptions(ports, localSerialPortComboValue(config.ai8_temperature_port_combo));
+    }
     const auto extensions=homeFpgaExtensions();
     const auto values=homeFpgaRegisters();
     using namespace VaporView::Ground::Devices;
@@ -304,6 +315,31 @@ bool MainWindow::homeFpgaDeviceSelected(VaporView::SkyDeviceId device) const
 {
     const auto source = homeFpgaSensorSource(device);
     return !state_->fpga_home_disabled_sources_[isRemoteSkyMode() ? 1 : 0].contains(source == 0x48 || source == 0x49 ? 0x4a : source);
+}
+
+void MainWindow::onRestoreDeviceConfigDefaultsClicked()
+{
+    if (!isFpgaRelayPath() || anySensorDeviceConnectedOrBusy()) return;
+
+    // Stage the same editable parameters as the relay card. Hardware readback and
+    // mailbox operations remain under the individual device connection actions.
+    auto &drafts = fpgaSensorDrafts();
+    drafts[0x42]["baud"] = QString::number(VaporView::Ground::DeviceRates::kDefaultEpsilonSerialBaud);
+    drafts[0x40]["baud"] = "9600";
+    drafts[0x41]["baud"] = "19200";
+    drafts[0x45]["baud"] = QString::number(VaporView::Sdfm300::kDefaultBaudRate);
+    for (quint16 source : {0x40, 0x41, 0x43, 0x44}) drafts[source]["poll_ms"] = "1";
+    drafts[0x46]["poll_ms"] = QString::number(1000.0 / FpgaControlConfig::factoryDefaults().ai8.pollIntervalMs);
+
+    using Id = VaporView::SkyDeviceId;
+    for (Id id : {Id::Epsilon, Id::Ptb, Id::Hc2a, Id::Lidar, Id::TemperatureController,
+                  Id::Ai8TemperatureController, Id::Bmp390, Id::Sht45, Id::WaveTcp}) {
+        if (!homeFpgaDeviceSelected(id)) setHomeFpgaDeviceSelected(id, true);
+    }
+    syncFpgaDeviceConfigUi();
+    updateHomeDeviceStatusCapsules();
+    updateDeviceConfigState();
+    updateTemperatureTitleButtonsState();
 }
 
 void MainWindow::setHomeFpgaDeviceSelected(VaporView::SkyDeviceId device, bool selected)

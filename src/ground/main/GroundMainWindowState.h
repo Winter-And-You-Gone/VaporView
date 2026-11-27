@@ -129,6 +129,10 @@ struct DeviceConfigPageWidgets
     QVBoxLayout *data_telemetry_rate_summary_layout = nullptr;
     QVBoxLayout *data_telemetry_link_summary_layout = nullptr;
     QVBoxLayout *data_telemetry_device_summary_layout = nullptr;
+    QWidget *serial_card = nullptr;
+    QMap<VaporView::SkyDeviceId, QFrame *> device_capsules;
+    QPushButton *restore_defaults_btn = nullptr;
+    QLabel *restore_defaults_hint_lbl = nullptr;
     QPushButton *auto_detect_ports_btn = nullptr;
     QComboBox *sky_telemetry_transport_combo = nullptr;
     QComboBox *sensor_transport_path_combo = nullptr;

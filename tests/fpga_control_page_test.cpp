@@ -265,11 +265,24 @@ int main(int argc,char **argv) {
     require(c.adcRateHz==1000000 && c.dlia[0].outputRateHz==10000 && c.dlia[1].mode==3,"shared ADC / DLIA defaults");
     require(c.wms[0].scanMilliHz==100000 && c.wms[1].scanAmplitude==107374182,"WMS units and defaults");
     require(c.dac[0].deviceCtrl==0x312 && c.dac[1].spiClockHz==20000000 && c.ai8.slaveAddress==1 && c.ai8.channel==1,"DAC / AI8 safe defaults");
-    require(!c.ai8.scan && !page.findChild<QCheckBox*>("fpgaAi8Scan")->isChecked(),"AI8 defaults to the firmware's selected single channel");
-    auto oldAi8=c.toJson();auto ai8=oldAi8.value("ai8").toObject();ai8.remove("scan");oldAi8["ai8"]=ai8;
-    require(!FpgaControlConfig::fromJson(oldAi8).ai8.scan,"configuration without a scan preference defaults to the selected channel");
-    ai8["scan"]=false;oldAi8["ai8"]=ai8;
-    require(!FpgaControlConfig::fromJson(oldAi8).ai8.scan,"explicit single-channel preference remains supported");
+    require(!page.findChild<QCheckBox*>("fpgaAi8Scan"), "AI8 scanning has no user toggle");
+    auto legacyAi8=c.toJson();auto ai8=legacyAi8.value("ai8").toObject();ai8["scan"]=false;legacyAi8["ai8"]=ai8;
+    require(FpgaControlConfig::fromJson(legacyAi8).toJson()==c.toJson(),"legacy scan preferences are ignored");
+    auto *samplingTabs=page.findChild<QTabWidget*>("fpgaTabs");
+    samplingTabs->setCurrentIndex(1);page.selectSamplingTab();
+    require(samplingTabs->currentIndex()==0,"sampling shortcut selects first tab");
+    for (bool dark : {true,false}) {
+        page.setTheme(dark);
+        for (auto *button : {connect,disconnect}) {
+            const QColor expected(button==connect ? "#40C977" : "#D24A30");
+            const QImage image=button->icon().pixmap(20,20,QIcon::Normal).toImage();
+            bool found=false;
+            for (int y=0;y<image.height()&&!found;++y)
+                for (int x=0;x<image.width();++x)
+                    if (image.pixelColor(x,y)==expected) {found=true;break;}
+            require(found,"connection icon uses its toolbar action color in both themes");
+        }
+    }
     auto oldProbe=c.toJson();oldProbe["sensorParameters"]=QJsonObject{{"65",QJsonObject{{"address",240},{"pressure",1013.25}}}};
     const auto migratedProbe=FpgaControlConfig::fromJson(oldProbe).sensorParameters.value(0x41);
     require(migratedProbe.value("address")==99 && !migratedProbe.contains("pressure"),"obsolete humidity address and pressure presets cannot reach HC2A");
@@ -918,13 +931,14 @@ int main(int argc,char **argv) {
         }
         for (auto *button : {scan, connect, disconnect}) {
             const auto image=button->icon().pixmap(button->iconSize(),QIcon::Normal).toImage();
-            const auto expected=button==disconnect ? VaporView::AppThemeColor::ToolbarRed : VaporView::AppThemeColor::Primary;
+            const auto expected=button==disconnect ? VaporView::AppThemeColor::ToolbarRed :
+                (button==connect ? VaporView::AppThemeColor::ToolbarGreen : VaporView::AppThemeColor::Primary);
             bool expectedStroke=false;
             for(int y=0;y<image.height();++y)for(int x=0;x<image.width();++x) {
                 const auto color=image.pixelColor(x,y);
                 expectedStroke|=color.alpha()>200&&color.rgb()==VaporView::appThemeColor(expected,dark).rgb();
             }
-            require(expectedStroke,"connection icons use primary strokes and disconnect uses toolbar red");
+            require(expectedStroke,"scan uses primary, connect uses toolbar green, and disconnect uses toolbar red");
         }
         for (const char *name : {"fpgaLinkDacsOnStart", "fpgaWaveformTrigger"}) {
             auto *box = page.findChild<QCheckBox *>(name);

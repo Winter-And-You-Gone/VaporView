@@ -464,9 +464,7 @@ void MainWindow::onDataSourceModeChanged(int index)
     {
         deviceConfigScrollArea->viewport()->setUpdatesEnabled(false);
     }
-    QWidget *serialCard = state_->device_config_.sky_telemetry_row_widget
-        ? state_->device_config_.sky_telemetry_row_widget->parentWidget()
-        : nullptr;
+    QWidget *serialCard = state_->device_config_.serial_card;
     QWidget *remoteSkyConfigCard = state_->device_config_.remote_sky_config_card;
     QWidget *motionCard = state_->device_config_.motion_card;
     QWidget *deviceConfigContent = deviceConfigScrollArea
@@ -498,13 +496,6 @@ void MainWindow::onDataSourceModeChanged(int index)
         // The parent content layout can otherwise overwrite the card geometry
         // with its pre-switch size before the newly visible row is measured.
         serialCard->setFixedHeight(serialCardCurrentHeight);
-        if (index == 1 && !state_->remote_sky_mode_ && state_->device_config_.sky_telemetry_row_widget)
-        {
-            const QWidget *skyTelemetryRow = state_->device_config_.sky_telemetry_row_widget;
-            const int skyRowHeight = std::max(skyTelemetryRow->sizeHint().height(),
-                                              skyTelemetryRow->minimumSizeHint().height());
-            serialCard->setFixedHeight(serialCardCurrentHeight + skyRowHeight);
-        }
     }
     QList<QLayout *> deviceConfigLayouts = {
         serialCard ? serialCard->layout() : nullptr,
@@ -1576,11 +1567,7 @@ void MainWindow::reflowDeviceTelemetryData()
     };
     const int spacing = scalePixels(2);
     const QMargins bodyMargins = container->layout()->contentsMargins();
-    int otherWidth = bodyMargins.left() + bodyMargins.right();
-    for (int i = 0; i < container->layout()->count(); ++i) {
-        QWidget *other = container->layout()->itemAt(i)->widget();
-        if (other && other != section) otherWidth += other->sizeHint().width() + container->layout()->spacing();
-    }
+    const int otherWidth = bodyMargins.left() + bodyMargins.right();
     const QMargins lineMargins = linesLayout->contentsMargins();
     const int overhead = bodyLayout->itemAt(0)->widget()->minimumWidth() + bodyLayout->spacing() +
         lineMargins.left() + lineMargins.right() + scalePixels(2);
@@ -1589,7 +1576,10 @@ void MainWindow::reflowDeviceTelemetryData()
         ? scrollArea->viewport()->width() - std::max(0, container->mapTo(scrollArea->viewport(), QPoint()).x()) - scalePixels(8)
         : container->width();
     const int availableWidth = std::min(container->width(), viewportWidth);
-    const int columns = availableWidth - otherWidth >= overhead + totalWidth(widthsForColumns(4)) + 3 * spacing ? 4 : 3;
+    const auto fits = [&](int columns) {
+        return availableWidth - otherWidth >= overhead + totalWidth(widthsForColumns(columns)) + (columns - 1) * spacing;
+    };
+    const int columns = fits(6) ? 6 : fits(4) ? 4 : 3;
     const auto columnWidths = widthsForColumns(columns);
     const int pillsWidth = totalWidth(columnWidths);
     for (int i = 0; i < pills.size(); ++i) pills[i]->setFixedWidth(columnWidths[i % columns]);
@@ -2210,16 +2200,17 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                              state_->device_config_.data_telemetry_device_summary_layout,
                              state_->is_english_ ? QStringLiteral("Data") : QStringLiteral("数据"),
                              deviceConfigDataItems,
-                             3,
-                             3,
+                             6,
+                             6,
                              true,
                              true);
         auto *rateSection = state_->device_config_.data_telemetry_rate_summary_layout->parentWidget();
-        auto *rateLinkColumn = rateSection->parentWidget();
-        rateLinkColumn->layout()->invalidate();
-        rateLinkColumn->layout()->activate();
-        rateLinkColumn->updateGeometry();
-        rateLinkColumn->parentWidget()->layout()->activate();
+        auto *topRow = rateSection->parentWidget();
+        topRow->layout()->invalidate();
+        topRow->layout()->activate();
+        topRow->updateGeometry();
+        topRow->parentWidget()->layout()->invalidate();
+        topRow->parentWidget()->layout()->activate();
         if (QLayout *summaryLayout = state_->device_config_.data_telemetry_summary_card->layout())
         {
             summaryLayout->invalidate();
@@ -2769,6 +2760,17 @@ void MainWindow::updateTemperatureControllerTitleText()
         return;
     }
 
+    if (isFpgaRelayPath()) {
+        auto *combo = state_->temperature_title_port_combo_;
+        const QSignalBlocker blocker(combo);
+        combo->clear();
+        combo->addItem(QStringLiteral("FPGA"), QString());
+        combo->setEnabled(false);
+        combo->setFixedWidth(combo->fontMetrics().horizontalAdvance(combo->currentText()) + scalePixels(kTemperatureTitlePortChromeWidth));
+        combo->setToolTip(state_->is_english_ ? QStringLiteral("TEC103 connected via FPGA relay") : QStringLiteral("TEC103 通过 FPGA 中转连接"));
+        combo->setAccessibleName(combo->toolTip());
+        return;
+    }
     QStringList availablePorts;
     if (state_->device_config_.temperature_port_combo)
     {
@@ -2902,8 +2904,8 @@ void MainWindow::updateTemperatureTitleButtonsState()
         }
         else
         {
-            const QColor iconColor = toolbarColor(deviceState == VaporView::DeviceState::Disabled
-                ? AppThemeColor::ToolbarDisabled : AppThemeColor::ToolbarBlue);
+            const QColor iconColor = deviceState == VaporView::DeviceState::Disabled
+                ? toolbarColor(AppThemeColor::ToolbarDisabled) : deviceConfigRemoteIconColor(command);
             const QString iconName = deviceConfigRemoteIconName(command);
             setButtonIconForKey(button,
                                 QStringLiteral("%1|%2").arg(iconName, iconColor.name(QColor::HexArgb)),

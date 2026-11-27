@@ -125,6 +125,7 @@ protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 signals:
+    void fpgaSamplingSettingsRequested();
     void waterCalibrationFileSelected(const QString &filePath);
     void normalizedSecondHarmonicFrameReady(quint64 timestampUs, QVector<float> samples);
     void rawWaveFrameReady(quint64 timestampUs, QByteArray rawSignalPayload, QByteArray harmonicPayload, VaporView::TcpFloatEncoding floatEncoding);
@@ -183,7 +184,7 @@ private:
     int waveformPageRowMinimumHeight(int index) const;
     void updateWaveformPageRowMinimumHeights();
     void syncCalibrationControls();
-    void addCalibrationControls(CalibrationControls &controls, QHBoxLayout *row);
+    void addCalibrationControls(CalibrationControls &controls, QHBoxLayout *row, bool waveformPage = false);
     void refreshWaterPlots(int changedChannel = -1);
     struct WaveDisplayMode {
         bool all = true;
@@ -276,7 +277,7 @@ private:
         PeakTrendPlotWidget *series;
         WaterProfilePlotWidget *layers;
     };
-    struct CalibrationControls { QLabel *label = nullptr; VaporView::SingleLevelPopupComboBox *combo = nullptr; };
+    struct CalibrationControls { QLabel *label = nullptr; VaporView::SingleLevelPopupComboBox *combo = nullptr; QPushButton *detailedSettings = nullptr; };
     struct WaveformPage;
     std::unique_ptr<WaveformPage> waveform_page_;
     std::array<WaterCards, 2> home_water_{};

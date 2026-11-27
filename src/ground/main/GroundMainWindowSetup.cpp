@@ -2994,6 +2994,7 @@ void MainWindow::setupDeviceConfigPage()
     };
 
     auto *serialCard = createCard(content);
+    state_->device_config_.serial_card = serialCard;
     serialCard->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     auto *serialLayout = qobject_cast<QVBoxLayout *>(serialCard->layout());
     auto *serialTitleBar = new QWidget(serialCard);
@@ -3010,6 +3011,7 @@ void MainWindow::setupDeviceConfigPage()
     serialTitleLayout->addWidget(serialTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
     state_->device_config_.auto_detect_ports_btn = new QPushButton(serialTitleBar);
+    state_->device_config_.auto_detect_ports_btn->setObjectName(QStringLiteral("deviceConfigAutoDetectPortsButton"));
     state_->device_config_.auto_detect_ports_btn->setFixedHeight(kMainPageButtonHeight);
     state_->device_config_.auto_detect_ports_btn->setFocusPolicy(Qt::TabFocus);
     state_->device_config_.auto_detect_ports_btn->setMinimumWidth(kDeviceConfigAutoDetectButtonMinWidth);
@@ -3049,6 +3051,17 @@ void MainWindow::setupDeviceConfigPage()
     serialTitleLayout->addWidget(state_->device_config_.sensor_transport_path_combo,
                                  0,
                                  Qt::AlignVCenter | Qt::AlignLeft);
+    auto &config = state_->device_config_;
+    config.restore_defaults_btn = new QPushButton(serialTitleBar);
+    config.restore_defaults_btn->setObjectName(QStringLiteral("deviceConfigRestoreDefaultsButton"));
+    config.restore_defaults_btn->setFixedHeight(kMainPageButtonHeight);
+    config.restore_defaults_btn->setFocusPolicy(Qt::TabFocus);
+    connect(config.restore_defaults_btn, &QPushButton::clicked, this, &MainWindow::onRestoreDeviceConfigDefaultsClicked);
+    config.restore_defaults_hint_lbl = new QLabel(serialTitleBar);
+    config.restore_defaults_hint_lbl->setObjectName(QStringLiteral("deviceConfigRestoreDefaultsHintLabel"));
+    config.restore_defaults_hint_lbl->setProperty("deviceConfigHint", true);
+    serialTitleLayout->addWidget(config.restore_defaults_btn);
+    serialTitleLayout->addWidget(config.restore_defaults_hint_lbl);
     serialTitleLayout->addStretch(1);
     connect(state_->device_config_.sensor_transport_path_combo,
             qOverload<int>(&QComboBox::currentIndexChanged),
@@ -3058,7 +3071,7 @@ void MainWindow::setupDeviceConfigPage()
     auto *skyTelemetryRow = new QWidget(serialCard);
     state_->device_config_.sky_telemetry_row_widget = skyTelemetryRow;
     auto *skyTelemetryLayout = new QHBoxLayout(skyTelemetryRow);
-    skyTelemetryLayout->setContentsMargins(8, 2, 8, 2);
+    skyTelemetryLayout->setContentsMargins(0, 0, 0, 0);
     skyTelemetryLayout->setSpacing(6);
 
     state_->device_config_.sky_telemetry_transport_lbl = new QLabel(skyTelemetryRow);
@@ -3560,6 +3573,23 @@ void MainWindow::setupDeviceConfigPage()
             syncFpgaDeviceConfigUi();
         });
     }
+    for (const auto &[id, label] : std::initializer_list<std::pair<VaporView::SkyDeviceId, QLabel *>>{
+             {VaporView::SkyDeviceId::Epsilon, config.epsilon_lbl}, {VaporView::SkyDeviceId::Ptb, config.ptb_lbl},
+             {VaporView::SkyDeviceId::Hc2a, config.hc2a_lbl}, {VaporView::SkyDeviceId::Lidar, config.lidar_lbl},
+             {VaporView::SkyDeviceId::TemperatureController, config.temperature_lbl},
+             {VaporView::SkyDeviceId::Ai8TemperatureController, config.ai8_temperature_lbl},
+             {VaporView::SkyDeviceId::WaveTcp, config.tcp_wave_lbl},
+             {VaporView::SkyDeviceId::Bmp390, qobject_cast<QLabel *>(config.internal_sensor_rows[0x43][0])},
+             {VaporView::SkyDeviceId::Sht45, qobject_cast<QLabel *>(config.internal_sensor_rows[0x44][0])}}) {
+        auto *capsule = new QFrame(formWidget);
+        capsule->setObjectName(QStringLiteral("deviceConfigDeviceCapsule"));
+        capsule->setProperty("deviceConfigCapsule", true);
+        delete formLayout->replaceWidget(label, capsule);
+        auto *layout = new QHBoxLayout(capsule);
+        layout->setContentsMargins(8, 2, 8, 2);
+        layout->addWidget(label, 0, Qt::AlignCenter);
+        config.device_capsules.insert(id, capsule);
+    }
     state_->internal_serial_controller_=std::make_unique<VaporView::InternalEnvironmentSerialController>();
     connect(state_->internal_serial_controller_.get(),&VaporView::InternalEnvironmentSerialController::readingUpdated,this,
         [this](const VaporView::FpgaSensor::Reading& reading) {
@@ -3572,7 +3602,6 @@ void MainWindow::setupDeviceConfigPage()
 
     formRowLayout->addWidget(formWidget, 0, Qt::AlignTop | Qt::AlignLeft);
     serialLayout->addWidget(formRowWidget, 0, Qt::AlignTop);
-    serialLayout->addWidget(skyTelemetryRow);
     serialLayout->addStretch();
 
     state_->device_config_.data_telemetry_summary_card = new QFrame(content);
@@ -3595,26 +3624,22 @@ void MainWindow::setupDeviceConfigPage()
                                                                                kMainPageButtonHeight,
                                                                                &summaryTitleCluster);
     summaryTitleLayout->addWidget(summaryTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    state_->device_config_.data_telemetry_summary_source_pill =
-        createTelemetrySummarySourcePill(summaryTitleBar);
-    summaryTitleLayout->addWidget(state_->device_config_.data_telemetry_summary_source_pill,
-                                  0,
-                                  Qt::AlignVCenter | Qt::AlignLeft);
+    summaryTitleLayout->addWidget(skyTelemetryRow, 0, Qt::AlignVCenter | Qt::AlignLeft);
     summaryTitleLayout->addStretch(1);
     summaryLayout->addWidget(summaryTitleBar);
 
     auto *summaryBodyWidget = new QWidget(state_->device_config_.data_telemetry_summary_card);
     summaryBodyWidget->setObjectName(QStringLiteral("homeTelemetrySummaryContainer"));
     summaryBodyWidget->installEventFilter(this);
-    auto *summaryBodyLayout = new QHBoxLayout(summaryBodyWidget);
+    auto *summaryBodyLayout = new QVBoxLayout(summaryBodyWidget);
     summaryBodyLayout->setContentsMargins(4, 6, 4, 6);
     summaryBodyLayout->setSpacing(4);
-    auto *rateLinkColumn = new QWidget(summaryBodyWidget);
-    rateLinkColumn->setObjectName(QStringLiteral("deviceTelemetryRateLinkColumn"));
-    rateLinkColumn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    auto *rateLinkColumnLayout = new QVBoxLayout(rateLinkColumn);
-    rateLinkColumnLayout->setContentsMargins(0, 0, 0, 0);
-    rateLinkColumnLayout->setSpacing(4);
+    auto *topRow = new QWidget(summaryBodyWidget);
+    topRow->setObjectName(QStringLiteral("deviceTelemetryTopRow"));
+    topRow->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    auto *topRowLayout = new QHBoxLayout(topRow);
+    topRowLayout->setContentsMargins(0, 0, 0, 0);
+    topRowLayout->setSpacing(4);
     auto createDeviceTelemetrySection = [](QBoxLayout *parentLayout, QVBoxLayout *&sectionContentLayout) {
         auto *section = new QFrame(parentLayout->parentWidget());
         section->setObjectName(QStringLiteral("homeTelemetrySectionCard"));
@@ -3625,11 +3650,11 @@ void MainWindow::setupDeviceConfigPage()
         sectionContentLayout->setSpacing(0);
         parentLayout->addWidget(section, 0, Qt::AlignLeft | Qt::AlignTop);
     };
-    createDeviceTelemetrySection(rateLinkColumnLayout, state_->device_config_.data_telemetry_rate_summary_layout);
-    createDeviceTelemetrySection(rateLinkColumnLayout, state_->device_config_.data_telemetry_link_summary_layout);
-    summaryBodyLayout->addWidget(rateLinkColumn, 0, Qt::AlignLeft | Qt::AlignTop);
+    createDeviceTelemetrySection(topRowLayout, state_->device_config_.data_telemetry_rate_summary_layout);
+    createDeviceTelemetrySection(topRowLayout, state_->device_config_.data_telemetry_link_summary_layout);
+    topRowLayout->addStretch(1);
+    summaryBodyLayout->addWidget(topRow, 0, Qt::AlignLeft | Qt::AlignTop);
     createDeviceTelemetrySection(summaryBodyLayout, state_->device_config_.data_telemetry_device_summary_layout);
-    summaryBodyLayout->addStretch(1);
     summaryLayout->addWidget(summaryBodyWidget);
 
     auto *remoteConfigCard = createCard(content);
@@ -4016,7 +4041,7 @@ void MainWindow::updateLocalDeviceConfigFromUi() const
         capture(qobject_cast<QComboBox*>(row[1]),qobject_cast<QComboBox*>(row[2]),config);
         const int rate=qobject_cast<QComboBox*>(row[4])->currentText().toInt();
         if(rate>=1&&rate<=20)config.sampleRateHz=rate;
-        config.enabled=qobject_cast<QCheckBox*>(row[5])->isChecked();
+        if (!isFpgaRelayPath()) config.enabled=qobject_cast<QCheckBox*>(row[5])->isChecked();
     }
     auto captureRate = [](QComboBox *combo,
                           QString& text,
@@ -4032,13 +4057,15 @@ void MainWindow::updateLocalDeviceConfigFromUi() const
     captureRate(state_->device_config_.lidar_rate_combo, state_->local_device_config_.lidarRateText, state_->local_device_config_.lidar.sampleRateHz, state_->local_device_config_.lidar.skipDeviceRate);
     captureRate(state_->device_config_.temperature_rate_combo, state_->local_device_config_.temperatureRateText, state_->local_device_config_.temperatureController.sampleRateHz, state_->local_device_config_.temperatureController.skipDeviceRate);
     captureRate(state_->device_config_.ai8_temperature_rate_combo, state_->local_device_config_.ai8RateText, state_->local_device_config_.ai8TemperatureController.sampleRateHz, state_->local_device_config_.ai8TemperatureController.skipDeviceRate);
-    if (state_->device_config_.epsilon_enabled_check) state_->local_device_config_.epsilon.enabled = state_->device_config_.epsilon_enabled_check->isChecked();
-    if (state_->device_config_.ptb_enabled_check) state_->local_device_config_.ptb.enabled = state_->device_config_.ptb_enabled_check->isChecked();
-    if (state_->device_config_.hc2a_enabled_check) state_->local_device_config_.hc2a.enabled = state_->device_config_.hc2a_enabled_check->isChecked();
-    if (state_->device_config_.lidar_enabled_check) state_->local_device_config_.lidar.enabled = state_->device_config_.lidar_enabled_check->isChecked();
-    if (state_->device_config_.temperature_enabled_check) state_->local_device_config_.temperatureController.enabled = state_->device_config_.temperature_enabled_check->isChecked();
-    if (state_->device_config_.ai8_temperature_enabled_check) state_->local_device_config_.ai8TemperatureController.enabled = state_->device_config_.ai8_temperature_enabled_check->isChecked();
-    if (state_->device_config_.tcp_wave_enabled_check) state_->local_device_config_.waveTcpEnabled = state_->device_config_.tcp_wave_enabled_check->isChecked();
+    if (!isFpgaRelayPath()) {
+        if (state_->device_config_.epsilon_enabled_check) state_->local_device_config_.epsilon.enabled = state_->device_config_.epsilon_enabled_check->isChecked();
+        if (state_->device_config_.ptb_enabled_check) state_->local_device_config_.ptb.enabled = state_->device_config_.ptb_enabled_check->isChecked();
+        if (state_->device_config_.hc2a_enabled_check) state_->local_device_config_.hc2a.enabled = state_->device_config_.hc2a_enabled_check->isChecked();
+        if (state_->device_config_.lidar_enabled_check) state_->local_device_config_.lidar.enabled = state_->device_config_.lidar_enabled_check->isChecked();
+        if (state_->device_config_.temperature_enabled_check) state_->local_device_config_.temperatureController.enabled = state_->device_config_.temperature_enabled_check->isChecked();
+        if (state_->device_config_.ai8_temperature_enabled_check) state_->local_device_config_.ai8TemperatureController.enabled = state_->device_config_.ai8_temperature_enabled_check->isChecked();
+        if (state_->device_config_.tcp_wave_enabled_check) state_->local_device_config_.waveTcpEnabled = state_->device_config_.tcp_wave_enabled_check->isChecked();
+    }
     if (!state_->virtual_fpga_port_ && state_->device_config_.sensor_transport_path_combo)
     {
         VaporView::SensorTransportPath path = state_->local_device_config_.sensorTransportPath;
@@ -4370,6 +4397,12 @@ void MainWindow::onSensorTransportPathChanged(int index)
 
 void MainWindow::updateDeviceConfigTexts()
 {
+    auto &config = state_->device_config_;
+    if (config.restore_defaults_btn) {
+        config.restore_defaults_btn->setText(state_->is_english_ ? QStringLiteral("Restore Defaults") : QStringLiteral("恢复默认"));
+        config.restore_defaults_hint_lbl->setText(state_->is_english_ ? QStringLiteral("Disconnect all sensor devices to restore defaults") : QStringLiteral("恢复默认需要断开所有传感器设备"));
+        fitButtonFixedWidth(config.restore_defaults_btn, kDeviceConfigAutoDetectButtonMinWidth, kDeviceConfigTopButtonPadding);
+    }
     if (state_->sensor_transport_switch_)
     {
         state_->sensor_transport_switch_->setSegmentTexts(
@@ -4580,8 +4613,8 @@ void MainWindow::updateDeviceConfigState()
             !state_->remote_config_session_.reading &&
             !state_->remote_config_session_.applying &&
             !state_->remote_config_session_.saving;
-        state_->device_config_.sensor_transport_path_lbl->setVisible(developerOptions);
-        state_->device_config_.sensor_transport_path_combo->setVisible(developerOptions);
+        state_->device_config_.sensor_transport_path_lbl->setVisible(developerOptions && !fpgaRelay);
+        state_->device_config_.sensor_transport_path_combo->setVisible(developerOptions && !fpgaRelay);
         state_->device_config_.sensor_transport_path_combo->setEnabled(
             developerOptions && (remote ? remoteConfigEditable : localInputsEnabled));
     }
@@ -4595,7 +4628,7 @@ void MainWindow::updateDeviceConfigState()
 
     if (state_->device_config_.auto_detect_ports_btn)
     {
-        state_->device_config_.auto_detect_ports_btn->setVisible(true);
+        state_->device_config_.auto_detect_ports_btn->setVisible(!fpgaRelay);
         state_->device_config_.auto_detect_ports_btn->setEnabled(
             !fpgaRelay && (remote ? remoteInputsEnabled : localInputsEnabled));
         fitButtonFixedWidth(state_->device_config_.auto_detect_ports_btn,
@@ -4797,25 +4830,13 @@ void MainWindow::updateDeviceConfigState()
         updateDeviceConfigRemoteActionButton(device);
     }
     updateRemoteSkyConfigControlsState();
-    // A separate read-only view avoids writing the display text "FPGA" into
-    // either LocalDeviceConfig or the remote SkyConfig serial-port fields.
-    auto showFpgaEndpoint = [fpgaRelay](QWidget *editor) {
+    state_->device_config_.restore_defaults_btn->setVisible(fpgaRelay);
+    const bool busy = fpgaRelay && anySensorDeviceConnectedOrBusy();
+    state_->device_config_.restore_defaults_btn->setEnabled(fpgaRelay && !busy);
+    state_->device_config_.restore_defaults_hint_lbl->setVisible(busy);
+    state_->device_config_.port_header_lbl->setVisible(!fpgaRelay);
+    auto showDirectEndpoint = [fpgaRelay](QWidget *editor) {
         if (!editor) return;
-        auto *parent = editor->parentWidget();
-        const QString name = editor->objectName() + QStringLiteral("FpgaEndpoint");
-        auto *label = parent->findChild<QLabel *>(name, Qt::FindDirectChildrenOnly);
-        if (!label) {
-            auto *grid = qobject_cast<QGridLayout *>(parent->layout());
-            if (!grid) return;
-            int row, column, rowSpan, columnSpan;
-            grid->getItemPosition(grid->indexOf(editor), &row, &column, &rowSpan, &columnSpan);
-            label = new QLabel(QStringLiteral("FPGA"), parent);
-            label->setObjectName(name);
-            label->setAlignment(Qt::AlignCenter);
-            grid->addWidget(label, row, column, rowSpan, columnSpan);
-        }
-        label->setFixedSize(editor->size());
-        label->setVisible(fpgaRelay);
         editor->setVisible(!fpgaRelay);
         if (fpgaRelay) editor->setEnabled(false);
     };
@@ -4825,9 +4846,14 @@ void MainWindow::updateDeviceConfigState()
                            state_->device_config_.lidar_port_combo,
                            state_->device_config_.temperature_port_combo,
                            state_->device_config_.ai8_temperature_port_combo})
-        showFpgaEndpoint(port);
-    showFpgaEndpoint(state_->device_config_.tcp_wave_host_edit);
-    for(const auto &row:state_->device_config_.internal_sensor_rows)showFpgaEndpoint(row[1]);
+        showDirectEndpoint(port);
+    showDirectEndpoint(state_->device_config_.tcp_wave_host_edit);
+    for(const auto &row:state_->device_config_.internal_sensor_rows)showDirectEndpoint(row[1]);
+    if (auto *form = state_->device_config_.port_header_lbl->parentWidget()) {
+        form->layout()->invalidate();
+        form->layout()->activate();
+        form->updateGeometry();
+    }
     if (state_->device_config_.tcp_wave_lbl)
         state_->device_config_.tcp_wave_lbl->setText(fpgaRelay ? QStringLiteral("ADC / DLIA")
             : state_->is_english_ ? QStringLiteral("TCP Waveform") : QStringLiteral("TCP 波形"));
@@ -5114,6 +5140,14 @@ void MainWindow::refreshAi8TemperatureTitlePortOptions(const QStringList& ports,
     }
 
     QComboBox *combo = state_->ai8_temperature_title_port_combo_;
+    if (isFpgaRelayPath()) {
+        const QSignalBlocker blocker(combo);
+        combo->clear();
+        combo->addItem(QStringLiteral("FPGA"), QString());
+        combo->setEnabled(false);
+        updateAi8TemperatureTitlePortAppearance();
+        return;
+    }
     const QString preferredPort = preferredText.isNull()
         ? combo->currentData().toString().trimmed()
         : preferredText.trimmed();
@@ -5164,7 +5198,9 @@ void MainWindow::updateAi8TemperatureTitlePortAppearance()
         scalePixels(kTemperatureTitlePortMaximumWidth));
     combo->setFixedWidth(titlePortWidth);
     const QString selectedPort = combo->currentData().toString().trimmed();
-    const QString toolTip = selectedPort.isEmpty()
+    const QString toolTip = isFpgaRelayPath()
+        ? (state_->is_english_ ? QStringLiteral("AI-8 connected via FPGA relay") : QStringLiteral("AI-8 通过 FPGA 中转连接"))
+        : selectedPort.isEmpty()
         ? (state_->is_english_ ? QStringLiteral("Select the AI-8 RS485 serial port")
                                : QStringLiteral("选择 AI-8 的 RS485 串口"))
         : (state_->is_english_ ? QStringLiteral("AI-8 RS485 serial port: %1").arg(selectedPort)
@@ -5987,7 +6023,7 @@ void MainWindow::setupDataPanels()
         button->setText(QString());
         button->setStatusTip(QString());
         button->setIcon(createLucideIcon(deviceConfigRemoteIconName(VaporView::CommandId::ConnectDevice),
-                                         toolbarColor(AppThemeColor::HomeDeviceSuccess)));
+                                         toolbarColor(AppThemeColor::ToolbarGreen)));
         return button;
     };
 
@@ -6423,6 +6459,14 @@ void MainWindow::setupDataPanels()
         requestRemoteWaveTcpConnection(connectRequested,
                                        state_->tcp_wave_panel_->host(),
                                        state_->tcp_wave_panel_->port());
+    });
+    connect(state_->tcp_wave_panel_, &TcpWavePanel::fpgaSamplingSettingsRequested, this, [this] {
+        if (!state_->main_page_stack_ || !state_->fpga_page_) return;
+        state_->main_page_stack_->setCurrentWidget(state_->fpga_page_);
+        if (state_->fpga_nav_btn_) state_->fpga_nav_btn_->setChecked(true);
+        updateSidebarNavIcons();
+        updateCustomTitleBarTexts();
+        state_->fpga_page_->selectSamplingTab();
     });
     connect(state_->tcp_wave_panel_, &TcpWavePanel::fpgaAcquisitionRequested,
             this, &MainWindow::requestHomeFpgaWaveAction);

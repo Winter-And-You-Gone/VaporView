@@ -136,6 +136,7 @@ private:
     std::array<TemperatureTrendPlotWidget*, 8> channel_plots_{};
     QLabel *protocol_status_label_ = nullptr;
     QAbstractButton *read_button_ = nullptr;
+    QTimer *channel_read_debounce_timer_ = nullptr;
     QTimer *auto_apply_timer_ = nullptr;
     QList<PageData> pending_writes_;
     QComboBox *run_state_combo_ = nullptr;

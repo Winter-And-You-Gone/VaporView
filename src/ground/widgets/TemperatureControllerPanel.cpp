@@ -2273,7 +2273,6 @@ QWidget *TemperatureControllerPanel::createChannelCommonParamsPage(int index)
                                                      QLabel *&label,
                                                      int fieldWidth) {
         label = makeFieldLabel(labelText);
-        editor->setProperty("temperatureCompactEditor", true);
         editor->setProperty("styleSheetManagedHeight", true);
         editor->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         auto *cell = new QWidget(page);
@@ -2440,6 +2439,7 @@ QWidget *TemperatureControllerPanel::createChannelAdvancedParamsPage(int index)
         label->setObjectName(QStringLiteral("fieldLabel"));
         label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
         label->setMinimumHeight(22);
+        editor->setProperty("styleSheetManagedHeight", true);
         editor->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         auto *cell = new QWidget(page);
         cell->setObjectName(QStringLiteral("temperatureConfigFieldColumn"));

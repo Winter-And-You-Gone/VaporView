@@ -130,6 +130,47 @@ int main(int argc, char **argv)
     if (app.arguments().contains(QStringLiteral("--auto-apply-only"))) return 0;
 
 
+    for (bool relay : {false, true}) {
+        using VaporView::Ground::Widgets::Ai8TemperatureControllerPanel;
+        Ai8TemperatureControllerPanel panel;
+        auto *channel = panel.findChild<QSpinBox *>("ai8ChannelSpin");
+        auto *pages = panel.findChild<QStackedWidget *>("ai8ParameterStack");
+        require(channel && pages && channel->wrapping(), "channel selector wraps");
+        channel->stepDown();
+        require(channel->value() == 8, "channel 1 steps down to 8");
+        channel->stepUp();
+        require(channel->value() == 1, "channel 8 steps up to 1");
+        panel.setFpgaSetpointMode(relay);
+        panel.setBackendConnected(true);
+        QVector<int> reads;
+        QObject::connect(&panel, &Ai8TemperatureControllerPanel::readPageRequested, [&] {
+            reads.append(channel->value());
+        });
+        channel->stepUp();
+        waitForAutoApply(75);
+        channel->stepUp();
+        waitForAutoApply(75);
+        channel->stepUp();
+        waitForAutoApply(500);
+        require(reads.isEmpty(), "rapid channel changes defer even a queued connection read");
+        waitForAutoApply(650);
+        require(reads == QVector<int>{4}, "one read targets the final channel");
+        channel->stepUp();
+        pages->setCurrentIndex(1);
+        pages->setCurrentIndex(0);
+        QApplication::processEvents();
+        reads.clear();
+        waitForAutoApply(1100);
+        require(reads.isEmpty(), "leaving and returning cancels the pending channel read");
+        channel->stepUp();
+        panel.setBackendConnected(false);
+        panel.setBackendConnected(true);
+        QApplication::processEvents();
+        reads.clear();
+        waitForAutoApply(1100);
+        require(reads.isEmpty(), "reconnect cancels the previous channel timer");
+    }
+
     {
         using VaporView::Ground::Widgets::Ai8TemperatureControllerPanel;
         using VaporView::Ai8TemperatureControllerProtocol::PageData;
@@ -151,6 +192,8 @@ int main(int argc, char **argv)
         channel->setValue(3);
         QApplication::processEvents();
         require(reads.size() == 1, "selection changes wait for the active transaction");
+        waitForAutoApply(1100);
+        require(reads.size() == 1, "debounced FPGA read waits while busy");
         panel.applyPageData(reads.front());
         require(channel->value() == 3, "late channel response cannot restore the old selection");
         panel.setPageCommandsEnabled(true);

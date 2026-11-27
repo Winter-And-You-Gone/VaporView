@@ -98,7 +98,6 @@ int main(int argc,char** argv) {
     controller.connectDevice({},"simulator",FpgaDeviceController::ConnectMode::PreserveRunningModules);
     check(waitFor([&]{return controller.ready()&&!controller.busy();}),"new firmware handshake");
     check(controller.extensions()==0x3f,"GET_CAPABILITIES extension bits");
-    auto historic=FpgaControlConfig{};historic.ai8.scan=true;controller.setConfiguration(historic);
     const auto call=[&](const QJsonObject& request) {
         check(waitFor([&]{return !controller.busy();}),"extension waits for the current UART poll");
         static quint64 nextTicket=0;const auto ticket=QString::number(++nextTicket);
@@ -168,7 +167,6 @@ int main(int argc,char** argv) {
         FpgaSensor::Reading remote;const auto json=FpgaRemote::encodeSensor(first,100);
         check(FpgaRemote::parseSensor(json,remote) && remote.ai8Channel==first.ai8Channel,"schema 3 channel survives remote telemetry");
     }
-    result=call({{"op","ai8_scan"},{"enabled",false}});check(!result.value("ok").toBool(),"AI8 scan cannot change while enabled");
     result=call({{"op","ai8_cache"},{"channel",8}});check(result.value("ok").toBool() && result.value("channel").toInt()==8 && (result.value("status").toInt()&3)==3,"AI8 cached channel quality is read back independently");
     result=param(0x46,2,7,1,QByteArray::fromHex("013b"));check(result.value("ok").toBool(),"AI8 channel 8 parameter write/readback");
     result=call({{"op","device_temperature"},{"source",0x46},{"channel",8},{"celsius",31.6}});
@@ -270,8 +268,7 @@ int main(int argc,char** argv) {
             scanController.executeOperation(operation);check(waitFor([&]{return finished;}),"scan-only operation completes");
             QObject::disconnect(observer);return response;
         };
-        auto scanConfiguration=FpgaControlConfig{};scanConfiguration.ai8.scan=true;
-        scanController.setConfiguration(scanConfiguration);scanController.setSensorEnabled(0x46,true);
+        scanController.setSensorEnabled(0x46,true);
         check(waitFor([&]{return !scanController.busy();}) && scanController.hardwareValues().value(0x6668)==1,
             "0x2b firmware configures eight-channel scanning without legacy parameter capabilities");
         check(waitFor([&]{QSet<quint32> channels;for(const auto& r:scanReadings)

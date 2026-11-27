@@ -11,6 +11,7 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QStringList>
+#include <QStackedWidget>
 #include <QToolButton>
 #include <QWidget>
 
@@ -123,9 +124,46 @@ void testTec103PlotViews()
 
 } // namespace
 
+static void testCommonEditorHeights(int scale)
+{
+    TemperatureControllerPanel panel;
+    const auto px = [scale](int value) { return qRound(value * scale / 100.0); };
+    panel.setStyleSheet(QStringLiteral("QWidget { font-size: %1px; } QComboBox, QAbstractSpinBox {"
+                                       " min-height: %2px; max-height: %2px; padding: %3px 0; border: 1px solid gray; }")
+                            .arg(px(14)).arg(px(26)).arg(px(4)));
+    panel.show();
+    for (int channel : {1, 2}) {
+        const QString suffix = QStringLiteral("Channel%1").arg(channel);
+        auto *stack = panel.findChild<QStackedWidget *>("temperatureChannelConfigSubStack" + suffix);
+        require(stack, "channel settings stack exists");
+        for (QWidget *child = stack; child->parentWidget(); child = child->parentWidget()) {
+            if (auto *parent = qobject_cast<QStackedWidget *>(child->parentWidget()))
+                parent->setCurrentWidget(child);
+        }
+        stack->setCurrentIndex(1);
+        QApplication::processEvents();
+        auto *upper = stack->currentWidget()->findChild<QWidget *>("temperatureOvertempUpperSpin" + suffix);
+        auto *delay = stack->currentWidget()->findChild<QWidget *>("temperatureStartupDelaySpin" + suffix);
+        require(upper && delay && upper->height() == delay->height(), "advanced editor heights agree");
+        stack->setCurrentIndex(0);
+        QApplication::processEvents();
+        auto *common = stack->currentWidget();
+        for (const char *name : {"temperaturePidKpSpin", "temperaturePidKiSpin", "temperaturePidKdSpin",
+                                 "temperatureOutputModeCombo", "temperatureTargetSpin", "temperatureMaxOutputSpin"}) {
+            auto *editor = common->findChild<QWidget *>(QString::fromLatin1(name) + suffix);
+            require(editor && !editor->property("temperatureCompactEditor").isValid() &&
+                        std::abs(editor->height() - upper->height()) <= 1, "common editor matches advanced height");
+            const int top = editor->mapTo(common, QPoint()).y();
+            require(top >= 0 && top + editor->height() <= common->height(), "common editor fits vertically");
+        }
+    }
+}
+
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
+    testCommonEditorHeights(100);
+    testCommonEditorHeights(130);
     testTec103PlotViews();
 
     TemperatureControllerPanel panel;

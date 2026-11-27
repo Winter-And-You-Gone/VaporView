@@ -1065,32 +1065,39 @@ QLabel#homeDeviceStatusCapsule[connected="false"] {
     border: 1px solid @vv-hd-bad;
     color: @vv-hd-bad;
 }
-QLabel#homeDeviceStatusCapsule[state="disabled"] {
+QLabel#homeDeviceStatusCapsule[state="disabled"], QFrame#deviceConfigDeviceCapsule[state="disabled"] {
     background-color: @vv-surface-alt;
     border: 1px solid @vv-border;
     color: @vv-text-muted;
 }
-QLabel#homeDeviceStatusCapsule[state="disconnected"] {
+QLabel#homeDeviceStatusCapsule[state="disconnected"], QFrame#deviceConfigDeviceCapsule[state="disconnected"] {
     background-color: @vv-hd-bad-bg;
     border: 1px solid @vv-hd-bad;
     color: @vv-hd-bad;
 }
-QLabel#homeDeviceStatusCapsule[state="connecting"] {
+QLabel#homeDeviceStatusCapsule[state="connecting"], QFrame#deviceConfigDeviceCapsule[state="connecting"] {
     background-color: @vv-primary-subtle;
     border: 1px solid @vv-primary;
     color: @vv-primary;
 }
-QLabel#homeDeviceStatusCapsule[state="connected"] {
+QLabel#homeDeviceStatusCapsule[state="connected"], QFrame#deviceConfigDeviceCapsule[state="connected"] {
     background-color: @vv-hd-ok-bg;
     border: 1px solid @vv-hd-ok;
     color: @vv-hd-ok;
 }
 
-QLabel#homeDeviceStatusCapsule[state="warning"] {
+QLabel#homeDeviceStatusCapsule[state="warning"], QFrame#deviceConfigDeviceCapsule[state="warning"] {
     background-color: @vv-warning-bg;
     border: 1px solid @vv-warning;
     color: @vv-warning;
 }
+QFrame#deviceConfigDeviceCapsule { border-radius: 12px; }
+QFrame#deviceConfigDeviceCapsule QLabel { background-color: transparent; border: none; }
+QFrame#deviceConfigDeviceCapsule QLabel[state="disabled"], QLabel[deviceConfigHint="true"] { color: @vv-text-muted; }
+QFrame#deviceConfigDeviceCapsule QLabel[state="disconnected"] { color: @vv-hd-bad; }
+QFrame#deviceConfigDeviceCapsule QLabel[state="connecting"] { color: @vv-primary; }
+QFrame#deviceConfigDeviceCapsule QLabel[state="connected"] { color: @vv-hd-ok; }
+QFrame#deviceConfigDeviceCapsule QLabel[state="warning"] { color: @vv-warning; }
 QToolButton#homeDeviceActionButton {
     background-color: @vv-surface-alt;
     border: 1px solid @vv-border;
