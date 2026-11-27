@@ -1102,8 +1102,6 @@ int main(int argc, char** argv)
                 && !mapStatus->text().contains(QStringLiteral("→")),
             "bottom status bar excludes unrelated telemetry and fallback degradation chains");
 
-    checkLiveReadings(window);
-
     auto* loadingBubble = window.findChild<QWidget*>(QStringLiteral("map3DLoadingProgressBubble"));
     auto* loadingLabel = window.findChild<QLabel*>(QStringLiteral("map3DLoadingProgressLabel"));
     auto* loadingBar = window.findChild<QProgressBar*>(QStringLiteral("map3DLoadingProgressBar"));
@@ -1308,6 +1306,7 @@ int main(int argc, char** argv)
     QLabel* label = statusLabel(window);
     require(label->text().contains(QStringLiteral("采样点：0")), "initial status has zero points");
     require(label->text().contains(QStringLiteral("来源 无")), "initial status reports no track source");
+    checkLiveReadings(window);
     QAction* reloadBestMapAction = actionByName(window, QStringLiteral("map3DReloadBestMapAction"));
     QAction* flyToAircraftAction = actionByName(window, QStringLiteral("map3DFlyToAircraftAction"));
     QAction* flyToTrackAction = actionByName(window, QStringLiteral("map3DFlyToTrackAction"));
