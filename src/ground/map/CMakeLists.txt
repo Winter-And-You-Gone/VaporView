@@ -3,6 +3,7 @@ if(TARGET vaporview_map3d_osgearth)
         ${CMAKE_CURRENT_SOURCE_DIR}/Map3DController.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Map3DController.h
         ${CMAKE_SOURCE_DIR}/src/map3d/Map3DWindow.cpp
+        ${CMAKE_SOURCE_DIR}/include/map3d/Map3DLiveSnapshot.h
         ${CMAKE_SOURCE_DIR}/include/map3d/Map3DWindow.h
     )
 
@@ -20,6 +21,7 @@ if(TARGET vaporview_map3d_osgearth)
         vaporview_geo_core
         vaporview_ground_ui_support
         vaporview_ground_session_core
+        vaporview_water_calibration_core
         Qt6::Widgets
         Qt6::Concurrent
     )

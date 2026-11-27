@@ -3,6 +3,7 @@
 #include "geo/GeoTypes.h"
 #include "geo/TrajectoryHeatmap.h"
 #include "geo/TrajectoryReplay.h"
+#include "map3d/Map3DLiveSnapshot.h"
 #include "map3d/MapDataManager.h"
 #include "map3d/OsgEarthViewWidget.h"
 
@@ -58,10 +59,18 @@ public:
     explicit Map3DWindow(QWidget* parent = nullptr);
     ~Map3DWindow() override;
     void setUiTestMode(bool enabled);
+    void setLiveTelemetrySnapshot(const Map3DLiveTelemetrySnapshot& snapshot);
+    void setWaterProfileProviders(Map3DProfileRevisionProvider revisionProvider,
+                                  Map3DWaterProfileProvider snapshotProvider);
+
+signals:
+    void openWaveformPageRequested();
 
 public slots:
     void appendSample(const VaporView::Geo::NavSample& sample);
     void appendSamples(const std::vector<VaporView::Geo::NavSample>& samples);
+    void appendRenderSample(const VaporView::Geo::TrajectoryRenderSample& sample);
+    void appendRenderSamples(const std::vector<VaporView::Geo::TrajectoryRenderSample>& samples);
     void clearTrack();
     void loadSessionDirectory(const QString& sessionDir);
     void noteLiveSampleDrop(const QString& source, const QString& reason, qint64 recordTimestampUs = 0);

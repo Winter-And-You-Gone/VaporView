@@ -21,6 +21,8 @@ struct SessionTrajectoryRenderLoadResult
     qsizetype rejectedRows = 0;
     std::vector<VaporView::Geo::TrajectoryRenderSample> samples;
     std::vector<qsizetype> sourceCsvRows;
+    std::vector<quint64> sampleRecordTimestampsUs;
+    QString waterConcentrationUnit;
 };
 
 class SessionTrajectoryRenderLoader final
