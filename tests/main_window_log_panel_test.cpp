@@ -292,6 +292,13 @@ int main(int argc, char **argv)
     require(searchButton->parentWidget() == logTitleActions &&
                 clearButton->parentWidget() == logTitleActions,
             "log search and clear buttons sit in the zero-spacing title action cluster");
+    auto *bar = logTitleActions->parentWidget();
+    auto *frame = window->findChild<QWidget *>(QStringLiteral("logPanelFrame"));
+    const int margin = bar->layout()->contentsMargins().right();
+    require(frame && margin > 0 && clearButton->mapTo(bar, clearButton->rect().topRight()).x() <=
+                bar->contentsRect().right() - margin &&
+                clearButton->mapTo(frame, clearButton->rect().topRight()).x() <= frame->contentsRect().right() - margin,
+            "clear button retains the full right margin inside the log title bar and frame");
     require(!searchEdit->isVisible(), "log search edit is hidden until the search icon is clicked");
     searchButton->click();
     VaporViewTest::processEventsFor(90);

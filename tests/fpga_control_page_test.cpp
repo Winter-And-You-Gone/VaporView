@@ -762,6 +762,20 @@ int main(int argc,char **argv) {
         require(requestedSensor==source&&requestedEnabled==enabled,"merged rows retain per-device enable and disable routing");
     }
     page.setConnectionState(true,false);
+    page.resize(1280,800);page.show();
+    auto *outerTabs=page.findChild<QTabWidget*>("fpgaTabs");
+    outerTabs->setCurrentIndex(2);parameterTabs->setCurrentIndex(0);app.processEvents();
+    auto *channelRail=qobject_cast<QScrollArea*>(outerTabs->currentWidget())->verticalScrollBar();
+    require(channelRail->maximum()==0 && !channelRail->isVisible(),"collapsed WMS has no vertical scroll range");
+    const int collapsedHeight=parameterTabs->height();
+    parameterTabs->setCurrentIndex(1);app.processEvents();
+    require(parameterTabs->height()>collapsedHeight+20,"the parameter tabs follow the taller DLIA page");
+    parameterTabs->setCurrentIndex(0);app.processEvents();
+    require(parameterTabs->height()==collapsedHeight && channelRail->maximum()==0,"returning to WMS removes the DLIA scroll range");
+    outerTabs->setCurrentIndex(5);app.processEvents();
+    auto *recordingRail=qobject_cast<QScrollArea*>(outerTabs->currentWidget())->verticalScrollBar();
+    require(recordingRail->maximum()==0 && !recordingRail->isVisible(),"recording and diagnostics fits without a vertical rail");
+    outerTabs->setCurrentIndex(0);
     page.resize(720,540);page.show();app.processEvents();
     auto *sensorChoice=page.findChild<QComboBox*>("fpgaAdvancedSensor");auto *sensorForms=page.findChild<QWidget*>("fpgaAdvancedSensorStack");
     auto *advancedTabs=page.findChild<QTabWidget*>("fpgaTabs");const int previousTab=advancedTabs->currentIndex();advancedTabs->setCurrentIndex(4);
@@ -904,12 +918,13 @@ int main(int argc,char **argv) {
         }
         for (auto *button : {scan, connect, disconnect}) {
             const auto image=button->icon().pixmap(button->iconSize(),QIcon::Normal).toImage();
-            bool primaryStroke=false;
+            const auto expected=button==disconnect ? VaporView::AppThemeColor::ToolbarRed : VaporView::AppThemeColor::Primary;
+            bool expectedStroke=false;
             for(int y=0;y<image.height();++y)for(int x=0;x<image.width();++x) {
                 const auto color=image.pixelColor(x,y);
-                primaryStroke|=color.alpha()>200&&color.rgb()==VaporView::appThemeColor(VaporView::AppThemeColor::Primary,dark).rgb();
+                expectedStroke|=color.alpha()>200&&color.rgb()==VaporView::appThemeColor(expected,dark).rgb();
             }
-            require(primaryStroke,"connection icon uses the theme primary color");
+            require(expectedStroke,"connection icons use primary strokes and disconnect uses toolbar red");
         }
         for (const char *name : {"fpgaLinkDacsOnStart", "fpgaWaveformTrigger"}) {
             auto *box = page.findChild<QCheckBox *>(name);

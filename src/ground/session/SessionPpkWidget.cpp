@@ -51,6 +51,7 @@ protected:
         QStyleOptionButton option;
         initStyleOption(&option);
         const QRect rect = style()->subElementRect(QStyle::SE_CheckBoxIndicator, &option, this);
+        const QRectF iconRect = VaporView::checkedIndicatorIconRect(rect);
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing);
         const bool dark = isDarkThemeEnabled();
@@ -59,8 +60,8 @@ protected:
         QColor color = appThemeColor(AppThemeColor::Primary, dark);
         if (!isEnabled())
             color.setAlphaF(0.4);
-        if (isChecked()) drawSquareCheckBig(painter, rect, color);
-        else drawSquare(painter, rect, color);
+        if (isChecked()) drawSquareCheckBig(painter, iconRect, color);
+        else drawSquare(painter, iconRect, color);
     }
 };
 }

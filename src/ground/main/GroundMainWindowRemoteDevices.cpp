@@ -1381,9 +1381,10 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         (state_->remote_sky_controller_ &&
          state_->remote_sky_controller_->statusFresh(QDateTime::currentMSecsSinceEpoch())));
     const quint8 recordingState = uiTestMode ? 0 : state_->remote_status_.recording_state;
-    const quint64 diskFreeBytes = uiTestMode
+    const quint64 reportedDiskFreeBytes = uiTestMode
         ? static_cast<quint64>(128) * 1024ULL * 1024ULL * 1024ULL
         : state_->remote_status_.disk_free_bytes;
+    const quint64 diskFreeBytes = reportedDiskFreeBytes > (100ULL << 40) ? 0 : reportedDiskFreeBytes;
     const quint32 crcErrorCount = uiTestMode ? 0U : state_->remote_status_.crc_error_count;
     const QString unavailableText = QStringLiteral("--");
 
@@ -1438,10 +1439,10 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         linkRows << makeItem(QStringLiteral("Sky->Ground"), formatBitRate(rxBps), linkRateAvailable, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("Ground->Sky"), formatBitRate(txBps), linkRateAvailable, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("Total"), formatBitRate(rxBps + txBps), linkRateAvailable, bitRateWidthText);
-        linkStatusRows << makeItem(QStringLiteral("Disk"),
+        linkStatusRows << makeItem(QStringLiteral("Free Disk"),
                                    statusFresh && diskFreeBytes > 0 ? remoteSummaryBytesText(diskFreeBytes) : unavailableText,
                                    statusFresh && diskFreeBytes > 0,
-                                   QStringLiteral("999.9 GB"));
+                                   QStringLiteral("1023.9 GB"));
         linkStatusRows << makeItem(QStringLiteral("Record"),
                                    statusFresh ? remoteSummaryRecordingStateText(recordingState, true) : unavailableText,
                                    statusFresh,
@@ -1467,10 +1468,10 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         linkRows << makeItem(QStringLiteral("天→地"), formatBitRate(rxBps), linkRateAvailable, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("地→天"), formatBitRate(txBps), linkRateAvailable, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("合"), formatBitRate(rxBps + txBps), linkRateAvailable, bitRateWidthText);
-        linkStatusRows << makeItem(QStringLiteral("磁盘"),
+        linkStatusRows << makeItem(QStringLiteral("空闲磁盘"),
                                    statusFresh && diskFreeBytes > 0 ? remoteSummaryBytesText(diskFreeBytes) : unavailableText,
                                    statusFresh && diskFreeBytes > 0,
-                                   QStringLiteral("999.9 GB"));
+                                   QStringLiteral("1023.9 GB"));
         linkStatusRows << makeItem(QStringLiteral("记录"),
                                    statusFresh ? remoteSummaryRecordingStateText(recordingState, false) : unavailableText,
                                    statusFresh,
@@ -1887,8 +1888,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                                                      int firstLineItemCount,
                                                      int followingLineItemCount = -1,
                                                      bool useSideTitle = false,
-                                                     bool compactAvailabilityValues = false,
-                                                     bool tightValueSpacing = false) {
+                                                     bool compactAvailabilityValues = false) {
         if (!summaryParent || !sectionLayout)
         {
             return;
@@ -1899,7 +1899,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             section->setMinimumWidth(0);
         }
 
-        auto addItemLabel = [this, useSideTitle, compactAvailabilityValues, tightValueSpacing](QHBoxLayout *lineLayout,
+        auto addItemLabel = [this, useSideTitle, compactAvailabilityValues](QHBoxLayout *lineLayout,
                                                                             QWidget *lineWidget,
                                                                             const RemoteTelemetrySummarySections::Item& item) {
             auto *pill = new QFrame(lineWidget);
@@ -1937,7 +1937,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             valueLabel->setProperty("telemetryAvailable", item.hasData);
             valueLabel->setProperty("telemetryError", item.error);
             valueLabel->setFont(numericFontFrom(valueLabel->font()));
-            valueLabel->setAlignment((useSideTitle && tightValueSpacing ? Qt::AlignLeft : Qt::AlignRight) | Qt::AlignVCenter);
+            valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
             valueLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
             valueLabel->setTextFormat(Qt::PlainText);
             valueLabel->ensurePolished();
@@ -1959,10 +1959,9 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             if (useSideTitle) {
                 pillLayout->setSpacing(0);
                 pillLayout->addSpacing(nameLabel->fontMetrics().horizontalAdvance(QStringLiteral("汉")));
-                if (!tightValueSpacing) pillLayout->addStretch(1);
+                pillLayout->addStretch(1);
             }
             pillLayout->addWidget(valueLabel, 0, Qt::AlignVCenter);
-            if (useSideTitle && tightValueSpacing) pillLayout->addStretch(1);
             pill->setProperty("summaryNaturalWidth", pillLayout->sizeHint().width() + scalePixels(2));
             if (!useSideTitle)
             {
@@ -2199,7 +2198,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                              deviceConfigRateItems,
                              2,
                              2,
-                             true, false, true);
+                             true);
         renderSummarySection(state_->device_config_.data_telemetry_summary_card,
                              state_->device_config_.data_telemetry_link_summary_layout,
                              state_->is_english_ ? QStringLiteral("Link rate") : QStringLiteral("链路速率"),

@@ -149,6 +149,7 @@ int main(int argc, char **argv)
             layout->addWidget(checkbox);
             window.show();
             app.processEvents();
+            checkbox->setAttribute(Qt::WA_UnderMouse, false);
             const QImage checked = checkbox->grab().toImage();
             const QColor primary = VaporView::appThemeColor(VaporView::AppThemeColor::Primary, dark);
             int primaryPixels = 0;
@@ -167,7 +168,7 @@ int main(int argc, char **argv)
             QStyleOptionButton checkOption;
             checkOption.initFrom(checkbox);
             const QRect indicator = checkbox->style()->subElementRect(QStyle::SE_CheckBoxIndicator, &checkOption, checkbox);
-            const qreal side = qMin(indicator.width(), indicator.height());
+            const qreal side = VaporView::checkedIndicatorIconRect(indicator).width();
             const QPointF center = QRectF(indicator).center();
             const qreal ratio = checked.devicePixelRatio();
             const QPoint interior(qRound((center.x() - side / 4.0) * ratio),
@@ -175,6 +176,17 @@ int main(int argc, char **argv)
             require(checked.pixelColor(interior) == checked.pixelColor(0, 0) &&
                         unchecked.pixelColor(interior) == unchecked.pixelColor(0, 0),
                     "checked and unchecked indicators leave the underlying background visible");
+            checkbox->setAttribute(Qt::WA_UnderMouse, true);
+            const QImage hovered = checkbox->grab().toImage();
+            const auto sample = [ratio](QPoint point) { return point * ratio; };
+            const QPoint corner = sample(indicator.topLeft());
+            const QPoint halo = sample(QPoint(indicator.left() + 1, indicator.center().y()));
+            const QPoint outside = sample(QPoint(indicator.right() + 1, indicator.center().y()));
+            require(hovered.pixelColor(corner) == unchecked.pixelColor(corner) &&
+                        hovered.pixelColor(outside) == unchecked.pixelColor(outside) &&
+                        hovered.pixelColor(halo) != unchecked.pixelColor(halo) &&
+                        hovered.pixelColor(halo) == VaporView::appThemeColor(VaporView::AppThemeColor::TitleBarHover, dark),
+                    "rounded checkbox hover fills the margin around the icon and preserves the corner and exterior");
             const auto frameEdge = [&](const QImage& image) {
                 QRect bounds;
                 const int left = qRound((center.x() - side / 2.0) * ratio);

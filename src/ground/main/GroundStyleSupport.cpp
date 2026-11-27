@@ -1026,7 +1026,7 @@ QRadioButton[temperatureSensorModelOption="true"]::indicator:checked {
 QRadioButton[temperatureSensorModelOption="true"]::indicator:hover,
 QCheckBox::indicator:hover {
     background-color: @vv-title-hover;
-    border-radius: 4px;
+    border-radius: 6px;
 }
 QRadioButton[temperatureSensorModelOption="true"]::indicator:disabled,
 QCheckBox::indicator:disabled {

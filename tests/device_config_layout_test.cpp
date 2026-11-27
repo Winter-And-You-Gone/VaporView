@@ -351,7 +351,7 @@ void requireAlignedColumns(QFrame *subCard, int columnCount, const char *message
     }
 }
 
-void requirePillsUseWidestColumnWidth(QFrame *subCard, const char *message, bool tight = false)
+void requirePillsUseWidestColumnWidth(QFrame *subCard, const char *message, bool checkWidestNameGap = false)
 {
     const QList<QList<QFrame *>> rows = pillRows(subCard);
     require(!rows.isEmpty(), message);
@@ -361,6 +361,8 @@ void requirePillsUseWidestColumnWidth(QFrame *subCard, const char *message, bool
         for (int i = 0; i < row.size(); ++i)
             widths[i] = std::max(widths[i], row[i]->property("summaryNaturalWidth").toInt());
     }
+    QVector<int> widestNames(widths.size(), -1);
+    QVector<int> extraGaps(widths.size());
     QVector<int> rightEdges(widths.size(), -1);
     for (const auto& row : rows)
         for (int i = 0; i < row.size(); ++i) {
@@ -368,20 +370,22 @@ void requirePillsUseWidestColumnWidth(QFrame *subCard, const char *message, bool
             auto *name = row[i]->findChild<QLabel *>("homeTelemetrySummaryNameLabel");
             auto *value = row[i]->findChild<QLabel *>("homeTelemetrySummaryValueLabel");
             require(name && value && (name->alignment() & Qt::AlignLeft) &&
-                (value->alignment() & (tight ? Qt::AlignLeft : Qt::AlignRight)), "capsule name/value alignment");
+                (value->alignment() & Qt::AlignRight), "capsule name/value alignment");
             auto *layout = row[i]->layout();
             auto *spacer = layout && layout->count() > 1 ? layout->itemAt(1)->spacerItem() : nullptr;
             require(spacer && spacer->sizeHint().width() == name->fontMetrics().horizontalAdvance(QStringLiteral("汉")) &&
                 value->x() - name->geometry().right() - 1 >= spacer->sizeHint().width(),
                 "capsule reserves at least one character between name and value");
-            if (tight) {
-                require(value->x() - name->geometry().right() - 1 == spacer->sizeHint().width(), "exact rate label gap");
-                continue;
+            if (name->width() > widestNames[i]) {
+                widestNames[i] = name->width();
+                extraGaps[i] = value->x() - name->geometry().right() - 1 - spacer->sizeHint().width();
             }
             const int right = value->mapTo(subCard, QPoint(value->width(), 0)).x();
             if (rightEdges[i] < 0) rightEdges[i] = right;
             require(std::abs(rightEdges[i] - right) <= 2, "capsule values align to the right within each column");
         }
+    if (checkWidestNameGap)
+        for (int gap : extraGaps) require(std::abs(gap) <= 2, "widest rate label reserves exactly one character");
 }
 
 void requirePillLabelsFit(QFrame *subCard, const char *message)
@@ -630,7 +634,7 @@ int main(int argc, char **argv)
             const auto sections = summary->findChildren<QFrame *>(QStringLiteral("homeTelemetrySectionCard"));
             require(sections.size() == 3, "device summary has three sections");
             for (auto *section : sections) {
-                requirePillsUseWidestColumnWidth(section, "summary columns retain their aligned widths", section == sections.first());
+                requirePillsUseWidestColumnWidth(section, "summary columns retain their aligned widths", section != sections.last());
                 requirePillLabelsFit(section, "summary labels fit after resizing");
             }
         }
@@ -795,7 +799,7 @@ int main(int argc, char **argv)
                             QStringList() << QStringLiteral("记录") << QStringLiteral("Record")),
             "link-status card includes the remote recording state field");
     require(cardHasAnyLabel(linkStatusCard,
-                            QStringList() << QStringLiteral("磁盘") << QStringLiteral("Disk")),
+                            QStringList() << QStringLiteral("空闲磁盘") << QStringLiteral("Free Disk")),
             "link-status card includes the remaining sky disk field");
     require(cardHasAnyLabel(linkStatusCard, QStringList() << QStringLiteral("CRC")),
             "link-status card includes the CRC error field");
@@ -837,7 +841,7 @@ int main(int argc, char **argv)
         switchLanguage();
     };
     requirePillsUseWidestColumnWidth(subCards.at(1),
-                                     "link-rate subcard uses each column's widest pill");
+                                     "link-rate subcard uses each column's widest pill", true);
     requirePillLabelsFit(subCards.at(1),
                          "link-rate subcard pill labels fit without clipping");
     const QList<QFrame *> linkPills =
@@ -854,9 +858,9 @@ int main(int argc, char **argv)
     const QList<QList<QFrame *>> dataRows = pillRows(subCards.at(2));
     const QStringList firstDataRow = dataRows.isEmpty() ? QStringList() : pillNames(dataRows.first());
     const bool chineseStatusRow =
-        firstDataRow.mid(0, 3) == (QStringList() << QStringLiteral("磁盘") << QStringLiteral("记录") << QStringLiteral("CRC"));
+        firstDataRow.mid(0, 3) == (QStringList() << QStringLiteral("空闲磁盘") << QStringLiteral("记录") << QStringLiteral("CRC"));
     const bool englishStatusRow =
-        firstDataRow.mid(0, 3) == (QStringList() << QStringLiteral("Disk") << QStringLiteral("Record") << QStringLiteral("CRC"));
+        firstDataRow.mid(0, 3) == (QStringList() << QStringLiteral("Free Disk") << QStringLiteral("Record") << QStringLiteral("CRC"));
     const int dataColumns = firstDataRow.size();
     require((dataColumns == 3 || dataColumns == 4) &&
                 dataRows.size() == 12 / dataColumns &&

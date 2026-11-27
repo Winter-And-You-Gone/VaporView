@@ -219,8 +219,7 @@ public:
     {
         setAttribute(Qt::WA_Hover);
         setProperty("epsilonThemedIndicator", true);
-        setStyleSheet(QStringLiteral("QCheckBox::indicator { width: 18px; height: 18px; }"
-            "QCheckBox::indicator, QCheckBox::indicator:checked, QCheckBox::indicator:indeterminate, "
+        setStyleSheet(QStringLiteral("QCheckBox::indicator, QCheckBox::indicator:checked, QCheckBox::indicator:indeterminate, "
             "QCheckBox::indicator:hover { background: transparent; border: none; image: none; }"));
     }
 
@@ -231,6 +230,7 @@ protected:
         QStyleOptionButton option;
         initStyleOption(&option);
         const QRect rect = style()->subElementRect(QStyle::SE_CheckBoxIndicator, &option, this);
+        const QRectF iconRect = VaporView::checkedIndicatorIconRect(rect);
         const bool dark = VaporView::isDarkThemeEnabled();
         QColor color = VaporView::appThemeColor(VaporView::AppThemeColor::Primary, dark);
         if (!isEnabled()) color.setAlphaF(0.6f);
@@ -239,14 +239,14 @@ protected:
             VaporView::drawCheckedIndicatorHover(painter, rect, VaporView::appThemeColor(VaporView::AppThemeColor::TitleBarHover, dark));
         if (checkState() == Qt::Checked)
         {
-            VaporView::drawSquareCheckBig(painter, rect, color);
+            VaporView::drawSquareCheckBig(painter, iconRect, color);
             return;
         }
-        VaporView::drawSquare(painter, rect, color);
+        VaporView::drawSquare(painter, iconRect, color);
         if (checkState() == Qt::PartiallyChecked)
         {
-            const qreal side = qMin(rect.width(), rect.height());
-            const QPointF center = QRectF(rect).center();
+            const qreal side = iconRect.width();
+            const QPointF center = iconRect.center();
             painter.setRenderHint(QPainter::Antialiasing);
             painter.setPen(QPen(color, side / 12.0, Qt::SolidLine, Qt::RoundCap));
             painter.drawLine(center + QPointF(-side * 5.0 / 24.0, 0),

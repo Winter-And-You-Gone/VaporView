@@ -173,6 +173,23 @@ QString defaultRecordingDirectory()
     return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("data"));
 }
 
+quint64 availableDiskBytesForPath(const QString& targetPath)
+{
+    QDir dir(QFileInfo(targetPath).absoluteFilePath());
+    while (!dir.exists()) {
+        const QString previous = dir.absolutePath();
+        if (!dir.cdUp()) {
+            // cdUp also fails when the immediate parent does not exist yet.
+            dir.setPath(QFileInfo(previous).absolutePath());
+        }
+        if (dir.absolutePath() == previous) break;
+    }
+    QStorageInfo storage(dir.exists() ? dir.absolutePath() : QDir::currentPath());
+    if (!storage.isValid()) storage = QStorageInfo::root();
+    const qint64 available = storage.bytesAvailable();
+    return available > 0 ? static_cast<quint64>(available) : 0ULL;
+}
+
 DownsampledWaveform makeDownsampledWaveform(const QVector<float>& samples,
                                             quint64 hostTimeUs,
                                             quint64 epsilonTimeUs,
@@ -892,7 +909,14 @@ TelemetryStatus SkyRuntime::currentStatus() const
     TelemetryStatus status;
     status.recording_state = session_recorder_.recordingState();
     status.session_name = session_recorder_.sessionName();
-    status.disk_free_bytes = static_cast<quint64>(QStorageInfo(defaultRecordingDirectory()).bytesAvailable());
+    const QString recordingDir = options_.simulate_fpga
+        ? QDir(QFileInfo(options_.config_path).absolutePath()).filePath(QStringLiteral("simulated_sessions"))
+        : defaultRecordingDirectory();
+    quint64 freeBytes = availableDiskBytesForPath(recordingDir);
+    if (options_.simulate_fpga) {
+        freeBytes = freeBytes ? std::min<quint64>(freeBytes, 10ULL << 40) : (128ULL << 30);
+    }
+    status.disk_free_bytes = freeBytes;
     status.telemetry_basic_rate_hz = static_cast<float>(device_manager_.config().telemetry.basic_rate_hz);
     status.waveform_rate_hz = static_cast<float>(device_manager_.config().telemetry.waveform_rate_hz);
     status.feature_rate_hz = static_cast<float>(device_manager_.config().telemetry.feature_rate_hz);

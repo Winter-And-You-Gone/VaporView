@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <QColor>
 #include <QPainter>
 #include <QPainterPath>
@@ -50,6 +51,15 @@ inline void drawSquareCheckBig(QPainter& painter, const QRectF& rect, const QCol
     painter.restore();
 }
 
+inline QRectF checkedIndicatorIconRect(const QRectF& canvasRect)
+{
+    const qreal side = qMin(canvasRect.width(), canvasRect.height());
+    const qreal inset = std::min(3.0, side * 0.15);
+    const qreal iconSide = side >= 26.0 ? side * (24.0 / 34.0) : std::max(8.0, side - inset * 2.0);
+    return QRectF(canvasRect.center().x() - iconSide / 2.0, canvasRect.center().y() - iconSide / 2.0,
+                  iconSide, iconSide);
+}
+
 inline void drawCheckedIndicatorHover(QPainter& painter, const QRectF& rect, const QColor& hoverColor)
 {
     if (rect.width() <= 0 || rect.height() <= 0 || !hoverColor.isValid()) return;
@@ -57,7 +67,10 @@ inline void drawCheckedIndicatorHover(QPainter& painter, const QRectF& rect, con
     painter.setRenderHint(QPainter::Antialiasing);
     painter.setPen(Qt::NoPen);
     painter.setBrush(hoverColor);
-    painter.drawRoundedRect(rect.adjusted(-2.0, -2.0, 2.0, 2.0), 4.0, 4.0);
+    const qreal side = qMin(rect.width(), rect.height());
+    const QRectF box(rect.center().x() - side / 2.0, rect.center().y() - side / 2.0, side, side);
+    const qreal radius = std::clamp(side * (6.0 / 34.0), 4.0, 10.0);
+    painter.drawRoundedRect(box, radius, radius);
     painter.restore();
 }
 

@@ -2008,7 +2008,7 @@ static void simulatedMonitorActions()
         return displayedValue(frequency)==QStringLiteral("88.8 Hz")
             && displayedValue(QStringLiteral("天→地"))==QStringLiteral("234.5 Mbps")
             && displayedValue(QStringLiteral("地→天"))==QStringLiteral("123.4 Mbps")
-            && displayedValue(QStringLiteral("磁盘"))==QStringLiteral("128.0 GB")
+            && displayedValue(QStringLiteral("空闲磁盘"))==QStringLiteral("128.0 GB")
             && displayedValue(QStringLiteral("记录"))==QStringLiteral("记录中")
             && displayedValue(QStringLiteral("CRC"))==QStringLiteral("0")
             && displayedValue(QStringLiteral("EPSILON"))==QStringLiteral("有");
@@ -2196,6 +2196,18 @@ static void simulatedMonitorActions()
     require(waitUntil([&]{return pressure->isEnabled()&&pressure->property("state")=="disconnected";}),"layout simulation is disconnected");
     pressure->click();
     require(waitUntil([&]{return pressure->isEnabled()&&pressure->property("state")=="connected";}),"layout simulation connects the requested device");
+    auto *disconnect=page->findChild<QPushButton*>("fpgaDisconnect");
+    require(disconnect,"FPGA disconnect button exists");
+    for (QAbstractButton *button : {static_cast<QAbstractButton*>(pressure),static_cast<QAbstractButton*>(disconnect)}) {
+        const auto image=button->icon().pixmap(button->iconSize(),QIcon::Normal).toImage();
+        const auto red=VaporView::appThemeColor(VaporView::AppThemeColor::ToolbarRed,VaporView::isDarkThemePalette(window.palette()));
+        bool redStroke=false;
+        for (int y=0;y<image.height();++y) for (int x=0;x<image.width();++x) {
+            const auto pixel=image.pixelColor(x,y);
+            redStroke|=pixel.alpha()>200 && pixel.rgb()==red.rgb();
+        }
+        require(redStroke,"connected Home device and FPGA disconnect icons use toolbar red");
+    }
     require(onlyPressureConnected(window),"layout simulation leaves all other sensors and waveform acquisition disconnected");
     verifyRelayIndicators(window,{"Pressure"});
     require(waitUntil([&]{return onlyPressureDataAvailable(window, true);}),"UI summary reports only actual PTB device data");
@@ -2247,7 +2259,7 @@ static void simulatedMonitorActions()
     require(waitUntil([&]{return page->uiTestController()!=nullptr&&!page->uiTestConnected();}),"leaving UI test cancels pending RAW and the next simulation starts at cold boot");
     mode->trigger();
     require(!mode->isChecked(),"monitor simulation restores normal application mode");
-    require(waitUntil([&]{return displayedValue(QStringLiteral("磁盘"))!=QStringLiteral("128.0 GB");}),
+    require(waitUntil([&]{return displayedValue(QStringLiteral("空闲磁盘"))!=QStringLiteral("128.0 GB");}),
         "leaving UI test removes demo values from visible configuration pills");
     {
         const auto summary = MainWindowRtcmTestAccess::summary(window);

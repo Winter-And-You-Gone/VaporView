@@ -6563,6 +6563,11 @@ int main(int argc, char **argv)
 #else
     requireMainWindowOmitsMap3DEntries(window);
 #endif
+    const QString indicatorRule = VaporView::appStyleSheet().section(QStringLiteral("\nQCheckBox::indicator {"), 1, 1)
+                                     .section(QLatin1Char('}'), 0, 0);
+    require(indicatorRule.contains(QStringLiteral("padding: 5px")) &&
+                indicatorRule.contains(QStringLiteral("border-radius: 6px")),
+            "checkbox indicators reserve a rounded 34px canvas around the 24px icon");
     requireLastStyleRuleContains(VaporView::appStyleSheet(), QStringLiteral("QCheckBox::indicator:hover {"),
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::TitleBarHover, qApp->property(VaporView::kAppDarkThemeProperty).toBool()),
                                  "checkbox indicators use the title-bar hover background");
@@ -7621,6 +7626,25 @@ int main(int argc, char **argv)
                 logFilterButton->parentWidget() == logTitleActions &&
                 logClearButton->parentWidget() == logTitleActions,
             "log title search, filter, and clear icons share the zero-spacing cluster");
+    {
+        const auto originalSizes = mainContentSplitter->sizes();
+        const int minimumWidth = mainContentSplitter->widget(1)->minimumWidth();
+        mainContentSplitter->setSizes({mainContentSplitter->width() - mainContentSplitter->handleWidth() - minimumWidth,
+                                      minimumWidth});
+        processEventsFor(50);
+        auto *bar = logTitleActions->parentWidget();
+        auto *cluster = bar->findChild<QWidget *>(QStringLiteral("sectionTitleCluster"));
+        const int margin = bar->layout()->contentsMargins().right();
+        const QRect clearRect(logClearButton->mapTo(bar, QPoint()), logClearButton->size());
+        require(mainContentSplitter->widget(1)->width() == minimumWidth && cluster &&
+                    cluster->geometry().right() < logTitleActions->geometry().left() &&
+                    bar->contentsRect().adjusted(0, 0, -margin, 0).contains(clearRect) &&
+                    logClearButton->mapTo(logPanelFrame, logClearButton->rect().topRight()).x() <=
+                        logPanelFrame->contentsRect().right() - margin,
+                "minimum log sidebar keeps title groups separate and the full clear button inside its margins");
+        mainContentSplitter->setSizes(originalSizes);
+        processEventsFor(50);
+    }
     require(!logSearchButton->icon().isNull(),
             "log search title-bar button has a visible search icon");
     require(window.findChildren<QToolButton *>(QStringLiteral("logViewModeButton")).isEmpty(),
@@ -12459,8 +12483,8 @@ int main(int argc, char **argv)
                 const bool statusField =
                     name == QStringLiteral("记录") ||
                     name == QStringLiteral("Record") ||
-                    name == QStringLiteral("磁盘") ||
-                    name == QStringLiteral("Disk") ||
+                    name == QStringLiteral("空闲磁盘") ||
+                    name == QStringLiteral("Free Disk") ||
                     name == QStringLiteral("CRC");
                 if (!statusField)
                 {
@@ -12474,8 +12498,8 @@ int main(int argc, char **argv)
             require(dataFieldNames.contains(QStringLiteral("记录")) ||
                         dataFieldNames.contains(QStringLiteral("Record")),
                     "device telemetry data subcard shows the remote recording state");
-            require(dataFieldNames.contains(QStringLiteral("磁盘")) ||
-                        dataFieldNames.contains(QStringLiteral("Disk")),
+            require(dataFieldNames.contains(QStringLiteral("空闲磁盘")) ||
+                        dataFieldNames.contains(QStringLiteral("Free Disk")),
                     "device telemetry data subcard shows remaining sky disk capacity");
             require(dataFieldNames.contains(QStringLiteral("CRC")),
                     "device telemetry data subcard shows CRC error count");

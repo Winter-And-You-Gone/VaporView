@@ -6,6 +6,7 @@
 #include "sky_fpga_test_transport.h"
 #include "FailingRecordingStorage.h"
 #include "shared/session/CalibrationRuntime.h"
+#include <QFileInfo>
 #include <QTemporaryDir>
 #include <QTcpSocket>
 #include <QDateTime>
@@ -97,6 +98,12 @@ static void fpgaAi8PageTest(FpgaSimulatorFirmware firmware, Ai8Startup startup =
         require(config.saveToFile(options.config_path), "save relay config before --simulate startup");
     }
     SkyRuntime runtime(options);
+    const quint64 freeBytes = runtime.currentStatus().disk_free_bytes;
+    require(freeBytes < (100ULL << 40), "available recording space does not underflow");
+    if (options.simulate_fpga) {
+        require(!QFileInfo::exists(directory.filePath("simulated_sessions")), "simulation starts without a recording directory");
+        require(freeBytes > 0 && freeBytes <= (10ULL << 40), "simulated disk space is positive and bounded");
+    }
     if (!options.simulate_fpga && !options.simulate_data)
         runtime.setFpgaTransportForTesting(makeFpgaUsbSimulator(nullptr, FpgaSimulatorStartup::RunningDemo, firmware));
     require(runtime.start(), "start FPGA AI-8 simulator");

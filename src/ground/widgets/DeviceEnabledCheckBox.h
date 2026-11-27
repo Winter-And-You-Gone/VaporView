@@ -27,15 +27,16 @@ protected:
         QStyleOptionButton option;
         initStyleOption(&option);
         const QRect indicator = style()->subElementRect(QStyle::SE_CheckBoxIndicator, &option, this);
+        const QRectF iconRect = VaporView::checkedIndicatorIconRect(indicator);
         const bool dark = VaporView::isDarkThemePalette(palette());
         QPainter painter(this);
         if (isEnabled() && (option.state & QStyle::State_MouseOver))
             VaporView::drawCheckedIndicatorHover(painter, indicator, VaporView::appThemeColor(VaporView::AppThemeColor::TitleBarHover, dark));
         QColor color = VaporView::appThemeColor(VaporView::AppThemeColor::Primary, dark);
-        if (!isEnabled()) color.setAlphaF(0.45);
+        if (!isEnabled()) color.setAlphaF(0.45f);
         if (isChecked())
-            VaporView::drawSquareCheckBig(painter, indicator, color);
+            VaporView::drawSquareCheckBig(painter, iconRect, color);
         else
-            VaporView::drawSquare(painter, indicator, color);
+            VaporView::drawSquare(painter, iconRect, color);
     }
 };

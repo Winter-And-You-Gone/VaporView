@@ -490,13 +490,17 @@ int MainWindow::minimumLogSidePanelWidth() const
         scalePixels(kSectionTitleIconBoxSize + 6) +
         titleMetrics.horizontalAdvance(titleText);
     const int titleBarMargins = scalePixels(16);
-    const int titleBarSpacing = scalePixels(8 * 3);
-    const int actionButtonsWidth = scalePixels(kMainPageButtonHeight * 2);
+    const int titleBarSpacing = scalePixels(16);
+    const int actionButtonsWidth = scalePixels(kMainPageButtonHeight * 3);
     const int cardMargins = scalePixels(2);
-    const int safetyPadding = scalePixels(12);
+    const QMargins panelMargins = state_->log_side_panel_ && state_->log_side_panel_->layout()
+        ? state_->log_side_panel_->layout()->contentsMargins()
+        : QMargins(scalePixels(kMainContentRightSidebarInset), 0, 0, 0);
+    const int logSidePanelMargins = panelMargins.left() + panelMargins.right();
+    const int safetyPadding = scalePixels(20);
     const int logTitleMinimumWidth =
         titleBarMargins + titleClusterWidth + titleBarSpacing + actionButtonsWidth +
-        cardMargins + safetyPadding;
+        cardMargins + logSidePanelMargins + safetyPadding;
 
     // The recording view has fixed numeric columns, so its minimum must reach
     // the splitter instead of allowing child labels to paint beyond the card.

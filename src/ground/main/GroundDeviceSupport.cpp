@@ -640,9 +640,9 @@ QString deviceConfigRemoteIconName(VaporView::CommandId command)
     }
 }
 
-QColor deviceConfigRemoteIconColor(VaporView::CommandId)
+QColor deviceConfigRemoteIconColor(VaporView::CommandId command)
 {
-    return toolbarColor(AppThemeColor::ToolbarBlue);
+    return toolbarColor(command == VaporView::CommandId::DisconnectDevice ? AppThemeColor::ToolbarRed : AppThemeColor::ToolbarBlue);
 }
 
 void applyDeviceConfigRemoteButtonPresentation(QToolButton *button,

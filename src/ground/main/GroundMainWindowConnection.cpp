@@ -584,8 +584,8 @@ bool MainWindow::updateHomeMotionDeviceControls(qint64 nowMs, bool animationOnly
         else
         {
             const QString iconName = connected ? QStringLiteral("unlink") : QStringLiteral("link");
-            const QColor iconColor = toolbarColor(connected || ready
-                ? AppThemeColor::ToolbarBlue : AppThemeColor::ToolbarDisabled);
+            const QColor iconColor = toolbarColor(connected ? AppThemeColor::ToolbarRed
+                : (ready ? AppThemeColor::ToolbarBlue : AppThemeColor::ToolbarDisabled));
             const QString iconKey = QStringLiteral("%1|%2").arg(iconName, iconColor.name(QColor::HexArgb));
             if (button->property(kHomeDeviceIconKeyProperty).toString() != iconKey)
             {
@@ -947,7 +947,7 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         {
             const QString iconName = connected ? QStringLiteral("unlink") : QStringLiteral("link");
             const QColor iconColor = toolbarColor(buttonDisabled
-                ? AppThemeColor::ToolbarDisabled : AppThemeColor::ToolbarBlue);
+                ? AppThemeColor::ToolbarDisabled : (connected ? AppThemeColor::ToolbarRed : AppThemeColor::ToolbarBlue));
             const QString iconKey = QStringLiteral("%1|%2").arg(iconName, iconColor.name(QColor::HexArgb));
             if (button->property(kHomeDeviceIconKeyProperty).toString() != iconKey)
             {

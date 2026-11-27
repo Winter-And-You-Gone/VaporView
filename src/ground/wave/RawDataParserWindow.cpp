@@ -771,20 +771,21 @@ public:
         background.features &= ~QStyleOptionViewItem::HasCheckIndicator;
         const QStyle *style = option.widget ? option.widget->style() : QApplication::style();
         style->drawControl(QStyle::CE_ItemViewItem, &background, painter, option.widget);
-        QStyleOptionViewItem indicator(option);
-        indicator.rect = QStyle::alignedRect(option.direction, Qt::AlignCenter,
-            QSize(style->pixelMetric(QStyle::PM_IndicatorWidth, &option, option.widget),
-                  style->pixelMetric(QStyle::PM_IndicatorHeight, &option, option.widget)), option.rect);
+        const int iconSize = style->pixelMetric(QStyle::PM_IndicatorWidth, &option, option.widget);
+        const int side = std::max(0, std::min({option.rect.width() - 2, option.rect.height() - 2, iconSize + 10}));
+        if (side == 0) return;
+        const QRect hoverRect = QStyle::alignedRect(option.direction, Qt::AlignCenter, QSize(side, side), option.rect);
+        const QRectF iconRect = VaporView::checkedIndicatorIconRect(hoverRect);
         const bool dark = VaporView::isDarkThemePalette(option.palette);
         QColor color = VaporView::appThemeColor(VaporView::AppThemeColor::Primary, dark);
         if ((option.state & QStyle::State_Enabled) && (option.state & QStyle::State_MouseOver))
-            VaporView::drawCheckedIndicatorHover(*painter, indicator.rect,
+            VaporView::drawCheckedIndicatorHover(*painter, hoverRect,
                 VaporView::appThemeColor(VaporView::AppThemeColor::TitleBarHover, dark));
         if (!(option.state & QStyle::State_Enabled)) color.setAlphaF(0.6);
         if (checkState == Qt::Checked)
-            VaporView::drawSquareCheckBig(*painter, indicator.rect, color);
+            VaporView::drawSquareCheckBig(*painter, iconRect, color);
         else
-            VaporView::drawSquare(*painter, indicator.rect, color);
+            VaporView::drawSquare(*painter, iconRect, color);
     }
 
     bool editorEvent(QEvent *event, QAbstractItemModel *model, const QStyleOptionViewItem& option,

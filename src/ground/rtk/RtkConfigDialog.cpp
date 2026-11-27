@@ -2171,6 +2171,7 @@ bool RtkConfigDialog::shouldUseCompactEmbeddedLayout() const
 void RtkConfigDialog::applyScaledUiMetrics()
 {
     const bool compactLayout = compact_layout_;
+    const bool compactConfigSpacing = compactLayout || (embedded_ && width() < scalePixels(1024));
     auto applyButtonWidth = [this](QPushButton *button, int baseWidth) {
         if (!button)
         {
@@ -2254,9 +2255,9 @@ void RtkConfigDialog::applyScaledUiMetrics()
 
     if (config_layout_)
     {
-        config_layout_->setHorizontalSpacing(scalePixels(compactLayout ? 0 : 3));
+        config_layout_->setHorizontalSpacing(scalePixels(compactLayout ? 0 : (compactConfigSpacing ? 1 : 3)));
         config_layout_->setVerticalSpacing(scalePixels(4));
-        const int configMargin = compactLayout ? 2 : 8;
+        const int configMargin = compactLayout ? 2 : (compactConfigSpacing ? 0 : 8);
         config_layout_->setContentsMargins(scalePixels(configMargin), scalePixels(4),
                                            scalePixels(configMargin), scalePixels(8));
         for (int row = 0; row < 2; ++row)
@@ -2366,7 +2367,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
         updateSectionTitleIcon(iconLabel, darkTheme);
     }
 
-    const auto widestLabelWidth = [this, compactLayout](std::initializer_list<QLabel *> labels) {
+    const auto widestLabelWidth = [this, compactConfigSpacing](std::initializer_list<QLabel *> labels) {
         int width = 0;
         for (QLabel *label : labels)
         {
@@ -2375,7 +2376,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
                 width = std::max(width, QFontMetrics(label->font()).horizontalAdvance(label->text()));
             }
         }
-        return width + scalePixels(compactLayout ? 2 : 10);
+        return width + scalePixels(compactConfigSpacing ? 2 : 10);
     };
     const int leftConfigLabelWidth = widestLabelWidth(
         {server_label_, mountpoint_label_, username_label_});

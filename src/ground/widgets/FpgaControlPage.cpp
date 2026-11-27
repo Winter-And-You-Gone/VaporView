@@ -35,6 +35,8 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QScrollBar>
+#include <QTabBar>
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QStandardItemModel>
@@ -87,6 +89,59 @@ protected:
     }
 };
 
+class CurrentTabSizeTabWidget final : public QTabWidget {
+public:
+    using QTabWidget::QTabWidget;
+    QSize sizeHint() const override { return currentHint(false); }
+    QSize minimumSizeHint() const override { return currentHint(true); }
+    bool hasHeightForWidth() const override { return currentWidget() && currentWidget()->hasHeightForWidth(); }
+    int heightForWidth(int width) const override {
+        if (!hasHeightForWidth()) return sizeHint().height();
+        const QSize chrome = sizeHint() - currentWidget()->sizeHint();
+        return chrome.height() + currentWidget()->heightForWidth(std::max(0, width - chrome.width()));
+    }
+    void refreshHeight() {
+        for (int i=0; i<count(); ++i)
+            widget(i)->setSizePolicy(QSizePolicy::Expanding, i==currentIndex() ? QSizePolicy::Preferred : QSizePolicy::Ignored);
+        if (currentWidget()) currentWidget()->adjustSize();
+        updateGeometry();
+        parentWidget()->adjustSize();
+    }
+private:
+    QSize currentHint(bool minimum) const {
+        QSize hint=minimum ? QTabWidget::minimumSizeHint() : QTabWidget::sizeHint();
+        if (auto *page=currentWidget()) {
+            const QSize content=minimum ? page->minimumSizeHint() : page->sizeHint();
+            const QSize extent(hint.width(), tabBar()->sizeHint().height()+content.height());
+            QStyleOptionTabWidgetFrame option;
+            initStyleOption(&option);
+            hint.setHeight(style()->sizeFromContents(QStyle::CT_TabWidget,&option,extent,this).height());
+        }
+        return hint;
+    }
+};
+
+class CardScrollArea final : public QScrollArea {
+public:
+    explicit CardScrollArea(QWidget *parent) : QScrollArea(parent) {
+        connect(verticalScrollBar(), &QScrollBar::rangeChanged, this, [this]{ refreshMargins(); });
+    }
+    void refreshMargins() {
+        if (widget() && widget()->layout()) {
+            auto margins=bodyMargins;
+            if (verticalScrollBar()->maximum()==0) margins.setRight(margins.right()+railWidth);
+            widget()->layout()->setContentsMargins(margins);
+        }
+    }
+    QMargins bodyMargins;
+    int railWidth=0;
+protected:
+    void resizeEvent(QResizeEvent *event) override {
+        QScrollArea::resizeEvent(event);
+        refreshMargins();
+    }
+};
+
 class FpgaCheckBox final : public QCheckBox {
 public:
     explicit FpgaCheckBox(QWidget *parent) : QCheckBox(parent) {
@@ -104,8 +159,9 @@ protected:
         QPainter painter(this);
         if (isEnabled() && (option.state & QStyle::State_MouseOver))
             VaporView::drawCheckedIndicatorHover(painter, indicator, VaporView::appThemeColor(VaporView::AppThemeColor::TitleBarHover, dark));
-        if (isChecked()) VaporView::drawSquareCheckBig(painter,indicator,color);
-        else VaporView::drawSquare(painter,indicator,color);
+        const QRectF iconRect=VaporView::checkedIndicatorIconRect(indicator);
+        if (isChecked()) VaporView::drawSquareCheckBig(painter,iconRect,color);
+        else VaporView::drawSquare(painter,iconRect,color);
     }
 };
 
@@ -413,9 +469,10 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout, QVB
     connect(disconnect_,&QAbstractButton::clicked,this,[this]{ lockOperation(); emit disconnectRequested(); });
     tabs_=new QTabWidget(this); tabs_->setObjectName(QStringLiteral("fpgaTabs")); root->addWidget(tabs_,1);
     auto tab=[this](const QString &zh,const QString &en) {
-        auto *scroll=new QScrollArea(tabs_); scroll->setObjectName(QStringLiteral("mainCardsScrollArea")); scroll->setWidgetResizable(true); scroll->setFrameShape(QFrame::NoFrame);
-        scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+        auto *scroll=new CardScrollArea(tabs_); scroll->setObjectName(QStringLiteral("mainCardsScrollArea")); scroll->setWidgetResizable(true); scroll->setFrameShape(QFrame::NoFrame);
+        scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
         auto *body=new QWidget(scroll); scroll->setWidget(body); scroll->setProperty("fpgaZh",zh); scroll->setProperty("fpgaEn",en);
+        connect(tabs_, &QTabWidget::currentChanged, scroll, [scroll]{ scroll->refreshMargins(); });
         tabs_->addTab(scroll,zh); return body;
     };
     auto *waves=tab(QStringLiteral("采样"),QStringLiteral("Sampling"));
@@ -465,9 +522,11 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout, QVB
     action(sl,6,0,"应用 ADC 参数","Apply ADC settings","fpgaApply",[this]{emit applyRequested(configuration(),"adc");});
     refresh_=action(sl,6,1,"刷新读回","Refresh readback","fpgaRefresh",[this]{emit refreshRequested();});
     auto *parameters=tab(QStringLiteral("通道参数"),QStringLiteral("Channel settings"));auto *pl=new QVBoxLayout(parameters);
-    auto *parameterTabs=new QTabWidget(parameters);parameterTabs->setObjectName("fpgaParameterTabs");pl->addWidget(parameterTabs);
+    auto *parameterTabs=new CurrentTabSizeTabWidget(parameters);parameterTabs->setObjectName("fpgaParameterTabs");pl->addWidget(parameterTabs);
+    connect(parameterTabs, &QTabWidget::currentChanged, parameterTabs, &CurrentTabSizeTabWidget::refreshHeight);
     auto *wmsPage=new QWidget(parameterTabs),*dliaPage=new QWidget(parameterTabs);
     parameterTabs->addTab(wmsPage,"WMS / DAC");parameterTabs->addTab(dliaPage,"DLIA");
+    parameterTabs->refreshHeight();
     auto *wmsLayout=new QVBoxLayout(wmsPage),*dliaLayout=new QVBoxLayout(dliaPage);
     for(auto *layout : {wmsLayout,dliaLayout}) { const auto margins=layout->contentsMargins(); layout->setContentsMargins(0,margins.top(),0,margins.bottom()); }
     auto *wmsActions=new QGridLayout;wmsLayout->addLayout(wmsActions);
@@ -579,6 +638,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent, QVBoxLayout *motionLayout, QVB
         grid->addWidget(advanced, row, 0, 1, 3);
         advanced->hide();
         connect(more, &QPushButton::toggled, advanced, &QWidget::setVisible);
+        connect(more, &QPushButton::toggled, parameterTabs, &CurrentTabSizeTabWidget::refreshHeight);
         grid = new QGridLayout(advanced);
         grid->setContentsMargins(0,0,0,0);
         row = 0;
@@ -1712,8 +1772,10 @@ void FpgaControlPage::setTheme(bool dark,int fontScalePercent){
     const int shadowInset=int(std::ceil(kTopLevelCardShadowBlurRadius*scale*0.6))+1;
     findChild<QWidget*>("fpgaConnectionContainer")->layout()->setContentsMargins(pixels(18),0,shadowInset+pixels(8),0);
     for(int i=0;i<tabs_->count();++i) {
-        auto *scroll=qobject_cast<QScrollArea*>(tabs_->widget(i));
-        scroll->widget()->layout()->setContentsMargins(pixels(18),pixels(12),shadowInset,pixels(8));
+        auto *scroll=static_cast<CardScrollArea*>(tabs_->widget(i));
+        scroll->bodyMargins=QMargins(pixels(18),pixels(12),shadowInset,pixels(8));
+        scroll->railWidth=pixels(8);
+        scroll->refreshMargins();
     }
     const QString cardStyle = applyAppThemeTokens(QStringLiteral(
         "QFrame#fpgaSectionCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 12px; }"
@@ -1760,11 +1822,18 @@ void FpgaControlPage::setTheme(bool dark,int fontScalePercent){
         button->setFixedSize(pixels(40),pixels(40)); button->setIconSize(QSize(pixels(20),pixels(20)));
         QFile file(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/lucide/%1.svg").arg(button->property("fpgaIconName").toString())));
         if (!file.open(QIODevice::ReadOnly)) continue;
-        const auto color=AppThemeColor::Primary;
-        QByteArray svg=file.readAll(); svg.replace("currentColor",appThemeColorName(color,dark).toUtf8());
-        const qreal dpr=button->devicePixelRatioF(); const int size=pixels(20);
-        QPixmap pixmap(qRound(size*dpr),qRound(size*dpr)); pixmap.setDevicePixelRatio(dpr); pixmap.fill(Qt::transparent);
-        QSvgRenderer renderer(svg); QPainter painter(&pixmap); renderer.render(&painter,QRectF(0,0,size,size)); painter.end(); button->setIcon(QIcon(pixmap));
+        const auto source=file.readAll();
+        QIcon icon;
+        for (auto mode : {QIcon::Normal,QIcon::Disabled}) {
+            const auto color=mode==QIcon::Disabled ? AppThemeColor::ToolbarDisabled
+                : (button==disconnect_ ? AppThemeColor::ToolbarRed : AppThemeColor::Primary);
+            auto svg=source; svg.replace("currentColor",appThemeColorName(color,dark).toUtf8());
+            const qreal dpr=button->devicePixelRatioF(); const int size=pixels(20);
+            QPixmap pixmap(qRound(size*dpr),qRound(size*dpr)); pixmap.setDevicePixelRatio(dpr); pixmap.fill(Qt::transparent);
+            QSvgRenderer renderer(svg); QPainter painter(&pixmap); renderer.render(&painter,QRectF(0,0,size,size)); painter.end();
+            icon.addPixmap(pixmap,mode);
+        }
+        button->setIcon(icon);
     }
     const QString iconObjectName = QStringLiteral("fpgaCardIcon");
     auto icons = findChildren<QLabel *>(iconObjectName);
