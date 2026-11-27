@@ -2024,7 +2024,7 @@ void Map3DWindow::refreshLayerMenuTheme()
             "QToolButton:checked, QToolButton:hover { background: @vv-primary-subtle; color: @vv-primary; border-color: @vv-primary; }"
             "QToolButton[customTitleBarButton=\"true\"] { background: transparent; border: none; padding: 0px; }"
             "QToolButton[customTitleBarButton=\"true\"]:hover, QToolButton[customTitleBarButton=\"true\"][titleBarHover=\"true\"] { background: @vv-title-hover; }"
-            "QToolButton#windowCloseButton:hover, QToolButton#windowCloseButton[titleBarHover=\"true\"] { background: @vv-title-hover; }"
+            "QToolButton#windowCloseButton:hover, QToolButton#windowCloseButton[titleBarHover=\"true\"] { background: @vv-close-hover; }"
             "QCheckBox { color: @vv-text; spacing: 8px; }"), dark));
     }
     if (auto* menu = findChild<QMenu*>(QStringLiteral("map3DMoreMenu")))

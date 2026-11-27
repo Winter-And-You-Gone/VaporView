@@ -1829,7 +1829,7 @@ void MainWindow::updateTelemetryLinkAction()
     if (state_->telemetry_link_btn_->property("linkIconKey").toString() != iconKey) {
         state_->telemetry_link_btn_->setProperty("linkIconKey", iconKey);
         state_->telemetry_link_btn_->setIcon(createLucideIcon(active ? QStringLiteral("unplug") : QStringLiteral("plug"),
-            toolbarColor(AppThemeColor::ToolbarBlue)));
+            toolbarColor(active ? AppThemeColor::ToolbarRed : AppThemeColor::ToolbarBlue)));
     }
     if (remote && !isUiTestMode() && state_->connect_btn_) {
         const bool open = state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen();

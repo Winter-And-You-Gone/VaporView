@@ -5192,6 +5192,65 @@ void requireHomeSensorLayoutAfterSidebarRestore()
         QCoreApplication::sendEvent(handle, &release);
         processEventsFor(200);
     };
+    using namespace VaporView::Ground::MainSupport;
+    using Color = VaporView::AppThemeColor;
+    const auto checkIcon = [](const QIcon& icon, Color color) {
+        requireColorNear(averageVisibleIconColor(icon), toolbarColor(color), 3,
+                         "title-bar action uses its semantic color");
+    };
+    checkIcon(createConnectIcon(), Color::ToolbarGreen);
+    checkIcon(createPlayIcon(), Color::ToolbarGreen);
+    checkIcon(createCancelIcon(), Color::ToolbarRed);
+    checkIcon(createDisconnectIcon(), Color::ToolbarRed);
+    checkIcon(createStopIcon(), Color::ToolbarRed);
+    checkIcon(createRtkSatelliteIcon(true), Color::ToolbarGreen);
+    checkIcon(createLightThemeIcon(), Color::ToolbarAmber);
+    auto *link = window.findChild<QAction *>(QStringLiteral("telemetryLinkAction"));
+    require(link != nullptr, "telemetry title-bar action exists");
+    checkIcon(link->icon(), Color::ToolbarBlue);
+    for (bool dark : {false, true})
+    {
+        for (const auto *name : {"menu", "minus", "square", "copy", "x"})
+            requireColorNear(averageVisibleIconColor(createTitleBarIcon(QString::fromLatin1(name), dark)),
+                             VaporView::appThemeColor(dark ? Color::TextTitle : Color::TextStrong, dark), 3,
+                             "window control icons follow title text");
+        requireLastStyleRuleContains(customTitleBarStyleSheet(dark),
+            QStringLiteral("QToolButton#windowCloseButton[titleBarHover=\"true\"] {"),
+            dark ? QStringLiteral("background-color: @vv-title-hover") : QStringLiteral("background-color: @vv-close-hover"),
+            "close hover retains its original theme-specific color");
+    }
+    for (int percent : {80, 100, 130})
+    {
+        setScale(percent);
+        const int compactWidth = std::max(qRound(62 * percent / 100.0),
+            qRound(44 * percent / 100.0) + 2 * qRound(8 * percent / 100.0) + 2);
+        dragSidebarTo(compactWidth);
+        auto *dragHandle = sidebar->handle(1);
+        const QPoint dragPoint = dragHandle->rect().center();
+        QMouseEvent dragPress(QEvent::MouseButtonPress, dragPoint, dragHandle->mapToGlobal(dragPoint),
+                              Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(dragHandle, &dragPress);
+        for (int width : {compactWidth, compactWidth + 16})
+        {
+            sidebar->setSizes({width, sidebar->width() - sidebar->handleWidth() - width});
+            processEventsFor(50);
+            QWidget *rail = sidebar->widget(0);
+            require(rail->width() == width, "compact sidebar reaches requested intermediate width");
+            for (auto *button : rail->findChildren<QPushButton *>(QStringLiteral("appSidebarButton")))
+            {
+                require(std::abs(button->x() - (rail->width() - button->geometry().right() - 1)) <= 1,
+                        "scaled compact sidebar buttons have balanced horizontal margins");
+                require(button->fontMetrics().horizontalAdvance(button->text()) <= button->width() - 4,
+                        "scaled compact sidebar captions fit");
+            }
+        }
+        QMouseEvent dragRelease(QEvent::MouseButtonRelease, dragPoint, dragHandle->mapToGlobal(dragPoint),
+                                Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(dragHandle, &dragRelease);
+        processEventsFor(50);
+    }
+    setScale(100);
+    dragSidebarTo(kAppSidebarIconOnlyBaseWidth);
     // Keep the populated fixture from being replaced by disconnected-device data.
     for (QTimer *timer : window.findChildren<QTimer *>(QString(), Qt::FindDirectChildrenOnly))
     {
@@ -8768,7 +8827,7 @@ int main(int argc, char **argv)
     requireLastStyleRuleContains(
         darkOverviewStyleSheet, QStringLiteral("QWidget#waveformPageRow {"),
         QStringLiteral("background-color: %1").arg(
-            VaporView::appThemeColorName(VaporView::AppThemeColor::Surface, true)),
+            VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceRaised, true)),
         "waveform rows follow the dark theme surface");
     requireLastStyleRuleContains(
         darkOverviewStyleSheet,

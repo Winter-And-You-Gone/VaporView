@@ -753,10 +753,13 @@ void SessionViewerWindow::updateNavigation(int sidebarWidth)
         ? QStringList{QStringLiteral("Data View"), QStringLiteral("Trajectory"), QStringLiteral("PPK Processing"), QStringLiteral("Raw Data Parser")}
         : QStringList{QStringLiteral("数据查看"), QStringLiteral("轨迹查看"), QStringLiteral("PPK 后处理"), QStringLiteral("原始数据解析")};
     const QStringList icons = {QStringLiteral("audio-waveform"), QStringLiteral("route"), QStringLiteral("satellite"), QStringLiteral("scroll-text")};
+    auto *navLayout = qobject_cast<QVBoxLayout *>(sidebar_->layout());
     const bool compact = (sidebarWidth >= 0 ? sidebarWidth : navigation_splitter_->sizes().value(0)) < 120;
     for (int i = 0; i < 4; ++i)
     {
         auto *button = navigation_buttons_->button(i);
+        if (navLayout)
+            navLayout->setAlignment(button, compact ? Qt::AlignHCenter : Qt::Alignment());
         button->setText(compact ? QString() : labels[i]);
         button->setToolTip(labels[i]);
         button->setAccessibleName(labels[i]);

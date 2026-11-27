@@ -2469,7 +2469,7 @@ void MainWindow::setupCentralWidget()
         button->setToolTip(text);
         button->setAccessibleName(text);
         button->setAccessibleDescription(text);
-        sidebarLayout->addWidget(button);
+        sidebarLayout->addWidget(button, 0, Qt::AlignHCenter);
         return button;
     };
     state_->home_nav_btn_ = createNavButton(QStringLiteral("首页"), QStringLiteral("house"));

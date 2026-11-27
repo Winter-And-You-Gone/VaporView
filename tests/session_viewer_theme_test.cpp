@@ -2060,6 +2060,10 @@ void testTrajectoryViewerUsesSidebarLayout()
                 require(hasTint(button->icon().pixmap(32, 32), primary), "both visibility states use primary icons");
             }
         }
+        auto *close = dialog.findChild<QToolButton *>(QStringLiteral("windowCloseButton"));
+        require(close && hasTint(close->icon().pixmap(32, 32), VaporView::appThemeColor(
+                    dark ? VaporView::AppThemeColor::TextTitle : VaporView::AppThemeColor::TextStrong, dark)),
+                "dialog close icon follows title text in both themes");
         require(hasTint(sidebarIcon->pixmap(), VaporView::appThemeColor(dark ? VaporView::AppThemeColor::TextTitle
                                                                             : VaporView::AppThemeColor::TextStrong, dark)),
                 "noninteractive route icon follows the title text color");
@@ -2658,6 +2662,27 @@ void testSessionWorkspaceNavigation()
     require(titleBar && controls && titleBar->isAncestorOf(controls), "session actions live in the shared title bar");
     require(controls->findChildren<QPushButton *>().size() == 3,
             "title bar contains only open, reload, and clear actions");
+    const auto originalSizes = splitter->sizes();
+    auto *dragHandle = splitter->handle(1);
+    const QPoint dragPoint = dragHandle->rect().center();
+    QMouseEvent dragPress(QEvent::MouseButtonPress, dragPoint, dragHandle->mapToGlobal(dragPoint),
+                          Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(dragHandle, &dragPress);
+    for (int width : {62, 80})
+    {
+        splitter->setSizes({width, splitter->width() - splitter->handleWidth() - width});
+        processEventsFor(50);
+        QWidget *rail = splitter->widget(0);
+        require(rail->width() == width, "viewer sidebar reaches requested compact width");
+        for (auto *button : rail->findChildren<QPushButton *>("appSidebarButton"))
+            require(std::abs(button->x() - (rail->width() - button->geometry().right() - 1)) <= 1,
+                    "viewer compact buttons have balanced horizontal margins");
+    }
+    QMouseEvent dragRelease(QEvent::MouseButtonRelease, dragPoint, dragHandle->mapToGlobal(dragPoint),
+                            Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(dragHandle, &dragRelease);
+    processEventsFor(50);
+    splitter->setSizes(originalSizes);
     int deselectedIconsChecked = 0;
     for (auto *button : viewer.findChildren<QPushButton *>("appSidebarButton"))
         QObject::connect(button, &QPushButton::toggled, &viewer, [&, button](bool checked) {

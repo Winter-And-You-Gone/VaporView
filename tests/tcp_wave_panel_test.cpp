@@ -1,5 +1,7 @@
 #include "test_settings_sandbox.h"
 #include "ground/wave/TcpWavePanel.h"
+#include "ground/wave/WaterProfileAccumulator.h"
+#include <cmath>
 #include "shared/theme/AppTheme.h"
 #include <QMouseEvent>
 #include "ground/widgets/SegmentedSwitchButton.h"
@@ -873,7 +875,7 @@ void testFpgaWaveDisplaySelection()
     auto *summary = panel.findChild<QLabel *>("waterProfileSummary");
     auto *profileCard = profile->parentWidget();
     auto *resolution = dynamic_cast<VaporView::SingleLevelPopupComboBox *>(profileCard->findChild<QComboBox *>("waterProfileResolution0"));
-    require(resolution && resolution->currentData().toInt() == 5 && resolution->count() == 5, "profile defaults to five meters");
+    require(resolution && resolution->currentData().toInt() == 5 && resolution->count() == 6, "profile defaults to five meters");
     auto *resolutionMenu = resolution->popupMenu();
     QPushButton *clearProfile = nullptr;
     for (auto *candidate : profileCard->findChildren<QPushButton *>())
@@ -943,6 +945,43 @@ void testFpgaWaveDisplaySelection()
     QEvent leave(QEvent::Leave);
     QApplication::sendEvent(profile, &leave);
     require(profile->toolTip().startsWith("X:"), "leaving a node restores the axes tooltip");
+    clearProfile->click();
+    resolution->setCurrentIndex(resolution->findData(0));
+    require(resolution->currentText() == "Unbinned", "English unbinned label");
+    panel.setEnglish(false);
+    require(resolution->currentText() == QStringLiteral("不分箱格"), "Chinese unbinned label");
+    panel.setEnglish(true);
+    for (int i = 0; i < 3; ++i) panel.appendWaterSample(0, QStringLiteral("sub-%1").arg(i), now + 3000 + i, 10, 10.1 + 0.4 * i);
+    require(profile->property("layerCount").toInt() == 3, "submeter points remain distinct");
+    for (int meters : {1, 5, 50}) {
+        resolution->setCurrentIndex(resolution->findData(meters));
+        require(profile->property("layerCount").toInt() == 1 && profile->property("sampleCount").toInt() == 3, "binned submeter samples combine");
+    }
+    resolution->setCurrentIndex(resolution->findData(0));
+    for (int i = 0; i < 200; ++i)
+        panel.appendWaterSample(0, QStringLiteral("near-%1").arg(i), now + 3100 + i, 20.01 + i * 0.00004, 30.01 + i * 0.00004);
+    require(profile->property("layerCount").toInt() == 4 && profile->property("sampleCount").toInt() == 203,
+            "near-identical samples occupy one fine spatial cell");
+    for (int i = 0; i < 200; ++i)
+        panel.appendWaterSample(0, QStringLiteral("dense-%1").arg(i), now + 3400 + i, 15, 100 + i * 0.06);
+    panel.appendWaterSample(0, "high", now + 3700, 15, 2000);
+    const auto scatter = profile->grab().toImage();
+    const int rendered = profile->property("renderedPointCount").toInt();
+    require(profile->property("layerCount").toInt() == 205 && rendered >= 4 && rendered < 205, "scatter culls visually overlapping points");
+    bool hovered = false;
+    for (int y = 0; !hovered && y < scatter.height(); ++y) for (int x = 0; !hovered && x < scatter.width(); ++x) {
+        if (scatter.pixelColor(x, y) != blue) continue;
+        const QPointF pos = QPointF(x, y) / scatter.devicePixelRatio();
+        QMouseEvent hover(QEvent::MouseMove, pos, profile->mapToGlobal(pos), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+        QApplication::sendEvent(profile, &hover);
+        hovered = profile->toolTip().startsWith("Height: ") && profile->toolTip().contains("Concentration: ") &&
+                  profile->toolTip().contains("Merged samples: 200");
+    }
+    require(hovered, "hover reports the retained scatter point and merged count");
+    clearProfile->click();
+    require(profile->property("layerCount").toInt() == 0 && profile->property("sampleCount").toInt() == 0, "clear resets scatter data");
+    resolution->setCurrentIndex(resolution->findData(5));
+    require(profile->property("layerCount").toInt() == 0, "clear resets binned data");
     panel.setWaterCalibration("cal-b", "other.vcal", "ppmv", false, {});
     require(plots[4]->property("sampleCount").toInt() == 0 && plots[5]->property("sampleCount").toInt() == 0,
             "calibration changes clear prior measurements");
@@ -964,6 +1003,20 @@ int main(int argc, char **argv)
     if (app.arguments().contains(QStringLiteral("--fpga-display-only"))) {
         testFpgaWaveDisplaySelection();
         return 0;
+    }
+    WaterProfileAccumulator accumulator;
+    for (int i = 0; i <= WaterProfileAccumulator::maxUnbinnedPoints; ++i)
+        accumulator.append(0, QString::number(i), i, i, 10.1 + (i % 3) * 0.4);
+    const auto raw = accumulator.rawPoints(0);
+    quint64 represented = 0;
+    for (const auto &point : raw) represented += point.sampleCount;
+    const int n = WaterProfileAccumulator::maxUnbinnedPoints + 1;
+    require(raw.size() <= WaterProfileAccumulator::maxUnbinnedPoints && represented == quint64(n) &&
+            accumulator.rawSampleCount(0) == represented, "adaptive compaction preserves every accepted sample");
+    for (int meters : {1, 5, 50}) {
+        const auto layers = accumulator.layers(0, meters);
+        require(layers.size() == 1 && layers[0].sampleCount == represented && layers[0].meanConcentration == (n - 1) / 2.0 &&
+                std::abs(layers[0].stdDev - std::sqrt(double(n) * (n + 1) / 12)) < 1e-8, "compaction preserves exact binned moments");
     }
     testInvalidPortPublishesStructuredWarning();
     testSocketLifecyclePublishesStructuredLogs();

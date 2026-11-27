@@ -2054,7 +2054,7 @@ void MainWindow::updateWindowControlButtons()
     }
 
     const bool shouldRestore = isWindowMaximizedForUi();
-    state_->window_maximize_btn_->setIcon(createTitleBarIcon(shouldRestore ? QStringLiteral("minimize-2") : QStringLiteral("maximize-2"),
+    state_->window_maximize_btn_->setIcon(createTitleBarIcon(shouldRestore ? QStringLiteral("copy") : QStringLiteral("square"),
                                                      state_->dark_theme_enabled_));
     state_->window_maximize_btn_->setToolTip(shouldRestore
         ? (state_->is_english_ ? "Restore" : "还原")

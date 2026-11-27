@@ -22,6 +22,41 @@ void WaterProfileAccumulator::Moments::merge(const Moments &other)
     count = combined;
 }
 
+namespace {
+quint64 cellKey(double height, double concentration, double heightStep, double concentrationStep)
+{
+    const auto index = [](double value, double step) {
+        return quint32(std::min(std::floor(value / step), double(std::numeric_limits<quint32>::max())));
+    };
+    return (quint64(index(height, heightStep)) << 32) | index(concentration, concentrationStep);
+}
+}
+
+void WaterProfileAccumulator::Channel::mergeRawPoint(const RawPoint &point)
+{
+    const auto key = cellKey(point.heightM, point.concentration, rawHeightStepM, rawConcStep);
+    const auto it = rawCellIndex.constFind(key);
+    if (it == rawCellIndex.cend()) {
+        rawCellIndex.insert(key, int(rawPoints.size()));
+        rawPoints.append(point);
+        return;
+    }
+    auto &stored = rawPoints[it.value()];
+    const auto count = stored.sampleCount + point.sampleCount;
+    if (point.timeMs >= stored.timeMs) stored = point;
+    stored.sampleCount = count;
+}
+
+QVector<WaterProfileAccumulator::RawPoint> WaterProfileAccumulator::rawPoints(int channel) const
+{
+    return channel >= 0 && channel < int(channels_.size()) ? channels_[channel].rawPoints : QVector<RawPoint>{};
+}
+
+quint64 WaterProfileAccumulator::rawSampleCount(int channel) const
+{
+    return channel >= 0 && channel < int(channels_.size()) ? channels_[channel].rawSampleCount : 0;
+}
+
 bool WaterProfileAccumulator::append(int channel, const QString &id, qint64 timeMs, double concentration, double heightM)
 {
     if (channel < 0 || channel >= int(channels_.size()) || id.isEmpty() || !std::isfinite(concentration) ||
@@ -36,12 +71,23 @@ bool WaterProfileAccumulator::append(int channel, const QString &id, qint64 time
     data.seen.insert(id);
     data.bins[int(std::floor(heightM))].add(concentration);
     if (!data.latest || timeMs >= data.latest->timeMs) data.latest = Point{heightM, concentration, timeMs};
+    ++data.rawSampleCount;
+    data.mergeRawPoint({heightM, concentration, timeMs, 1});
+    while (data.rawPoints.size() > maxUnbinnedPoints) {
+        data.rawHeightStepM *= 2;
+        data.rawConcStep *= 2;
+        QVector<RawPoint> previous;
+        previous.swap(data.rawPoints);
+        data.rawCellIndex.clear();
+        data.rawPoints.reserve(previous.size());
+        for (const auto &point : previous) data.mergeRawPoint(point);
+    }
     return true;
 }
 
 QVector<WaterProfileAccumulator::Layer> WaterProfileAccumulator::layers(int channel, int resolutionM) const
 {
-    if (channel < 0 || channel >= int(channels_.size()) ||
+    if (channel < 0 || channel >= int(channels_.size()) || resolutionM == unbinnedResolution ||
         std::find(resolutions.begin(), resolutions.end(), resolutionM) == resolutions.end()) return {};
     QVector<Layer> result;
     const auto &bins = channels_[channel].bins;

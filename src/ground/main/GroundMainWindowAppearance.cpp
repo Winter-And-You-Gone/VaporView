@@ -289,16 +289,28 @@ void MainWindow::loadModernStyleSheet()
     }
 
     state_->base_style_sheet_ += QStringLiteral(R"(
+QFrame#waveformPageOuterCard[vaporViewTopLevelCard="true"] > QWidget#sectionTitleBar {
+    background-color: @vv-surface-raised;
+    border-top-left-radius: 11px;
+    border-top-right-radius: 11px;
+}
 QScrollArea#waveformMonitorPage,
 QWidget#waveformPageViewport,
-QWidget#waveformPageBody,
-QWidget#waveformPageHeaderBar,
+QWidget#waveformPageBody {
+    background-color: @vv-window;
+}
+QWidget#waveformPageContent,
 QWidget#waveformPageRow {
+    background-color: @vv-surface-raised;
+}
+QFrame#waveformPageCard {
     background-color: @vv-surface;
+    border: 1px solid @vv-border;
+    border-radius: 8px;
 }
 QFrame#waveformPageCard > .QWidget,
 QFrame#waveformPageCard > QLabel {
-    background-color: @vv-surface-raised;
+    background-color: @vv-surface;
 }
 )");
     state_->base_style_sheet_.replace("url(lucide/chevron-down.svg)", QString("url(%1)").arg(chevronDownIconPath));
@@ -514,7 +526,8 @@ int MainWindow::minimumLogSidePanelWidth() const
 
 int MainWindow::appSidebarIconOnlyWidth() const
 {
-    return std::max(kAppSidebarIconOnlyBaseWidth, scalePixels(kAppSidebarIconOnlyBaseWidth));
+    return std::max(scalePixels(kAppSidebarCompactButtonSize) + 2 * scalePixels(kAppSidebarVisualPadding) + 2,
+                    scalePixels(kAppSidebarIconOnlyBaseWidth));
 }
 
 int MainWindow::appSidebarDefaultWidth() const
@@ -579,12 +592,15 @@ void MainWindow::setAppSidebarWidth(int width)
 void MainWindow::updateAppSidebarButtonTexts()
 {
     const bool compact = state_->app_sidebar_mode_ != AppSidebarMode::Full;
-    auto applyButtonText = [this, compact](QPushButton *button, const QString& label,
+    auto *sidebarLayout = state_->app_sidebar_ ? qobject_cast<QVBoxLayout *>(state_->app_sidebar_->layout()) : nullptr;
+    auto applyButtonText = [this, compact, sidebarLayout](QPushButton *button, const QString& label,
                                           const QString& compactLabel = QString()) {
         if (!button)
         {
             return;
         }
+        if (sidebarLayout)
+            sidebarLayout->setAlignment(button, compact ? Qt::AlignHCenter : Qt::Alignment());
         button->setText(compact && !compactLabel.isEmpty() ? compactLabel : label);
         button->setToolTip(label);
         button->setAccessibleName(label);
@@ -609,6 +625,8 @@ void MainWindow::updateAppSidebarButtonTexts()
             button->style()->unpolish(button);
             button->style()->polish(button);
         }
+        if (compact)
+            button->setFixedWidth(std::max(button->minimumWidth(), button->fontMetrics().horizontalAdvance(button->text()) + 4));
         button->update();
     };
 
@@ -908,7 +926,7 @@ void MainWindow::applyScaledUiMetrics()
 {
     auto applyWidgetMetrics = [this](QWidget *widget) {
         // FPGA icon actions and plots scale their fixed sizes in FpgaControlPage::setTheme().
-        if (!widget || widget->property("fpgaIconOnly").toBool() || widget->property("fpgaFixedPlot").toBool() ||
+        if (!widget || widget->property("_vv_sidebar_caption").toBool() || widget->property("fpgaIconOnly").toBool() || widget->property("fpgaFixedPlot").toBool() ||
             widget->property("deviceTelemetryDynamicMetrics").toBool())
         {
             return;

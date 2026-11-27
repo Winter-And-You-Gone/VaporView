@@ -63,6 +63,7 @@
 #include <QDateTime>
 #include <QtEndian>
 #include <algorithm>
+#include <vector>
 #include <cmath>
 #include <functional>
 #include <limits>
@@ -1781,10 +1782,32 @@ public:
         update();
     }
 
+    void setUnbinnedProfile(QVector<WaterProfileAccumulator::RawPoint> points, std::optional<WaterProfileAccumulator::Point> latest,
+                            quint64 totalSamples, const QString &unit, bool english, const QString &emptyText)
+    {
+        raw_points_ = std::move(points);
+        layers_.clear();
+        setProperty("sampleCount", totalSamples);
+        setProperty("layerCount", raw_points_.size());
+        configureProfile(latest, WaterProfileAccumulator::unbinnedResolution, unit, english, emptyText);
+    }
+
     void setProfile(QVector<WaterProfileAccumulator::Layer> layers, std::optional<WaterProfileAccumulator::Point> latest,
                     int resolution, const QString &unit, bool english, const QString &emptyText)
     {
         layers_ = std::move(layers);
+        raw_points_.clear();
+        quint64 count = 0;
+        for (const auto &layer : layers_) count += layer.sampleCount;
+        setProperty("sampleCount", count);
+        setProperty("layerCount", layers_.size());
+        configureProfile(latest, resolution, unit, english, emptyText);
+    }
+
+private:
+    void configureProfile(std::optional<WaterProfileAccumulator::Point> latest, int resolution,
+                          const QString &unit, bool english, const QString &emptyText)
+    {
         latest_ = latest;
         resolution_ = resolution;
         unit_ = unit;
@@ -1794,12 +1817,12 @@ public:
                         : QStringLiteral("横轴：水汽浓度%1。纵轴：测距雷达高度 (m)。").arg(unit);
         setToolTip(axes_);
         nodes_.clear();
-        quint64 count = 0;
-        for (const auto &layer : layers_) count += layer.sampleCount;
-        setProperty("sampleCount", count);
-        setProperty("layerCount", layers_.size());
+        node_raw_indices_.clear();
+        setProperty("renderedPointCount", layers_.size());
         update();
     }
+
+    bool unbinned() const { return resolution_ == WaterProfileAccumulator::unbinnedResolution; }
 
 protected:
     void mouseMoveEvent(QMouseEvent *event) override
@@ -1811,11 +1834,20 @@ protected:
             if (distance <= nearest) { nearest = distance; hit = i; }
         }
         if (hit < 0) { resetTooltip(); return; }
-        const auto &layer = layers_[hit];
-        const QString message = (english_ ? QStringLiteral("Height: %1–%2 m\nCenter: %3 m\nMean: %4%5\nSample SD: %6\nSamples: %7")
-            : QStringLiteral("高度区间：%1–%2 m\n代表高度：%3 m\n平均浓度：%4%5\n样本标准差：%6\n样本数：%7"))
-            .arg(layer.minHeightM).arg(layer.maxHeightM).arg(layer.centerHeightM).arg(formatWaveValue(layer.meanConcentration, 3), unit_,
-                layer.sampleCount >= 2 ? formatWaveValue(layer.stdDev, 3) + unit_ : QStringLiteral("—")).arg(layer.sampleCount);
+        QString message;
+        if (unbinned()) {
+            const auto &point = raw_points_.at(node_raw_indices_.at(hit));
+            message = (english_ ? QStringLiteral("Height: %1 m\nConcentration: %2%3") : QStringLiteral("高度：%1 m\n浓度：%2%3"))
+                .arg(formatWaveValue(point.heightM, 3), formatWaveValue(point.concentration, 3), unit_);
+            if (point.sampleCount > 1)
+                message += (english_ ? QStringLiteral("\nMerged samples: %1") : QStringLiteral("\n近重合样本数：%1")).arg(point.sampleCount);
+        } else {
+            const auto &layer = layers_[hit];
+            message = (english_ ? QStringLiteral("Height: %1–%2 m\nCenter: %3 m\nMean: %4%5\nSample SD: %6\nSamples: %7")
+                : QStringLiteral("高度区间：%1–%2 m\n代表高度：%3 m\n平均浓度：%4%5\n样本标准差：%6\n样本数：%7"))
+                .arg(layer.minHeightM).arg(layer.maxHeightM).arg(layer.centerHeightM).arg(formatWaveValue(layer.meanConcentration, 3), unit_,
+                    layer.sampleCount >= 2 ? formatWaveValue(layer.stdDev, 3) + unit_ : QStringLiteral("—")).arg(layer.sampleCount);
+        }
         setToolTip(message);
         QToolTip::showText(event->globalPosition().toPoint(), message, this);
     }
@@ -1842,8 +1874,17 @@ protected:
             lowY = std::min(lowY, layer.centerHeightM);
             highY = std::max(highY, layer.centerHeightM);
         }
+        for (const auto &point : std::as_const(raw_points_)) {
+            lowX = std::min(lowX, point.concentration);
+            highX = std::max(highX, point.concentration);
+            lowY = std::min(lowY, point.heightM);
+            highY = std::max(highY, point.heightM);
+        }
+        const bool empty = unbinned() ? raw_points_.isEmpty() : layers_.isEmpty();
+        node_raw_indices_.clear();
+        setProperty("renderedPointCount", 0);
         const auto [xMin, xMax] = bounds(lowX, highX, std::max(1.0, highX * 0.02));
-        const auto [yMin, yMax] = bounds(lowY, highY, std::max(5.0, resolution_ * 2.0));
+        const auto [yMin, yMax] = bounds(lowY, highY, unbinned() ? 2.0 : std::max(5.0, resolution_ * 2.0));
         nodes_.clear();
         const int rightMargin = 5 + metrics.horizontalAdvance(formatWaveValue(xMax, 2)) / 2;
         const int leftMargin = 8 + std::max({metrics.horizontalAdvance(formatWaveValue(yMin, 2)),
@@ -1856,11 +1897,11 @@ protected:
         };
         const int columns = max_x_axis_intervals_ == 4 ? (area.width() >= 4 * (rightMargin * 2 + 8) ? 4 : 2)
             : fittingXAxisIntervals(max_x_axis_intervals_, area.width(), metrics, labelAt);
-        setProperty("xAxisTickCount", layers_.isEmpty() ? 0 : columns + 1);
+        setProperty("xAxisTickCount", empty ? 0 : columns + 1);
         const int yIntervals = VaporView::WavePlotFrame::adaptiveYIntervals(area.height(), metrics.height());
         setProperty("yTickCount", yIntervals + 1);
         VaporView::WavePlotFrame::drawGrid(painter, area, columns, theme, yIntervals);
-        if (layers_.isEmpty()) {
+        if (empty) {
             painter.setPen(theme.mutedText);
             painter.drawText(area, Qt::AlignCenter | Qt::TextWordWrap, empty_text_);
             return;
@@ -1883,13 +1924,33 @@ protected:
         const QColor blue = appThemeColor(AppThemeColor::PlotSeriesWaveBlue, dark);
         painter.setPen(QPen(blue, 1.5));
         painter.setBrush(blue);
-        for (int i = 0; i < layers_.size(); ++i) {
-            const auto &layer = layers_[i];
-            const auto node = position(layer.meanConcentration, layer.centerHeightM);
-            if (i && layer.binIndex == layers_[i - 1].binIndex + 1) painter.drawLine(nodes_.last(), node);
-            painter.drawEllipse(node, 2.5, 2.5);
-            nodes_.append(node);
+        if (unbinned()) {
+            constexpr int cellPx = 3;
+            const int cols = int(std::ceil(area.width() / cellPx)) + 1;
+            const int rows = int(std::ceil(area.height() / cellPx)) + 1;
+            std::vector<quint8> occupied(size_t(cols) * size_t(rows), 0);
+            for (int i = int(raw_points_.size()) - 1; i >= 0; --i) {
+                const auto &point = raw_points_.at(i);
+                const auto node = position(point.concentration, point.heightM);
+                const int x = std::clamp(int((node.x() - area.left()) / cellPx), 0, cols - 1);
+                const int y = std::clamp(int((node.y() - area.top()) / cellPx), 0, rows - 1);
+                auto &cell = occupied[size_t(y) * cols + x];
+                if (cell) continue;
+                cell = 1;
+                painter.drawEllipse(node, 2.5, 2.5);
+                nodes_.append(node);
+                node_raw_indices_.append(i);
+            }
+        } else {
+            for (int i = 0; i < layers_.size(); ++i) {
+                const auto &layer = layers_[i];
+                const auto node = position(layer.meanConcentration, layer.centerHeightM);
+                if (i && layer.binIndex == layers_[i - 1].binIndex + 1) painter.drawLine(nodes_.last(), node);
+                painter.drawEllipse(node, 2.5, 2.5);
+                nodes_.append(node);
+            }
         }
+        setProperty("renderedPointCount", nodes_.size());
         if (latest_) {
             painter.setPen(QPen(theme.background, 1.5));
             painter.setBrush(appThemeColor(AppThemeColor::PlotSeriesWaveOrange, dark));
@@ -1905,6 +1966,8 @@ private:
             QToolTip::hideText();
         }
     }
+    QVector<WaterProfileAccumulator::RawPoint> raw_points_;
+    QVector<int> node_raw_indices_;
     QVector<WaterProfileAccumulator::Layer> layers_;
     QVector<QPointF> nodes_;
     std::optional<WaterProfileAccumulator::Point> latest_;
@@ -1928,6 +1991,7 @@ struct TcpWavePanel::WaveformPage {
     };
     std::array<Lane, 2> lanes;
     std::array<VaporView::Ground::Wave::VerticalRowLabel *, 7> labels;
+    QLabel *titleLabel;
     QPushButton *raw, *harmonic;
     CalibrationControls calibration;
 };
@@ -2570,6 +2634,7 @@ void TcpWavePanel::setEnglish(bool english)
     second_peak_plot_->setEmptyText(english ? "No peak data" : "暂无峰值数据");
     if (fpga_mode_) refreshFpgaWaveform();
     if (waveform_page_) {
+        waveform_page_->titleLabel->setText(english ? QStringLiteral("Waveforms") : QStringLiteral("波形"));
         const QStringList labels = english
             ? QStringList{"Raw", "H1", "H2", "Norm H2", "Peak Trend", "Concentration", "Water Profile"}
             : QStringList{"原始波形", "一次谐波", "二次谐波", "归一化二次谐波", "峰值趋势", "水汽浓度", "水汽廓线"};
@@ -3059,23 +3124,39 @@ QWidget *TcpWavePanel::createWaveformPage(QWidget *parent)
     auto *body = new QWidget(scroll);
     setSurface(body, QStringLiteral("waveformPageBody"));
     auto *list = new QVBoxLayout(body);
-    list->setContentsMargins(12, 12, 12, 12);
+    list->setContentsMargins(12, 8, 12, 12);
     list->setSpacing(0);
     list->setSizeConstraint(QLayout::SetMinAndMaxSize);
-    auto *bar = new QWidget(body);
-    setSurface(bar, QStringLiteral("waveformPageHeaderBar"));
+    auto *outerCard = new QFrame(body);
+    outerCard->setObjectName(QStringLiteral("waveformPageOuterCard"));
+    outerCard->setFrameShape(QFrame::NoFrame);
+    VaporView::configureTopLevelCard(outerCard);
+    list->addWidget(outerCard);
+    auto *outerLayout = new QVBoxLayout(outerCard);
+    outerLayout->setContentsMargins(1, 0, 1, 1);
+    outerLayout->setSpacing(0);
+    auto *bar = new QWidget(outerCard);
+    setSurface(bar, QStringLiteral("sectionTitleBar"));
+    bar->setMinimumHeight(kTcpMainTitleBarHeight);
+    bar->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     auto *controls = new QHBoxLayout(bar);
-    controls->setContentsMargins(4, 2, 4, 2);
-    list->addWidget(bar);
+    controls->setContentsMargins(8, 2, 8, 2);
+    controls->setSpacing(6);
+    outerLayout->addWidget(bar, 0, Qt::AlignTop);
     waveform_page_ = std::make_unique<WaveformPage>();
     connect(scroll, &QObject::destroyed, this, [this] { waveform_page_.reset(); });
     auto &page = *waveform_page_;
+    page.titleLabel = new VaporView::VisualTextLabel(bar);
+    page.titleLabel->setObjectName(QStringLiteral("sectionTitleLabel"));
+    controls->addWidget(createSectionTitleCluster(bar, QStringLiteral("chart-line"), page.titleLabel, kTcpButtonHeight),
+                        0, Qt::AlignVCenter | Qt::AlignLeft);
+    controls->addSpacing(8);
     for (bool raw : {true, false}) {
         auto *button = new QPushButton(bar);
         button->setObjectName(raw ? QStringLiteral("wavePageRawButton") : QStringLiteral("wavePageHarmonicButton"));
         button->setProperty("fpgaWaveAction", true);
         button->setFixedHeight(kTcpButtonHeight);
-        controls->addWidget(button);
+        controls->addWidget(button, 0, Qt::AlignVCenter);
         auto *homeButton = raw ? fpga_raw_button_ : fpga_harmonic_button_;
         connect(button, &QPushButton::clicked, homeButton, &QPushButton::click);
         (raw ? page.raw : page.harmonic) = button;
@@ -3084,27 +3165,33 @@ QWidget *TcpWavePanel::createWaveformPage(QWidget *parent)
     page.calibration.button->setEnabled(home_calibration_.button->isEnabled());
     using VaporView::Ground::Wave::VerticalRowLabel;
     using VaporView::Ground::Wave::RowResizeHandle;
+    auto *content = new QWidget(outerCard);
+    setSurface(content, QStringLiteral("waveformPageContent"));
+    auto *contentLayout = new QVBoxLayout(content);
+    contentLayout->setContentsMargins(12, 10, 12, 12);
+    contentLayout->setSpacing(0);
+    outerLayout->addWidget(content, 1);
     auto *headings = new QHBoxLayout;
     headings->setSpacing(6);
     // Use the same font-dependent width as the seven row labels.
-    auto *headingSpacer = new VerticalRowLabel(body);
+    auto *headingSpacer = new VerticalRowLabel(content);
     auto spacerPolicy = headingSpacer->sizePolicy();
     spacerPolicy.setRetainSizeWhenHidden(true);
     headingSpacer->setSizePolicy(spacerPolicy);
     headings->addWidget(headingSpacer);
     headingSpacer->hide();
     for (int channel = 0; channel < 2; ++channel) {
-        page.lanes[channel].heading = createChannelHeading(body);
+        page.lanes[channel].heading = createChannelHeading(content);
         headings->addWidget(page.lanes[channel].heading, 1);
     }
-    list->addLayout(headings);
-    list->addSpacing(6);
+    contentLayout->addLayout(headings);
+    contentLayout->addSpacing(6);
     const QStringList plotNames{"Raw", "H1", "H2", "Normalized"};
     for (int index = 0; index < 7; ++index) {
-        auto *row = new QWidget(body);
+        auto *row = new QWidget(content);
         setSurface(row, QStringLiteral("waveformPageRow"));
         row->setFixedHeight(index < 4 ? 136 : index == 6 ? 154 : 186);
-        list->addWidget(row);
+        contentLayout->addWidget(row);
         auto *rowLayout = new QVBoxLayout(row);
         rowLayout->setContentsMargins(0, 0, 0, 0);
         rowLayout->setSpacing(0);
@@ -3119,7 +3206,7 @@ QWidget *TcpWavePanel::createWaveformPage(QWidget *parent)
             auto *cell = new QFrame(row);
             cell->setObjectName(QStringLiteral("waveformPageCard"));
             cell->setFrameShape(QFrame::NoFrame);
-            VaporView::configureTopLevelCard(cell);
+            cell->setAttribute(Qt::WA_StyledBackground);
             cell->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
             auto *layout = new QVBoxLayout(cell);
             layout->setContentsMargins(8, 6, 8, 6);
@@ -3128,7 +3215,7 @@ QWidget *TcpWavePanel::createWaveformPage(QWidget *parent)
             if (index == 5) { lane.water.concentration = cell; continue; }
             if (index == 6) {
                 lane.water.profile = cell;
-                createWaterPlots(lane.water, body, channel);
+                createWaterPlots(lane.water, content, channel);
                 continue;
             }
             auto *infoRow = new QHBoxLayout;
@@ -3184,9 +3271,16 @@ void TcpWavePanel::addCalibrationControls(CalibrationControls &controls, QHBoxLa
     controls.button->setFixedHeight(kTcpButtonHeight);
     controls.file = new ElidedCalibrationFileLabel(row->parentWidget());
     controls.file->setObjectName(QStringLiteral("waterCalibrationFileLabel"));
-    row->addWidget(controls.button);
-    row->addWidget(controls.file, 1);
+    row->addWidget(controls.button, 0, Qt::AlignVCenter);
+    row->addWidget(controls.file, 1, Qt::AlignVCenter);
     connect(controls.button, &QPushButton::clicked, this, &TcpWavePanel::waterCalibrationRequested);
+}
+
+static QString profileResolutionText(int resolution, bool english)
+{
+    if (resolution == WaterProfileAccumulator::unbinnedResolution)
+        return english ? QStringLiteral("Unbinned") : QStringLiteral("不分箱格");
+    return QStringLiteral("%1 m").arg(resolution);
 }
 
 void TcpWavePanel::createWaterPlots(WaterCards &cards, QWidget *parent, int channel)
@@ -3232,7 +3326,7 @@ void TcpWavePanel::createWaterPlots(WaterCards &cards, QWidget *parent, int chan
         return createMenuCheckIcon(appThemeColor(AppThemeColor::MenuCheckText, isDarkThemeEnabled()));
     });
     for (const int resolution : WaterProfileAccumulator::resolutions)
-        cards.resolution->addItem(QStringLiteral("%1 m").arg(resolution), resolution);
+        cards.resolution->addItem(profileResolutionText(resolution, is_english_), resolution);
     profileHeader->addWidget(cards.resolution);
     connect(cards.resolution, &QComboBox::currentIndexChanged, this, [this, channel, combo = cards.resolution] {
         profile_resolution_m_[channel] = combo->currentData().toInt();
@@ -3327,13 +3421,19 @@ void TcpWavePanel::refreshWaterPlots(int changedChannel)
     for (int channel = 0; channel < 2; ++channel) {
         if (changedChannel >= 0 && changedChannel != channel) continue;
         const auto latest = water_profile_->latest(channel);
-        auto layers = water_profile_->layers(channel, profile_resolution_m_[channel]);
+        const bool unbinned = profile_resolution_m_[channel] == WaterProfileAccumulator::unbinnedResolution;
+        const auto points = unbinned ? water_profile_->rawPoints(channel) : QVector<WaterProfileAccumulator::RawPoint>{};
+        const auto totalSamples = water_profile_->rawSampleCount(channel);
+        const auto layers = water_profile_->layers(channel, profile_resolution_m_[channel]);
         const auto missing = QStringLiteral("—");
-        const QString summary = (is_english_ ? QStringLiteral("Y Height: %1   X Concentration: %2   Layers: %3")
+        const auto count = unbinned ? points.size() : layers.size();
+        const QString summary = (unbinned
+            ? (is_english_ ? QStringLiteral("Y Height: %1   X Concentration: %2   Points: %3") : QStringLiteral("Y 高度：%1   X 浓度：%2   点数：%3"))
+            : is_english_ ? QStringLiteral("Y Height: %1   X Concentration: %2   Layers: %3")
             : QStringLiteral("Y 高度：%1   X 浓度：%2   层数：%3"))
             .arg(latest ? formatWaveValue(latest->heightM, 2) + QStringLiteral(" m") : missing,
                  latest ? formatWaveValue(latest->concentration, 2) + QStringLiteral(" ") + water_unit_ : missing,
-                 layers.isEmpty() ? missing : QString::number(layers.size()));
+                 count ? QString::number(count) : missing);
         const auto &series = water_samples_.value(channel);
         QVector<float> values;
         QVector<qint64> times;
@@ -3343,8 +3443,10 @@ void TcpWavePanel::refreshWaterPlots(int changedChannel)
         }
         const auto update = [&](WaterCards &cards, const QString &suffix) {
             cards.summary->setText(summary);
-            cards.summary->setToolTip(summary);
+            cards.summary->setToolTip(unbinned && totalSamples > quint64(count)
+                ? summary + (is_english_ ? QStringLiteral("\nTotal samples: %1") : QStringLiteral("\n总样本数：%1")).arg(totalSamples) : summary);
             const QSignalBlocker blocker(cards.resolution);
+            cards.resolution->setItemText(cards.resolution->findData(0), profileResolutionText(0, is_english_));
             cards.resolution->setCurrentIndex(cards.resolution->findData(profile_resolution_m_[channel]));
             cards.resolution->setToolTip(is_english_ ? QStringLiteral("Height resolution") : QStringLiteral("高度分辨率"));
             cards.clear->setText(is_english_ ? QStringLiteral("Clear") : QStringLiteral("清空"));
@@ -3353,8 +3455,10 @@ void TcpWavePanel::refreshWaterPlots(int changedChannel)
             cards.series->setEmptyText(water_calibration_name_.isEmpty() ? selectText
                 : (is_english_ ? QStringLiteral("Waiting for concentration") : QStringLiteral("等待有效浓度")));
             cards.series->setPeakValues(values, times);
-            cards.layers->setProfile(layers, latest, profile_resolution_m_[channel], unit, is_english_, water_calibration_name_.isEmpty() ? selectText
-                : (is_english_ ? QStringLiteral("Waiting for paired lidar and concentration") : QStringLiteral("等待配对的测距与浓度")));
+            const QString emptyText = water_calibration_name_.isEmpty() ? selectText
+                : (is_english_ ? QStringLiteral("Waiting for paired lidar and concentration") : QStringLiteral("等待配对的测距与浓度"));
+            if (unbinned) cards.layers->setUnbinnedProfile(points, latest, totalSamples, unit, is_english_, emptyText);
+            else cards.layers->setProfile(layers, latest, profile_resolution_m_[channel], unit, is_english_, emptyText);
         };
         const QString suffix = QStringLiteral(" · CH %1").arg(channel);
         update(home_water_[channel], suffix);

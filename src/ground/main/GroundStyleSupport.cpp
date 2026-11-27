@@ -284,7 +284,7 @@ QToolButton#windowMaximizeButton:checked {
 }
 QToolButton#windowCloseButton:hover,
 QToolButton#windowCloseButton[titleBarHover="true"] {
-    background-color: @vv-title-hover;
+    background-color: @vv-close-hover;
 }
 QWidget#customTitleBar QToolButton::menu-indicator {
     image: none;
@@ -383,14 +383,21 @@ QSplitter {
 }
 QScrollArea#waveformMonitorPage,
 QWidget#waveformPageViewport,
-QWidget#waveformPageBody,
-QWidget#waveformPageHeaderBar,
+QWidget#waveformPageBody {
+    background-color: @vv-window;
+}
+QWidget#waveformPageContent,
 QWidget#waveformPageRow {
+    background-color: @vv-surface-raised;
+}
+QFrame#waveformPageCard {
     background-color: @vv-surface;
+    border: 1px solid @vv-border;
+    border-radius: 8px;
 }
 QFrame#waveformPageCard > .QWidget,
 QFrame#waveformPageCard > QLabel {
-    background-color: @vv-surface-raised;
+    background-color: @vv-surface;
 }
 QSplitter#appLayoutSplitter,
 QSplitter#appLayoutSplitter > QWidget,
@@ -1311,6 +1318,7 @@ QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"] > QWidget#environmentSect
 QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"] > TcpWavePanel > QWidget#sectionTitleBar,
 QFrame#epsilonSectionCard[vaporViewTopLevelCard="true"] > QWidget#sectionTitleBar,
 QFrame#recordingStatusCard[vaporViewTopLevelCard="true"] > QWidget#sectionTitleBar,
+QFrame#waveformPageOuterCard[vaporViewTopLevelCard="true"] > QWidget#sectionTitleBar,
 QFrame#logPanelFrame[vaporViewTopLevelCard="true"] > QWidget#sectionTitleBar {
     background-color: @vv-surface-raised;
     border-top-left-radius: 11px;

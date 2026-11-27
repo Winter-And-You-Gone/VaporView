@@ -2297,7 +2297,11 @@ static void harmonicHomeGraphs()
         require(wavePage && nav, "waveforms page and navigation exist");
         nav->click();
         require(stack->currentWidget() == wavePage, "waveform navigation opens the page");
-        const auto rows = wavePage->findChildren<QWidget *>("waveformPageRow");
+        auto *outer = wavePage->findChild<QFrame *>("waveformPageOuterCard");
+        require(outer && outer->property("vaporViewTopLevelCard").toBool(), "waveforms share one outer card");
+        auto *bar = outer->findChild<QWidget *>("sectionTitleBar", Qt::FindDirectChildrenOnly);
+        require(bar, "outer card owns its title bar");
+        const auto rows = outer->findChildren<QWidget *>("waveformPageRow");
         require(rows.size() == 7 && wavePage->findChildren<QGroupBox *>().isEmpty(), "seven waveform rows replace individual plot cards");
         QApplication::processEvents();
         require(wavePage->findChild<QWidget *>("vaporViewTopLevelCardShadowLayer", Qt::FindDirectChildrenOnly),
@@ -2305,8 +2309,8 @@ static void harmonicHomeGraphs()
         QFrame *previousCard = nullptr;
         for (auto *row : rows) {
             const auto cards = row->findChildren<QFrame *>("waveformPageCard", Qt::FindDirectChildrenOnly);
-            require(cards.size() == 2 && cards[0]->property("vaporViewTopLevelCard").toBool() &&
-                    cards[1]->property("vaporViewTopLevelCard").toBool(), "each waveform row has two top-level cards");
+            require(cards.size() == 2 && !cards[0]->property("vaporViewTopLevelCard").toBool() &&
+                    !cards[1]->property("vaporViewTopLevelCard").toBool(), "each waveform row has two nested cards");
             require(cards[1]->x() - cards[0]->geometry().right() - 1 == qRound(6 * scale / 100.0), "horizontal card gap is six pixels");
             if (previousCard)
                 require(cards[0]->mapTo(wavePage->widget(), QPoint()).y() -
@@ -2319,6 +2323,22 @@ static void harmonicHomeGraphs()
         }
         for (bool english : {true, false}) {
             monitor->setEnglish(english);
+            QApplication::processEvents();
+            auto *title = bar->findChild<QLabel *>("sectionTitleLabel");
+            require(title && title->text() == (english ? QStringLiteral("Waveforms") : QStringLiteral("波形")), "localized outer card title");
+            QWidget *calibration = nullptr;
+            for (auto *button : bar->findChildren<QPushButton *>())
+                if (button->property("waterCalibrationButton").toBool()) calibration = button;
+            QList<QWidget *> headerItems{title, bar->findChild<QPushButton *>("wavePageRawButton"),
+                bar->findChild<QPushButton *>("wavePageHarmonicButton"), calibration, bar->findChild<QLabel *>("waterCalibrationFileLabel")};
+            QRect previous;
+            for (auto *item : headerItems) {
+                require(item && item->isVisibleTo(wavePage), "waveform header item visible");
+                const QRect bounds(item->mapTo(bar, QPoint()), item->size());
+                require(bar->rect().contains(bounds) && (!previous.isValid() || previous.right() < bounds.left()),
+                        "waveform header items fit in order without overlap");
+                previous = bounds;
+            }
             const QStringList headings = english
                 ? QStringList{"ADC 0 / DLIA 0 · 1368 nm (In-situ)", "ADC 1 / DLIA 1 · 816 nm (Remote)"}
                 : QStringList{"ADC 0 / DLIA 0 · 1368 nm（原位）", "ADC 1 / DLIA 1 · 816 nm（遥测）"};
@@ -2409,7 +2429,13 @@ static void harmonicHomeGraphs()
         wavePage->ensureWidgetVisible(resolution);
         resolution->showPopup();
         auto *popup = resolution->popupMenu();
-        require(popup->isVisible() && popup->actions().size() == 5, "profile combo opens a five-row SingleLevelPopupMenu");
+        require(popup->isVisible() && popup->actions().size() == 6, "profile combo opens six resolutions");
+        require(popup->actions().first()->text() == QStringLiteral("不分箱格") && resolution->itemData(0).toInt() == 0 &&
+                popup->actions().last()->text() == QStringLiteral("50 m") && resolution->itemData(5).toInt() == 50, "profile menu endpoints");
+        popup->actions().first()->trigger();
+        resolution->hidePopup();
+        require(homeResolution->currentData().toInt() == 0, "unbinned selection reaches the home lane");
+        resolution->showPopup();
         popup->actions().last()->trigger();
         resolution->hidePopup();
         require(homeResolution->currentData().toInt() == 50, "page resolution updates the corresponding home lane");
