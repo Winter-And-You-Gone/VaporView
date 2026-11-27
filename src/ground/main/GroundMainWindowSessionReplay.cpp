@@ -88,7 +88,15 @@ VaporView::EpsilonData navigation(const Sample& s)
     e.ecef_packet_rate_hz = number(s, "epsilon_ecef_packet_rate_hz");
     e.valid = flag(s, "epsilon_valid");
     e.heading_valid = flag(s, "heading_valid");
-    e.gnss_fix_text = s.fields.value("gnss_fix").toStdString();
+    const auto fix = s.fields.value("gnss_fix").trimmed();
+    e.gnss_fix_text = fix.toStdString();
+    bool numeric = false;
+    e.gnss_fix_code = s.fields.value("gnss_fix_code", fix).toInt(&numeric);
+    if (!numeric) {
+        static const QStringList names{"NO_GPS", "NO_FIX", "2D", "3D", "DGPS", "RTK_FLOAT", "RTK_FIXED", "STATIC", "PPP", "RTK_DUAL"};
+        const int code = names.indexOf(fix.toUpper());
+        e.gnss_fix_code = code >= 0 ? code : (s.fields.value("filter_status_bits").toUShort() >> 4) & 0xf;
+    }
     e.error_message = s.fields.value("epsilon_error_message").toStdString();
     e.device_timestamp_us = s.fields.value("epsilon_device_timestamp_us").toULongLong();
     e.utc_unix_s = s.fields.value("epsilon_utc_unix_s").toULongLong();
@@ -154,9 +162,7 @@ void MainWindow::resetReplayDisplays(bool replay)
     state_->current_epsilon_ = {};
     state_->current_gnss_ = {};
     state_->current_imu_ = {};
-    state_->current_ptb_ = {};
-    state_->current_lidar_ = {};
-    state_->current_hc2a_ = {};
+    clearExternalSensorReadings();
     state_->current_temperature_controller_ = {};
     state_->replay_navigation_ = {};
     state_->tcp_wave_panel_->setUiTestMode(false);
@@ -217,7 +223,7 @@ void MainWindow::openUiTestSourceWindow()
             nav.satelliteCount = e.gnss_satellites;
             nav.horizontalAccuracyM = e.hacc_m;
 #ifdef VAPORVIEW_HAS_OSGEARTH
-            if (e.valid) maybeForwardMap3DSample(e, s.timestamp);
+            if (e.valid) maybeForwardMap3DSample(e, s.timestamp, MapSampleSource::SessionReplay);
 #endif
         } else if (s.stream == Stream::NavigationStatus) {
             nav.gnssFixCode = s.fields.value("gnss_fix_code").toInt();

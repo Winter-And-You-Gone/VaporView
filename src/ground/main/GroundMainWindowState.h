@@ -15,6 +15,8 @@
 #include "ground/main/GatewaySettingsDialog.h"
 #include <QSet>
 #include <atomic>
+#include <optional>
+#include <utility>
 
 #include "ground/navigation/NavigationStatusPanel.h"
 class WaterProfileAccumulator;
@@ -511,6 +513,11 @@ struct MainWindowState
     quint32 current_remote_epsilon_validity_flags_ = 0;
     VaporView::GnssData current_gnss_;
     VaporView::ImuData current_imu_;
+    // A real remote relay can send raw auxiliary readings between Basic packets.
+    bool ptb_from_raw_fpga_ = false;
+    bool hc2a_from_raw_fpga_ = false;
+    bool lidar_from_raw_fpga_ = false;
+    std::optional<std::pair<bool, VaporView::SensorTransportPath>> external_sensor_route_;
     VaporView::PtbData current_ptb_;
     VaporView::Hc2aData current_hc2a_;
     VaporView::LidarData current_lidar_;
@@ -605,6 +612,10 @@ struct MainWindowState
     QHash<quint16, VaporView::PeakSearchRange> remote_peak_search_commands_;
 #ifdef VAPORVIEW_HAS_OSGEARTH
     std::unique_ptr<VaporView::Ground::Map3DController> map3d_controller_;
+    std::uint32_t map3d_calibration_epoch_ = 0;
+    QString map3d_calibration_sha_, map3d_water_unit_;
+    VaporView::Ai8TemperatureControllerProtocol::LiveData map3d_ai8_;
+    std::chrono::steady_clock::time_point map3d_ai8_time_{}, map3d_tec_ports_time_{};
 #endif
     VaporView::TelemetryStatus remote_status_;
     bool remote_ai8_fault_metadata_ = false;

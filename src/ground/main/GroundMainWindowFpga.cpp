@@ -1168,7 +1168,11 @@ void MainWindow::setupFpgaControlPage()
     }, Qt::QueuedConnection);
     connect(controller,&Controller::measurementUpdated,this,&MainWindow::receiveFpgaMeasurements,Qt::QueuedConnection);
     connect(controller,&Controller::temperaturePortsChanged,this,[this](const QJsonObject& ports) {
-        state_->local_tec103_ports_=ports;updateHomeDeviceStatusCapsules();
+        state_->local_tec103_ports_=ports;
+#ifdef VAPORVIEW_HAS_OSGEARTH
+        if (!isRemoteSkyMode()) state_->map3d_tec_ports_time_ = std::chrono::steady_clock::now();
+#endif
+        updateHomeDeviceStatusCapsules();
     },Qt::QueuedConnection);
     connect(controller,&Controller::temperatureConnectionChanged,this,[this](bool connected,const QString& detail,bool identifying) {
         state_->fpga_tec103_identifying_=identifying;
@@ -1251,8 +1255,12 @@ void MainWindow::setupFpgaControlPage()
         if(isRemoteSkyMode()&&!isFpgaRelayPath()&&state_->remote_sky_controller_->isOpen())updateInternalEnvironment(reading);
     });
     connect(remote, &Remote::fpgaSensorUpdated, this, [this, page](const VaporView::FpgaSensor::Reading& reading) {
-        if (isRemoteSkyMode() && state_->remote_sky_controller_->isOpen()
-            && state_->fpga_session_.remoteStatus.value("ready").toBool()
+        if (state_->session_replay_ || !isRemoteSkyMode() || !state_->remote_sky_controller_->isOpen()) return;
+        if (isFpgaRelayPath() && !state_->fpga_session_.remoteStatus.value("simulation").toBool()) {
+            syncExternalSensorRoute();
+            applyExternalFpgaReading(reading);
+        }
+        if (state_->fpga_session_.remoteStatus.value("ready").toBool()
             && std::chrono::steady_clock::now() - state_->fpga_session_.statusTime < std::chrono::seconds(4))
         {
             if (reading.validity.structure && reading.validity.crc) {
@@ -1354,6 +1362,7 @@ void MainWindow::setupFpgaControlPage()
             state_->fpga_home_connect_device_ = VaporView::SkyDeviceId::All;
             state_->fpga_home_raw_start_pending_ = false;
             state_->fpga_session_.resetRemote();
+            if (isRemoteSkyMode()) clearExternalSensorReadings();
         }
         if (isRemoteSkyMode()) updateFpgaPageBackend();
     });
@@ -1406,6 +1415,10 @@ void MainWindow::receiveRemoteFpgaStatus(const QJsonObject& status)
         }
     }
     const auto previousStatus = state_->fpga_session_.remoteStatus;
+    if (isRemoteSkyMode() && isFpgaRelayPath() &&
+        ((previousStatus.value("ready").toBool() && !status.value("ready").toBool()) ||
+         previousStatus.value("simulation").toBool() != status.value("simulation").toBool()))
+        clearExternalSensorReadings();
     const auto configuration = status.value("configuration").toObject();
     const bool configurationChanged = configuration != state_->fpga_session_.remoteStatus.value("configuration").toObject();
     state_->fpga_session_.updateRemoteStatus(status);
@@ -1444,9 +1457,42 @@ void MainWindow::receiveFpgaWaveform(const VaporView::FpgaWave::CompletedStream 
     if(!isUiTestMode())state_->fpga_page_->updateWaveform(stream);
 }
 
+// Only the external instruments own these caches. Internal BMP390/SHT45 readings
+// have a separate consumer, even when their payload contains the same quantities.
+void MainWindow::applyExternalFpgaReading(const VaporView::FpgaSensor::Reading& r)
+{
+    using VaporView::FpgaSensor::SensorKind;
+    const bool valid = r.validity.structure && r.validity.crc && r.validity.deviceOnline && r.validity.measurement;
+    const auto now = std::chrono::steady_clock::now();
+    if (r.source == 0x40 && r.kind == SensorKind::Ptb210) {
+        if (valid && r.pressurePa && std::isfinite(*r.pressurePa)) {
+            state_->current_ptb_ = {};
+            state_->current_ptb_.pressure_hpa = *r.pressurePa / 100.;
+            state_->current_ptb_.timestamp = now;
+            state_->current_ptb_.valid = state_->ptb_from_raw_fpga_ = true;
+        } else if (state_->ptb_from_raw_fpga_) state_->current_ptb_ = {};
+    } else if (r.source == 0x41 && r.kind == SensorKind::Hc2a) {
+        if (valid && r.temperatureC && r.humidityPct && std::isfinite(*r.temperatureC) && std::isfinite(*r.humidityPct)) {
+            state_->current_hc2a_ = {};
+            state_->current_hc2a_.temperature = *r.temperatureC;
+            state_->current_hc2a_.humidity = *r.humidityPct;
+            state_->current_hc2a_.timestamp = now;
+            state_->current_hc2a_.valid = state_->hc2a_from_raw_fpga_ = true;
+        } else if (state_->hc2a_from_raw_fpga_) state_->current_hc2a_ = {};
+    } else if (r.source == 0x45 && r.kind == SensorKind::Sdfm300) {
+        if (valid && r.distanceMm) {
+            state_->current_lidar_ = {};
+            state_->current_lidar_.distance_m = *r.distanceMm / 1000.;
+            state_->current_lidar_.timestamp = now;
+            state_->current_lidar_.valid = state_->lidar_from_raw_fpga_ = true;
+        } else if (state_->lidar_from_raw_fpga_) state_->current_lidar_ = {};
+    }
+}
+
 void MainWindow::receiveFpgaMeasurements(const VaporView::FpgaSensor::AdaptedMeasurements &m)
 {
-    if ((isRemoteSkyMode()&&!isUiTestMode()) || (isUiTestMode()&&!isFpgaRelayPath())) return;
+    if (state_->session_replay_ || (isRemoteSkyMode()&&!isUiTestMode()) || (isUiTestMode()&&!isFpgaRelayPath())) return;
+    syncExternalSensorRoute();
     const auto &r = m.reading;
     if (r.validity.structure && r.validity.crc) {
         if (r.validity.deviceOnline) state_->home_online_fpga_sensors_.insert(r.source);
@@ -1465,25 +1511,8 @@ void MainWindow::receiveFpgaMeasurements(const VaporView::FpgaSensor::AdaptedMea
     const auto now = std::chrono::steady_clock::now();
     state_->fpga_sensor_times_[r.source] = now;
     updateInternalEnvironment(r);
-    if (r.kind == VaporView::FpgaSensor::SensorKind::Ptb210 && r.source == 0x40)
-    {
-        state_->current_ptb_ = VaporView::PtbData{};
-        if (valid && r.pressurePa) { state_->current_ptb_.pressure_hpa = *r.pressurePa/100.; state_->current_ptb_.valid=true; state_->current_ptb_.timestamp=now; }
-    }
-    else if (r.kind == VaporView::FpgaSensor::SensorKind::Hc2a)
-    {
-        state_->current_hc2a_ = VaporView::Hc2aData{};
-        if (valid && r.temperatureC && r.humidityPct) {
-            state_->current_hc2a_.temperature=*r.temperatureC;state_->current_hc2a_.humidity=*r.humidityPct;
-            state_->current_hc2a_.valid=true;state_->current_hc2a_.timestamp=now;
-        }
-    }
-    else if (r.kind == VaporView::FpgaSensor::SensorKind::Sdfm300)
-    {
-        state_->current_lidar_ = VaporView::LidarData{};
-        if (valid && r.distanceMm) { state_->current_lidar_.distance_m=*r.distanceMm/1000.; state_->current_lidar_.valid=true; state_->current_lidar_.timestamp=now; }
-    }
-    else if (r.kind == VaporView::FpgaSensor::SensorKind::Epsilon)
+    if (isFpgaRelayPath()) applyExternalFpgaReading(r);
+    if (r.kind == VaporView::FpgaSensor::SensorKind::Epsilon)
     {
         if (m.epsilon)
         {
@@ -1515,7 +1544,13 @@ void MainWindow::receiveFpgaMeasurements(const VaporView::FpgaSensor::AdaptedMea
         const int channel = m.ai8 ? m.ai8->channel-1 : -1;
         if (channel >= 0 && channel < VaporView::Ai8TemperatureControllerProtocol::kChannelCount)
         {
-            if(m.ai8Live)state_->fpga_ai8_live_=*m.ai8Live;
+            if (m.ai8Live) {
+                state_->fpga_ai8_live_ = *m.ai8Live;
+#ifdef VAPORVIEW_HAS_OSGEARTH
+                state_->map3d_ai8_ = *m.ai8Live;
+                state_->map3d_ai8_time_ = now;
+#endif
+            }
             state_->fpga_ai8_ui_dirty_ = true;
         }
     }
@@ -1642,10 +1677,8 @@ void MainWindow::invalidateFpgaMeasurements()
     state_->fpga_position_valid_=false;
     state_->fpga_velocity_valid_=false;
     if (state_->fpga_sources_.contains(0x42)) state_->current_epsilon_ = VaporView::EpsilonData{};
-    if (state_->fpga_sources_.contains(0x40)) state_->current_ptb_ = VaporView::PtbData{};
-    if (isFpgaRelayPath()) state_->current_hc2a_ = VaporView::Hc2aData{};
+    if (!isRemoteSkyMode() && isFpgaRelayPath()) clearExternalSensorReadings();
     state_->internal_environment_.clear();state_->internal_environment_times_.clear();
-    if (state_->fpga_sources_.contains(0x45)) state_->current_lidar_ = VaporView::LidarData{};
     if (state_->fpga_sources_.contains(0x4a)) {
         state_->current_temperature_controller_=VaporView::TemperatureControllerData{};
         state_->fpga_rd105_ui_dirty_ = true;

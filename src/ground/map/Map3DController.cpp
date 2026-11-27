@@ -3,7 +3,9 @@
 #include "map3d/Map3DWindow.h"
 #include "geo/CoordinateTransform.h"
 
+#include <QEvent>
 #include <cmath>
+#include <utility>
 #include <osgEarth/Threading>
 
 namespace VaporView::Ground
@@ -12,6 +14,8 @@ namespace VaporView::Ground
 Map3DController::Map3DController(QObject *parent)
     : QObject(parent)
 {
+    telemetry_timer_.setInterval(300);
+    connect(&telemetry_timer_, &QTimer::timeout, this, &Map3DController::refreshLiveTelemetry);
     flush_timer_.setInterval(50);
     flush_timer_.setTimerType(Qt::CoarseTimer);
     connect(&flush_timer_, &QTimer::timeout, this, &Map3DController::flush);
@@ -34,15 +38,59 @@ void Map3DController::open()
         window_ = new VaporView::Map3D::Map3DWindow(nullptr);
         window_->setUiTestMode(ui_test_mode_);
         window_->setAttribute(Qt::WA_QuitOnClose, false);
+        window_->setWaterProfileProviders(revision_provider_, profile_provider_);
+        connect(window_, &Map3D::Map3DWindow::openWaveformPageRequested, this, &Map3DController::openWaveformPageRequested);
+        window_->installEventFilter(this);
         connect(window_, &QObject::destroyed, this, [this]() {
             window_ = nullptr;
+            telemetry_timer_.stop();
             stopPendingSamples();
         });
     }
 
+    if (window_->isVisible()) refreshLiveTelemetry();
     window_->show();
     window_->raise();
     window_->activateWindow();
+}
+
+bool Map3DController::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == window_.data()) {
+        if (event->type() == QEvent::Show && telemetry_provider_) {
+            refreshLiveTelemetry();
+            telemetry_timer_.start();
+        } else if (event->type() == QEvent::Hide) {
+            telemetry_timer_.stop();
+            stopPendingSamples();
+        }
+    }
+    return QObject::eventFilter(watched, event);
+}
+
+void Map3DController::refreshLiveTelemetry()
+{
+    if (telemetry_provider_ && window_ && window_->isVisible())
+        window_->setLiveTelemetrySnapshot(telemetry_provider_());
+}
+
+void Map3DController::setLiveTelemetryProvider(std::function<Map3D::Map3DLiveTelemetrySnapshot()> provider)
+{
+    telemetry_provider_ = std::move(provider);
+    if (telemetry_provider_ && window_ && window_->isVisible()) {
+        refreshLiveTelemetry();
+        telemetry_timer_.start();
+    } else {
+        telemetry_timer_.stop();
+    }
+}
+
+void Map3DController::setWaterProfileProviders(Map3D::Map3DProfileRevisionProvider revisionProvider,
+                                               Map3D::Map3DWaterProfileProvider snapshotProvider)
+{
+    revision_provider_ = std::move(revisionProvider);
+    profile_provider_ = std::move(snapshotProvider);
+    if (window_) window_->setWaterProfileProviders(revision_provider_, profile_provider_);
 }
 
 void Map3DController::setUiTestMode(bool enabled)
@@ -76,6 +124,12 @@ void Map3DController::close()
 void Map3DController::forwardEpsilonSample(const VaporView::EpsilonData& data,
                                             quint64 recordTimestampUs)
 {
+    forwardLiveRenderSample(data, recordTimestampUs, {});
+}
+
+void Map3DController::forwardLiveRenderSample(const VaporView::EpsilonData& data, quint64 recordTimestampUs,
+                                            const Geo::TrajectoryHeatValues& heatValues)
+{
     if (!window_ || !window_->isVisible())
     {
         stopPendingSamples();
@@ -97,14 +151,16 @@ void Map3DController::forwardEpsilonSample(const VaporView::EpsilonData& data,
         return;
     }
 
+    const Geo::TrajectoryRenderSample frozen{sample, sample.fixQuality == Geo::FixQuality::Invalid
+        ? Geo::TrajectoryHeatValues{} : heatValues};
     last_drop_reason_.clear();
     if (pending_samples_.empty())
     {
-        pending_samples_.push_back(sample);
+        pending_samples_.push_back(frozen);
     }
     else
     {
-        pending_samples_.back() = sample;
+        pending_samples_.back() = frozen;
     }
     if (!flush_timer_.isActive())
     {
@@ -137,9 +193,9 @@ void Map3DController::flush()
         return;
     }
 
-    std::vector<VaporView::Geo::NavSample> samples;
+    std::vector<Geo::TrajectoryRenderSample> samples;
     samples.swap(pending_samples_);
-    window_->appendSamples(samples);
+    window_->appendRenderSamples(samples);
     if (pending_samples_.empty())
     {
         flush_timer_.stop();
@@ -158,7 +214,7 @@ int Map3DController::pendingSampleCount() const
 
 qint64 Map3DController::latestPendingRecordTimestampUs() const
 {
-    return pending_samples_.empty() ? -1 : pending_samples_.back().recordTimestampUs;
+    return pending_samples_.empty() ? -1 : pending_samples_.back().navigation.recordTimestampUs;
 }
 
 bool Map3DController::flushTimerActive() const

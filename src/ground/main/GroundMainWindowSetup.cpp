@@ -665,6 +665,48 @@ void MainWindow::setupMenuBar()
     state_->view_menu_->addAction(state_->session_viewer_action_);
 
 #ifdef VAPORVIEW_HAS_OSGEARTH
+    auto *map = state_->map3d_controller_.get();
+    map->setLiveTelemetryProvider([this] { return map3DLiveTelemetrySnapshot(); });
+    map->setWaterProfileProviders([this]() -> quint64 {
+        return state_->water_profile_ ? state_->water_profile_->revision() : 0;
+    }, [this](int inSituResM, int columnResM) {
+        VaporView::Map3D::Map3DWaterProfileSnapshot result;
+        if (!state_->session_replay_) {
+            const auto water = state_->calibration_service_->liveSnapshot();
+            result.calibrationSelected = water.calibrationSelected && water.calibrationValid;
+            result.unit = water.unit;
+            result.calibrationName = water.calibrationName;
+        }
+        const auto *profile = state_->water_profile_.get();
+        if (!profile) return result;
+        for (int ch = 0; ch < 2; ++ch) {
+            auto& dest = result.channels[ch];
+            dest.revision = profile->revision();
+            dest.resolutionM = ch == 0 ? inSituResM : columnResM;
+            dest.totalSamples = profile->rawSampleCount(ch);
+            if (const auto latest = profile->latest(ch)) {
+                dest.hasLatest = true;
+                dest.latestHeightM = latest->heightM;
+                dest.latestConcentration = latest->concentration;
+                dest.latestTimeMs = latest->timeMs;
+            }
+            if (dest.resolutionM == WaterProfileAccumulator::unbinnedResolution) {
+                for (const auto& point : profile->rawPoints(ch))
+                    dest.rawPoints.push_back({point.heightM, point.concentration, point.timeMs, point.sampleCount});
+            } else {
+                for (const auto& layer : profile->layers(ch, dest.resolutionM))
+                    dest.layers.push_back({layer.binIndex, layer.minHeightM, layer.maxHeightM, layer.centerHeightM,
+                                           layer.meanConcentration, layer.stdDev, layer.sampleCount});
+            }
+        }
+        return result;
+    });
+    connect(map, &VaporView::Ground::Map3DController::openWaveformPageRequested, this, [this] {
+        state_->waveform_nav_btn_->click();
+        showNormal();
+        raise();
+        activateWindow();
+    });
     state_->map3d_action_ = new QAction(this);
     connect(state_->map3d_action_, &QAction::triggered, this, &MainWindow::onOpenMap3DWindowClicked);
 
@@ -4531,6 +4573,7 @@ void MainWindow::updateDeviceConfigState()
         !state_->connection_attempt_in_progress_ && !state_->port_detection_in_progress_ && !state_->epsilon_reconfigure_in_progress_;
     const bool remoteInputsEnabled = remote && (isUiTestMode() || !state_->is_connected_) && !state_->connection_attempt_in_progress_;
     const bool fpgaRelay = currentSensorTransportPath() == VaporView::SensorTransportPath::FpgaRelay;
+    syncExternalSensorRoute();
     const bool developerOptions = state_->developer_options_action_->isChecked();
     // Direct settings remain stored separately from FPGA configuration.
     const bool sensorInputsEnabled = remote ? remoteInputsEnabled : localInputsEnabled;

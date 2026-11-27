@@ -82,7 +82,8 @@ namespace VaporView::Ground::Widgets { class TemperatureControllerOverviewPanel;
 namespace VaporView::Ground::Navigation { class CombinationNavigationPage; }
 namespace VaporView::Ground::Navigation { class EpsilonConfigPanel; }
 #ifdef VAPORVIEW_HAS_OSGEARTH
-namespace VaporView::Ground { class Map3DController; }
+namespace VaporView::Ground { class Map3DController; struct Map3DLivePipelineTest; }
+namespace VaporView::Map3D { struct Map3DLiveTelemetrySnapshot; }
 #endif
 namespace VaporView::Ground::Devices { struct CollectorSet; }
 namespace VaporView::Ground::Devices { class LocalDeviceConnectionController; }
@@ -264,6 +265,9 @@ private:
     void setupFpgaControlPage();
     void shutdownFpgaWorker();
     void invalidateFpgaMeasurements();
+    void clearExternalSensorReadings();
+    void syncExternalSensorRoute();
+    void applyExternalFpgaReading(const VaporView::FpgaSensor::Reading& reading);
     void receiveFpgaMeasurements(const VaporView::FpgaSensor::AdaptedMeasurements &measurements);
     void receiveFpgaWaveform(const VaporView::FpgaWave::CompletedStream &stream);
     void updateInternalEnvironment(const VaporView::FpgaSensor::Reading &reading);
@@ -582,7 +586,13 @@ private:
     void disconnectLocalTemperatureController();
     void reconnectLocalTemperatureController();
 #ifdef VAPORVIEW_HAS_OSGEARTH
-    void maybeForwardMap3DSample(const VaporView::EpsilonData& epsilonData, quint64 recordTimestampUs);
+    friend struct VaporView::Ground::Map3DLivePipelineTest;
+    enum class MapSampleSource { Live, SessionReplay };
+    VaporView::Map3D::Map3DLiveTelemetrySnapshot map3DLiveTelemetrySnapshot();
+    void readMap3DWater(VaporView::Map3D::Map3DLiveTelemetrySnapshot& snapshot);
+    void readMap3DEnvironment(VaporView::Map3D::Map3DLiveTelemetrySnapshot& snapshot) const;
+    void maybeForwardMap3DSample(const VaporView::EpsilonData& epsilonData, quint64 recordTimestampUs,
+                                 MapSampleSource source = MapSampleSource::Live);
     void noteMap3DSampleDrop(const QString& source, const QString& reason, quint64 recordTimestampUs = 0);
 #endif
     void sendTemperatureCommand(VaporView::CommandId command, const VaporView::TemperatureControllerCommand& payload);

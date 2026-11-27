@@ -2062,9 +2062,7 @@ void MainWindow::onConnectClicked()
     state_->current_epsilon_ = VaporView::EpsilonData();
     state_->current_gnss_ = VaporView::GnssData();
     state_->current_imu_ = VaporView::ImuData();
-    state_->current_ptb_ = VaporView::PtbData();
-    state_->current_hc2a_ = VaporView::Hc2aData();
-    state_->current_lidar_ = VaporView::LidarData();
+    clearExternalSensorReadings();
     state_->current_temperature_controller_ = VaporView::TemperatureControllerData();
 
     if (state_->device_panel_coordinator_)
@@ -2327,6 +2325,30 @@ void MainWindow::onCancelConnectClicked()
     QApplication::processEvents(QEventLoop::AllEvents);
 }
 
+void MainWindow::clearExternalSensorReadings()
+{
+    state_->current_ptb_ = {};
+    state_->current_hc2a_ = {};
+    state_->current_lidar_ = {};
+    state_->ptb_from_raw_fpga_ = state_->hc2a_from_raw_fpga_ = state_->lidar_from_raw_fpga_ = false;
+#ifdef VAPORVIEW_HAS_OSGEARTH
+    state_->map3d_ai8_time_ = {};
+    state_->map3d_tec_ports_time_ = {};
+#endif
+}
+
+void MainWindow::syncExternalSensorRoute()
+{
+    const auto route = std::make_pair(isRemoteSkyMode(), currentSensorTransportPath());
+    if (state_->external_sensor_route_ && *state_->external_sensor_route_ != route) {
+        clearExternalSensorReadings();
+        state_->current_epsilon_ = {};
+        state_->current_remote_epsilon_validity_flags_ = 0;
+        state_->current_temperature_controller_ = {};
+    }
+    state_->external_sensor_route_ = route;
+}
+
 void MainWindow::onGnssDataReady()
 {
     const CollectorSnapshot collectors = snapshotCollectors();
@@ -2449,6 +2471,10 @@ void MainWindow::onAi8TemperatureControllerDataReady()
     {
         state_->local_ai8_sample_ms_ = QDateTime::currentMSecsSinceEpoch();
         const auto liveData = collectors.ai8_temperature_controller->getLatestData();
+#ifdef VAPORVIEW_HAS_OSGEARTH
+        state_->map3d_ai8_ = liveData;
+        state_->map3d_ai8_time_ = std::chrono::steady_clock::now();
+#endif
         if (state_->ai8_temperature_controller_panel_)
         {
             state_->ai8_temperature_controller_panel_->applyLiveData(liveData);

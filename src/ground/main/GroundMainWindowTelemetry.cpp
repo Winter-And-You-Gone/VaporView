@@ -1,9 +1,15 @@
 #include "ground/calibration/CalibrationService.h"
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "LogContext.h"
+#ifdef VAPORVIEW_HAS_OSGEARTH
+#include "map3d/Map3DWindow.h"
+#endif
 
 void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& telemetry)
 {
+    if (state_->session_replay_) return;
+    syncExternalSensorRoute();
+    const bool realRelay = isFpgaRelayPath() && !state_->fpga_session_.remoteStatus.value("simulation").toBool();
     const auto now = std::chrono::steady_clock::now();
     auto hasFlag = [&telemetry](quint32 flag) {
         return (telemetry.validity_flags & flag) != 0;
@@ -20,9 +26,73 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
             state_->is_english_ ? QStringLiteral("Remote Sky")
                                 : QStringLiteral("天空端远程"));
     }
+    if (hasFlag(VaporView::BasicHasLidar) && std::isfinite(telemetry.lidar_distance_m) && telemetry.lidar_distance_m >= 0)
+    {
+        state_->lidar_from_raw_fpga_ = false;
+        state_->current_lidar_ = {};
+        state_->current_lidar_.valid = true;
+        state_->current_lidar_.timestamp = now;
+        state_->current_lidar_.distance_m = telemetry.lidar_distance_m;
+        if (hasFlag(VaporView::BasicHasLegacyLidarStrength))
+        {
+            state_->current_lidar_.legacy_signal_strength = telemetry.legacy_lidar_signal_strength;
+        }
+    }
+    else if (!realRelay || !state_->lidar_from_raw_fpga_)
+    {
+        state_->current_lidar_ = {};
+        state_->current_lidar_.error_message = remoteNoDataText(state_->is_english_).toStdString();
+    }
+
+    if (!realRelay && hasFlag(VaporView::BasicHasTemperature) && hasFlag(VaporView::BasicHasHumidity)
+        && std::isfinite(telemetry.temperature_c) && std::isfinite(telemetry.humidity_percent))
+    {
+        state_->hc2a_from_raw_fpga_ = false;
+        state_->current_hc2a_ = {};
+        state_->current_hc2a_.valid = true;
+        state_->current_hc2a_.timestamp = now;
+        state_->current_hc2a_.temperature = telemetry.temperature_c;
+        state_->current_hc2a_.humidity = telemetry.humidity_percent;
+    }
+    else if (!realRelay || !state_->hc2a_from_raw_fpga_)
+    {
+        state_->current_hc2a_ = {};
+        state_->current_hc2a_.error_message = remoteNoDataText(state_->is_english_).toStdString();
+    }
+
+    if (hasFlag(VaporView::BasicHasPressure) && std::isfinite(telemetry.pressure_hpa))
+    {
+        state_->ptb_from_raw_fpga_ = false;
+        state_->current_ptb_ = {};
+        state_->current_ptb_.valid = true;
+        state_->current_ptb_.timestamp = now;
+        state_->current_ptb_.pressure_hpa = telemetry.pressure_hpa;
+    }
+    else if (!realRelay || !state_->ptb_from_raw_fpga_)
+    {
+        state_->current_ptb_ = {};
+        state_->current_ptb_.error_message = remoteNoDataText(state_->is_english_).toStdString();
+    }
+    // RemoteSkyController updates device availability from Basic flags before this slot.
+    // Restore raw owners' actual receipt ages for the home page, including an absent HC2A.
+    if (realRelay && isRemoteSkyMode()) {
+        auto *remote = state_->remote_sky_controller_.get();
+        const auto wallNow = QDateTime::currentMSecsSinceEpoch();
+        auto publishReceipt = [&](VaporView::SkyDeviceId id, const auto& sample) {
+            if (sample.valid) {
+                const auto age = std::chrono::duration_cast<std::chrono::milliseconds>(now - sample.timestamp).count();
+                remote->noteDeviceData(id, wallNow - age);
+            } else {
+                remote->clearDeviceData(id);
+            }
+        };
+        publishReceipt(VaporView::SkyDeviceId::Hc2a, state_->current_hc2a_);
+        if (state_->ptb_from_raw_fpga_) publishReceipt(VaporView::SkyDeviceId::Ptb, state_->current_ptb_);
+        if (state_->lidar_from_raw_fpga_) publishReceipt(VaporView::SkyDeviceId::Lidar, state_->current_lidar_);
+    }
+#ifdef VAPORVIEW_HAS_OSGEARTH
     if (remoteEpsilon.available)
     {
-#ifdef VAPORVIEW_HAS_OSGEARTH
         if (remoteEpsilon.hasPosition)
         {
             maybeForwardMap3DSample(state_->current_epsilon_, telemetry.host_time_us);
@@ -33,56 +103,15 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
                                 QStringLiteral("missing BasicHasPosition"),
                                 telemetry.host_time_us);
         }
+    }
 #endif
-    }
 
-    state_->current_lidar_ = VaporView::LidarData();
-    if (hasFlag(VaporView::BasicHasLidar))
-    {
-        state_->current_lidar_.valid = true;
-        state_->current_lidar_.timestamp = now;
-        state_->current_lidar_.distance_m = telemetry.lidar_distance_m;
-        if (hasFlag(VaporView::BasicHasLegacyLidarStrength))
-        {
-            state_->current_lidar_.legacy_signal_strength = telemetry.legacy_lidar_signal_strength;
-        }
-    }
-    else
-    {
-        state_->current_lidar_.error_message = remoteNoDataText(state_->is_english_).toStdString();
-    }
-
-    state_->current_hc2a_ = VaporView::Hc2aData();
-    if ((!isFpgaRelayPath() || state_->fpga_session_.remoteStatus.value("simulation").toBool())
-        && hasFlag(VaporView::BasicHasTemperature) && hasFlag(VaporView::BasicHasHumidity))
-    {
-        state_->current_hc2a_.valid = true;
-        state_->current_hc2a_.timestamp = now;
-        state_->current_hc2a_.temperature = telemetry.temperature_c;
-        state_->current_hc2a_.humidity = telemetry.humidity_percent;
-    }
-    else
-    {
-        state_->current_hc2a_.error_message = remoteNoDataText(state_->is_english_).toStdString();
-    }
-
-    state_->current_ptb_ = VaporView::PtbData();
-    if (hasFlag(VaporView::BasicHasPressure))
-    {
-        state_->current_ptb_.valid = true;
-        state_->current_ptb_.timestamp = now;
-        state_->current_ptb_.pressure_hpa = telemetry.pressure_hpa;
-    }
-    else
-    {
-        state_->current_ptb_.error_message = remoteNoDataText(state_->is_english_).toStdString();
-    }
     state_->calibration_service_->noteSensor(QStringLiteral("remote_environment"),
         {{"host_received_utc_us",QString::number(VaporView::Session::harmonicReceptionTimeUs())},
          {"source_host_time_us",QString::number(telemetry.host_time_us)},
          {"sensor_sample_utc",QJsonValue(QJsonValue::Null)},{"alignment","host_receipt_uncertain"},
-         {"temperature_valid",hasFlag(VaporView::BasicHasTemperature)},{"pressure_valid",hasFlag(VaporView::BasicHasPressure)},
-         {"temperature_c",hasFlag(VaporView::BasicHasTemperature)?QJsonValue(telemetry.temperature_c):QJsonValue(QJsonValue::Null)},
+         {"temperature_valid",!realRelay && hasFlag(VaporView::BasicHasTemperature)},{"pressure_valid",hasFlag(VaporView::BasicHasPressure)},
+         {"temperature_c",!realRelay && hasFlag(VaporView::BasicHasTemperature)?QJsonValue(telemetry.temperature_c):QJsonValue(QJsonValue::Null)},
          {"pressure_hpa",hasFlag(VaporView::BasicHasPressure)?QJsonValue(telemetry.pressure_hpa):QJsonValue(QJsonValue::Null)}});
 
     // The existing 100 ms display timer renders the latest snapshot. Keep
@@ -90,12 +119,194 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
 }
 
 #ifdef VAPORVIEW_HAS_OSGEARTH
-void MainWindow::maybeForwardMap3DSample(const VaporView::EpsilonData& epsilonData, quint64 recordTimestampUs)
+namespace {
+using SteadyClock = std::chrono::steady_clock;
+constexpr qint64 environmentTtlMs = 3000;
+constexpr qint64 positionTtlMs = 2000;
+constexpr qint64 waterTtlMs = 2000;
+
+qint64 receptionAgeMs(SteadyClock::time_point received, SteadyClock::time_point now)
 {
-    if (state_->map3d_controller_)
-    {
-        state_->map3d_controller_->forwardEpsilonSample(epsilonData, recordTimestampUs);
+    if (received == SteadyClock::time_point{} || received > now) return -1;
+    return std::chrono::duration_cast<std::chrono::milliseconds>(now - received).count();
+}
+
+bool fresh(qint64 age, qint64 ttl) { return age >= 0 && age <= ttl; }
+}
+
+void MainWindow::readMap3DEnvironment(VaporView::Map3D::Map3DLiveTelemetrySnapshot& s) const
+{
+    const auto now = SteadyClock::now();
+    const auto& hc = state_->current_hc2a_;
+    const auto& ptb = state_->current_ptb_;
+    const auto& lidar = state_->current_lidar_;
+    auto source = [this](QString sensor, bool raw) {
+        if (state_->session_replay_) return sensor + QStringLiteral(" / Session");
+        if (raw) return sensor + QStringLiteral(" / FPGA");
+        return isRemoteSkyMode() ? sensor + QStringLiteral(" / Basic") : sensor;
+    };
+    if (hc.valid) {
+        s.temperatureSource = s.humiditySource = source(QStringLiteral("HC2A"), state_->hc2a_from_raw_fpga_);
+        s.temperatureAgeMs = s.humidityAgeMs = receptionAgeMs(hc.timestamp, now);
+        s.temperatureStale = s.humidityStale = !fresh(s.temperatureAgeMs, environmentTtlMs);
+        s.hasTemperature = std::isfinite(hc.temperature);
+        s.hasHumidity = std::isfinite(hc.humidity);
+        s.temperatureC = hc.temperature;
+        s.humidityRh = hc.humidity;
     }
+    if (ptb.valid && std::isfinite(ptb.pressure_hpa)) {
+        s.pressureSource = source(QStringLiteral("PTB210"), state_->ptb_from_raw_fpga_);
+        s.pressureAgeMs = receptionAgeMs(ptb.timestamp, now);
+        s.pressureStale = !fresh(s.pressureAgeMs, environmentTtlMs);
+        s.hasPressure = true;
+        s.pressureHpa = ptb.pressure_hpa;
+    }
+    if (lidar.valid && std::isfinite(lidar.distance_m) && lidar.distance_m >= 0) {
+        s.lidarAgeMs = receptionAgeMs(lidar.timestamp, now);
+        s.lidarStale = !fresh(s.lidarAgeMs, positionTtlMs);
+        s.hasLidar = true;
+        s.lidarDistanceM = lidar.distance_m;
+    }
+}
+
+void MainWindow::readMap3DWater(VaporView::Map3D::Map3DLiveTelemetrySnapshot& s)
+{
+    const auto water = state_->calibration_service_->liveSnapshot();
+    s.calibrationSelected = water.calibrationSelected;
+    s.calibrationValid = water.calibrationValid;
+    s.calibrationName = water.calibrationName;
+    s.calibrationSha256 = water.calibrationSha256;
+    s.waterUnit = water.unit;
+    s.calibrationWarning = water.warning;
+    if (!water.calibrationSelected || !water.calibrationValid) return;
+    if (!state_->map3d_calibration_epoch_ || state_->map3d_calibration_sha_ != water.calibrationSha256 ||
+        state_->map3d_water_unit_ != water.unit) {
+        ++state_->map3d_calibration_epoch_;
+        state_->map3d_calibration_sha_ = water.calibrationSha256;
+        state_->map3d_water_unit_ = water.unit;
+    }
+    s.calibrationEpoch = state_->map3d_calibration_epoch_;
+    const auto copy = [](const auto& reading, bool& has, double& value, qint64& age,
+                         bool& stale, qint64& hostTime, QString& status) {
+        age = reading.ageMs;
+        stale = !fresh(age, waterTtlMs);
+        has = reading.valid && std::isfinite(reading.value);
+        if (has) value = reading.value;
+        hostTime = static_cast<qint64>(reading.hostTimeUs / 1000);
+        status = reading.status;
+    };
+    copy(water.inSitu1368, s.hasInSituWater, s.inSituWater, s.inSituAgeMs, s.inSituStale, s.inSituHostTimeMs, s.inSituStatus);
+    copy(water.column816, s.hasColumnWater, s.columnWater, s.columnAgeMs, s.columnStale, s.columnHostTimeMs, s.columnStatus);
+}
+
+VaporView::Map3D::Map3DLiveTelemetrySnapshot MainWindow::map3DLiveTelemetrySnapshot()
+{
+    syncExternalSensorRoute();
+    VaporView::Map3D::Map3DLiveTelemetrySnapshot s;
+    s.snapshotHostTimeMs = QDateTime::currentMSecsSinceEpoch();
+    const bool remote = isRemoteSkyMode();
+    const bool relay = isFpgaRelayPath();
+    s.sourceConnected = state_->session_replay_ || isUiTestMode() || (remote ? state_->remote_sky_controller_->isOpen()
+        : state_->is_connected_ || state_->fpga_ready_);
+    const auto& nav = state_->current_epsilon_;
+    const bool localFpga = !remote && relay && !state_->session_replay_;
+    const bool hasPositionPacket = state_->session_replay_ || (localFpga ? state_->fpga_position_valid_ :
+        !remote || (state_->current_remote_epsilon_validity_flags_ & VaporView::BasicHasPosition));
+    const auto now = SteadyClock::now();
+    if (nav.valid) {
+        s.fixQualityText = QString::fromStdString(nav.gnss_fix_text);
+        if (s.fixQualityText.isEmpty()) s.fixQualityText = QString::number(nav.gnss_fix_code);
+        VaporView::Geo::NavSample llh;
+        llh.latDeg = nav.latitude_deg;
+        llh.lonDeg = nav.longitude_deg;
+        llh.heightM = nav.height_m;
+        if (hasPositionPacket && llh.hasLlh()) {
+            s.hasPosition = true;
+            s.latDeg = llh.latDeg;
+            s.lonDeg = llh.lonDeg;
+            s.heightM = llh.heightM;
+            s.navAgeMs = receptionAgeMs(localFpga ? state_->fpga_position_time_ : nav.timestamp, now);
+            s.navStale = !fresh(s.navAgeMs, positionTtlMs);
+        }
+    }
+    readMap3DEnvironment(s);
+    if (!state_->session_replay_) readMap3DWater(s);
+
+    const auto& tec = state_->current_temperature_controller_;
+    const auto& ai8 = state_->map3d_ai8_;
+    QStringList thermal;
+    const bool en = state_->is_english_;
+    const auto connection = [en](bool online) {
+        return online ? (en ? QStringLiteral("online") : QStringLiteral("在线")) :
+                        (en ? QStringLiteral("offline") : QStringLiteral("离线"));
+    };
+    if (relay && !state_->session_replay_) {
+        for (int ch = 0; ch < 2; ++ch) {
+            const auto port = homeTec103Port(ch == 0 ? VaporView::SkyDeviceId::Tec103InSitu : VaporView::SkyDeviceId::Tec103Remote);
+            QString text = ch == 0 ? (en ? QStringLiteral("TEC103 in-situ") : QStringLiteral("TEC103 原位"))
+                                   : (en ? QStringLiteral("TEC103 remote") : QStringLiteral("TEC103 遥测"));
+            const bool connected = port.value("connected").toBool();
+            text += QStringLiteral(" ") + connection(connected);
+            const double temp = tec.channels[ch].measured_temperature_c;
+            if (connected && tec.valid && std::isfinite(temp)) text += QStringLiteral(" %1 °C").arg(temp, 0, 'f', 1);
+            if (port.value("error").toInt()) {
+                text += en ? QStringLiteral(" fault") : QStringLiteral(" 故障");
+                s.thermalFault = true;
+            }
+            thermal << text;
+        }
+        const auto portTime = remote ? state_->fpga_session_.statusTime : state_->map3d_tec_ports_time_;
+        s.thermalAgeMs = receptionAgeMs(tec.timestamp != SteadyClock::time_point{} ? tec.timestamp : portTime, now);
+        s.thermalFault |= tec.error_code != 0;
+    }
+    const qint64 ai8Age = receptionAgeMs(state_->map3d_ai8_time_, now);
+    const bool ai8Online = (ai8Age >= 0 && (ai8.valid || ai8.mainStatusValid || ai8.alarmStatusValid)) ||
+        (relay && !state_->session_replay_ && homeFpgaDeviceState(VaporView::SkyDeviceId::Ai8TemperatureController) == VaporView::DeviceState::Connected);
+    QString ai8Text = QStringLiteral("AI-8288 ") + connection(ai8Online);
+    if (ai8Age >= 0) {
+        s.thermalAgeMs = std::max(s.thermalAgeMs, ai8Age); // A fresh endpoint cannot refresh its stale sibling.
+        if (ai8.valid) {
+            for (int ch = 0; ch < int(ai8.measuredC.size()); ++ch) {
+                if (std::isfinite(ai8.measuredC[ch]))
+                    ai8Text += QStringLiteral(" CH%1 %2 °C").arg(ch + 1).arg(ai8.measuredC[ch], 0, 'f', 1);
+            }
+        }
+        if ((ai8.mainStatusValid && (ai8.mainStatusRaw & 0x100)) || (ai8.alarmStatusValid &&
+            std::any_of(ai8.alarmStatusRegisters.cbegin(), ai8.alarmStatusRegisters.cend(), [](auto reg) { return reg != 0; }))) {
+            s.thermalFault = true;
+            ai8Text += en ? QStringLiteral(" alarm/fault") : QStringLiteral(" 告警/故障");
+        }
+    }
+    thermal << ai8Text;
+    s.thermalSummary = thermal.join(QStringLiteral(" · "));
+    s.hasThermal = s.thermalAgeMs >= 0 || s.thermalFault;
+    s.thermalStale = !fresh(s.thermalAgeMs, environmentTtlMs);
+    return s;
+}
+
+void MainWindow::maybeForwardMap3DSample(const VaporView::EpsilonData& data, quint64 recordTimestampUs, MapSampleSource source)
+{
+    auto *controller = state_->map3d_controller_.get();
+    if (!controller || !controller->window() || !controller->window()->isVisible()) return;
+    VaporView::Geo::TrajectoryHeatValues heat;
+    const bool replay = source == MapSampleSource::SessionReplay;
+    const auto positionTime = !replay && !isRemoteSkyMode() && isFpgaRelayPath() && state_->fpga_position_valid_
+        ? state_->fpga_position_time_ : data.timestamp;
+    if (data.valid && data.gnss_fix_code > 0 && fresh(receptionAgeMs(positionTime, SteadyClock::now()), positionTtlMs)) {
+        VaporView::Map3D::Map3DLiveTelemetrySnapshot s;
+        readMap3DEnvironment(s);
+        if (s.hasTemperature && !s.temperatureStale) heat.temperatureC = s.temperatureC;
+        if (s.hasHumidity && !s.humidityStale) heat.humidityRh = s.humidityRh;
+        if (s.hasPressure && !s.pressureStale) heat.pressureHpa = s.pressureHpa;
+        if (s.hasLidar && !s.lidarStale) heat.lidarDistanceM = s.lidarDistanceM;
+        if (!replay && !state_->session_replay_) {
+            readMap3DWater(s);
+            heat.calibrationEpoch = s.calibrationEpoch;
+            if (s.hasInSituWater && !s.inSituStale) heat.inSituWaterConcentration = s.inSituWater;
+            if (s.hasColumnWater && !s.columnStale) heat.columnWaterConcentration = s.columnWater;
+        }
+    }
+    controller->forwardLiveRenderSample(data, recordTimestampUs, heat);
 }
 
 void MainWindow::noteMap3DSampleDrop(const QString& source, const QString& reason, quint64 recordTimestampUs)
@@ -284,6 +495,9 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
                 }
                 if (keepFaultMetadata)
                     continue;
+#ifdef VAPORVIEW_HAS_OSGEARTH
+                state_->map3d_ai8_time_ = {};
+#endif
                 state_->remote_ai8_fault_metadata_ = false;
                 state_->remote_ai8_system_fault_ = false;
                 if (state_->ai8_temperature_controller_panel_)
@@ -323,6 +537,7 @@ void MainWindow::onRemoteTemperatureControllerStatusUpdated(const VaporView::Tem
     state_->recording_service_->recordTemperatureControllerStatus(
         VaporView::Ground::Session::GroundRecordingService::currentTimestampUs(),controllerData);
     state_->current_temperature_controller_ = controllerData;
+    state_->current_temperature_controller_.timestamp = std::chrono::steady_clock::now();
     if (state_->rd105_device_session_)
     {
         state_->rd105_device_session_->setRemoteAvailable(
@@ -339,6 +554,12 @@ void MainWindow::onRemoteTemperatureControllerStatusUpdated(const VaporView::Tem
 void MainWindow::onRemoteAi8TemperatureControllerStatusUpdated(
     const VaporView::Ai8TemperatureControllerProtocol::LiveData& liveData)
 {
+#ifdef VAPORVIEW_HAS_OSGEARTH
+    if (!state_->session_replay_) {
+        state_->map3d_ai8_ = liveData;
+        state_->map3d_ai8_time_ = std::chrono::steady_clock::now();
+    }
+#endif
     const bool hasChannelOrStatusMetadata = liveData.mainStatusValid || liveData.alarmStatusValid ||
         liveData.detailedChannel != 0 ||
         std::any_of(liveData.controlStates.cbegin(), liveData.controlStates.cend(), [](auto state) {
