@@ -6,6 +6,10 @@
 #include <QSaveFile>
 #include <QSet>
 
+#include <algorithm>
+#include <cmath>
+#include <iterator>
+
 namespace VaporView::Ground::Calibration
 {
 namespace
@@ -63,6 +67,68 @@ RecordedConcentrations readRecordedConcentrations(const QString& filename)
     }
     r.success=validateRows(r);return r;
 }
+bool attachRecordedConcentrationsToSamples(
+    const QString& sessionDir, const std::vector<quint64>& sampleRecordTimestampsUs,
+    std::vector<VaporView::Geo::TrajectoryRenderSample>& samples, QString& waterUnit,
+    QString& warning, quint64 maxDeltaUs, std::uint32_t calibrationEpoch)
+{
+    const QString path = QDir(sessionDir).filePath(QStringLiteral("calibration_concentrations.jsonl"));
+    if (!QFileInfo::exists(path)) return false;
+
+    const auto recorded = readRecordedConcentrations(path);
+    if (!recorded.success) {
+        if (!warning.isEmpty()) warning += QLatin1Char(' ');
+        warning += QStringLiteral("无法加载已记录的水汽浓度：%1").arg(recorded.error);
+        return false;
+    }
+
+    struct Reading { quint64 hostTimeUs; double concentration; };
+    std::vector<Reading> column, inSitu;
+    QString unit;
+    for (const auto& value : recorded.rows) {
+        const auto row = value.toObject();
+        if (!row["valid"].toBool()) continue;
+        const auto concentration = row["initial_concentration"];
+        const quint64 hostTimeUs = row["host_time_us"].toString().toULongLong();
+        const int wavelength = row["wavelength_nm"].toInt();
+        if (!hostTimeUs || !concentration.isDouble() || !std::isfinite(concentration.toDouble()) ||
+            (wavelength != 816 && wavelength != 1368)) continue;
+        auto& channel = wavelength == 816 ? column : inSitu;
+        channel.push_back({hostTimeUs, concentration.toDouble()});
+        if (unit.isEmpty()) unit = row["unit"].toString();
+    }
+    if (column.empty() && inSitu.empty()) return false;
+    for (auto* channel : {&column, &inSitu}) {
+        std::stable_sort(channel->begin(), channel->end(), [](const Reading& a, const Reading& b) {
+            return a.hostTimeUs < b.hostTimeUs;
+        });
+    }
+    const auto attach = [maxDeltaUs](const std::vector<Reading>& channel, quint64 time, double& target) {
+        const auto after = std::upper_bound(channel.begin(), channel.end(), time,
+            [](quint64 t, const Reading& reading) { return t < reading.hostTimeUs; });
+        if (after == channel.begin()) return false;
+        const auto& latest = *std::prev(after);
+        if (time - latest.hostTimeUs > maxDeltaUs) return false;
+        target = latest.concentration;
+        return true;
+    };
+    bool matched = false;
+    for (std::size_t i = 0; i < samples.size(); ++i) {
+        auto& sample = samples[i];
+        quint64 time = i < sampleRecordTimestampsUs.size() ? sampleRecordTimestampsUs[i] : 0;
+        if (!time && sample.navigation.recordTimestampUs > 0) time = quint64(sample.navigation.recordTimestampUs);
+        if (!time) continue;
+        const bool hasColumn = attach(column, time, sample.heat.columnWaterConcentration);
+        const bool hasInSitu = attach(inSitu, time, sample.heat.inSituWaterConcentration);
+        if (hasColumn || hasInSitu) {
+            sample.heat.calibrationEpoch = calibrationEpoch;
+            matched = true;
+        }
+    }
+    if (matched) waterUnit = unit;
+    return matched;
+}
+
 bool exportRecordedConcentrations(const QString& filename,const RecordedConcentrations& source,QString *error)
 {
     auto verified=source;if(!validateRows(verified)){*error=verified.error;return false;}

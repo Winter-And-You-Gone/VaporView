@@ -1,10 +1,14 @@
 #include "WaterCalibrationFixture.h"
+#include "IndependentCalibrationFixture.h"
+#include "ground/calibration/RecordedConcentrations.h"
 #include "ground/session/SessionCsv.h"
 #include <QCoreApplication>
+#include <QDir>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QTemporaryDir>
 #include <cmath>
+#include <limits>
 
 using namespace VaporView::Ground;
 using namespace VaporView::Ground::Calibration;
@@ -33,11 +37,101 @@ Sample atPeak(Sample sample, double peak)
         sample.feature.fields[sample.feature.headers.indexOf(QLatin1String(key))] = QString::number(peak, 'g', 17);
     return sample;
 }
+void testRecordedConcentrationReplay()
+{
+    IndependentCalibrationTest::Rig rig;
+    const auto file = rig.complete();
+    rig.service->selectFile(file.filename);
+    rig.service->synchronize();
+    VaporView::Ground::Session::GroundRecordingService recorder;
+    recorder.setCalibrationPolicy(rig.service);
+    VaporView::Ground::Session::GroundRecordingOptions options;
+    options.baseDirectory = rig.root.filePath("sessions");
+    QString error;
+    check(recorder.start(options, nullptr, &error), qPrintable(error));
+    const QString session = recorder.status().sessionDirectory;
+    constexpr quint64 base = 1700000000000000ULL;
+    const auto record = [&](quint64 offset, int wavelength, int peak, quint32 cycleId) {
+        check(recorder.recordFpgaHarmonics(base + offset, IndependentCalibrationTest::cycle(wavelength, peak, cycleId)),
+              "record software-test cycle for replay");
+    };
+    record(300000, 816, 6, 1); // 300 ppmv, written before the older 816 nm cycle
+    record(150000, 1368, 8, 2); // 200 ppmv
+    record(0, 816, 2, 3); // 100 ppmv
+    record(175000, 816, 9, 4); // outside the fitted range, leaves the previous valid reading eligible
+    record(750000, 1368, 4, 5); // 100 ppmv
+    check(!recorder.stop().writeFailed, "seal calibrated replay Session");
+
+    const double missing = std::numeric_limits<double>::quiet_NaN();
+    struct Expected { quint64 time; double column; double inSitu; };
+    const std::vector<Expected> expected{
+        {base - 1, missing, missing}, {base, 100, missing}, {base + 150000, 100, 200},
+        {base + 200000, 100, 200}, {base + 299999, missing, 200}, {base + 300000, 300, 200},
+        {base + 500000, 300, missing}, {base + 500001, missing, missing}, {base + 750000, missing, 100},
+        {0, missing, missing}};
+    std::vector<quint64> times;
+    std::vector<VaporView::Geo::TrajectoryRenderSample> samples(expected.size());
+    for (std::size_t i = 0; i < samples.size(); ++i) {
+        times.push_back(expected[i].time);
+        samples[i].navigation.deviceTimestampUs = base;
+        samples[i].heat.peak = 9876;
+    }
+    samples[0].navigation.recordTimestampUs = base; // explicit standard row time has precedence
+    samples[6].navigation.recordTimestampUs = times[6];
+    times[6] = 0; // use the navigation host time when the explicit timestamp is absent
+    QString unit, warning;
+    constexpr quint64 window = 200000;
+    constexpr std::uint32_t epoch = 7;
+    check(attachRecordedConcentrationsToSamples(session, times, samples, unit, warning, window, epoch),
+          "validated replay has matches");
+    expect(unit == "ppmv" && warning.isEmpty(), "replay returns the recorded unit on a match");
+    const auto same = [](double actual, double wanted) {
+        return std::isnan(wanted) ? std::isnan(actual) : std::abs(actual - wanted) < 1e-9;
+    };
+    for (std::size_t i = 0; i < samples.size(); ++i) {
+        const auto& heat = samples[i].heat;
+        expect(same(heat.columnWaterConcentration, expected[i].column), "816 nm uses the latest valid preceding reading within the window");
+        expect(same(heat.inSituWaterConcentration, expected[i].inSitu), "1368 nm has its own host-time series");
+        const bool matched = std::isfinite(expected[i].column) || std::isfinite(expected[i].inSitu);
+        expect(heat.calibrationEpoch == (matched ? epoch : 0) && heat.peak == 9876,
+               "only matched readings get an epoch and waveform peak stays independent");
+    }
+
+    std::vector<VaporView::Geo::TrajectoryRenderSample> before(1);
+    before[0].navigation.latDeg = 31.25;
+    before[0].heat.lidarDistanceM = 12.5;
+    before[0].heat.columnWaterConcentration = 42;
+    before[0].heat.calibrationEpoch = 3;
+    unit = "prior unit";
+    expect(!attachRecordedConcentrationsToSamples(session, {base - 1}, before, unit, warning, window, epoch) &&
+           warning.isEmpty() && unit == "prior unit", "a verified file with no time match supplies no unit");
+    QTemporaryDir legacy;
+    check(legacy.isValid(), "empty legacy Session directory");
+    expect(!attachRecordedConcentrationsToSamples(legacy.path(), {base}, before, unit, warning) && warning.isEmpty() &&
+           before[0].heat.columnWaterConcentration == 42, "missing concentrations in old Sessions are silent");
+
+    const QString jsonl = QDir(session).filePath("calibration_concentrations.jsonl");
+    auto lines = read(jsonl).trimmed().split('\n');
+    check(lines.size() == 5, "five real recorder rows including the quality rejection");
+    auto changed = QJsonDocument::fromJson(lines.last()).object();
+    changed["initial_concentration"] = 999;
+    lines.last() = QJsonDocument(changed).toJson(QJsonDocument::Compact);
+    write(jsonl, lines.join('\n') + '\n');
+    const auto damaged = readRecordedConcentrations(jsonl);
+    check(!damaged.success && !damaged.error.isEmpty(), "tampered final row fails integrity validation");
+    warning = "existing warning";
+    expect(!attachRecordedConcentrationsToSamples(session, {base}, before, unit, warning) &&
+           warning.startsWith("existing warning") && warning.contains(damaged.error), "replay appends the validation failure reason");
+    expect(before[0].navigation.latDeg == 31.25 && before[0].heat.lidarDistanceM == 12.5 &&
+           before[0].heat.columnWaterConcentration == 42 && std::isnan(before[0].heat.inSituWaterConcentration) &&
+           before[0].heat.calibrationEpoch == 3 && unit == "prior unit", "corrupt history cannot partially modify a sample or its unit");
+}
 }
 
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
+    testRecordedConcentrationReplay();
     QTemporaryDir temp; check(temp.isValid(), "isolated software-test scope");
     const auto first = recordSession(temp.filePath("first"), 1);
     const auto second = recordSession(temp.filePath("second"), 2);

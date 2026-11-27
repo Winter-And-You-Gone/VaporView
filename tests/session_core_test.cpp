@@ -5,6 +5,7 @@
 #include "ground/session/RecordingSessionLayout.h"
 #include "ground/session/SessionWaveformRepository.h"
 #include "ground/session/SessionTrajectoryRenderLoader.h"
+#include "ppk/PpkNavigation.h"
 #include "shared/config/SettingsWriteBarrier.h"
 
 #include <QCoreApplication>
@@ -504,28 +505,32 @@ void testSessionTrajectoryRenderLoaderUsesCsvRowAlignment()
             "render-loader metadata fixture opens");
     metadataFile.write(R"json({
         "session_name": "render-loader-alignment",
-        "sensor_rows": 3,
+        "sensor_rows": 4,
         "paths": {"devices_csv": "sensors/devices.csv"}
     })json");
     metadataFile.close();
 
-    QFile csvFile(sessionDir.filePath(QStringLiteral("sensors/devices.csv")));
-    require(csvFile.open(QIODevice::WriteOnly | QIODevice::Truncate),
-            "render-loader devices CSV fixture opens");
-    csvFile.write(
-        "record_timestamp_us,device_timestamp_us,nav_lat_deg,nav_lon_deg,nav_height_m,"
-        "epsilon_valid,gnss_fix,hc2a_temperature_c,hc2a_humidity_rh,ptb_pressure_hpa\n"
-        "1000000,900000,30.0000000,120.0000000,10,false,FIXED,99.0,10.0,900.0\n"
-        "2000000,1900000,30.0000100,120.0000100,11,true,FIXED,21.5,48.0,1001.2\n"
-        "3000000,2900000,30.0000200,120.0000200,12,true,FIXED,21.6,48.5,1001.3\n");
-    csvFile.close();
-
-    const auto result =
-        VaporView::Ground::Session::SessionTrajectoryRenderLoader::loadSessionDirectory(
-            sessionDir.path());
+    const QString csvPath = sessionDir.filePath(QStringLiteral("sensors/devices.csv"));
+    QByteArray csv =
+        "record_timestamp_us,device_timestamp_us,epsilon_host_timestamp_us,nav_lat_deg,nav_lon_deg,nav_height_m,"
+        "epsilon_valid,gnss_fix,hc2a_temperature_c,hc2a_humidity_rh,ptb_pressure_hpa,sdfm300_distance_m\n"
+        "1700000001000000,900000,1700000000900000,30.00000,120.00000,10,false,FIXED,99,10,900,99\n"
+        "1700000002000000,1900000,1700000001900000,30.00001,120.00001,11,true,FIXED,21.5,48,1001.2,4.25\n"
+        "1700000003000000,2900000,1700000002900000,30.00002,120.00002,12,true,FIXED,21.6,48.5,1001.3,-1\n"
+        "0,3900000,1700000003900000,30.00003,120.00003,13,true,FIXED,21.7,49,1001.4,\n";
+    writeBytes(csvPath, csv);
+    const auto load = [&] {
+        return VaporView::Ground::Session::SessionTrajectoryRenderLoader::loadSessionDirectory(sessionDir.path());
+    };
+    const auto result = load();
     require(result.success, "render-loader session loads");
-    require(result.samples.size() == 2 && result.sourceCsvRows.size() == 2,
-            "render-loader follows 2D accepted track points");
+    require(result.samples.size() == 3 && result.sourceCsvRows.size() == 3 &&
+                result.sampleRecordTimestampsUs.size() == result.samples.size(),
+            "render samples and timestamps both follow accepted track points");
+    require(result.sampleRecordTimestampsUs == std::vector<quint64>{1700000002000000, 1700000003000000, 1700000003900000},
+            "accepted points use standard row host time, falling back to EPSILON host time when missing");
+    require(result.samples[0].heat.lidarDistanceM == 4.25 && std::isnan(result.samples[1].heat.lidarDistanceM) &&
+                std::isnan(result.samples[2].heat.lidarDistanceM), "only valid SDFM300 measurements enter the heat values");
     require(result.sourceCsvRows[0] == 1 && result.sourceCsvRows[1] == 2,
             "render-loader keeps explicit CSV row mapping after rejected rows");
     require(std::abs(result.samples[0].navigation.latDeg - 30.0000100) < 1.0e-9,
@@ -541,6 +546,57 @@ void testSessionTrajectoryRenderLoaderUsesCsvRowAlignment()
             "render-loader pressure is not shifted by rejected rows");
     require(!std::isfinite(result.samples[0].heat.peak),
             "render-loader leaves missing legacy peak data empty");
+
+    csv.replace("sdfm300_distance_m", "lidar_distance_m");
+    writeBytes(csvPath, csv);
+    const auto legacy = load();
+    require(legacy.success && legacy.samples.size() == 3 && legacy.samples[0].heat.lidarDistanceM == 4.25 &&
+                std::isnan(legacy.samples[1].heat.lidarDistanceM) && std::isnan(legacy.samples[2].heat.lidarDistanceM),
+            "legacy lidar uses the same rendering and validity rules");
+
+    require(QDir(sessionDir.path()).mkpath(QStringLiteral("ppk")), "PPK fixture directory created");
+    VaporView::Ppk::PpkSample fixed;
+    fixed.sessionUs = 1700000002000000;
+    fixed.utcNs = fixed.sessionUs * 1000;
+    fixed.latitude = 31.0;
+    fixed.longitude = 121.0;
+    fixed.height = 15.0;
+    fixed.quality = 1;
+    require(VaporView::Ppk::writePpkTrajectory(sessionDir.filePath("ppk/trajectory.csv"), {fixed}),
+            "single-epoch PPK trajectory written");
+    writeBytes(sessionDir.filePath("ppk/ppk_quality.json"), R"({"state":"Completed"})");
+    writeBytes(sessionDir.filePath("ppk/ppk_config.json"), R"({"navigation_source":"PPK"})");
+    const auto ppk = load();
+    require(ppk.success && ppk.samples.size() == 1 && ppk.sourceCsvRows == std::vector<qsizetype>{1} &&
+                ppk.sampleRecordTimestampsUs == std::vector<quint64>{fixed.sessionUs} &&
+                ppk.samples[0].navigation.navigationSource == "PPK" && ppk.samples[0].navigation.latDeg == fixed.latitude &&
+                ppk.samples[0].heat.lidarDistanceM == 4.25, "PPK replaces coordinates while retaining the standard sensor row");
+}
+
+void testSessionTrajectoryRenderFallbackTimes()
+{
+    QTemporaryDir session;
+    require(session.isValid() && QDir(session.path()).mkpath("archived"), "legacy navigation fixture created");
+    // The track reader can find this CSV recursively, even when the sensor loader cannot open its default path.
+    writeBytes(session.filePath("archived/devices.csv"),
+               "record_timestamp_us,device_timestamp_us,nav_lat_deg,nav_lon_deg,nav_height_m\n"
+               "1700000000000001,42,30,120,10\n0,43,30,120,11\n");
+    const auto checkNavigationOnly = [&] {
+        const auto result = VaporView::Ground::Session::SessionTrajectoryRenderLoader::loadSessionDirectory(session.path());
+        require(result.success && result.samples.size() == 2 &&
+                    result.sampleRecordTimestampsUs == std::vector<quint64>{1700000000000001, 0} &&
+                    std::isnan(result.samples[0].heat.lidarDistanceM), "navigation-only rows retain aligned host times");
+    };
+    checkNavigationOnly();
+    writeBytes(session.filePath("session.json"), R"({"recording_origin":"invalid"})");
+    checkNavigationOnly();
+
+    writeBytes(session.filePath("session.json"), R"({"paths":{"devices_csv":"archived/devices.csv"}})");
+    writeBytes(session.filePath("archived/devices.csv"),
+               "rtk_timestamp_us,nav_lat_deg,nav_lon_deg,nav_height_m,lidar_distance_m\n42,30,120,10,2.5\n");
+    const auto deviceOnly = VaporView::Ground::Session::SessionTrajectoryRenderLoader::loadSessionDirectory(session.path());
+    require(deviceOnly.success && deviceOnly.samples.size() == 1 && deviceOnly.samples[0].heat.lidarDistanceM == 2.5 &&
+                deviceOnly.sampleRecordTimestampsUs == std::vector<quint64>{0}, "a device tick alone cannot timestamp a replay match");
 }
 
 void testLegacyWaveformCatalogAndPeakCache()
@@ -857,6 +913,7 @@ int main(int argc, char *argv[])
     testSensorCsvLoadingAndTrackFiltering();
     testSensorCsvTrackLidarDistance();
     testSessionTrajectoryRenderLoaderUsesCsvRowAlignment();
+    testSessionTrajectoryRenderFallbackTimes();
     testLegacyWaveformCatalogAndPeakCache();
     testIndexedWaveformCatalog();
     testUnifiedRawWaveformCatalog();

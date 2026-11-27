@@ -101,6 +101,10 @@ VaporView::Geo::TrajectoryHeatValues heatValuesFromTrackPoint(
     {
         values.pressureHpa = point.pressure_hpa;
     }
+    if (point.has_lidar_distance && std::isfinite(point.lidar_distance_m) && point.lidar_distance_m >= 0.0)
+    {
+        values.lidarDistanceM = point.lidar_distance_m;
+    }
     return values;
 }
 
@@ -126,32 +130,26 @@ SessionTrajectoryRenderLoadResult SessionTrajectoryRenderLoader::loadSessionDire
 
     VaporView::Ground::SessionMetadataLoadResult metadataResult =
         VaporView::Ground::SessionLoader::loadMetadata(sessionDir);
-    if (!metadataResult.success)
+    VaporView::Ground::SessionSensorLoadResult sensorResult;
+    if (metadataResult.success)
+    {
+        appendWarning(result.warning, metadataResult.warning);
+        sensorResult = VaporView::Ground::SessionLoader::loadSensors(metadataResult.metadata);
+    }
+    else
     {
         appendWarning(result.warning, metadataResult.error);
-        result.sourceCsvRows = track.sourceCsvRows;
-        result.samples.reserve(track.samples.size());
-        for (VaporView::Geo::NavSample& sample : track.samples)
-        {
-            VaporView::Geo::TrajectoryRenderSample renderSample;
-            renderSample.navigation = std::move(sample);
-            result.samples.push_back(std::move(renderSample));
-        }
-        result.success = true;
-        return result;
     }
-    appendWarning(result.warning, metadataResult.warning);
-
-    VaporView::Ground::SessionSensorLoadResult sensorResult =
-        VaporView::Ground::SessionLoader::loadSensors(metadataResult.metadata);
-    if (!sensorResult.success || !sensorResult.fileAvailable)
+    if (!metadataResult.success || !sensorResult.success || !sensorResult.fileAvailable)
     {
         appendWarning(result.warning, sensorResult.warning);
         result.sourceCsvRows = track.sourceCsvRows;
         result.samples.reserve(track.samples.size());
+        result.sampleRecordTimestampsUs.reserve(track.samples.size());
         for (VaporView::Geo::NavSample& sample : track.samples)
         {
             VaporView::Geo::TrajectoryRenderSample renderSample;
+            result.sampleRecordTimestampsUs.push_back(sample.recordTimestampUs > 0 ? quint64(sample.recordTimestampUs) : 0);
             renderSample.navigation = std::move(sample);
             result.samples.push_back(std::move(renderSample));
         }
@@ -178,6 +176,10 @@ SessionTrajectoryRenderLoadResult SessionTrajectoryRenderLoader::loadSessionDire
         }
     }
 
+    // Without either host column, loadSensors may use a device tick or the first CSV field.
+    const bool hasSensorHostTime = sensorResult.data.headers.contains(QStringLiteral("record_timestamp_us"))
+        || sensorResult.data.headers.contains(QStringLiteral("epsilon_host_timestamp_us"));
+    result.sampleRecordTimestampsUs.reserve(trackPoints.size());
     result.samples.reserve(trackPoints.size());
     result.sourceCsvRows.reserve(trackPoints.size());
     for (const VaporView::Ground::SessionTrackPoint& point : std::as_const(trackPoints))
@@ -190,6 +192,13 @@ SessionTrajectoryRenderLoadResult SessionTrajectoryRenderLoader::loadSessionDire
         VaporView::Geo::TrajectoryRenderSample renderSample;
         renderSample.navigation = navIt.value();
         renderSample.heat = heatValuesFromTrackPoint(point);
+        quint64 recordTime = quint64(std::max<qint64>(0, renderSample.navigation.recordTimestampUs));
+        if (hasSensorHostTime)
+        {
+            const quint64 rowTime = sensorResult.data.timestamps_us.value(point.csv_row);
+            recordTime = rowTime > 0 ? rowTime : point.timestamp_us;
+        }
+        result.sampleRecordTimestampsUs.push_back(recordTime);
         result.samples.push_back(std::move(renderSample));
         result.sourceCsvRows.push_back(point.csv_row);
     }
