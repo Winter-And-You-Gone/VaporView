@@ -3,6 +3,8 @@
 #include "map3d/MapDataManager.h"
 #include "map3d/OsgEarthViewWidget.h"
 
+#include <QSize>
+
 namespace VaporView::Map3D {
 
 struct Map3DDiagnosticsContext {
@@ -26,7 +28,9 @@ struct Map3DDiagnosticsContext {
     qint64 latestDeviceTimestampUs = 0;
     QString attitudeSource;
     bool followAircraft = false;
-    bool hasLatestLlh = false;
+    QSize framebufferSize;
+    const Geo::NavSample* latestSample = nullptr;
+    QString selectedSampleDetail;
     QString heightReference;
     QString fixQuality;
     QString heightSafetyNote;

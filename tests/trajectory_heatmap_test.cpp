@@ -75,8 +75,8 @@ int main()
                 && heatMetricName(HeatMetric::ColumnWaterConcentration, true) == QStringLiteral("Column Water Vapor")
                 && heatMetricName(HeatMetric::InSituWaterConcentration, false) == QStringLiteral("原位水汽浓度")
                 && heatMetricName(HeatMetric::InSituWaterConcentration, true) == QStringLiteral("In-situ Water Vapor")
-                && heatMetricName(HeatMetric::LidarDistance, false) == QStringLiteral("测距距离")
-                && heatMetricName(HeatMetric::LidarDistance, true) == QStringLiteral("Lidar Distance"),
+                && heatMetricName(HeatMetric::LidarDistance, false) == QStringLiteral("激光测距高度")
+                && heatMetricName(HeatMetric::LidarDistance, true) == QStringLiteral("Laser ranging height"),
             "new heat metric names");
     for (const auto metric : {HeatMetric::ColumnWaterConcentration, HeatMetric::InSituWaterConcentration})
     {

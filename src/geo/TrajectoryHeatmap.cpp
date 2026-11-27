@@ -140,7 +140,7 @@ QString heatMetricName(HeatMetric metric, bool english)
     case HeatMetric::InSituWaterConcentration:
         return english ? QStringLiteral("In-situ Water Vapor") : QStringLiteral("原位水汽浓度");
     case HeatMetric::LidarDistance:
-        return english ? QStringLiteral("Lidar Distance") : QStringLiteral("测距距离");
+        return english ? QStringLiteral("Laser ranging height") : QStringLiteral("激光测距高度");
     case HeatMetric::Peak:
     default:
         return english ? QStringLiteral("Peak") : QStringLiteral("峰值");

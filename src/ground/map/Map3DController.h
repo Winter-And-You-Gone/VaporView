@@ -49,9 +49,6 @@ public:
     bool flushTimerActive() const;
     QString lastDropReason() const;
 
-signals:
-    void openWaveformPageRequested();
-
 private:
     friend struct Map3DLivePipelineTest;
     bool eventFilter(QObject *watched, QEvent *event) override;

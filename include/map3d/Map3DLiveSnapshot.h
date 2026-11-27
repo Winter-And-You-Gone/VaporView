@@ -68,11 +68,6 @@ struct Map3DLiveTelemetrySnapshot {
     qint64 columnHostTimeMs = 0;
     QString columnStatus;
 
-    bool hasThermal = false;
-    QString thermalSummary;
-    bool thermalFault = false;
-    qint64 thermalAgeMs = -1;
-    bool thermalStale = false;
 };
 
 struct Map3DWaterProfileSnapshot {

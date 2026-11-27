@@ -4,6 +4,7 @@
 #include <QFileInfo>
 
 #include <algorithm>
+#include <cmath>
 
 namespace VaporView::Map3D {
 namespace {
@@ -141,6 +142,11 @@ QString formatMap3DDiagnostics(const Map3DDiagnosticsContext& context)
                  .arg(totalSamples)
                  .arg(hiddenSamples);
     lines << mapText(QStringLiteral("  最大可见采样点数： %1")).arg(maxVisibleSamples);
+    if (context.framebufferSize.isValid())
+    {
+        lines << mapText(QStringLiteral("  视口： %1×%2"))
+                     .arg(context.framebufferSize.width()).arg(context.framebufferSize.height());
+    }
     lines << mapText(QStringLiteral("  轨迹分段： %1 段 × %2 点"))
                  .arg(stats.segmentCount)
                  .arg(stats.segmentSize);
@@ -180,8 +186,14 @@ QString formatMap3DDiagnostics(const Map3DDiagnosticsContext& context)
                  .arg(context.attitudeSource);
     lines << mapText(QStringLiteral("  跟随飞行器： %1"))
                  .arg(context.followAircraft ? mapText(QStringLiteral("开启")) : mapText(QStringLiteral("关闭")));
-    if (context.hasLatestLlh)
+    if (const auto* sample = context.latestSample)
     {
+        lines << mapText(QStringLiteral("  纬度 %1 经度 %2 高度 %3 m"))
+                     .arg(sample->latDeg, 0, 'f', 7).arg(sample->lonDeg, 0, 'f', 7).arg(sample->heightM, 0, 'f', 2);
+        if (sample->satellites > 0)
+            lines << mapText(QStringLiteral("  卫星数 %1")).arg(sample->satellites);
+        if (std::isfinite(sample->hdop))
+            lines << QStringLiteral("  HDOP %1").arg(sample->hdop, 0, 'f', 2);
         lines << mapText(QStringLiteral("  高度基准： %1"))
                      .arg(context.heightReference);
         lines << mapText(QStringLiteral("  定位质量： %1"))
@@ -192,6 +204,7 @@ QString formatMap3DDiagnostics(const Map3DDiagnosticsContext& context)
             lines << mapText(QStringLiteral("  高度转换： %1")).arg(stats.heightReferenceStatus);
         }
     }
+    if (!context.selectedSampleDetail.isEmpty()) lines << QStringLiteral("  ") + context.selectedSampleDetail;
     if (!context.trackNote.isEmpty())
     {
         lines << mapText(QStringLiteral("  备注： %1")).arg(context.trackNote);

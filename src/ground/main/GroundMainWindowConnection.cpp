@@ -2331,10 +2331,6 @@ void MainWindow::clearExternalSensorReadings()
     state_->current_hc2a_ = {};
     state_->current_lidar_ = {};
     state_->ptb_from_raw_fpga_ = state_->hc2a_from_raw_fpga_ = state_->lidar_from_raw_fpga_ = false;
-#ifdef VAPORVIEW_HAS_OSGEARTH
-    state_->map3d_ai8_time_ = {};
-    state_->map3d_tec_ports_time_ = {};
-#endif
 }
 
 void MainWindow::syncExternalSensorRoute()
@@ -2471,10 +2467,6 @@ void MainWindow::onAi8TemperatureControllerDataReady()
     {
         state_->local_ai8_sample_ms_ = QDateTime::currentMSecsSinceEpoch();
         const auto liveData = collectors.ai8_temperature_controller->getLatestData();
-#ifdef VAPORVIEW_HAS_OSGEARTH
-        state_->map3d_ai8_ = liveData;
-        state_->map3d_ai8_time_ = std::chrono::steady_clock::now();
-#endif
         if (state_->ai8_temperature_controller_panel_)
         {
             state_->ai8_temperature_controller_panel_->applyLiveData(liveData);

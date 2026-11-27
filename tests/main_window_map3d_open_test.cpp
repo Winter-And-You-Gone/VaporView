@@ -259,6 +259,11 @@ int main(int argc, char** argv)
 
     QLabel* mapStatusLabel = mapWindow->findChild<QLabel*>(QStringLiteral("map3DStatusLabel"));
     require(mapStatusLabel != nullptr, QStringLiteral("3D map status label exists"));
+    auto* profilePlot = mapWindow->findChild<QWidget*>(QStringLiteral("map3DWaterProfilePlot"));
+    require(profilePlot && profilePlot->isVisible()
+                && !mapWindow->findChild<QWidget*>(QStringLiteral("map3DProfileSectionToggle"))
+                && !mapWindow->findChild<QWidget*>(QStringLiteral("map3DOpenWaveformPageButton")),
+            QStringLiteral("3D map opens with the cumulative profile visible and no extra profile actions"));
     require(mapWindow->findChild<QAction*>(QStringLiteral("map3DStartRenderingAction")) == nullptr,
             QStringLiteral("manual start action is removed"));
     processEventsFor(3000);

@@ -48,6 +48,7 @@
 #include <QPushButton>
 #include <QMouseEvent>
 #include <QPlainTextEdit>
+#include <QStatusBar>
 #include <QProgressBar>
 #include <QProgressDialog>
 #include <QSettings>
@@ -628,13 +629,14 @@ void checkLiveReadings(VaporView::Map3D::Map3DWindow& window)
     auto* bar = window.findChild<QFrame*>(QStringLiteral("map3DMainHeatLegendBar"));
     auto* legend = window.findChild<QLabel*>(QStringLiteral("map3DMainHeatLegendText"));
     auto* canvas = window.findChild<QWidget*>(QStringLiteral("map3DView"));
-    require(panel && toggle && section && plot && open && resolution && metric && canvas && legend && bar,
+    require(panel && toggle && plot && resolution && metric && canvas && legend && bar,
             "live sidebar, profile and main legend controls exist");
     require(panel->isVisible() && panel->autoFillBackground() && !panel->testAttribute(Qt::WA_TranslucentBackground)
             && bar->isVisible() && legend->text().contains(QStringLiteral("n=0")), "opaque sidebar and empty legend are visible");
     require(canvas->parentWidget() == panel->parentWidget() && !canvas->geometry().intersects(panel->geometry()),
             "sidebar and map occupy separate layout rectangles");
-    require(!section->isChecked() && !plot->isVisible(), "profile starts collapsed");
+    require(plot->isVisible() && !section && !open,
+            "the profile starts visible without a fold control or waveform shortcut");
     const int previousMetric = metric->currentIndex();
     for (int i = 0; i < 7; ++i)
         require(metric->itemText(i) == VaporView::Geo::heatMetricName(static_cast<VaporView::Geo::HeatMetric>(i), false),
@@ -665,17 +667,14 @@ void checkLiveReadings(VaporView::Map3D::Map3DWindow& window)
     live.lonDeg = 116.3;
     live.heightM = 87;
     live.fixQualityText = QStringLiteral("RTK");
-    live.hasTemperature = live.hasHumidity = live.hasPressure = live.hasLidar = live.hasThermal = true;
+    live.hasTemperature = live.hasHumidity = live.hasPressure = live.hasLidar = true;
     live.temperatureC = 23.4;
     live.humidityRh = 56.7;
     live.pressureHpa = 1001.2;
     live.lidarDistanceM = 18.9;
     live.temperatureSource = QStringLiteral("SHT");
     live.temperatureStale = true;
-    live.thermalSummary = QStringLiteral("TEC103 / AI-8288 fault");
-    live.thermalFault = true;
     window.setLiveTelemetrySnapshot(live);
-    require(revisionReads == 0 && snapshots == 0, "collapsed profile never queries the accumulator");
     const auto shows = [&](const char* name, const QString& text) {
         const auto* label = panel->findChild<QLabel*>(QString::fromLatin1(name));
         return label && label->text().contains(text);
@@ -687,10 +686,15 @@ void checkLiveReadings(VaporView::Map3D::Map3DWindow& window)
             && shows("map3DLiveTemperature", QStringLiteral("23.4 °C")) && shows("map3DLiveTemperature", QStringLiteral("SHT"))
             && shows("map3DLiveTemperature", QStringLiteral("已过期")) && shows("map3DLiveHumidity", QStringLiteral("56.7 %RH"))
             && shows("map3DLivePressure", QStringLiteral("1001.2 hPa")) && shows("map3DLiveLidar", QStringLiteral("18.9 m"))
-            && shows("map3DLiveThermal", live.thermalSummary), "sidebar shows position, ambient sources, age, distance and thermal faults");
-    section->click();
-    require(snapshots == 1 && lastResolution == 5 && plot->isVisible() && plot->accessibleDescription().contains(QStringLiteral("n=1")),
-            "opening the profile fetches and displays the selected channel");
+            && shows("map3DLiveLidar", QStringLiteral("激光测距高度"))
+            && !panel->findChild<QLabel*>(QStringLiteral("map3DLiveThermal")),
+            "sidebar shows position, ambient readings and laser ranging height without thermal controls");
+    require(shows("map3DProfileCaption", QStringLiteral("激光测距高度"))
+            && metric->itemText(metric->count() - 1) == QStringLiteral("激光测距高度"),
+            "the profile caption and heat metric use the same height label");
+    require(revisionReads == 1 && snapshots == 1 && lastResolution == 5
+            && plot->accessibleDescription().contains(QStringLiteral("n=1")),
+            "the visible profile fetches and displays its data immediately");
     const QImage firstPlot = plot->grab().toImage();
     auto* channel = window.findChild<QComboBox*>(QStringLiteral("map3DProfileChannel"));
     require(channel && channel->count() == 2, "both accumulated profile channels are selectable");
@@ -698,12 +702,11 @@ void checkLiveReadings(VaporView::Map3D::Map3DWindow& window)
     require(plot->accessibleDescription().startsWith(QStringLiteral("816 nm")) && snapshots == 1,
             "switching to the empty second channel reuses the cached profile");
     channel->setCurrentIndex(0);
-    window.setLiveTelemetrySnapshot(live);
     require(QTest::qWaitFor([&] { return revisionReads >= 2; }, 1500) && snapshots == 1,
             "unchanged revisions do not rebuild profile data");
     ++revision;
-    window.setLiveTelemetrySnapshot(live);
-    require(QTest::qWaitFor([&] { return snapshots == 2; }, 1500), "new profile revision is fetched once");
+    require(QTest::qWaitFor([&] { return snapshots == 2; }, 1500),
+            "a visible profile fetches a new revision without a telemetry update");
     resolution->setCurrentIndex(resolution->findData(20));
     require(lastResolution == 20 && snapshots == 3 && plot->grab().toImage() != firstPlot,
             "new height resolution changes the rendered profile without a revision bump");
@@ -715,13 +718,8 @@ void checkLiveReadings(VaporView::Map3D::Map3DWindow& window)
     require(!panel->isVisible() && revisionReads == hiddenReads && snapshots == 3 && bar->isVisible(),
             "hidden sidebar performs no profile work and keeps the main legend visible");
     toggle->click();
-    require(panel->isVisible() && snapshots == 4, "reopening the panel consumes the pending revision");
-    bool waveRequested = false;
-    const auto connection = QObject::connect(&window, &Map3DWindow::openWaveformPageRequested, [&] { waveRequested = true; });
-    open->click();
-    require(waveRequested, "waveform button requests the waveform page");
-    QObject::disconnect(connection);
-    section->click();
+    require(panel->isVisible() && plot->isVisible() && snapshots == 4,
+            "reopening the panel shows the profile and consumes the pending revision");
     window.setWaterProfileProviders({}, {});
 
     TrajectoryRenderSample point;
@@ -1466,6 +1464,19 @@ int main(int argc, char** argv)
     require(label->text().contains(QStringLiteral("采样点：0")), "initial status has zero points");
     require(label->text().contains(QStringLiteral("来源 无")), "initial status reports no track source");
     checkLiveReadings(window);
+    auto* statusMessage = window.findChild<QLabel*>(QStringLiteral("map3DStatusMessage"));
+    require(statusMessage != nullptr, "status bar has a wrapped temporary message label");
+    const QString longMessage = QStringLiteral("Loading C:/") + QString(420, QLatin1Char('a'));
+    window.statusBar()->showMessage(longMessage, 5000);
+    QCoreApplication::processEvents();
+    QString renderedMessage = statusMessage->text();
+    require(statusMessage->isVisible() && !label->isVisible() && renderedMessage.contains(QLatin1Char('\n'))
+            && renderedMessage.remove(QLatin1Char('\n')) == longMessage
+            && statusMessage->height() >= statusMessage->sizeHint().height(),
+            "the temporary message replaces the status and has room to render the full path");
+    window.statusBar()->clearMessage();
+    QCoreApplication::processEvents();
+    require(label->isVisible() && !statusMessage->isVisible(), "clearing the message restores the compact status");
     QAction* reloadBestMapAction = actionByName(window, QStringLiteral("map3DReloadBestMapAction"));
     QAction* flyToAircraftAction = actionByName(window, QStringLiteral("map3DFlyToAircraftAction"));
     QAction* flyToTrackAction = actionByName(window, QStringLiteral("map3DFlyToTrackAction"));
@@ -1717,8 +1728,6 @@ int main(int argc, char** argv)
     QCoreApplication::processEvents();
     require(label->text().contains(QStringLiteral("采样点：1000/1100")),
             "max visible samples caps the visible status count");
-    require(label->text().contains(QStringLiteral("质量 固定解 1000")),
-            "status includes visible fixed quality count");
     require(label->text().contains(QStringLiteral("来源 实时")), "live append batch reports live source");
     window.clearTrack();
     QCoreApplication::processEvents();
@@ -1735,18 +1744,23 @@ int main(int argc, char** argv)
     window.appendSample(sample);
     QCoreApplication::processEvents();
     require(label->text().contains(QStringLiteral("采样点：1")), "appendSample updates status");
-    require(label->text().contains(QStringLiteral("质量 固定解 1")),
-            "appendSample status includes quality summary");
     require(label->text().contains(QStringLiteral("来源 实时")), "appendSample reports live source");
-    require(label->text().contains(QStringLiteral("记录时间 1000000")), "status includes latest record timestamp");
-    require(label->text().contains(QStringLiteral("设备时间 900000")), "status includes latest device timestamp");
-    require(label->text().contains(QStringLiteral("卫星数 12")), "status includes latest sample satellite count");
-    require(label->text().contains(QStringLiteral("HDOP 0.90")), "status includes latest sample HDOP");
     require(label->text().contains(QStringLiteral("定位 固定解")),
             "status reports readable GNSS fix quality");
-    require(label->text().contains(QStringLiteral("高度基准假定为 WGS84")),
-            "status reports the explicit fallback for an unspecified height reference");
-    require(label->text().contains(QStringLiteral("姿态 无")), "status reports absent attitude source");
+    require(!label->text().contains(QStringLiteral("记录时间")) && !label->text().contains(QStringLiteral("HDOP"))
+            && !label->text().contains(QStringLiteral("质量 固定解")) && !label->text().contains(QStringLiteral("视口")),
+            "status leaves detailed telemetry and performance to diagnostics");
+    const auto requireDiagnostics = [&](const QString& detail, const char* failure) {
+        window.showMapDiagnostics();
+        auto* text = window.findChild<QPlainTextEdit*>();
+        require(text && text->toPlainText().contains(detail), failure);
+        text->window()->hide();
+    };
+    requireDiagnostics(QStringLiteral("最新记录时间戳 us： 1000000"), "diagnostics include latest record timestamp");
+    requireDiagnostics(QStringLiteral("最新设备时间戳 us： 900000"), "diagnostics include latest device timestamp");
+    requireDiagnostics(QStringLiteral("卫星数 12"), "diagnostics include satellite count");
+    requireDiagnostics(QStringLiteral("HDOP 0.90"), "diagnostics include latest sample HDOP");
+    requireDiagnostics(QStringLiteral("姿态来源： 无"), "diagnostics report absent attitude source");
 
     window.clearTrack();
     QCoreApplication::processEvents();
@@ -1755,7 +1769,7 @@ int main(int argc, char** argv)
     eulerSample.yawDeg = 91.0;
     window.appendSample(eulerSample);
     QCoreApplication::processEvents();
-    require(label->text().contains(QStringLiteral("姿态 欧拉角")), "status reports Euler attitude source");
+    requireDiagnostics(QStringLiteral("姿态来源： 欧拉角"), "diagnostics report Euler attitude source");
 
     window.clearTrack();
     QCoreApplication::processEvents();
@@ -1767,15 +1781,17 @@ int main(int argc, char** argv)
     quaternionSample.quatZ = 0.0;
     window.appendSample(quaternionSample);
     QCoreApplication::processEvents();
-    require(label->text().contains(QStringLiteral("姿态 四元数")), "status reports quaternion attitude source");
+    requireDiagnostics(QStringLiteral("姿态来源： 四元数"), "diagnostics report quaternion attitude source");
 
+    window.clearTrack();
+    window.appendSample(sample);
     VaporView::Geo::NavSample throttledSample = sample;
     throttledSample.recordTimestampUs = 2000000;
     throttledSample.deviceTimestampUs = 1900000;
     throttledSample.latDeg = 39.91;
     window.appendSample(throttledSample);
     QCoreApplication::processEvents();
-    require(!label->text().contains(QStringLiteral("记录时间 2000000")),
+    require(label->text().contains(QStringLiteral("采样点：1/1")),
             "live status updates are throttled below 5 Hz");
     QThread::msleep(220);
     QCoreApplication::processEvents();
@@ -1784,7 +1800,7 @@ int main(int argc, char** argv)
     throttledSample.latDeg = 39.92;
     window.appendSample(throttledSample);
     QCoreApplication::processEvents();
-    require(label->text().contains(QStringLiteral("记录时间 3000000")),
+    require(label->text().contains(QStringLiteral("采样点：3/3")),
             "live status updates refresh after the 5 Hz throttle interval");
 
     window.clearTrack();
@@ -1915,13 +1931,8 @@ int main(int argc, char** argv)
                     == QFileInfo(sessionDir.path()).absoluteFilePath(),
                 "programmatic session load persists last session directory");
     }
-    require(label->text().contains(QStringLiteral("采样点：2")), "session load appends track samples");
-    require(label->text().contains(QStringLiteral("质量 固定解 2")),
-            "session load recognizes the recorded gnss_fix quality column");
+    require(label->text().contains(QStringLiteral("采样点：2/2")), "session load keeps the complete track visible");
     require(label->text().contains(QStringLiteral("来源 会话")), "session load reports session source");
-    require(label->text().contains(QStringLiteral("视角 自动轨迹视角")),
-            "session load automatically focuses the complete track");
-    require(label->text().contains(QStringLiteral("采样点：2")), "session keeps the complete track visible");
     diagnosticsAction->trigger();
     QCoreApplication::processEvents();
     auto* diagnosticsText = window.findChild<QPlainTextEdit*>();
@@ -2023,25 +2034,23 @@ int main(int argc, char** argv)
 
     flyToAircraftAction->trigger();
     QCoreApplication::processEvents();
-    require(label->text().contains(QStringLiteral("视角 飞行器")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("视角： 飞行器")),
             "fly to aircraft updates persistent camera status");
-    require(label->text().contains(QStringLiteral("纬度 39.9000100")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("纬度 39.9000100")),
             "camera action preserves latest sample status details");
 
     flyToTrackAction->trigger();
     QCoreApplication::processEvents();
-    require(label->text().contains(QStringLiteral("视角 轨迹")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("视角： 轨迹")),
             "fly to track updates persistent camera status");
 
     resetViewAction->trigger();
     QCoreApplication::processEvents();
-    require(label->text().contains(QStringLiteral("视角 重置")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("视角： 重置")),
             "reset view updates persistent camera status");
 
     window.noteLiveSampleDrop(QStringLiteral("实时"), QStringLiteral("missing LLH"), 123456);
     QCoreApplication::processEvents();
-    require(label->text().contains(QStringLiteral("最近丢弃 实时：missing LLH")),
-            "status includes latest live sample drop reason");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("最近丢弃原因： missing LLH")),
             "diagnostics include latest live sample drop reason");
 

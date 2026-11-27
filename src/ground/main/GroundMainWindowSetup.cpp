@@ -701,12 +701,6 @@ void MainWindow::setupMenuBar()
         }
         return result;
     });
-    connect(map, &VaporView::Ground::Map3DController::openWaveformPageRequested, this, [this] {
-        state_->waveform_nav_btn_->click();
-        showNormal();
-        raise();
-        activateWindow();
-    });
     state_->map3d_action_ = new QAction(this);
     connect(state_->map3d_action_, &QAction::triggered, this, &MainWindow::onOpenMap3DWindowClicked);
 

@@ -614,8 +614,6 @@ struct MainWindowState
     std::unique_ptr<VaporView::Ground::Map3DController> map3d_controller_;
     std::uint32_t map3d_calibration_epoch_ = 0;
     QString map3d_calibration_sha_, map3d_water_unit_;
-    VaporView::Ai8TemperatureControllerProtocol::LiveData map3d_ai8_;
-    std::chrono::steady_clock::time_point map3d_ai8_time_{}, map3d_tec_ports_time_{};
 #endif
     VaporView::TelemetryStatus remote_status_;
     bool remote_ai8_fault_metadata_ = false;

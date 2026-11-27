@@ -231,56 +231,6 @@ VaporView::Map3D::Map3DLiveTelemetrySnapshot MainWindow::map3DLiveTelemetrySnaps
     }
     readMap3DEnvironment(s);
     if (!state_->session_replay_) readMap3DWater(s);
-
-    const auto& tec = state_->current_temperature_controller_;
-    const auto& ai8 = state_->map3d_ai8_;
-    QStringList thermal;
-    const bool en = state_->is_english_;
-    const auto connection = [en](bool online) {
-        return online ? (en ? QStringLiteral("online") : QStringLiteral("在线")) :
-                        (en ? QStringLiteral("offline") : QStringLiteral("离线"));
-    };
-    if (relay && !state_->session_replay_) {
-        for (int ch = 0; ch < 2; ++ch) {
-            const auto port = homeTec103Port(ch == 0 ? VaporView::SkyDeviceId::Tec103InSitu : VaporView::SkyDeviceId::Tec103Remote);
-            QString text = ch == 0 ? (en ? QStringLiteral("TEC103 in-situ") : QStringLiteral("TEC103 原位"))
-                                   : (en ? QStringLiteral("TEC103 remote") : QStringLiteral("TEC103 遥测"));
-            const bool connected = port.value("connected").toBool();
-            text += QStringLiteral(" ") + connection(connected);
-            const double temp = tec.channels[ch].measured_temperature_c;
-            if (connected && tec.valid && std::isfinite(temp)) text += QStringLiteral(" %1 °C").arg(temp, 0, 'f', 1);
-            if (port.value("error").toInt()) {
-                text += en ? QStringLiteral(" fault") : QStringLiteral(" 故障");
-                s.thermalFault = true;
-            }
-            thermal << text;
-        }
-        const auto portTime = remote ? state_->fpga_session_.statusTime : state_->map3d_tec_ports_time_;
-        s.thermalAgeMs = receptionAgeMs(tec.timestamp != SteadyClock::time_point{} ? tec.timestamp : portTime, now);
-        s.thermalFault |= tec.error_code != 0;
-    }
-    const qint64 ai8Age = receptionAgeMs(state_->map3d_ai8_time_, now);
-    const bool ai8Online = (ai8Age >= 0 && (ai8.valid || ai8.mainStatusValid || ai8.alarmStatusValid)) ||
-        (relay && !state_->session_replay_ && homeFpgaDeviceState(VaporView::SkyDeviceId::Ai8TemperatureController) == VaporView::DeviceState::Connected);
-    QString ai8Text = QStringLiteral("AI-8288 ") + connection(ai8Online);
-    if (ai8Age >= 0) {
-        s.thermalAgeMs = std::max(s.thermalAgeMs, ai8Age); // A fresh endpoint cannot refresh its stale sibling.
-        if (ai8.valid) {
-            for (int ch = 0; ch < int(ai8.measuredC.size()); ++ch) {
-                if (std::isfinite(ai8.measuredC[ch]))
-                    ai8Text += QStringLiteral(" CH%1 %2 °C").arg(ch + 1).arg(ai8.measuredC[ch], 0, 'f', 1);
-            }
-        }
-        if ((ai8.mainStatusValid && (ai8.mainStatusRaw & 0x100)) || (ai8.alarmStatusValid &&
-            std::any_of(ai8.alarmStatusRegisters.cbegin(), ai8.alarmStatusRegisters.cend(), [](auto reg) { return reg != 0; }))) {
-            s.thermalFault = true;
-            ai8Text += en ? QStringLiteral(" alarm/fault") : QStringLiteral(" 告警/故障");
-        }
-    }
-    thermal << ai8Text;
-    s.thermalSummary = thermal.join(QStringLiteral(" · "));
-    s.hasThermal = s.thermalAgeMs >= 0 || s.thermalFault;
-    s.thermalStale = !fresh(s.thermalAgeMs, environmentTtlMs);
     return s;
 }
 
@@ -495,9 +445,6 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
                 }
                 if (keepFaultMetadata)
                     continue;
-#ifdef VAPORVIEW_HAS_OSGEARTH
-                state_->map3d_ai8_time_ = {};
-#endif
                 state_->remote_ai8_fault_metadata_ = false;
                 state_->remote_ai8_system_fault_ = false;
                 if (state_->ai8_temperature_controller_panel_)
@@ -554,12 +501,6 @@ void MainWindow::onRemoteTemperatureControllerStatusUpdated(const VaporView::Tem
 void MainWindow::onRemoteAi8TemperatureControllerStatusUpdated(
     const VaporView::Ai8TemperatureControllerProtocol::LiveData& liveData)
 {
-#ifdef VAPORVIEW_HAS_OSGEARTH
-    if (!state_->session_replay_) {
-        state_->map3d_ai8_ = liveData;
-        state_->map3d_ai8_time_ = std::chrono::steady_clock::now();
-    }
-#endif
     const bool hasChannelOrStatusMetadata = liveData.mainStatusValid || liveData.alarmStatusValid ||
         liveData.detailedChannel != 0 ||
         std::any_of(liveData.controlStates.cbegin(), liveData.controlStates.cend(), [](auto state) {

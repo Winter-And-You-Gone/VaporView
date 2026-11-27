@@ -65,9 +65,6 @@ public:
     void setWaterProfileProviders(Map3DProfileRevisionProvider revisionProvider,
                                   Map3DWaterProfileProvider snapshotProvider);
 
-signals:
-    void openWaveformPageRequested();
-
 public slots:
     void appendSample(const VaporView::Geo::NavSample& sample);
     void appendSamples(const std::vector<VaporView::Geo::NavSample>& samples);
@@ -206,6 +203,7 @@ private:
     std::deque<VaporView::Geo::TrajectoryRenderSample> live_samples_;
     QString session_track_note_;
     QLabel* status_label_ = nullptr;
+    QLabel* esri_attribution_ = nullptr;
     QLabel* cesium_attribution_ = nullptr;
     QLabel* osm_attribution_ = nullptr;
     QLabel* heat_legend_label_ = nullptr;

@@ -379,7 +379,7 @@ public:
                 + row(english ? QStringLiteral("Temp / RH / pressure") : QStringLiteral("温度 / 湿度 / 气压"),
                       QStringLiteral("%1 / %2 / %3").arg(measurement(heat.temperatureC, QStringLiteral("°C")),
                           measurement(heat.humidityRh, QStringLiteral("%RH")), measurement(heat.pressureHpa, QStringLiteral("hPa"))))
-                + row(english ? QStringLiteral("Lidar distance") : QStringLiteral("测距距离"),
+                + row(Geo::heatMetricName(Geo::HeatMetric::LidarDistance, english),
                       measurement(heat.lidarDistanceM, QStringLiteral("m")));
         }
         details_label_->setText(

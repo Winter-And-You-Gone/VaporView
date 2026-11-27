@@ -401,9 +401,9 @@ int main(int argc, char** argv)
         require(view->activeSatelliteImagerySource() == QStringLiteral("online:esri")
                     && esriImagery->isChecked() && !openAerialMap->isChecked(),
                 QStringLiteral("selecting Esri replaces OpenAerialMap"));
-        auto* mapStatus = window->findChild<QLabel*>(QStringLiteral("map3DStatusLabel"));
-        require(mapStatus && mapStatus->text().startsWith(QStringLiteral("Esri, Vantor, Earthstar Geographics")),
-                QStringLiteral("Esri attribution is shown in the map status"));
+        auto* esriCredit = window->findChild<QLabel*>(QStringLiteral("map3DEsriAttribution"));
+        require(esriCredit && esriCredit->isVisible() && esriCredit->text().startsWith(QStringLiteral("Esri, Vantor, Earthstar Geographics")),
+                QStringLiteral("Esri attribution stays visible in the status bar during transient messages"));
         {
             QSettings mapSettings(QSettings::defaultFormat(), QSettings::UserScope,
                                   QStringLiteral("VaporView"), QStringLiteral("Map3D"));
@@ -422,7 +422,7 @@ int main(int argc, char** argv)
         require(view->activeSatelliteImagerySource() == QStringLiteral("online:tianditu") && online->isChecked()
                     && !openAerialMap->isChecked() && !esriImagery->isChecked(),
                 QStringLiteral("selecting online activates the Tianditu layer"));
-        require(!mapStatus->text().startsWith(QStringLiteral("Esri, Vantor")),
+        require(!esriCredit->isVisible(),
                 QStringLiteral("Esri attribution is removed when another source is selected"));
         imagery->trigger();
         require(view->activeSatelliteImagerySource().startsWith(QStringLiteral("local:")) && imagery->isChecked()

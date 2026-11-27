@@ -14,6 +14,7 @@
 #include <QDir>
 #include <QEventLoop>
 #include <QLabel>
+#include <QPlainTextEdit>
 #include <QSettings>
 #include <QStringList>
 #include <QTemporaryDir>
@@ -305,6 +306,16 @@ int main(int argc, char** argv)
     require(mapWindow != nullptr && mapWindow->isVisible(), "3D map window opens");
     QLabel* mapStatusLabel = mapWindow->findChild<QLabel*>(QStringLiteral("map3DStatusLabel"));
     require(mapStatusLabel != nullptr, "3D map status label exists");
+    auto* diagnosticsAction = mapWindow->findChild<QAction*>(QStringLiteral("map3DDiagnosticsAction"));
+    require(diagnosticsAction != nullptr, "3D map diagnostics action exists");
+    const auto diagnosticsText = [&] {
+        diagnosticsAction->trigger();
+        auto* diagnostics = mapWindow->findChild<QPlainTextEdit*>();
+        require(diagnostics != nullptr, "3D map diagnostics text exists");
+        const QString text = diagnostics->toPlainText();
+        diagnostics->window()->hide();
+        return text;
+    };
 
     window.testMaybeForwardMap3DSampleForMap3D(makeSample(39.900001), 1000000);
     window.testMaybeForwardMap3DSampleForMap3D(makeSample(39.900002), 1005000);
@@ -324,7 +335,7 @@ int main(int argc, char** argv)
     require(window.testLatestPendingMap3DRecordTimestampUs() == 2010000,
             "remote sky telemetry uses host timestamp for the pending 3D map sample");
     processEventsFor(80);
-    require(mapStatusLabel->text().contains(QStringLiteral("姿态 欧拉角")),
+    require(diagnosticsText().contains(QStringLiteral("姿态来源： 欧拉角")),
             "flushed remote sky telemetry reports Euler aircraft attitude source");
 
     VaporView::EpsilonData invalidSample = makeSample(39.900004);
@@ -336,8 +347,8 @@ int main(int argc, char** argv)
             "invalid live sample stops the 3D map flush timer");
     require(window.testLastMap3DDropReason() == QStringLiteral("epsilon invalid"),
             "invalid live sample records a 3D map drop reason");
-    require(mapStatusLabel->text().contains(QStringLiteral("最近丢弃 Live：epsilon invalid")),
-            "3D map status reports invalid live sample drop reason");
+    require(diagnosticsText().contains(QStringLiteral("最近丢弃原因： epsilon invalid")),
+            "3D map diagnostics report invalid live sample drop reason");
 
     VaporView::EpsilonData invalidFixSample = makeSample(39.900005);
     invalidFixSample.gnss_fix_code = 0;
@@ -353,8 +364,8 @@ int main(int argc, char** argv)
     processEventsFor(80);
     require(mapStatusLabel->text().contains(QStringLiteral("定位 无效")),
             "3D map status reports the forwarded invalid GNSS fix");
-    require(mapStatusLabel->text().contains(QStringLiteral("无效 1")),
-            "3D map status counts invalid GNSS fixes as marker samples");
+    require(diagnosticsText().contains(QStringLiteral("无效或不可用： 1")),
+            "3D map diagnostics count invalid GNSS fixes as marker samples");
 
     window.testMaybeForwardMap3DSampleForMap3D(makeSample(39.900005), 1020000);
     require(window.testPendingMap3DSampleCount() == 1,
@@ -377,8 +388,8 @@ int main(int argc, char** argv)
             "remote telemetry without position leaves the 3D map flush timer stopped");
     require(window.testLastMap3DDropReason() == QStringLiteral("missing BasicHasPosition"),
             "remote telemetry without position records a 3D map drop reason");
-    require(mapStatusLabel->text().contains(QStringLiteral("最近丢弃 Remote：missing BasicHasPosition")),
-            "3D map status reports remote telemetry drop reason");
+    require(diagnosticsText().contains(QStringLiteral("最近丢弃原因： missing BasicHasPosition")),
+            "3D map diagnostics report remote telemetry drop reason");
 
     VaporView::Ground::Map3DLivePipelineTest::run(window, rig);
 

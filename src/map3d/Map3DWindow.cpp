@@ -68,6 +68,7 @@
 #include <QSpinBox>
 #include <QStackedLayout>
 #include <QStatusBar>
+#include <QTextLayout>
 #include <QStringList>
 #include <QTimer>
 #include <QToolBar>
@@ -438,17 +439,6 @@ QString selectedDemLabel(const MapDataDiagnostics& diagnostics)
         return mapText(QStringLiteral("可用"));
     }
     return diagnostics.selectedElevationSource;
-}
-
-QString selectedOsmLabel(const MapDataDiagnostics& diagnostics)
-{
-    if (!diagnostics.selectedOsmLayersAvailable)
-    {
-        return mapText(QStringLiteral("未选择（%1/4 个文件）")).arg(diagnostics.osmLayerCount);
-    }
-    return mapText(QStringLiteral("%1 个安全图层（水系/道路，%2/4 个文件）"))
-        .arg(diagnostics.selectedOsmLayerCount)
-        .arg(diagnostics.osmLayerCount);
 }
 
 QString fileAvailabilityLabel(bool available, const QString& path)
@@ -902,18 +892,6 @@ TrajectoryQualityStats qualityStatsForSamples(const std::vector<VaporView::Geo::
     return stats;
 }
 
-QString qualityStatsSummary(const TrajectoryQualityStats& stats)
-{
-    return mapText(QStringLiteral("固定解 %1 浮点解 %2 差分 %3 单点 %4 未知 %5 无效 %6 跳变 %7"))
-        .arg(stats.fixedSamples)
-        .arg(stats.floatSamples)
-        .arg(stats.dgpsSamples)
-        .arg(stats.singleSamples)
-        .arg(stats.unknownSamples)
-        .arg(stats.invalidSamples)
-        .arg(stats.jumpSamples);
-}
-
 QString replayStateLabel(const VaporView::Geo::TrajectoryReplay& replay)
 {
     if (!replay.hasSamples())
@@ -954,6 +932,62 @@ protected:
         painter.setPen(QPen(border, 1.0));
         painter.drawPath(path);
     }
+};
+
+class MapStatusMessage final : public QLabel {
+public:
+    explicit MapStatusMessage(QWidget* parent) : QLabel(parent)
+    {
+        setObjectName(QStringLiteral("map3DStatusMessage"));
+        setTextFormat(Qt::PlainText);
+        setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+        setMinimumWidth(120);
+    }
+
+    void setMessage(const QString& message)
+    {
+        message_ = message;
+        setAccessibleName(message);
+        reflow();
+    }
+
+protected:
+    void resizeEvent(QResizeEvent* event) override
+    {
+        QLabel::resizeEvent(event);
+        if (event->size().width() != event->oldSize().width()) reflow();
+    }
+
+    void changeEvent(QEvent* event) override
+    {
+        QLabel::changeEvent(event);
+        if (event->type() == QEvent::FontChange) reflow();
+    }
+
+private:
+    void reflow()
+    {
+        if (message_.isEmpty()) {
+            clear();
+            return;
+        }
+        QStringList lines;
+        QTextOption option;
+        option.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
+        for (const QString& paragraph : message_.split(QLatin1Char('\n'))) {
+            QTextLayout layout(paragraph, font());
+            layout.setTextOption(option);
+            layout.beginLayout();
+            for (QTextLine line = layout.createLine(); line.isValid(); line = layout.createLine()) {
+                line.setLineWidth(contentsRect().width());
+                lines << paragraph.mid(line.textStart(), line.textLength());
+            }
+            layout.endLayout();
+        }
+        setText(lines.join(QLatin1Char('\n')));
+    }
+
+    QString message_;
 };
 
 class MapNoticeBubbleLabel final : public QLabel {
@@ -1016,48 +1050,32 @@ public:
         humidity_ = label("map3DLiveHumidity");
         pressure_ = label("map3DLivePressure");
         lidar_ = label("map3DLiveLidar");
-        thermal_ = label("map3DLiveThermal");
-        profileToggle_ = new QToolButton(content);
-        profileToggle_->setObjectName(QStringLiteral("map3DProfileSectionToggle"));
-        profileToggle_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-        profileToggle_->setArrowType(Qt::RightArrow);
-        profileToggle_->setCheckable(true);
-        rows->addWidget(profileToggle_);
-        profileBox_ = new QWidget(content);
-        auto* profileLayout = new QVBoxLayout(profileBox_);
+        profile_title_ = label("map3DProfileHeading");
+        auto* profileBox = new QWidget(content);
+        auto* profileLayout = new QVBoxLayout(profileBox);
         profileLayout->setContentsMargins(0, 0, 0, 0);
-        caption_ = new QLabel(profileBox_);
+        caption_ = new QLabel(profileBox);
+        caption_->setObjectName(QStringLiteral("map3DProfileCaption"));
         caption_->setWordWrap(true);
         profileLayout->addWidget(caption_);
         auto* choices = new QHBoxLayout;
-        channel_ = new SingleLevelPopupComboBox(profileBox_);
+        channel_ = new SingleLevelPopupComboBox(profileBox);
         channel_->setObjectName(QStringLiteral("map3DProfileChannel"));
         channel_->addItems({QStringLiteral("1368 nm"), QStringLiteral("816 nm")});
         choices->addWidget(channel_, 1);
-        resolution_ = new SingleLevelPopupComboBox(profileBox_);
+        resolution_ = new SingleLevelPopupComboBox(profileBox);
         resolution_->setObjectName(QStringLiteral("map3DProfileResolution"));
         for (int meters : {1, 5, 10, 20, 50}) resolution_->addItem(QStringLiteral("%1 m").arg(meters), meters);
         resolution_->addItem(liveText("不分层", "Unbinned"), 0);
         resolution_->setCurrentIndex(resolution_->findData(5));
         choices->addWidget(resolution_);
         profileLayout->addLayout(choices);
-        plot_ = new WaterProfilePlot(profileBox_);
+        plot_ = new WaterProfilePlot(profileBox);
         profileLayout->addWidget(plot_);
-        rows->addWidget(profileBox_);
-        profileBox_->hide();
-        openWave_ = new QPushButton(content);
-        openWave_->setObjectName(QStringLiteral("map3DOpenWaveformPageButton"));
-        rows->addWidget(openWave_);
+        rows->addWidget(profileBox);
         rows->addStretch();
-        connect(openWave_, &QPushButton::clicked, window, &Map3DWindow::openWaveformPageRequested);
-        connect(profileToggle_, &QToolButton::toggled, this, [this](bool open) {
-            profileBox_->setVisible(open);
-            profileToggle_->setArrowType(open ? Qt::DownArrow : Qt::RightArrow);
-            refreshProfile();
-        });
         connect(resolution_, &QComboBox::currentIndexChanged, this, [this] { revision_.reset(); refreshProfile(); });
         connect(channel_, &QComboBox::currentIndexChanged, this, [this](int index) { plot_->display(profile_, index); });
-        refreshTimer_.setSingleShot(true);
         refreshTimer_.setInterval(400);
         connect(&refreshTimer_, &QTimer::timeout, this, &MapLiveDataPanel::refreshProfile);
     }
@@ -1077,7 +1095,6 @@ public:
         const bool dark = isDarkThemeEnabled();
         const QString muted = appThemeColor(AppThemeColor::TextMuted, dark).name();
         const QString normal = appThemeColor(AppThemeColor::Text, dark).name();
-        const QString fault = appThemeColor(AppThemeColor::Danger, dark).name();
         const auto age = [](qint64 ms, bool stale) {
             QString text = ms < 0 ? QString() : QStringLiteral("%1 s").arg(ms / 1000.0, 0, 'f', 1);
             if (stale) text = (liveText("已过期", "Stale") + QLatin1Char(' ') + text).trimmed();
@@ -1111,9 +1128,9 @@ public:
         water(inSitu_, liveText("原位水汽浓度（1368 nm）", "In-situ water vapor (1368 nm)"),
               s.hasInSituWater, s.inSituWater, s.inSituAgeMs, s.inSituStale, s.inSituStatus);
         const auto reading = [&](QLabel* label, const QString& title, const QString& text, const QString& meta,
-                                 bool valid, bool stale, bool alarm = false) {
+                                 bool valid, bool stale) {
             label->setText(QStringLiteral("<b>%1</b> · <span style='color:%2'>%3</span>%4")
-                .arg(title, alarm ? fault : valid && !stale ? normal : muted, text.toHtmlEscaped(),
+                .arg(title, valid && !stale ? normal : muted, text.toHtmlEscaped(),
                      meta.isEmpty() ? QString() : QStringLiteral("<br><span style='color:%1'>%2</span>").arg(muted, meta.toHtmlEscaped())));
         };
         const auto degrees = [&](double number) {
@@ -1127,27 +1144,35 @@ public:
                 lines({s.humiditySource, age(s.humidityAgeMs, s.humidityStale)}), s.hasHumidity, s.humidityStale);
         reading(pressure_, liveText("气压", "Pressure"), value(s.hasPressure, s.pressureHpa, QStringLiteral("hPa")),
                 lines({s.pressureSource, age(s.pressureAgeMs, s.pressureStale)}), s.hasPressure, s.pressureStale);
-        reading(lidar_, QStringLiteral("SDFM300"), value(s.hasLidar, s.lidarDistanceM, QStringLiteral("m")),
+        const QString lidarLabel = Geo::heatMetricName(Geo::HeatMetric::LidarDistance, qApp->property("vaporViewEnglish").toBool());
+        reading(lidar_, lidarLabel, value(s.hasLidar, s.lidarDistanceM, QStringLiteral("m")),
                 age(s.lidarAgeMs, s.lidarStale), s.hasLidar, s.lidarStale);
-        reading(thermal_, liveText("温控", "Thermal"), s.hasThermal ? s.thermalSummary : QStringLiteral("—"),
-                age(s.thermalAgeMs, s.thermalStale), s.hasThermal, s.thermalStale, s.thermalFault);
-        profileToggle_->setText(liveText("累计水汽廓线", "Accumulated water profile"));
-        caption_->setText(liveText("本次采集累计 · SDFM300 测距高度", "This acquisition · SDFM300 ranging height"));
+        profile_title_->setText(QStringLiteral("<b>%1</b>").arg(liveText("累计水汽廓线", "Accumulated water profile")));
+        caption_->setText(liveText("本次采集累计 · 激光测距高度", "This acquisition · Laser ranging height"));
         resolution_->setItemText(resolution_->findData(0), liveText("不分层", "Unbinned"));
         resolution_->setAccessibleName(liveText("高度分辨率", "Height resolution"));
         resolution_->setToolTip(resolution_->accessibleName());
         channel_->setAccessibleName(liveText("水汽通道", "Water vapor channel"));
-        openWave_->setText(liveText("打开波形页", "Open waveform page"));
-        if (profileBox_->isVisible() && !refreshTimer_.isActive()) refreshTimer_.start();
     }
 
 protected:
-    void showEvent(QShowEvent* event) override { QFrame::showEvent(event); refreshProfile(); }
+    void showEvent(QShowEvent* event) override
+    {
+        QFrame::showEvent(event);
+        refreshProfile();
+        refreshTimer_.start();
+    }
+
+    void hideEvent(QHideEvent* event) override
+    {
+        refreshTimer_.stop();
+        QFrame::hideEvent(event);
+    }
 
 private:
     void refreshProfile()
     {
-        if (!isVisible() || !profileToggle_->isChecked() || !revisionProvider_ || !snapshotProvider_) return;
+        if (!isVisible() || !revisionProvider_ || !snapshotProvider_) return;
         const auto revision = revisionProvider_();
         if (revision_ == revision) return;
         const int meters = resolution_->currentData().toInt();
@@ -1156,10 +1181,7 @@ private:
         plot_->display(profile_, channel_->currentIndex());
     }
 
-    QLabel *session_, *heading_, *column_, *inSitu_, *position_, *temperature_, *humidity_, *pressure_, *lidar_, *thermal_, *caption_;
-    QToolButton* profileToggle_;
-    QPushButton* openWave_;
-    QWidget* profileBox_;
+    QLabel *session_, *heading_, *column_, *inSitu_, *position_, *temperature_, *humidity_, *pressure_, *lidar_, *profile_title_, *caption_;
     QComboBox *channel_, *resolution_;
     WaterProfilePlot* plot_;
     QTimer refreshTimer_;
@@ -1252,6 +1274,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
 
     if (centralWidget()) centralWidget()->installEventFilter(this);
     status_label_->setObjectName(QStringLiteral("map3DStatusLabel"));
+    status_label_->setTextFormat(Qt::PlainText);
 
     QToolBar* toolbar = addToolBar(QStringLiteral("3D Map"));
     toolbar->setObjectName(QStringLiteral("map3DToolbar"));
@@ -1738,6 +1761,20 @@ Map3DWindow::Map3DWindow(QWidget* parent)
 
     statusBar()->setSizeGripEnabled(false);
     statusBar()->addPermanentWidget(status_label_, 1);
+    auto* statusMessage = new MapStatusMessage(statusBar());
+    // A stretched first item occupies Qt's native message area. Render the
+    // temporary message there ourselves so it can wrap while credits stay visible.
+    statusBar()->addPermanentWidget(statusMessage, 1);
+    statusMessage->hide();
+    connect(statusBar(), &QStatusBar::messageChanged, this, [this, statusMessage](const QString& message) {
+        status_label_->setVisible(message.isEmpty());
+        statusMessage->setMessage(message);
+        statusMessage->setVisible(!message.isEmpty());
+    });
+    esri_attribution_ = new QLabel(QStringLiteral("Esri, Vantor, Earthstar Geographics, GIS User Community"), this);
+    esri_attribution_->setObjectName(QStringLiteral("map3DEsriAttribution"));
+    statusBar()->addPermanentWidget(esri_attribution_);
+    esri_attribution_->hide();
     osm_attribution_ = new QLabel(QStringLiteral("<a href=\"https://www.openstreetmap.org/copyright\">© OpenStreetMap contributors</a>"), this);
     osm_attribution_->setObjectName(QStringLiteral("map3DOsmAttribution"));
     osm_attribution_->setOpenExternalLinks(true);
@@ -4842,13 +4879,17 @@ QString Map3DWindow::diagnosticsText() const
     context.attitudeSource =
         attitudeSourceLabel(has_latest_status_sample_ ? &latest_status_sample_ : nullptr);
     context.followAircraft = follow_action_ && follow_action_->isChecked();
-    context.hasLatestLlh = has_latest_status_sample_ && latest_status_sample_.hasLlh();
-    if (context.hasLatestLlh)
+    if (view_) context.framebufferSize = view_->framebufferSize();
+    else if (headless_view_) context.framebufferSize = headless_view_->size();
+    if (has_latest_status_sample_ && latest_status_sample_.hasLlh())
     {
+        context.latestSample = &latest_status_sample_;
         context.heightReference = heightReferenceLabel(latest_status_sample_.heightReference);
         context.fixQuality = fixQualityLabel(latest_status_sample_.fixQuality);
         context.heightSafetyNote = heightSafetyNote();
     }
+    if (has_selected_track_sample_)
+        context.selectedSampleDetail = trajectorySampleDetailText(selected_track_sample_index_, selected_track_sample_);
     context.trackNote = latest_track_note_;
     context.dropSource = latest_drop_source_;
     context.dropReason = latest_drop_reason_;
@@ -4864,10 +4905,8 @@ void Map3DWindow::recordTrackSource(const QString& source,
     latest_track_note_ = note;
     latest_track_record_timestamp_us_ = latest ? latest->recordTimestampUs : 0;
     latest_track_device_timestamp_us_ = latest ? latest->deviceTimestampUs : 0;
-    if (!latest)
-    {
-        has_latest_status_sample_ = false;
-    }
+    has_latest_status_sample_ = latest != nullptr;
+    if (latest) latest_status_sample_ = *latest;
     latest_drop_source_.clear();
     latest_drop_reason_.clear();
     latest_drop_record_timestamp_us_ = 0;
@@ -4882,6 +4921,7 @@ void Map3DWindow::showSelectedTrajectorySample(int sampleIndex, const VaporView:
     const QString detail = trajectorySampleDetailText(sampleIndex, sample);
     statusBar()->showMessage(detail, 12000);
     updateStatus(nullptr);
+    refreshDiagnosticsText();
 }
 
 void Map3DWindow::clearSelectedTrajectorySample()
@@ -4918,129 +4958,26 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool for
     const Map3DPerformanceStats stats = view_ ? view_->performanceStats() : Map3DPerformanceStats{};
     const int totalSamples = view_ ? stats.totalSamples : headless_sample_count_;
     const int visibleSamples = view_ ? stats.visibleSamples : (std::min)(headless_sample_count_, max_visible_samples_);
-    const TrajectoryQualityStats qualityStats =
-        view_ ? stats.qualityStats : qualityStatsForSamples(headless_samples_, max_visible_samples_);
     QString text = mapText(QStringLiteral("采样点：%1/%2")).arg(visibleSamples).arg(totalSamples);
-    if (session_load_watcher_)
-    {
-        text.prepend(mapText(QStringLiteral("正在加载会话（完成后自动定位） | ")));
-    }
-    if (visibleSamples > 0)
-    {
-        text += mapText(QStringLiteral(" | 质量 %1")).arg(qualityStatsSummary(qualityStats));
-    }
     text += mapText(QStringLiteral(" | 来源 %1")).arg(latest_track_source_.isEmpty() ? mapText(QStringLiteral("无")) : latest_track_source_);
-    if (!latest_camera_note_.isEmpty())
-    {
-        text += mapText(QStringLiteral(" | 视角 %1")).arg(latest_camera_note_);
-    }
-    text += mapText(QStringLiteral(" | 跟随 %1"))
-                .arg(follow_action_ && follow_action_->isChecked() ? mapText(QStringLiteral("开启")) : mapText(QStringLiteral("关闭")));
-    if (latest_track_record_timestamp_us_ > 0)
-    {
-        text += mapText(QStringLiteral(" 记录时间 %1")).arg(latest_track_record_timestamp_us_);
-    }
-    if (latest_track_device_timestamp_us_ > 0)
-    {
-        text += mapText(QStringLiteral(" 设备时间 %1")).arg(latest_track_device_timestamp_us_);
-    }
-    if (!latest_drop_reason_.isEmpty())
-    {
-        text += mapText(QStringLiteral(" | 最近丢弃 %1：%2"))
-                    .arg(latest_drop_source_.isEmpty() ? mapText(QStringLiteral("实时")) : latest_drop_source_,
-                         latest_drop_reason_);
-        if (latest_drop_record_timestamp_us_ > 0)
-        {
-            text += mapText(QStringLiteral(" 记录时间 %1")).arg(latest_drop_record_timestamp_us_);
-        }
-    }
     if (view_ || headless_view_)
     {
-        const QSize framebufferSize = view_ ? view_->framebufferSize() : headless_view_->size();
-        text += mapText(QStringLiteral(" | 地图 %1 | 视口 %2×%3"))
-                    .arg(map_selection_.mode == MapDataMode::LocalGridOnly && latest_earth_load_.onlineOsmAvailable
-                         ? mapText(QStringLiteral("在线地球")) : MapDataManager::modeLabel(map_selection_.mode))
-                    .arg(framebufferSize.width())
-                    .arg(framebufferSize.height());
-        if (tianditu_satellite_imagery_loaded_)
-        {
-            text += mapText(QStringLiteral(" | 影像 天地图卫星"));
-        }
-        else if (view_ && view_->activeSatelliteImagerySource() == QStringLiteral("online:openaerialmap"))
-        {
-            text += mapText(QStringLiteral(" | 影像 OpenAerialMap（覆盖因地区而异）"));
-        }
+        const QString mapMode = map_selection_.mode == MapDataMode::LocalGridOnly && latest_earth_load_.onlineOsmAvailable
+            ? mapText(QStringLiteral("在线地球")) : MapDataManager::modeLabel(map_selection_.mode);
+        text += mapText(QStringLiteral(" | 地图 %1")).arg(mapMode);
         QString demLabel = view_ ? view_->activeElevationSourceLabel() : QString();
-        if (demLabel.isEmpty())
-        {
-            demLabel = selectedDemLabel(map_selection_.diagnostics);
-        }
+        if (demLabel.isEmpty()) demLabel = selectedDemLabel(map_selection_.diagnostics);
         const int arrowIdx = demLabel.indexOf(QStringLiteral("→"));
-        if (arrowIdx >= 0)
-        {
-            demLabel = demLabel.left(arrowIdx).trimmed();
-        }
-        const QString osmLabel = osm_source_ == QStringLiteral("local:osm")
-            ? mapText(QStringLiteral("本地矢量"))
-            : (latest_earth_load_.onlineOsmAvailable || (view_ && view_->isOnlineOsmActive())
-                   ? mapText(QStringLiteral("在线矢量"))
-                   : selectedOsmLabel(map_selection_.diagnostics));
-        text += QStringLiteral(" | DEM %1 | OSM %2").arg(demLabel, osmLabel);
-    }
-    if (view_)
-    {
-        text += mapText(QStringLiteral(" | 分段 %1×%2 | FPS %3 | CPU %4 ms | 轨迹 %5 ms"))
-                    .arg(stats.segmentCount)
-                    .arg(stats.segmentSize)
-                    .arg(QString::number(stats.framesPerSecond, 'f', 1)
-                         + (stats.idleRendering ? mapText(QStringLiteral("（静止）")) : QString()))
-                    .arg(stats.frameMs, 0, 'f', 1)
-                    .arg(stats.trackUpdateMs, 0, 'f', 1);
+        if (arrowIdx >= 0) demLabel = demLabel.left(arrowIdx).trimmed();
+        text += QStringLiteral(" | DEM %1").arg(demLabel);
     }
     if (displayLatest && displayLatest->hasLlh())
-    {
-        const QString satellitesText = displayLatest->satellites > 0
-            ? QString::number(displayLatest->satellites)
-            : QStringLiteral("--");
-        const QString hdopText = std::isfinite(displayLatest->hdop)
-            ? QString::number(displayLatest->hdop, 'f', 2)
-            : QStringLiteral("--");
-        text += mapText(QStringLiteral(" | 纬度 %1 经度 %2 高度 %3 m %4 | 定位 %5 | 卫星数 %6 | HDOP %7"))
-                    .arg(displayLatest->latDeg, 0, 'f', 7)
-                    .arg(displayLatest->lonDeg, 0, 'f', 7)
-                    .arg(displayLatest->heightM, 0, 'f', 2)
-                    .arg(heightReferenceLabel(displayLatest->heightReference))
-                    .arg(fixQualityLabel(displayLatest->fixQuality))
-                    .arg(satellitesText, hdopText);
-        if (displayLatest->heightReference == VaporView::Geo::HeightReference::Wgs84Ellipsoid)
-        {
-            text += mapText(QStringLiteral(" | 已应用高度基准"));
-        }
-        else if (displayLatest->heightReference == VaporView::Geo::HeightReference::Unknown)
-        {
-            text += mapText(QStringLiteral(" | 高度基准假定为 WGS84"));
-        }
-        else
-        {
-            text += mapText(QStringLiteral(" | 高度基准优先使用记录的 ECEF"));
-        }
-        text += mapText(QStringLiteral(" | 姿态 %1")).arg(attitudeSourceLabel(displayLatest));
-    }
+        text += QStringLiteral(" | ") + mapText(QStringLiteral("定位 %1")).arg(fixQualityLabel(displayLatest->fixQuality));
     if (has_selected_track_sample_)
-    {
         text += mapText(QStringLiteral(" | 选中 #%1")).arg(selected_track_sample_index_ + 1);
-        if (selected_track_sample_.hasLlh())
-        {
-            text += mapText(QStringLiteral(" 纬度 %1 经度 %2 高度 %3 m | 定位 %4"))
-                        .arg(selected_track_sample_.latDeg, 0, 'f', 7)
-                        .arg(selected_track_sample_.lonDeg, 0, 'f', 7)
-                        .arg(selected_track_sample_.heightM, 0, 'f', 2)
-                        .arg(fixQualityLabel(selected_track_sample_.fixQuality));
-        }
-    }
-    if (view_ && view_->activeSatelliteImagerySource() == QStringLiteral("online:esri"))
-        text.prepend(QStringLiteral("Esri, Vantor, Earthstar Geographics, GIS User Community | "));
     status_label_->setText(text);
+    if (esri_attribution_)
+        esri_attribution_->setVisible(view_ && view_->activeSatelliteImagerySource() == QStringLiteral("online:esri"));
     if (cesium_attribution_)
     {
         const QString credit = view_ && view_->isCesiumTerrainActive()

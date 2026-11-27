@@ -1169,9 +1169,6 @@ void MainWindow::setupFpgaControlPage()
     connect(controller,&Controller::measurementUpdated,this,&MainWindow::receiveFpgaMeasurements,Qt::QueuedConnection);
     connect(controller,&Controller::temperaturePortsChanged,this,[this](const QJsonObject& ports) {
         state_->local_tec103_ports_=ports;
-#ifdef VAPORVIEW_HAS_OSGEARTH
-        if (!isRemoteSkyMode()) state_->map3d_tec_ports_time_ = std::chrono::steady_clock::now();
-#endif
         updateHomeDeviceStatusCapsules();
     },Qt::QueuedConnection);
     connect(controller,&Controller::temperatureConnectionChanged,this,[this](bool connected,const QString& detail,bool identifying) {
@@ -1546,10 +1543,6 @@ void MainWindow::receiveFpgaMeasurements(const VaporView::FpgaSensor::AdaptedMea
         {
             if (m.ai8Live) {
                 state_->fpga_ai8_live_ = *m.ai8Live;
-#ifdef VAPORVIEW_HAS_OSGEARTH
-                state_->map3d_ai8_ = *m.ai8Live;
-                state_->map3d_ai8_time_ = now;
-#endif
             }
             state_->fpga_ai8_ui_dirty_ = true;
         }

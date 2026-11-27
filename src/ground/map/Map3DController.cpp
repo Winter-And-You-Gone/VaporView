@@ -39,7 +39,6 @@ void Map3DController::open()
         window_->setUiTestMode(ui_test_mode_);
         window_->setAttribute(Qt::WA_QuitOnClose, false);
         window_->setWaterProfileProviders(revision_provider_, profile_provider_);
-        connect(window_, &Map3D::Map3DWindow::openWaveformPageRequested, this, &Map3DController::openWaveformPageRequested);
         window_->installEventFilter(this);
         connect(window_, &QObject::destroyed, this, [this]() {
             window_ = nullptr;
