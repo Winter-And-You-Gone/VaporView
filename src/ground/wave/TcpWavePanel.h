@@ -63,6 +63,7 @@ public:
     void setFpgaWaveform(quint16 source, const QVector<QVector<double>> &samples,
                          const QStringList &components, const QString &detail, quint32 totalPoints, bool preview = false);
     void setFpgaSecondHarmonicPeak(quint16 source, quint32 cycleId, quint64 timestamp, double peak, bool preview);
+    void setWaterCalibrationFiles(const QStringList &files, const QString &selectedPath = {});
     void setWaterCalibration(const QString &key, const QString &name, const QString &unit, bool locked, const QString &detail);
     void clearWaterSamples(); // Concentration time series only.
     void clearWaterProfiles();
@@ -123,7 +124,7 @@ protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 signals:
-    void waterCalibrationRequested();
+    void waterCalibrationFileSelected(const QString &filePath);
     void normalizedSecondHarmonicFrameReady(quint64 timestampUs, QVector<float> samples);
     void rawWaveFrameReady(quint64 timestampUs, QByteArray rawSignalPayload, QByteArray harmonicPayload, VaporView::TcpFloatEncoding floatEncoding);
     void connectionStateChanged(bool connected);
@@ -178,6 +179,9 @@ private:
     struct CalibrationControls;
     void createWaterPlots(WaterCards &cards, QWidget *parent, int channel);
     void clearFpgaPeakTrend(int channel);
+    int waveformPageRowMinimumHeight(int index) const;
+    void updateWaveformPageRowMinimumHeights();
+    void syncCalibrationControls();
     void addCalibrationControls(CalibrationControls &controls, QHBoxLayout *row);
     void refreshWaterPlots(int changedChannel = -1);
     struct WaveDisplayMode {
@@ -271,7 +275,7 @@ private:
         PeakTrendPlotWidget *series;
         WaterProfilePlotWidget *layers;
     };
-    struct CalibrationControls { QPushButton *button; QLabel *file; };
+    struct CalibrationControls { QLabel *label = nullptr; VaporView::SingleLevelPopupComboBox *combo = nullptr; };
     struct WaveformPage;
     std::unique_ptr<WaveformPage> waveform_page_;
     std::array<WaterCards, 2> home_water_{};
@@ -281,6 +285,9 @@ private:
     QWidget *home_calibration_bar_ = nullptr;
     std::shared_ptr<WaterProfileAccumulator> water_profile_;
     std::array<QString, 2> last_water_id_, excluded_profile_id_;
+    QStringList water_calibration_files_;
+    QString water_calibration_selected_path_;
+    bool water_calibration_locked_ = false;
     QString water_calibration_key_, water_calibration_name_, water_unit_, water_calibration_detail_;
     struct WaterSample {
         QString id;

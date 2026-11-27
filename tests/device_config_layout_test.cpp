@@ -52,6 +52,7 @@
 #include <QVector>
 
 #include <algorithm>
+#include <tuple>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -634,7 +635,7 @@ int main(int argc, char **argv)
             const auto sections = summary->findChildren<QFrame *>(QStringLiteral("homeTelemetrySectionCard"));
             require(sections.size() == 3, "device summary has three sections");
             for (auto *section : sections) {
-                requirePillsUseWidestColumnWidth(section, "summary columns retain their aligned widths", section != sections.last());
+                requirePillsUseWidestColumnWidth(section, "summary columns retain their aligned widths", section->parentWidget() != summary);
                 requirePillLabelsFit(section, "summary labels fit after resizing");
             }
         }
@@ -814,8 +815,9 @@ int main(int argc, char **argv)
     require(subCards.size() == 3,
             "link-status card keeps the three telemetry summary subcards");
     std::sort(subCards.begin(), subCards.end(), [summaryContainer](QFrame *left, QFrame *right) {
-        return left->mapTo(summaryContainer, QPoint(0, 0)).x() <
-               right->mapTo(summaryContainer, QPoint(0, 0)).x();
+        const QPoint leftPos = left->mapTo(summaryContainer, QPoint());
+        const QPoint rightPos = right->mapTo(summaryContainer, QPoint());
+        return std::make_tuple(leftPos.x(), leftPos.y()) < std::make_tuple(rightPos.x(), rightPos.y());
     });
     const auto requireRateColumns = [&](const QStringList& expected) {
         QFrame *card = subCards.at(0);
@@ -891,22 +893,23 @@ int main(int argc, char **argv)
     activateLayouts(&window);
 
     const int summaryTop = summaryContainer->layout()->contentsMargins().top();
-    int previousRight = -1;
+    const QRect rateRect = rectInPage(subCards.at(0), summaryContainer);
+    const QRect linkRateRect = rectInPage(subCards.at(1), summaryContainer);
+    const QRect dataRect = rectInPage(subCards.at(2), summaryContainer);
+    require(std::abs(rateRect.left() - linkRateRect.left()) <= 2 && linkRateRect.top() > rateRect.bottom(),
+            "link rate sits directly below data frequency");
+    require(dataRect.left() > std::max(rateRect.right(), linkRateRect.right()),
+            "data sits to the right of both rate sections");
+    require(std::abs(rateRect.top() - summaryTop) <= 2 && std::abs(dataRect.top() - summaryTop) <= 2,
+            "data frequency and data align at the top of the summary");
     for (QFrame *subCard : subCards)
     {
-        const QRect subRect(subCard->mapTo(summaryContainer, QPoint(0, 0)), subCard->size());
-        require(previousRight < 0 || subRect.left() > previousRight,
-                "link-status subcards are arranged left-to-right");
-        require(std::abs(subRect.top() - summaryTop) <= 2,
-                "link-status subcards share a top edge");
-        require(subRect.right() <= summaryContainer->width() &&
-                    subRect.bottom() <= summaryContainer->height(),
-                "link-status subcards stay inside the summary container");
+        const QRect subRect = rectInPage(subCard, summaryContainer);
+        require(summaryContainer->rect().contains(subRect), "summary contains each telemetry subcard");
         require(subCard == subCards.at(2) ||
                     (subCard->sizePolicy().horizontalPolicy() == QSizePolicy::Fixed &&
                      std::abs(subRect.width() - subCard->sizeHint().width()) <= 2),
                 "link-status subcard width follows its widest content row");
-        previousRight = subRect.right();
     }
 
     const QStringList formattedDeviceLabels{

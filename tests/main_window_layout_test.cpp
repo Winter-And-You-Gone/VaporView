@@ -12376,30 +12376,34 @@ int main(int argc, char **argv)
         deviceTelemetrySummaryCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySectionCard"));
     require(telemetrySubCards.size() == 3,
             "device telemetry summary card splits content into three home-style subcards");
-    std::sort(telemetrySubCards.begin(), telemetrySubCards.end(), [](QFrame *a, QFrame *b) {
-        return a->mapTo(a->parentWidget(), QPoint(0, 0)).x() <
-               b->mapTo(b->parentWidget(), QPoint(0, 0)).x();
+    std::sort(telemetrySubCards.begin(), telemetrySubCards.end(), [deviceTelemetrySummaryCard](QFrame *left, QFrame *right) {
+        const QPoint leftPos = left->mapTo(deviceTelemetrySummaryCard, QPoint());
+        const QPoint rightPos = right->mapTo(deviceTelemetrySummaryCard, QPoint());
+        return std::make_tuple(leftPos.x(), leftPos.y()) < std::make_tuple(rightPos.x(), rightPos.y());
     });
     const QVector<QStringList> expectedTelemetrySubCardTitles = {
         {QStringLiteral("数据频率"), QStringLiteral("Data stream rates")},
         {QStringLiteral("链路速率"), QStringLiteral("Link rate")},
         {QStringLiteral("数据"), QStringLiteral("Data")},
     };
-    int previousSubCardRight = -1;
-    int previousSubCardTop = -1;
+    const auto telemetryRect = [deviceTelemetrySummaryCard](QFrame *card) {
+        return QRect(card->mapTo(deviceTelemetrySummaryCard, QPoint()), card->size());
+    };
+    const QRect rateRect = telemetryRect(telemetrySubCards.at(0));
+    const QRect linkRect = telemetryRect(telemetrySubCards.at(1));
+    const QRect dataRect = telemetryRect(telemetrySubCards.at(2));
+    require(std::abs(linkRect.left() - rateRect.left()) <= 2 && linkRect.top() > rateRect.bottom(),
+            "link rate sits directly below data frequency");
+    require(dataRect.left() > std::max(rateRect.right(), linkRect.right()) &&
+                std::abs(dataRect.top() - rateRect.top()) <= 2,
+            "data sits to the right of both rates and aligns with data frequency");
     for (int i = 0; i < telemetrySubCards.size(); ++i)
     {
         QFrame *subCard = telemetrySubCards.at(i);
-        const QRect subCardRect(subCard->mapTo(deviceTelemetrySummaryCard, QPoint(0, 0)), subCard->size());
-        require(previousSubCardRight < 0 || subCardRect.left() > previousSubCardRight,
-                "device telemetry summary subcards are arranged horizontally");
-        require(previousSubCardTop < 0 || std::abs(subCardRect.top() - previousSubCardTop) <= 2,
-                "device telemetry summary subcards share a top edge");
+        const QRect subCardRect = telemetryRect(subCard);
         require(i == 2 || (subCard->sizePolicy().horizontalPolicy() == QSizePolicy::Fixed &&
                     std::abs(subCardRect.width() - subCard->sizeHint().width()) <= 2),
                 "device telemetry summary subcard width follows its widest content row");
-        previousSubCardRight = subCardRect.right();
-        previousSubCardTop = subCardRect.top();
 
         QFrame *titlePane = subCard->findChild<QFrame *>(QStringLiteral("deviceTelemetrySectionTitlePane"));
         require(titlePane != nullptr,

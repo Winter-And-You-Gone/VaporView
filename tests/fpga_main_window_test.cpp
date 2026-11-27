@@ -2338,11 +2338,11 @@ static void harmonicHomeGraphs()
             QApplication::processEvents();
             auto *title = bar->findChild<QLabel *>("sectionTitleLabel");
             require(title && title->text() == (english ? QStringLiteral("Waveforms") : QStringLiteral("波形")), "localized outer card title");
-            QWidget *calibration = nullptr;
             for (auto *button : bar->findChildren<QPushButton *>())
-                if (button->property("waterCalibrationButton").toBool()) calibration = button;
+                require(!button->property("waterCalibrationButton").toBool(), "waveform header has no calibration button");
             QList<QWidget *> headerItems{title, bar->findChild<QPushButton *>("wavePageRawButton"),
-                bar->findChild<QPushButton *>("wavePageHarmonicButton"), calibration, bar->findChild<QLabel *>("waterCalibrationFileLabel")};
+                bar->findChild<QPushButton *>("wavePageHarmonicButton"), bar->findChild<QLabel *>("waterCalibrationLabel"),
+                dynamic_cast<VaporView::SingleLevelPopupComboBox *>(bar->findChild<QComboBox *>("waterCalibrationComboBox"))};
             QRect previous;
             for (auto *item : headerItems) {
                 require(item && item->isVisibleTo(wavePage), "waveform header item visible");
@@ -2360,6 +2360,27 @@ static void harmonicHomeGraphs()
                 require(actual.contains(headings[0]) && actual.contains(headings[1]), "both views identify both channel wavelengths and roles");
             }
         }
+        calibration.service->copyFile(file.filename, QStringLiteral("second_cal"));
+        calibration.service->synchronize();
+        QApplication::processEvents();
+        auto files = calibration.service->view().files;
+        require(files.size() == 2 && files.removeOne(file.filename), "copy creates a second calibration file");
+        const QString secondFile = files.first();
+        auto *pageCombo = dynamic_cast<VaporView::SingleLevelPopupComboBox *>(bar->findChild<QComboBox *>("waterCalibrationComboBox"));
+        auto *homeCombo = monitor->findChild<QComboBox *>("waterCalibrationComboBox");
+        for (auto *combo : {static_cast<QComboBox *>(pageCombo), homeCombo})
+            require(combo && combo->count() == 2 && combo->currentData().toString() == file.filename &&
+                    combo->findData(secondFile) >= 0, "both calibration selectors list the service files");
+        pageCombo->showPopup();
+        auto *fileMenu = pageCombo->popupMenu();
+        require(fileMenu->isVisible() && fileMenu->actions().size() == 2, "calibration menu opens inline");
+        fileMenu->actions().at(pageCombo->findData(secondFile))->trigger();
+        pageCombo->hidePopup();
+        calibration.service->synchronize();
+        QApplication::processEvents();
+        require(calibration.service->view().selected.filename == secondFile && pageCombo->currentData().toString() == secondFile &&
+                homeCombo->currentData().toString() == secondFile && !QApplication::activeModalWidget(),
+                "page selection reaches the calibration service and both dropdowns");
         for (int channel = 0; channel < 2; ++channel) {
             wave.source = 0x30 + channel;
             page->updateWaveform(wave);
@@ -2386,7 +2407,8 @@ static void harmonicHomeGraphs()
         QVector<int> initialHeights;
         for (auto *row : rows) initialHeights.append(row->height());
         QVector<int> expectedHeights{136, 136, 136, 136, 186, 186, 154};
-        for (int &height : expectedHeights) height = qRound(height * scale / 100.0);
+        for (int i = 0; i < expectedHeights.size(); ++i)
+            expectedHeights[i] = std::max(qRound(expectedHeights[i] * scale / 100.0), rows[i]->property("waveformRowMinHeight").toInt());
         require(initialHeights == expectedHeights,
                 "waveform rows are compact while peak and concentration rows keep their height");
         for (int channel = 0; channel < 2; ++channel) {
@@ -2404,6 +2426,40 @@ static void harmonicHomeGraphs()
 
         window.resize(originalWindowSize);
         QApplication::processEvents();
+
+        const QStringList plotNames{"wavePageRawChannel0", "wavePageH1Channel0", "wavePageH2Channel0", "wavePageNormalizedChannel0",
+                                    "wavePageTrendChannel0", "waterConcentrationPlot", "waterProfilePlot"};
+        for (int i = 0; i < rows.size(); ++i) {
+            auto *row = rows[i];
+            auto *handle = dynamic_cast<VaporView::Ground::Wave::RowResizeHandle *>(row->findChild<QWidget *>("waveformRowResizeHandle"));
+            auto *plot = row->findChild<QWidget *>(plotNames[i]);
+            require(handle && plot, "row has its plot and resize handle");
+            wavePage->ensureWidgetVisible(handle);
+            QApplication::processEvents();
+            const QPointF local(handle->rect().center()), global(handle->mapToGlobal(handle->rect().center()));
+            QMouseEvent press(QEvent::MouseButtonPress, local, global, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+            QApplication::sendEvent(handle, &press);
+            const QPointF destination = global + QPointF(0, -500);
+            QMouseEvent move(QEvent::MouseMove, local, destination, Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+            QApplication::sendEvent(handle, &move);
+            QMouseEvent release(QEvent::MouseButtonRelease, local, destination, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+            QApplication::sendEvent(handle, &release);
+            QApplication::processEvents();
+            plot->grab();
+            require(row->height() == handle->minimumHeightBound() && row->height() == row->property("waveformRowMinHeight").toInt(),
+                    "drag clamps each row to its computed minimum");
+            require(plot->height() == plot->minimumHeight() && plot->property("yTickCount").toInt() == 4 &&
+                    plot->property("drawnYTickCount").toInt() == 4, "minimum plot height fits all four painted ticks");
+            const int previousMaximum = plot->maximumHeight();
+            const int minimum = plot->minimumHeight();
+            plot->setFixedHeight(minimum - 3);
+            plot->grab();
+            require(plot->property("drawnYTickCount").toInt() < 4, "three pixels below minimum cannot paint all four ticks");
+            plot->setMaximumHeight(previousMaximum);
+            plot->setMinimumHeight(minimum);
+            row->setFixedHeight(initialHeights[i]);
+            QApplication::processEvents();
+        }
 
         // Exercise the drag and paint paths for all three plot widget types.
         for (const auto &plotName : {"wavePageRawChannel0", "wavePageTrendChannel0", "waterProfilePlot"}) {
@@ -2492,6 +2548,24 @@ static void harmonicHomeGraphs()
                 }
             }
         }
+        nav->click();
+        if (scale == 100) {
+            auto &state = MainWindowRtcmTestAccess::state(window);
+            for (auto *action : {state.font_extra_large_action_, state.font_normal_action_}) {
+                action->trigger();
+                processFor(100);
+                for (int i = 0; i < rows.size(); ++i) {
+                    auto *row = rows[i];
+                    auto *plot = row->findChild<QWidget *>(plotNames[i]);
+                    const int minimum = row->property("waveformRowMinHeight").toInt();
+                    require(row->height() >= minimum, "live scaling preserves the waveform row minimum");
+                    row->setFixedHeight(minimum);
+                    QApplication::processEvents();
+                    require(plot->height() == plot->minimumHeight(), "live scaling updates the cached row minimum to match plot geometry");
+                }
+            }
+        }
+        stack->setCurrentIndex(0);
         monitor->setEnglish(false);
         path->setCurrentIndex(path->findData("direct_devices")); processFor(50);
         require(!monitor->findChild<QWidget*>("fpgaWaveH2Plot")->isVisibleTo(monitor),

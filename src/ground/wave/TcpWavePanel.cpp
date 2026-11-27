@@ -48,6 +48,7 @@
 #include <QSettings>
 #include <QScrollArea>
 #include <QSignalBlocker>
+#include <QStandardItemModel>
 #include <QSize>
 #include <QSizePolicy>
 #include <QSpinBox>
@@ -1156,10 +1157,11 @@ void drawTimeAxis(QPainter& painter,
     }
 }
 
-void drawYLabels(QPainter &painter, const QRectF &area, int intervals, double minValue, double maxValue, int decimals)
+int drawYLabels(QPainter &painter, const QRectF &area, int intervals, double minValue, double maxValue, int decimals)
 {
     const int height = painter.fontMetrics().height();
     const qreal lastTop = std::max(area.top(), area.bottom() - height + 2);
+    int drawn = 0;
     qreal previousBottom = -height;
     for (int tick = 0; tick <= intervals; ++tick) {
         const qreal ratio = qreal(tick) / intervals;
@@ -1167,8 +1169,10 @@ void drawYLabels(QPainter &painter, const QRectF &area, int intervals, double mi
         if (top < previousBottom || (tick > 0 && tick < intervals && top + height > lastTop)) continue;
         painter.drawText(QRectF(2, top, area.left() - 6, height), Qt::AlignRight | Qt::AlignVCenter,
                          formatWaveValue(maxValue - (maxValue - minValue) * ratio, decimals));
+        ++drawn;
         previousBottom = top + height;
     }
+    return drawn;
 }
 
 void updateTimeAxisGeometryProperties(QWidget *widget,
@@ -1192,6 +1196,12 @@ void updateTimeAxisGeometryProperties(QWidget *widget,
 class WavePlotWidget : public QWidget
 {
 public:
+    int minimumHeightForFourYTicks() const
+    {
+        const int h = fontMetrics().height();
+        return kPlotTopMargin + VaporView::WavePlotFrame::minimumPlotHeightForYTicks(h) + h + kPlotBottomMarginExtra;
+    }
+
     explicit WavePlotWidget(const QColor& lineColor, QWidget *parent = nullptr)
         : QWidget(parent)
         , line_color_(lineColor)
@@ -1295,6 +1305,7 @@ protected:
         }
         if (!std::isfinite(minValue))
         {
+            setProperty("drawnYTickCount", 0);
             drawGrid();
             drawTimeAxis(painter, plotRect, timeAxis, fm, theme.text, sample_axis_ && sample_axis_max_intervals_ > 4);
             painter.setPen(theme.mutedText);
@@ -1344,7 +1355,7 @@ protected:
         drawSegment();
 
         painter.setPen(theme.text);
-        drawYLabels(painter, plotRect, yIntervals, minValue, maxValue, 3);
+        setProperty("drawnYTickCount", drawYLabels(painter, plotRect, yIntervals, minValue, maxValue, 3));
         drawTimeAxis(painter, plotRect, timeAxis, fm, theme.text, sample_axis_ && sample_axis_max_intervals_ > 4);
     }
 
@@ -1386,6 +1397,12 @@ private:
 class PeakTrendPlotWidget : public QWidget
 {
 public:
+    int minimumHeightForFourYTicks() const
+    {
+        const int h = fontMetrics().height();
+        return kPlotTopMargin + VaporView::WavePlotFrame::minimumPlotHeightForYTicks(h) + h + kPlotBottomMarginExtra;
+    }
+
     enum class PlotMode
     {
         Scatter,
@@ -1505,6 +1522,7 @@ protected:
 
         if (peak_values_.isEmpty())
         {
+            setProperty("drawnYTickCount", 0);
             drawGrid();
             drawTimeAxis(painter, plotRect, timeAxis, fm, theme.text);
             painter.setPen(theme.mutedText);
@@ -1531,6 +1549,7 @@ protected:
         }
         if (finiteIndices.isEmpty())
         {
+            setProperty("drawnYTickCount", 0);
             drawGrid();
             drawTimeAxis(painter, plotRect, timeAxis, fm, theme.text);
             painter.setPen(theme.mutedText);
@@ -1602,7 +1621,7 @@ protected:
         }
 
         painter.setPen(theme.text);
-        drawYLabels(painter, plotRect, yIntervals, minValue, maxValue, 3);
+        setProperty("drawnYTickCount", drawYLabels(painter, plotRect, yIntervals, minValue, maxValue, 3));
         drawTimeAxis(painter, plotRect, timeAxis, fm, theme.text);
     }
 
@@ -1726,47 +1745,15 @@ private:
     std::function<void(int, int, int)> on_view_changed_;
 };
 
-class ElidedCalibrationFileLabel final : public QLabel
-{
-public:
-    explicit ElidedCalibrationFileLabel(QWidget *parent = nullptr)
-        : QLabel(parent)
-    {
-        setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-        setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-        setWordWrap(false);
-    }
-
-    QSize minimumSizeHint() const override
-    {
-        const QFontMetrics metrics(font());
-        const int fullWidth = metrics.horizontalAdvance(text()) + 4;
-        return QSize(std::min(fullWidth, 64), std::max(metrics.height(), minimumHeight()));
-    }
-
-    QSize sizeHint() const override
-    {
-        const QFontMetrics metrics(font());
-        const int fullWidth = metrics.horizontalAdvance(text()) + 4;
-        return QSize(std::min(fullWidth, 240), std::max(metrics.height(), minimumHeight()));
-    }
-
-protected:
-    void paintEvent(QPaintEvent *) override
-    {
-        QPainter painter(this);
-        painter.setFont(font());
-        painter.setPen(palette().color(foregroundRole()));
-        const QRect area = contentsRect();
-        const QString fullText = text();
-        const QString drawn = fontMetrics().elidedText(fullText, Qt::ElideMiddle, std::max(0, area.width()));
-        painter.drawText(area, Qt::AlignLeft | Qt::AlignVCenter, drawn);
-    }
-};
-
 class WaterProfilePlotWidget final : public QWidget
 {
 public:
+    int minimumHeightForFourYTicks() const
+    {
+        const int h = fontMetrics().height();
+        return 4 + VaporView::WavePlotFrame::minimumPlotHeightForYTicks(h) + h + 8;
+    }
+
     explicit WaterProfilePlotWidget(QWidget *parent) : QWidget(parent)
     {
         setMouseTracking(true);
@@ -1891,7 +1878,10 @@ protected:
                                            metrics.horizontalAdvance(formatWaveValue(yMax, 2)),
                                            metrics.horizontalAdvance(formatWaveValue(xMin, 2)) / 2});
         const QRectF area = QRectF(rect()).adjusted(leftMargin, 4, -rightMargin, -metrics.height() - 8);
-        if (area.width() < 2 || area.height() < 2) return;
+        if (area.width() < 2 || area.height() < 2) {
+            setProperty("drawnYTickCount", 0);
+            return;
+        }
         const auto labelAt = [&](int i, int count) {
             return formatWaveValue(xMin + (xMax - xMin) * (double(i) / count), 2);
         };
@@ -1902,6 +1892,7 @@ protected:
         setProperty("yTickCount", yIntervals + 1);
         VaporView::WavePlotFrame::drawGrid(painter, area, columns, theme, yIntervals);
         if (empty) {
+            setProperty("drawnYTickCount", 0);
             painter.setPen(theme.mutedText);
             painter.drawText(area, Qt::AlignCenter | Qt::TextWordWrap, empty_text_);
             return;
@@ -1915,7 +1906,7 @@ protected:
             painter.drawText(QRectF(x - labelWidth / 2.0, area.bottom() + 2, labelWidth, metrics.height()),
                              Qt::AlignCenter, label);
         }
-        drawYLabels(painter, area, yIntervals, yMin, yMax, 2);
+        setProperty("drawnYTickCount", drawYLabels(painter, area, yIntervals, yMin, yMax, 2));
         const auto position = [&](double value, double height) {
             return QPointF(area.left() + area.width() * ((value - xMin) / (xMax - xMin)),
                           area.bottom() - area.height() * ((height - yMin) / (yMax - yMin)));
@@ -1993,6 +1984,11 @@ struct TcpWavePanel::WaveformPage {
     std::array<VaporView::Ground::Wave::VerticalRowLabel *, 7> labels;
     QLabel *titleLabel;
     QPushButton *raw, *harmonic;
+    QScrollArea *scroll = nullptr;
+    std::array<QWidget *, 7> rows{};
+    std::array<VaporView::Ground::Wave::RowResizeHandle *, 7> handles{};
+    std::array<std::array<QFrame *, 2>, 7> cards{};
+    std::array<std::array<QHBoxLayout *, 2>, 7> headerLayouts{};
     CalibrationControls calibration;
 };
 
@@ -2866,6 +2862,9 @@ void TcpWavePanel::changeEvent(QEvent *event)
         return;
     }
 
+    if (event->type() == QEvent::FontChange || event->type() == QEvent::ApplicationFontChange ||
+        event->type() == QEvent::StyleChange) updateWaveformPageRowMinimumHeights();
+
     if (event->type() == QEvent::ApplicationPaletteChange ||
         event->type() == QEvent::PaletteChange ||
         event->type() == QEvent::StyleChange ||
@@ -2879,6 +2878,10 @@ void TcpWavePanel::changeEvent(QEvent *event)
 
 bool TcpWavePanel::eventFilter(QObject *watched, QEvent *event)
 {
+    if (waveform_page_ && watched == waveform_page_->scroll && event &&
+        (event->type() == QEvent::Show || event->type() == QEvent::FontChange ||
+         event->type() == QEvent::StyleChange || event->type() == QEvent::LayoutRequest))
+        updateWaveformPageRowMinimumHeights();
     if (watched == peak_header_bar_ && event)
     {
         switch (event->type())
@@ -3155,6 +3158,7 @@ QWidget *TcpWavePanel::createWaveformPage(QWidget *parent)
         auto *button = new QPushButton(bar);
         button->setObjectName(raw ? QStringLiteral("wavePageRawButton") : QStringLiteral("wavePageHarmonicButton"));
         button->setProperty("fpgaWaveAction", true);
+        button->setProperty("styleSheetManagedHeight", true);
         button->setFixedHeight(kTcpButtonHeight);
         controls->addWidget(button, 0, Qt::AlignVCenter);
         auto *homeButton = raw ? fpga_raw_button_ : fpga_harmonic_button_;
@@ -3162,7 +3166,7 @@ QWidget *TcpWavePanel::createWaveformPage(QWidget *parent)
         (raw ? page.raw : page.harmonic) = button;
     }
     addCalibrationControls(page.calibration, controls);
-    page.calibration.button->setEnabled(home_calibration_.button->isEnabled());
+    page.scroll = scroll;
     using VaporView::Ground::Wave::VerticalRowLabel;
     using VaporView::Ground::Wave::RowResizeHandle;
     auto *content = new QWidget(outerCard);
@@ -3189,6 +3193,7 @@ QWidget *TcpWavePanel::createWaveformPage(QWidget *parent)
     const QStringList plotNames{"Raw", "H1", "H2", "Normalized"};
     for (int index = 0; index < 7; ++index) {
         auto *row = new QWidget(content);
+        page.rows[index] = row;
         setSurface(row, QStringLiteral("waveformPageRow"));
         row->setFixedHeight(index < 4 ? 136 : index == 6 ? 154 : 186);
         contentLayout->addWidget(row);
@@ -3204,6 +3209,7 @@ QWidget *TcpWavePanel::createWaveformPage(QWidget *parent)
         for (int channel = 0; channel < 2; ++channel) {
             auto &lane = page.lanes[channel];
             auto *cell = new QFrame(row);
+            page.cards[index][channel] = cell;
             cell->setObjectName(QStringLiteral("waveformPageCard"));
             cell->setFrameShape(QFrame::NoFrame);
             cell->setAttribute(Qt::WA_StyledBackground);
@@ -3219,6 +3225,7 @@ QWidget *TcpWavePanel::createWaveformPage(QWidget *parent)
                 continue;
             }
             auto *infoRow = new QHBoxLayout;
+            page.headerLayouts[index][channel] = infoRow;
             layout->addLayout(infoRow);
             lane.info[index] = new QLabel(cell);
             lane.info[index]->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
@@ -3228,14 +3235,14 @@ QWidget *TcpWavePanel::createWaveformPage(QWidget *parent)
                 auto *wave = new WavePlotWidget(appThemeColor(color, false), cell);
                 wave->setObjectName(QStringLiteral("wavePage%1Channel%2").arg(plotNames[index]).arg(channel));
                 wave->setSampleAxisMaxIntervals(12);
-                wave->setMinimumHeight(0);
+                wave->setProperty("styleSheetManagedHeight", true);
                 wave->setMaximumHeight(QWIDGETSIZE_MAX);
                 layout->addWidget(wave, 1);
                 lane.waves[index] = wave;
             } else {
                 lane.trend = new PeakTrendPlotWidget(cell);
                 lane.trend->setObjectName(QStringLiteral("wavePageTrendChannel%1").arg(channel));
-                lane.trend->setMinimumHeight(0);
+                lane.trend->setProperty("styleSheetManagedHeight", true);
                 lane.trend->setMaximumHeight(QWIDGETSIZE_MAX);
                 layout->addWidget(lane.trend, 1);
                 lane.mode = new VaporView::Ground::Widgets::SegmentedSwitchButton(cell);
@@ -3253,27 +3260,93 @@ QWidget *TcpWavePanel::createWaveformPage(QWidget *parent)
                 connect(lane.clear, &QPushButton::clicked, this, [this, channel] { clearFpgaPeakTrend(channel); });
             }
         }
-        auto *handle = new RowResizeHandle(row, 120, 640, {}, row);
+        auto *handle = new RowResizeHandle(row, 0, 640, {}, row);
+        page.handles[index] = handle;
+        handle->setMinHeightProvider([this, index] { return waveformPageRowMinimumHeight(index); });
         handle->setObjectName(QStringLiteral("waveformRowResizeHandle"));
         rowLayout->addWidget(handle);
     }
     list->addStretch();
     scroll->setWidget(body);
     setEnglish(is_english_);
+    scroll->installEventFilter(this);
+    updateWaveformPageRowMinimumHeights();
     return scroll;
+}
+
+int TcpWavePanel::waveformPageRowMinimumHeight(int index) const
+{
+    const auto &page = *waveform_page_;
+    int cardHeight = 0;
+    for (int ch = 0; ch < 2; ++ch) {
+        const auto &lane = page.lanes[ch];
+        const auto applyMinimum = [](auto *plot) {
+            const int minimum = plot->minimumHeightForFourYTicks();
+            plot->setMinimumHeight(minimum);
+            return minimum;
+        };
+        int height = index < 4 ? applyMinimum(lane.waves[index]) : index == 4 ? applyMinimum(lane.trend)
+                   : index == 5 ? applyMinimum(lane.water.series) : applyMinimum(lane.water.layers);
+        auto *card = page.cards[index][ch];
+        auto *layout = card->layout();
+        if (auto *header = page.headerLayouts[index][ch]) {
+            height += std::max({header->sizeHint().height(), header->minimumSize().height(),
+                                index < 4 ? lane.info[index]->fontMetrics().height() : 0}) + layout->spacing();
+        }
+        const auto margins = card->contentsMargins() + layout->contentsMargins();
+        cardHeight = std::max(cardHeight, height + margins.top() + margins.bottom());
+    }
+    auto *handle = page.handles[index];
+    const int handleHeight = std::max(handle->height(), handle->minimumHeight());
+    return cardHeight + (handleHeight ? handleHeight : 6);
+}
+
+void TcpWavePanel::updateWaveformPageRowMinimumHeights()
+{
+    if (!waveform_page_) return;
+    for (int index = 0; index < 7; ++index) {
+        auto *handle = waveform_page_->handles[index];
+        if (!handle) continue;
+        const int minimum = waveformPageRowMinimumHeight(index);
+        handle->setHeightBounds(minimum, std::max(minimum, 640));
+        auto *row = waveform_page_->rows[index];
+        row->setProperty("waveformRowMinHeight", minimum);
+        if (row->height() < minimum || row->maximumHeight() < minimum) row->setFixedHeight(minimum);
+    }
 }
 
 void TcpWavePanel::addCalibrationControls(CalibrationControls &controls, QHBoxLayout *row)
 {
-    controls.button = new QPushButton(row->parentWidget());
-    controls.button->setObjectName(QStringLiteral("compactTcpButton"));
-    controls.button->setProperty("waterCalibrationButton", true);
-    controls.button->setFixedHeight(kTcpButtonHeight);
-    controls.file = new ElidedCalibrationFileLabel(row->parentWidget());
-    controls.file->setObjectName(QStringLiteral("waterCalibrationFileLabel"));
-    row->addWidget(controls.button, 0, Qt::AlignVCenter);
-    row->addWidget(controls.file, 1, Qt::AlignVCenter);
-    connect(controls.button, &QPushButton::clicked, this, &TcpWavePanel::waterCalibrationRequested);
+    controls.label = new QLabel(row->parentWidget());
+    controls.label->setObjectName(QStringLiteral("waterCalibrationLabel"));
+    controls.label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    controls.label->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    auto *combo = controls.combo = new VaporView::SingleLevelPopupComboBox(row->parentWidget());
+    combo->setObjectName(QStringLiteral("waterCalibrationComboBox"));
+    combo->setProperty("waterCalibrationCombo", true);
+    combo->setProperty("styleSheetManagedHeight", true);
+    combo->setFixedHeight(kTcpButtonHeight);
+    combo->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    combo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    combo->setMinimumContentsLength(12);
+    combo->setMinimumWidth(140);
+    combo->setMaximumWidth(260);
+    combo->setPopupFitContents(true);
+    combo->setSelectionCheckIconProvider([] {
+        return createMenuCheckIcon(appThemeColor(AppThemeColor::MenuCheckText, isDarkThemeEnabled()));
+    });
+    row->addWidget(controls.label, 0, Qt::AlignVCenter);
+    row->addWidget(combo, 0, Qt::AlignVCenter);
+    row->addStretch(1);
+    connect(combo, &QComboBox::activated, this, [this, combo](int index) {
+        if (water_calibration_locked_ || index < 0 || index >= combo->count()) return;
+        const QString path = combo->itemData(index).toString();
+        if (path.isEmpty() || (path == water_calibration_selected_path_ && !water_calibration_key_.isEmpty())) return;
+        water_calibration_selected_path_ = path;
+        water_calibration_name_ = QFileInfo(path).fileName();
+        syncCalibrationControls();
+        emit waterCalibrationFileSelected(path);
+    });
 }
 
 static QString profileResolutionText(int resolution, bool english)
@@ -3289,6 +3362,7 @@ void TcpWavePanel::createWaterPlots(WaterCards &cards, QWidget *parent, int chan
     QHBoxLayout *profileHeader;
     if (listCell) {
         profileHeader = new QHBoxLayout;
+        waveform_page_->headerLayouts[6][channel] = profileHeader;
         static_cast<QVBoxLayout *>(cards.profile->layout())->addLayout(profileHeader);
     } else {
         QGroupBox *group;
@@ -3300,7 +3374,8 @@ void TcpWavePanel::createWaterPlots(WaterCards &cards, QWidget *parent, int chan
     cards.concentration->setProperty("waterPlotCard", "concentration");
     cards.series = new PeakTrendPlotWidget(cards.concentration);
     cards.series->setObjectName(channel ? QStringLiteral("waterConcentrationPlot1") : QStringLiteral("waterConcentrationPlot"));
-    cards.series->setMinimumHeight(listCell ? 0 : kWavePlotMinimumHeight);
+    if (listCell) cards.series->setProperty("styleSheetManagedHeight", true);
+    else cards.series->setMinimumHeight(kWavePlotMinimumHeight);
     cards.series->setMaximumHeight(QWIDGETSIZE_MAX);
     cards.series->setPlotMode(PeakTrendPlotWidget::PlotMode::Polyline);
     static_cast<QVBoxLayout *>(cards.concentration->layout())->addWidget(cards.series, 1);
@@ -3312,7 +3387,7 @@ void TcpWavePanel::createWaterPlots(WaterCards &cards, QWidget *parent, int chan
     cards.summary->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
     if (listCell) {
         cards.layers->setMaxXAxisIntervals(12);
-        cards.layers->setMinimumHeight(0);
+        cards.layers->setProperty("styleSheetManagedHeight", true);
         profileHeader->addWidget(cards.summary, 1);
     } else {
         profileHeader->addStretch();
@@ -3345,13 +3420,65 @@ void TcpWavePanel::createWaterPlots(WaterCards &cards, QWidget *parent, int chan
     static_cast<QVBoxLayout *>(cards.profile->layout())->addWidget(cards.layers, 1);
 }
 
+void TcpWavePanel::setWaterCalibrationFiles(const QStringList &files, const QString &selectedPath)
+{
+    water_calibration_files_ = files;
+    water_calibration_selected_path_ = selectedPath;
+    syncCalibrationControls();
+}
+
+void TcpWavePanel::syncCalibrationControls()
+{
+    const auto fileText = is_english_ ? QStringLiteral("Calibration File") : QStringLiteral("定标文件");
+    const QString selectText = is_english_ ? QStringLiteral("Select a calibration file") : QStringLiteral("请选择定标文件");
+    const QString unselectedText = is_english_ ? QStringLiteral("Not selected") : QStringLiteral("未选择");
+    const bool selected = !water_calibration_name_.isEmpty();
+    QString tooltip = selected ? water_calibration_name_ : selectText;
+    if (!selected && water_calibration_files_.isEmpty()) {
+        tooltip = is_english_ ? QStringLiteral("No .vcal files. Generate or import one on the Water Calibration page first.")
+                              : QStringLiteral("没有可用的 .vcal 文件，请先在水汽定标页面生成或导入定标文件。");
+    }
+    if (!water_calibration_detail_.isEmpty()) tooltip += QStringLiteral("\n") + water_calibration_detail_;
+    const auto update = [&](const CalibrationControls &controls) {
+        auto *combo = controls.combo;
+        if (!combo) return;
+        controls.label->setText(fileText);
+        controls.label->setToolTip(tooltip);
+        combo->setAccessibleName(fileText);
+        combo->setToolTip(tooltip);
+        const QSignalBlocker blocker(combo);
+        combo->clear();
+        if (!selected) {
+            combo->addItem(unselectedText, QString());
+            if (auto *model = qobject_cast<QStandardItemModel *>(combo->model())) model->item(0)->setEnabled(false);
+        }
+        for (const auto &path : water_calibration_files_) combo->addItem(QFileInfo(path).fileName(), path);
+        int index = 0;
+        if (selected) {
+            index = combo->findData(water_calibration_selected_path_);
+            if (index < 0) index = combo->findText(water_calibration_name_);
+            if (index < 0) {
+                index = combo->count();
+                combo->addItem(water_calibration_name_, water_calibration_selected_path_);
+            }
+        }
+        combo->setCurrentIndex(index);
+        combo->setEnabled(!water_calibration_locked_ && !water_calibration_files_.isEmpty());
+    };
+    update(home_calibration_);
+    if (waveform_page_) update(waveform_page_->calibration);
+}
+
 void TcpWavePanel::setWaterCalibration(const QString &key, const QString &name, const QString &unit,
                                        bool locked, const QString &detail)
 {
-    home_calibration_.button->setEnabled(!locked);
-    if (waveform_page_) waveform_page_->calibration.button->setEnabled(!locked);
+    water_calibration_locked_ = locked;
+    if (key.isEmpty() && name.isEmpty()) water_calibration_selected_path_.clear();
     if (water_calibration_key_ == key && water_calibration_name_ == name &&
-        water_unit_ == unit && water_calibration_detail_ == detail) return;
+        water_unit_ == unit && water_calibration_detail_ == detail) {
+        syncCalibrationControls();
+        return;
+    }
     const bool changed = water_calibration_key_ != key || water_calibration_name_ != name;
     if (changed) {
         if (!water_calibration_key_.isEmpty()) water_profile_->clearAll();
@@ -3399,25 +3526,8 @@ void TcpWavePanel::refreshWaterPlots(int changedChannel)
     const auto name = is_english_ ? QStringLiteral("Water Vapor Concentration") : QStringLiteral("水汽浓度");
     const auto profile = is_english_ ? QStringLiteral("Water Vapor Profile") : QStringLiteral("水汽廓线");
     const QString unit = water_unit_.isEmpty() ? QString() : QStringLiteral(" (%1)").arg(water_unit_);
-    const auto fileText = is_english_ ? QStringLiteral("Calibration File") : QStringLiteral("定标文件");
     const QString selectText = is_english_ ? QStringLiteral("Select a calibration file") : QStringLiteral("请选择定标文件");
-    const QString unselectedText = is_english_ ? QStringLiteral("Not selected") : QStringLiteral("未选择");
-    const QString tooltipText = (water_calibration_name_.isEmpty() ? selectText : water_calibration_name_)
-        + (water_calibration_detail_.isEmpty() ? QString() : QStringLiteral("\n") + water_calibration_detail_);
-    const auto updateCalibration = [&](const CalibrationControls &controls) {
-        controls.button->setAccessibleName(fileText);
-        controls.button->setText(fileText);
-        controls.button->setToolTip(tooltipText);
-        const QString prefix = is_english_ ? QStringLiteral(": ") : QStringLiteral("：");
-        controls.file->setText(prefix + (water_calibration_name_.isEmpty() ? unselectedText : water_calibration_name_));
-        controls.file->setToolTip(tooltipText);
-        controls.file->updateGeometry();
-        controls.file->update();
-    };
-    if (changedChannel < 0) {
-        updateCalibration(home_calibration_);
-        if (waveform_page_) updateCalibration(waveform_page_->calibration);
-    }
+    if (changedChannel < 0) syncCalibrationControls();
     for (int channel = 0; channel < 2; ++channel) {
         if (changedChannel >= 0 && changedChannel != channel) continue;
         const auto latest = water_profile_->latest(channel);

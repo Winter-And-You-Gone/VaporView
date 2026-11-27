@@ -14,7 +14,6 @@
 #include <QDateTime>
 #include <QEvent>
 #include <QFileInfo>
-#include <QInputDialog>
 #include <QGraphicsOpacityEffect>
 #include <QLayout>
 #include <QLinearGradient>
@@ -3574,19 +3573,26 @@ void MainWindow::setupDeviceConfigPage()
     auto *summaryBodyLayout = new QHBoxLayout(summaryBodyWidget);
     summaryBodyLayout->setContentsMargins(4, 6, 4, 6);
     summaryBodyLayout->setSpacing(4);
-    auto createDeviceTelemetrySection = [summaryBodyWidget, summaryBodyLayout](QVBoxLayout *&sectionContentLayout) {
-        auto *section = new QFrame(summaryBodyWidget);
+    auto *rateLinkColumn = new QWidget(summaryBodyWidget);
+    rateLinkColumn->setObjectName(QStringLiteral("deviceTelemetryRateLinkColumn"));
+    rateLinkColumn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    auto *rateLinkColumnLayout = new QVBoxLayout(rateLinkColumn);
+    rateLinkColumnLayout->setContentsMargins(0, 0, 0, 0);
+    rateLinkColumnLayout->setSpacing(4);
+    auto createDeviceTelemetrySection = [](QBoxLayout *parentLayout, QVBoxLayout *&sectionContentLayout) {
+        auto *section = new QFrame(parentLayout->parentWidget());
         section->setObjectName(QStringLiteral("homeTelemetrySectionCard"));
         section->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         section->setToolTip(QString());
         sectionContentLayout = new QVBoxLayout(section);
         sectionContentLayout->setContentsMargins(0, 0, 0, 0);
         sectionContentLayout->setSpacing(0);
-        summaryBodyLayout->addWidget(section, 0, Qt::AlignLeft | Qt::AlignTop);
+        parentLayout->addWidget(section, 0, Qt::AlignLeft | Qt::AlignTop);
     };
-    createDeviceTelemetrySection(state_->device_config_.data_telemetry_rate_summary_layout);
-    createDeviceTelemetrySection(state_->device_config_.data_telemetry_link_summary_layout);
-    createDeviceTelemetrySection(state_->device_config_.data_telemetry_device_summary_layout);
+    createDeviceTelemetrySection(rateLinkColumnLayout, state_->device_config_.data_telemetry_rate_summary_layout);
+    createDeviceTelemetrySection(rateLinkColumnLayout, state_->device_config_.data_telemetry_link_summary_layout);
+    summaryBodyLayout->addWidget(rateLinkColumn, 0, Qt::AlignLeft | Qt::AlignTop);
+    createDeviceTelemetrySection(summaryBodyLayout, state_->device_config_.data_telemetry_device_summary_layout);
     summaryBodyLayout->addStretch(1);
     summaryLayout->addWidget(summaryBodyWidget);
 
@@ -6304,6 +6310,7 @@ void MainWindow::setupDataPanels()
     const auto refreshWaterMeasurement = [this] {
         const auto view = state_->calibration_service_->view();
         auto *panel = state_->tcp_wave_panel_;
+        panel->setWaterCalibrationFiles(view.files, view.selected.filename);
         panel->setWaterCalibration(view.selected.sha256, QFileInfo(view.selected.filename).fileName(),
                                    view.selected.valid ? view.selected.project.unit : QString(),
                                    view.acquiring || view.locked || (isRemoteSkyMode() && state_->remote_recording_state_ != 0),
@@ -6335,27 +6342,14 @@ void MainWindow::setupDataPanels()
     };
     connect(state_->calibration_service_.get(), &CalibrationService::changed, this, refreshWaterMeasurement, Qt::QueuedConnection);
     refreshWaterMeasurement();
-    connect(state_->tcp_wave_panel_, &TcpWavePanel::waterCalibrationRequested, this, [this] {
-        const auto view = state_->calibration_service_->view();
-        const bool english = state_->is_english_;
-        if (view.files.isEmpty()) {
-            QMessageBox::information(this, english ? QStringLiteral("Calibration File") : QStringLiteral("定标文件"),
-                english ? QStringLiteral("No .vcal files. Generate or import one on the Water Calibration page first.")
-                        : QStringLiteral("没有可用的 .vcal 文件，请先在水汽定标页面生成或导入定标文件。"));
-            return;
-        }
-        QStringList names;
-        for (const auto &path : view.files) names.append(QFileInfo(path).fileName());
-        bool confirmed = false;
-        const auto name = QInputDialog::getItem(this,
-            english ? QStringLiteral("Calibration File") : QStringLiteral("定标文件"),
-            english ? QStringLiteral("Select a .vcal file") : QStringLiteral("选择 .vcal 定标文件"),
-            names, std::max(0, int(view.files.indexOf(view.selected.filename))), false, &confirmed);
-        if (!confirmed) return;
-        state_->calibration_service_->selectFile(view.files.value(names.indexOf(name)),
-            [this](const QString &error) {
+    connect(state_->tcp_wave_panel_, &TcpWavePanel::waterCalibrationFileSelected, this,
+            [this, refreshWaterMeasurement](const QString &filePath) {
+        if (filePath.isEmpty()) return;
+        state_->calibration_service_->selectFile(filePath,
+            [this, refreshWaterMeasurement](const QString &error) {
                 if (error.isEmpty()) return;
-                QMetaObject::invokeMethod(this, [this, error] {
+                QMetaObject::invokeMethod(this, [this, refreshWaterMeasurement, error] {
+                    refreshWaterMeasurement();
                     const bool english = state_->is_english_;
                     QMessageBox::warning(this,
                         english ? QStringLiteral("Calibration File") : QStringLiteral("定标文件"),

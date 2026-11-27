@@ -2214,6 +2214,12 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                              3,
                              true,
                              true);
+        auto *rateSection = state_->device_config_.data_telemetry_rate_summary_layout->parentWidget();
+        auto *rateLinkColumn = rateSection->parentWidget();
+        rateLinkColumn->layout()->invalidate();
+        rateLinkColumn->layout()->activate();
+        rateLinkColumn->updateGeometry();
+        rateLinkColumn->parentWidget()->layout()->activate();
         if (QLayout *summaryLayout = state_->device_config_.data_telemetry_summary_card->layout())
         {
             summaryLayout->invalidate();

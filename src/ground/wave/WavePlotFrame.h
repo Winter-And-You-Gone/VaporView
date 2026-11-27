@@ -39,6 +39,15 @@ inline PlotTheme plotThemeFor(const QWidget *widget)
     };
 }
 
+inline int minimumPlotHeightForYTicks(int labelHeight, int tickCount = 4)
+{
+    const int h = std::max(10, labelHeight);
+    const int intervals = std::max(1, tickCount - 1);
+    if (intervals == 1) return std::max(1, 2 * h - 2);
+    // End labels are clamped inside the frame. Allow one pixel for rounding.
+    return std::max(1, int(std::ceil(intervals * (1.5 * h - 2.0))) + 1);
+}
+
 inline int adaptiveYIntervals(qreal plotHeight, int labelHeight, int minIntervals = 3, int maxIntervals = 12)
 {
     const qreal step = std::max<qreal>(34.0, static_cast<qreal>(std::max(10, labelHeight)) * 2.2);

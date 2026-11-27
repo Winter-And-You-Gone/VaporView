@@ -808,28 +808,34 @@ void testFpgaWaveDisplaySelection()
     checkPlots(12);
     clickRow(defaultView);
     checkPlots(240);
-    panel.setWaterCalibration("cal-a", "sample.vcal", "ppmv", false, {});
-    auto *calFileLabel = panel.findChild<QLabel *>(QStringLiteral("waterCalibrationFileLabel"));
-    QPushButton *calButton = nullptr;
-    for (auto *btn : panel.findChildren<QPushButton *>(QStringLiteral("compactTcpButton"))) {
-        if (btn->property("waterCalibrationButton").toBool()) {
-            calButton = btn;
-            break;
-        }
-    }
-    require(calButton && calFileLabel, "water concentration card has separate calibration button and file label");
+    auto *calLabel = panel.findChild<QLabel *>("waterCalibrationLabel");
+    auto *calCombo = dynamic_cast<VaporView::SingleLevelPopupComboBox *>(panel.findChild<QComboBox *>("waterCalibrationComboBox"));
+    require(calLabel && calCombo, "water concentration card provides a labeled calibration dropdown");
+    for (auto *button : panel.findChildren<QPushButton *>())
+        require(!button->property("waterCalibrationButton").toBool(), "calibration uses the dropdown only");
     panel.setEnglish(false);
-    require(calButton->text() == QStringLiteral("定标文件")
-                && calFileLabel->text() == QStringLiteral("：sample.vcal"),
-            "calibration button keeps fixed label while filename displays beside it in Chinese");
-    panel.setEnglish(true);
-    require(calButton->text() == QStringLiteral("Calibration File")
-                && calFileLabel->text() == QStringLiteral(": sample.vcal"),
-            "calibration button and filename label translate cleanly in English");
+    panel.setWaterCalibrationFiles({"/tmp/a.vcal", "/tmp/b.vcal"}, "/tmp/a.vcal");
+    panel.setWaterCalibration("cal-a", "a.vcal", "ppmv", false, {});
+    require(calLabel->text() == QStringLiteral("定标文件") && calCombo->count() == 2 && calCombo->isEnabled() &&
+            calCombo->currentText() == "a.vcal" && calCombo->currentData() == "/tmp/a.vcal", "selected calibration is displayed");
+    QString selectedPath;
+    const auto connection = QObject::connect(&panel, &TcpWavePanel::waterCalibrationFileSelected,
+                                             [&selectedPath](const QString &path) { selectedPath = path; });
+    calCombo->showPopup();
+    require(calCombo->popupMenu()->actions().size() == 2, "popup lists both files");
+    calCombo->popupMenu()->actions().at(1)->trigger();
+    calCombo->hidePopup();
+    QObject::disconnect(connection);
+    require(selectedPath == "/tmp/b.vcal" && calCombo->currentText() == "b.vcal", "selection emits the full path");
+    panel.setWaterCalibration("cal-b", "b.vcal", "ppmv", false, {});
+    panel.setWaterCalibration("cal-b", "b.vcal", "ppmv", true, {});
+    require(!calCombo->isEnabled(), "lock-only changes disable selection");
     panel.setWaterCalibration({}, {}, {}, false, {});
-    require(calButton->text() == QStringLiteral("Calibration File")
-                && calFileLabel->text() == QStringLiteral(": Not selected"),
-            "clearing calibration shows unselected text beside the button");
+    require(calCombo->isEnabled() && calCombo->currentText() == QStringLiteral("未选择"), "Chinese placeholder");
+    panel.setEnglish(true);
+    require(calLabel->text() == "Calibration File" && calCombo->currentText() == "Not selected", "English label and placeholder");
+    panel.setWaterCalibrationFiles({});
+    require(!calCombo->isEnabled(), "empty file list disables selection");
     panel.setEnglish(false);
     panel.setWaterCalibration("cal-a", "sample.vcal", "ppmv", false, {});
 

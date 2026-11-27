@@ -115,12 +115,17 @@ public:
         maxHeight_ = std::max(minHeight_, maxHeight);
     }
 
+    int minimumHeightBound() const { return minHeight_; }
+    int maximumHeightBound() const { return maxHeight_; }
+    void setMinHeightProvider(std::function<int()> provider) { minHeightProvider_ = std::move(provider); }
+
 protected:
     void mousePressEvent(QMouseEvent *event) override
     {
         if (event->button() != Qt::LeftButton || !targetRow_)
             return QWidget::mousePressEvent(event);
 
+        if (minHeightProvider_) setHeightBounds(minHeightProvider_(), maxHeight_);
         dragging_ = true;
         startY_ = event->globalPosition().y();
         startHeight_ = targetRow_->height();
@@ -150,6 +155,7 @@ protected:
 private:
     void resizeRow(qreal globalY)
     {
+        if (minHeightProvider_) setHeightBounds(minHeightProvider_(), maxHeight_);
         const int height = std::clamp(startHeight_ + qRound(globalY - startY_), minHeight_, maxHeight_);
         if (targetRow_->height() == height)
             return;
@@ -164,6 +170,7 @@ private:
 
     QPointer<QWidget> targetRow_;
     std::function<void(int)> onHeightChanged_;
+    std::function<int()> minHeightProvider_;
     int minHeight_;
     int maxHeight_;
     qreal startY_ = 0;
