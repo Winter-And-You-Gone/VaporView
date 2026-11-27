@@ -3,7 +3,7 @@
 #include <QNetworkRequest>
 #include <osgEarth/GeoData>
 
-namespace osgEarth { class ProgressCallback; }
+namespace osgEarth { class ProgressCallback; class TileKey; }
 
 namespace VaporView::Map3D::Detail {
 
