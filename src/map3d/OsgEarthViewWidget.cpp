@@ -57,6 +57,7 @@
 #include <osgEarth/Viewpoint>
 #include <osgEarth/XYZ>
 
+#include <QApplication>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDebug>
@@ -76,6 +77,7 @@
 #include <QPaintEvent>
 #include <QPen>
 #include <QShowEvent>
+#include <QScrollArea>
 #include <QThread>
 #include <QVBoxLayout>
 #include <QWheelEvent>
@@ -262,7 +264,14 @@ public:
         details_label_->setTextFormat(Qt::RichText);
         details_label_->setWordWrap(true);
         details_label_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
-        layout_->addWidget(details_label_);
+        details_scroll_ = new QScrollArea(this);
+        details_scroll_->setFrameShape(QFrame::NoFrame);
+        details_scroll_->setWidgetResizable(true);
+        details_scroll_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        details_scroll_->viewport()->setAutoFillBackground(false);
+        details_scroll_->setWidget(details_label_);
+        details_label_->setAutoFillBackground(false);
+        layout_->addWidget(details_scroll_);
         applyTheme(VaporView::Geo::FixQuality::Unknown);
         hide();
     }
@@ -272,12 +281,15 @@ public:
         on_hover_changed_ = std::move(callback);
     }
 
-    void setSample(int sampleIndex, const VaporView::Geo::NavSample& sample)
+    void setSample(int sampleIndex, const VaporView::Geo::TrajectoryRenderSample& renderSample, const QString& waterUnit)
     {
         sample_index_ = sampleIndex;
-        sample_ = sample;
+        sample_ = renderSample;
+        water_unit_ = waterUnit;
+        const auto& sample = renderSample.navigation;
         const QLocale locale;
-        title_label_->setText(mapText(QStringLiteral("轨迹点 #%1")).arg(sampleIndex + 1));
+        title_label_->setText((qApp->property("vaporViewEnglish").toBool()
+            ? QStringLiteral("Sample #%1 (Frozen)") : QStringLiteral("采样点 #%1（冻结快照）")).arg(sampleIndex + 1));
         quality_label_->setText(trajectoryFixQualityLabel(sample.fixQuality));
 
         QString recordTime = QStringLiteral("--");
@@ -352,6 +364,27 @@ public:
                 "<td style=\"vertical-align:top;\">%3</td></tr>")
                 .arg(secondary.name(QColor::HexRgb), label.toHtmlEscaped(), value.toHtmlEscaped());
         };
+        const auto& heat = renderSample.heat;
+        const auto measurement = [](double value, const QString& unit) {
+            if (!std::isfinite(value)) return QStringLiteral("—");
+            return (VaporView::Geo::formatHeatValue(value) + QLatin1Char(' ') + unit).trimmed();
+        };
+        const bool english = qApp->property("vaporViewEnglish").toBool();
+        QString measurements;
+        if (std::isfinite(heat.columnWaterConcentration) || std::isfinite(heat.inSituWaterConcentration)
+            || std::isfinite(heat.temperatureC) || std::isfinite(heat.humidityRh)
+            || std::isfinite(heat.pressureHpa) || std::isfinite(heat.lidarDistanceM))
+        {
+            measurements = row(english ? QStringLiteral("Column · 816 nm") : QStringLiteral("水汽柱浓度 · 816 nm"),
+                               measurement(heat.columnWaterConcentration, waterUnit))
+                + row(english ? QStringLiteral("In-situ · 1368 nm") : QStringLiteral("原位水汽浓度 · 1368 nm"),
+                      measurement(heat.inSituWaterConcentration, waterUnit))
+                + row(english ? QStringLiteral("Temp / RH / pressure") : QStringLiteral("温度 / 湿度 / 气压"),
+                      QStringLiteral("%1 / %2 / %3").arg(measurement(heat.temperatureC, QStringLiteral("°C")),
+                          measurement(heat.humidityRh, QStringLiteral("%RH")), measurement(heat.pressureHpa, QStringLiteral("hPa"))))
+                + row(english ? QStringLiteral("Lidar distance") : QStringLiteral("测距距离"),
+                      measurement(heat.lidarDistanceM, QStringLiteral("m")));
+        }
         details_label_->setText(
             QStringLiteral("<table cellspacing=\"0\" cellpadding=\"2\">%1</table>")
                 .arg(row(mapText(QStringLiteral("记录时间")), recordTime)
@@ -360,20 +393,22 @@ public:
                      + row(mapText(QStringLiteral("定位精度")), precision)
                      + row(mapText(QStringLiteral("三维速度")), velocity)
                      + row(mapText(QStringLiteral("姿态")), attitude)
-                     + row(QStringLiteral("ECEF"), ecef)));
+                     + row(QStringLiteral("ECEF"), ecef) + measurements));
         updateLayoutMargins();
-        layout_->activate();
-        resize(kTrajectoryInfoCardWidth + kOuterMargin * 2, layout_->sizeHint().height());
+        last_viewport_height_ = -1;
+        fitDetailsHeight(parentWidget()->height());
         setAccessibleDescription(
             QStringLiteral("%1，%2，%3")
                 .arg(title_label_->text(), position, quality_label_->text()));
         update();
     }
 
-    void refreshLanguage() { if (sample_index_ >= 0) setSample(sample_index_, sample_); }
+    void refreshLanguage() { if (sample_index_ >= 0) setSample(sample_index_, sample_, water_unit_); }
+    void setWaterUnit(const QString& unit) { if (sample_index_ >= 0) setSample(sample_index_, sample_, unit); }
 
     void placeAt(const QPointF& anchor, const QSize& viewportSize)
     {
+        fitDetailsHeight(viewportSize.height());
         const int maxX = (std::max)(kTrajectoryInfoCardScreenMargin,
                                     viewportSize.width() - width() - kTrajectoryInfoCardScreenMargin);
         const int x = std::clamp(qRound(anchor.x() - static_cast<qreal>(width()) / 2.0),
@@ -418,7 +453,7 @@ protected:
         else if (event->type() == QEvent::PaletteChange
                  || event->type() == QEvent::ApplicationPaletteChange)
         {
-            applyTheme(sample_.fixQuality);
+            applyTheme(sample_.navigation.fixQuality);
             update();
         }
     }
@@ -501,6 +536,21 @@ protected:
     }
 
 private:
+    void fitDetailsHeight(int viewportHeight)
+    {
+        if (last_viewport_height_ == viewportHeight) return;
+        last_viewport_height_ = viewportHeight;
+        const auto margins = layout_->contentsMargins();
+        const int textWidth = width() - margins.left() - margins.right();
+        const int natural = details_label_->heightForWidth(textWidth);
+        const int available = viewportHeight - 2 * kTrajectoryInfoCardScreenMargin - margins.top()
+            - margins.bottom() - layout_->spacing() - std::max(title_label_->sizeHint().height(), quality_label_->sizeHint().height());
+        const int height = std::clamp(natural, 1, std::max(1, available));
+        if (details_scroll_->minimumHeight() != height) details_scroll_->setFixedHeight(height);
+        layout_->activate();
+        resize(width(), layout_->sizeHint().height());
+    }
+
     void updateLayoutMargins()
     {
         if (!layout_) return;
@@ -518,8 +568,10 @@ private:
         if (on_hover_changed_) on_hover_changed_(hovered_);
     }
 
+    int last_viewport_height_ = -1;
     int sample_index_ = -1;
-    VaporView::Geo::NavSample sample_;
+    VaporView::Geo::TrajectoryRenderSample sample_;
+    QString water_unit_;
     bool arrow_on_top_ = false;
     bool hovered_ = false;
     qreal arrow_x_ = kTrajectoryInfoCardWidth * 0.5 + kOuterMargin;
@@ -555,6 +607,7 @@ private:
     QVBoxLayout* layout_ = nullptr;
     QLabel* title_label_ = nullptr;
     QLabel* quality_label_ = nullptr;
+    QScrollArea* details_scroll_ = nullptr;
     QLabel* details_label_ = nullptr;
 };
 
@@ -949,6 +1002,7 @@ OsgEarthViewWidget::OsgEarthViewWidget(QWidget* parent, bool deferRendering)
         }
     });
     trajectory_info_card_ = infoCard;
+    connect(this, &OsgEarthViewWidget::trajectoryRenderSampleSelected, this, &OsgEarthViewWidget::showTrajectoryInfoCard);
     online_terrain_timer_.setSingleShot(true);
     online_terrain_timer_.setInterval(500);
     connect(&online_terrain_timer_, &QTimer::timeout, this, [this] {
@@ -2436,6 +2490,29 @@ void OsgEarthViewWidget::setMaxVisibleSamples(int maxVisibleSamples)
     update();
 }
 
+void OsgEarthViewWidget::setHeatCalibrationEpochFilter(std::optional<std::uint32_t> epoch)
+{
+    if (!trajectory_layer_ || trajectory_layer_->heatCalibrationEpochFilter() == epoch) return;
+    trajectory_layer_->setHeatCalibrationEpochFilter(epoch);
+    update();
+}
+
+std::optional<std::uint32_t> OsgEarthViewWidget::heatCalibrationEpochFilter() const
+{
+    return trajectory_layer_ ? trajectory_layer_->heatCalibrationEpochFilter() : std::nullopt;
+}
+
+void OsgEarthViewWidget::setWaterUnitLabel(const QString& unit)
+{
+    if (water_unit_ == unit) return;
+    water_unit_ = unit;
+    auto* card = static_cast<TrajectorySampleInfoCard*>(trajectory_info_card_);
+    if (card) {
+        card->setWaterUnit(Geo::heatMetricUnit(Geo::HeatMetric::ColumnWaterConcentration, unit));
+        updateTrajectoryInfoCardPosition();
+    }
+}
+
 void OsgEarthViewWidget::setHeatMetric(VaporView::Geo::HeatMetric metric)
 {
     if (!trajectory_layer_)
@@ -3399,8 +3476,8 @@ bool OsgEarthViewWidget::selectTrajectorySampleAt(const QPointF& widgetPosition)
     }
 
     trajectory_layer_->setSelectedSampleIndex(pick->sampleIndex);
-    showTrajectoryInfoCard(pick->sampleIndex, pick->sample);
-    emit trajectorySampleSelected(pick->sampleIndex, pick->sample);
+    emit trajectoryRenderSampleSelected(pick->sampleIndex, pick->renderSample);
+    emit trajectorySampleSelected(pick->sampleIndex, pick->renderSample.navigation);
     update();
     return true;
 }
@@ -3425,14 +3502,14 @@ void OsgEarthViewWidget::clearTrajectorySampleSelection()
 
 void OsgEarthViewWidget::showTrajectoryInfoCard(
     int sampleIndex,
-    const VaporView::Geo::NavSample& sample)
+    const VaporView::Geo::TrajectoryRenderSample& sample)
 {
     auto* card = static_cast<TrajectorySampleInfoCard*>(trajectory_info_card_);
     if (!card)
     {
         return;
     }
-    card->setSample(sampleIndex, sample);
+    card->setSample(sampleIndex, sample, Geo::heatMetricUnit(Geo::HeatMetric::ColumnWaterConcentration, water_unit_));
     updateTrajectoryInfoCardPosition();
 }
 

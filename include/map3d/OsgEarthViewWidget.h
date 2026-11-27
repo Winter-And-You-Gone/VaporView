@@ -177,6 +177,9 @@ public:
     void setLayerVisible(Map3DLayer layer, bool visible);
     void setFollowAircraft(bool enabled);
     void setMaxVisibleSamples(int maxVisibleSamples);
+    void setHeatCalibrationEpochFilter(std::optional<std::uint32_t> epoch);
+    std::optional<std::uint32_t> heatCalibrationEpochFilter() const;
+    void setWaterUnitLabel(const QString& unit);
     void setHeatMetric(VaporView::Geo::HeatMetric metric);
     VaporView::Geo::HeatMetric heatMetric() const;
     void setHeatPalette(VaporView::Geo::HeatPalette palette);
@@ -217,6 +220,7 @@ signals:
     void imageryFallbackNotice();
     void performanceUpdated();
     void trajectorySampleSelected(int sampleIndex, VaporView::Geo::NavSample sample);
+    void trajectoryRenderSampleSelected(int sampleIndex, VaporView::Geo::TrajectoryRenderSample sample);
     void trajectorySampleSelectionCleared();
 
 protected:
@@ -278,7 +282,7 @@ private:
     void setLookAt(const osg::Vec3d& center, double distanceM);
     bool selectTrajectorySampleAt(const QPointF& widgetPosition);
     void clearTrajectorySampleSelection();
-    void showTrajectoryInfoCard(int sampleIndex, const VaporView::Geo::NavSample& sample);
+    void showTrajectoryInfoCard(int sampleIndex, const VaporView::Geo::TrajectoryRenderSample& sample);
     void updateTrajectoryInfoCardPosition();
     void releaseGlObjectsForContextDestruction();
 
@@ -313,6 +317,7 @@ private:
     QPointF mouse_press_position_;
     bool mouse_press_tracks_selection_ = false;
     bool mouse_dragged_since_press_ = false;
+    QString water_unit_;
     QWidget* trajectory_info_card_ = nullptr;
     std::unique_ptr<osgViewer::Viewer> viewer_;
     std::shared_ptr<Detail::GroundDetailEllipse> ground_detail_ellipse_;

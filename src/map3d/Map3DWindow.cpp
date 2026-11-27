@@ -7,6 +7,7 @@
 #include "Map3DDiagnosticsFormatter.h"
 
 #include "ground/session/SessionTrajectoryRenderLoader.h"
+#include "ground/calibration/RecordedConcentrations.h"
 #include "ppk/SessionNavigationSource.h"
 #include "ppk/PpkProcessor.h"
 #include <QSignalBlocker>
@@ -57,6 +58,7 @@
 #include <QProgressDialog>
 #include <QPromise>
 #include <QScreen>
+#include <QScrollArea>
 #include <QToolTip>
 #include <QPixmap>
 #include <QSettings>
@@ -204,6 +206,90 @@ protected:
 
 private:
     VaporView::Geo::HeatPalette palette_ = VaporView::Geo::HeatPalette::Candy;
+};
+
+QString liveText(const char* chinese, const char* english)
+{
+    return QString::fromUtf8(qApp->property("vaporViewEnglish").toBool() ? english : chinese);
+}
+
+class WaterProfilePlot final : public QWidget
+{
+public:
+    explicit WaterProfilePlot(QWidget* parent) : QWidget(parent)
+    {
+        setObjectName(QStringLiteral("map3DWaterProfilePlot"));
+        setFixedHeight(152);
+    }
+
+    void display(const Map3DWaterProfileSnapshot& snapshot, int index)
+    {
+        points_.clear();
+        const auto& channel = snapshot.channels[index];
+        unbinned_ = channel.resolutionM == 0;
+        if (unbinned_) {
+            for (const auto& point : channel.rawPoints) {
+                if (std::isfinite(point.heightM) && std::isfinite(point.concentration))
+                    points_.append(QPointF(point.concentration, point.heightM));
+            }
+        } else {
+            for (const auto& layer : channel.layers) {
+                if (std::isfinite(layer.centerHeightM) && std::isfinite(layer.meanConcentration))
+                    points_.append(QPointF(layer.meanConcentration, layer.centerHeightM));
+            }
+        }
+        unit_ = snapshot.unit;
+        setAccessibleDescription(QStringLiteral("%1 nm · %2 m · n=%3 · %4")
+            .arg(index == 0 ? 1368 : 816).arg(channel.resolutionM).arg(channel.totalSamples).arg(unit_));
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter p(this);
+        const bool dark = isDarkThemeEnabled();
+        p.fillRect(rect(), appThemeColor(AppThemeColor::SurfaceSubtle, dark));
+        p.setPen(appThemeColor(AppThemeColor::TextSecondary, dark));
+        if (points_.isEmpty()) {
+            p.drawText(rect().adjusted(6, 2, -6, -2), Qt::AlignCenter | Qt::TextWordWrap,
+                       liveText("等待配对的测距与浓度", "Waiting for paired distance and concentration"));
+            return;
+        }
+        double minX = points_.front().x(), maxX = minX, maxY = 1.0;
+        for (const auto& point : points_) {
+            minX = (std::min)(minX, point.x());
+            maxX = (std::max)(maxX, point.x());
+            maxY = (std::max)(maxY, point.y());
+        }
+        const QString top = VaporView::Geo::formatHeatValue(maxY) + QStringLiteral(" m");
+        const int left = fontMetrics().horizontalAdvance(top) + 8;
+        const QRectF plot(left, 12, (std::max)(1, width() - left - 14), height() - 48);
+        p.drawText(QRectF(0, 0, left - 4, 24), Qt::AlignRight | Qt::AlignVCenter, top);
+        p.drawText(QRectF(0, plot.bottom() - 10, left - 4, 20), Qt::AlignRight | Qt::AlignVCenter, QStringLiteral("0"));
+        const QString domain = QStringLiteral("%1 – %2 %3").arg(VaporView::Geo::formatHeatValue(minX),
+            VaporView::Geo::formatHeatValue(maxX), unit_);
+        p.drawText(QRectF(2, plot.bottom() + 4, width() - 4, 28), Qt::AlignCenter, domain);
+        p.setPen(appThemeColor(AppThemeColor::Border, dark));
+        p.drawLine(plot.topLeft(), plot.bottomLeft());
+        p.drawLine(plot.bottomLeft(), plot.bottomRight());
+        const QColor color = appThemeColor(AppThemeColor::Primary, dark);
+        p.setPen(QPen(color, 1.5));
+        p.setBrush(color);
+        p.setRenderHint(QPainter::Antialiasing);
+        QPolygonF profile;
+        for (const auto& point : points_) {
+            const double x = maxX > minX ? (point.x() - minX) / (maxX - minX) : 0.5;
+            profile.append(QPointF(plot.left() + x * plot.width(), plot.bottom() - point.y() / maxY * plot.height()));
+        }
+        if (!unbinned_) p.drawPolyline(profile);
+        for (const auto& point : profile) p.drawEllipse(point, 2, 2);
+    }
+
+private:
+    bool unbinned_ = false;
+    QPolygonF points_;
+    QString unit_;
 };
 
 class MapOptionsMenu final : public QMenu
@@ -457,34 +543,13 @@ QString layerDescription(Map3DLayer layer)
 
 int heatMetricComboIndex(VaporView::Geo::HeatMetric metric)
 {
-    switch (metric)
-    {
-    case VaporView::Geo::HeatMetric::Humidity:
-        return 1;
-    case VaporView::Geo::HeatMetric::Temperature:
-        return 2;
-    case VaporView::Geo::HeatMetric::Pressure:
-        return 3;
-    case VaporView::Geo::HeatMetric::Peak:
-    default:
-        return 0;
-    }
+    return static_cast<int>(metric);
 }
 
 VaporView::Geo::HeatMetric heatMetricFromComboIndex(int index)
 {
-    switch (index)
-    {
-    case 1:
-        return VaporView::Geo::HeatMetric::Humidity;
-    case 2:
-        return VaporView::Geo::HeatMetric::Temperature;
-    case 3:
-        return VaporView::Geo::HeatMetric::Pressure;
-    case 0:
-    default:
-        return VaporView::Geo::HeatMetric::Peak;
-    }
+    return index >= 0 && index <= static_cast<int>(VaporView::Geo::HeatMetric::LidarDistance)
+        ? static_cast<VaporView::Geo::HeatMetric>(index) : VaporView::Geo::HeatMetric::Peak;
 }
 
 int heatPaletteComboIndex(VaporView::Geo::HeatPalette palette)
@@ -513,30 +578,6 @@ VaporView::Geo::HeatPalette heatPaletteFromComboIndex(int index)
     default:
         return VaporView::Geo::HeatPalette::Candy;
     }
-}
-
-QString heatLegendText(VaporView::Geo::HeatMetric metric,
-                       const VaporView::Geo::HeatRange& range)
-{
-    const QString metricName = VaporView::Geo::heatMetricName(metric, false);
-    const QString unit = VaporView::Geo::heatMetricUnit(metric);
-    if (!range.valid || range.validCount == 0)
-    {
-        return mapText(QStringLiteral("%1: -- · 无有效数据")).arg(metricName);
-    }
-    const double middle = (range.minimum + range.maximum) * 0.5;
-    const auto formatValue = [&](double value) {
-        const QString number = unit.isEmpty()
-            ? QString::number(value, 'f', 6)
-            : QString::number(value, 'f', 2);
-        return unit.isEmpty() ? number : QStringLiteral("%1 %2").arg(number, unit);
-    };
-    return QStringLiteral("%1: %2 / %3 / %4 · n=%5")
-        .arg(metricName,
-             formatValue(range.minimum),
-             formatValue(middle),
-             formatValue(range.maximum))
-        .arg(range.validCount);
 }
 
 VaporView::Geo::TrajectoryRenderSample renderSampleFromNavSample(
@@ -931,6 +972,196 @@ protected:
 
 } // namespace
 
+class MapLiveDataPanel final : public QFrame
+{
+public:
+    explicit MapLiveDataPanel(Map3DWindow* window) : QFrame(window)
+    {
+        setObjectName(QStringLiteral("map3DLiveDataSidePanel"));
+        setAutoFillBackground(true);
+        setFixedWidth(286);
+        auto* layout = new QVBoxLayout(this);
+        layout->setContentsMargins(12, 8, 10, 8);
+        auto* scroll = new QScrollArea(this);
+        scroll->setFrameShape(QFrame::NoFrame);
+        scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        scroll->setWidgetResizable(true);
+        layout->addWidget(scroll);
+        auto* content = new QWidget(scroll);
+        auto* rows = new QVBoxLayout(content);
+        rows->setContentsMargins(1, 2, 5, 4);
+        rows->setSpacing(8);
+        scroll->setWidget(content);
+        const auto label = [&](const char* name) {
+            auto* value = new QLabel(content);
+            value->setObjectName(QString::fromLatin1(name));
+            value->setWordWrap(true);
+            value->setTextFormat(Qt::RichText);
+            rows->addWidget(value);
+            return value;
+        };
+        session_ = label("map3DSessionBanner");
+        heading_ = label("map3DLiveDataHeading");
+        column_ = label("map3DLiveColumnWater");
+        inSitu_ = label("map3DLiveInSituWater");
+        position_ = label("map3DLivePosition");
+        temperature_ = label("map3DLiveTemperature");
+        humidity_ = label("map3DLiveHumidity");
+        pressure_ = label("map3DLivePressure");
+        lidar_ = label("map3DLiveLidar");
+        thermal_ = label("map3DLiveThermal");
+        profileToggle_ = new QToolButton(content);
+        profileToggle_->setObjectName(QStringLiteral("map3DProfileSectionToggle"));
+        profileToggle_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        profileToggle_->setArrowType(Qt::RightArrow);
+        profileToggle_->setCheckable(true);
+        rows->addWidget(profileToggle_);
+        profileBox_ = new QWidget(content);
+        auto* profileLayout = new QVBoxLayout(profileBox_);
+        profileLayout->setContentsMargins(0, 0, 0, 0);
+        caption_ = new QLabel(profileBox_);
+        caption_->setWordWrap(true);
+        profileLayout->addWidget(caption_);
+        auto* choices = new QHBoxLayout;
+        channel_ = new SingleLevelPopupComboBox(profileBox_);
+        channel_->setObjectName(QStringLiteral("map3DProfileChannel"));
+        channel_->addItems({QStringLiteral("1368 nm"), QStringLiteral("816 nm")});
+        choices->addWidget(channel_, 1);
+        resolution_ = new SingleLevelPopupComboBox(profileBox_);
+        resolution_->setObjectName(QStringLiteral("map3DProfileResolution"));
+        for (int meters : {1, 5, 10, 20, 50}) resolution_->addItem(QStringLiteral("%1 m").arg(meters), meters);
+        resolution_->addItem(liveText("不分层", "Unbinned"), 0);
+        resolution_->setCurrentIndex(resolution_->findData(5));
+        choices->addWidget(resolution_);
+        profileLayout->addLayout(choices);
+        plot_ = new WaterProfilePlot(profileBox_);
+        profileLayout->addWidget(plot_);
+        rows->addWidget(profileBox_);
+        profileBox_->hide();
+        openWave_ = new QPushButton(content);
+        openWave_->setObjectName(QStringLiteral("map3DOpenWaveformPageButton"));
+        rows->addWidget(openWave_);
+        rows->addStretch();
+        connect(openWave_, &QPushButton::clicked, window, &Map3DWindow::openWaveformPageRequested);
+        connect(profileToggle_, &QToolButton::toggled, this, [this](bool open) {
+            profileBox_->setVisible(open);
+            profileToggle_->setArrowType(open ? Qt::DownArrow : Qt::RightArrow);
+            refreshProfile();
+        });
+        connect(resolution_, &QComboBox::currentIndexChanged, this, [this] { revision_.reset(); refreshProfile(); });
+        connect(channel_, &QComboBox::currentIndexChanged, this, [this](int index) { plot_->display(profile_, index); });
+        refreshTimer_.setSingleShot(true);
+        refreshTimer_.setInterval(400);
+        connect(&refreshTimer_, &QTimer::timeout, this, &MapLiveDataPanel::refreshProfile);
+    }
+
+    void setProviders(Map3DProfileRevisionProvider revision, Map3DWaterProfileProvider snapshot)
+    {
+        revisionProvider_ = std::move(revision);
+        snapshotProvider_ = std::move(snapshot);
+        revision_.reset();
+        profile_ = {};
+        plot_->display(profile_, channel_->currentIndex());
+        refreshProfile();
+    }
+
+    void setReadings(const Map3DLiveTelemetrySnapshot& s, bool session)
+    {
+        const bool dark = isDarkThemeEnabled();
+        const QString muted = appThemeColor(AppThemeColor::TextMuted, dark).name();
+        const QString normal = appThemeColor(AppThemeColor::Text, dark).name();
+        const QString fault = appThemeColor(AppThemeColor::Danger, dark).name();
+        const auto age = [](qint64 ms, bool stale) {
+            QString text = ms < 0 ? QString() : QStringLiteral("%1 s").arg(ms / 1000.0, 0, 'f', 1);
+            if (stale) text = (liveText("已过期", "Stale") + QLatin1Char(' ') + text).trimmed();
+            return text;
+        };
+        const auto value = [](bool valid, double number, const QString& unit) {
+            return valid && std::isfinite(number) ? (Geo::formatHeatValue(number) + QLatin1Char(' ') + unit).trimmed()
+                                                   : QStringLiteral("—");
+        };
+        const auto lines = [](const QStringList& parts) {
+            QStringList result;
+            for (const auto& part : parts) if (!part.isEmpty()) result << part;
+            return result.join(QStringLiteral(" · "));
+        };
+        session_->setText(liveText("当前处于 Session 回放模式（地图显示历史记录）", "Session playback · The map shows historical records"));
+        session_->setVisible(session);
+        heading_->setText(QStringLiteral("<b>%1</b>").arg(liveText("当前实时读数", "Current live readings")));
+        const auto water = [&](QLabel* label, const QString& title, bool valid, double number,
+                               qint64 ms, bool stale, const QString& status) {
+            QString calibration;
+            if (!s.calibrationSelected) calibration = liveText("未选择定标", "No calibration selected");
+            else if (!s.calibrationValid) calibration = s.calibrationWarning.isEmpty()
+                ? liveText("定标无效", "Invalid calibration") : s.calibrationWarning;
+            const bool usable = valid && std::isfinite(number) && s.calibrationSelected && s.calibrationValid;
+            label->setText(QStringLiteral("%1<br><span style='font-size:16pt;color:%2'><b>%3</b></span><br><span style='color:%4'>%5</span>")
+                .arg(title, usable && !stale ? normal : muted, value(usable, number, s.waterUnit).toHtmlEscaped(),
+                     muted, lines({calibration, status, age(ms, stale)}).toHtmlEscaped()));
+        };
+        water(column_, liveText("水汽柱浓度（816 nm · 遥测）", "Water vapor column (816 nm · remote)"),
+              s.hasColumnWater, s.columnWater, s.columnAgeMs, s.columnStale, s.columnStatus);
+        water(inSitu_, liveText("原位水汽浓度（1368 nm）", "In-situ water vapor (1368 nm)"),
+              s.hasInSituWater, s.inSituWater, s.inSituAgeMs, s.inSituStale, s.inSituStatus);
+        const auto reading = [&](QLabel* label, const QString& title, const QString& text, const QString& meta,
+                                 bool valid, bool stale, bool alarm = false) {
+            label->setText(QStringLiteral("<b>%1</b> · <span style='color:%2'>%3</span>%4")
+                .arg(title, alarm ? fault : valid && !stale ? normal : muted, text.toHtmlEscaped(),
+                     meta.isEmpty() ? QString() : QStringLiteral("<br><span style='color:%1'>%2</span>").arg(muted, meta.toHtmlEscaped())));
+        };
+        const auto degrees = [&](double number) {
+            return s.hasPosition && std::isfinite(number) ? QString::number(number, 'f', 6) + QStringLiteral("°") : QStringLiteral("—");
+        };
+        reading(position_, liveText("定位", "Position"), lines({degrees(s.latDeg), degrees(s.lonDeg), value(s.hasPosition, s.heightM, QStringLiteral("m"))}),
+                lines({s.fixQualityText, age(s.navAgeMs, s.navStale)}), s.hasPosition, s.navStale);
+        reading(temperature_, liveText("环境温度", "Ambient temperature"), value(s.hasTemperature, s.temperatureC, QStringLiteral("°C")),
+                lines({s.temperatureSource, age(s.temperatureAgeMs, s.temperatureStale)}), s.hasTemperature, s.temperatureStale);
+        reading(humidity_, liveText("环境湿度", "Humidity"), value(s.hasHumidity, s.humidityRh, QStringLiteral("%RH")),
+                lines({s.humiditySource, age(s.humidityAgeMs, s.humidityStale)}), s.hasHumidity, s.humidityStale);
+        reading(pressure_, liveText("气压", "Pressure"), value(s.hasPressure, s.pressureHpa, QStringLiteral("hPa")),
+                lines({s.pressureSource, age(s.pressureAgeMs, s.pressureStale)}), s.hasPressure, s.pressureStale);
+        reading(lidar_, QStringLiteral("SDFM300"), value(s.hasLidar, s.lidarDistanceM, QStringLiteral("m")),
+                age(s.lidarAgeMs, s.lidarStale), s.hasLidar, s.lidarStale);
+        reading(thermal_, liveText("温控", "Thermal"), s.hasThermal ? s.thermalSummary : QStringLiteral("—"),
+                age(s.thermalAgeMs, s.thermalStale), s.hasThermal, s.thermalStale, s.thermalFault);
+        profileToggle_->setText(liveText("累计水汽廓线", "Accumulated water profile"));
+        caption_->setText(liveText("本次采集累计 · SDFM300 测距高度", "This acquisition · SDFM300 ranging height"));
+        resolution_->setItemText(resolution_->findData(0), liveText("不分层", "Unbinned"));
+        resolution_->setAccessibleName(liveText("高度分辨率", "Height resolution"));
+        resolution_->setToolTip(resolution_->accessibleName());
+        channel_->setAccessibleName(liveText("水汽通道", "Water vapor channel"));
+        openWave_->setText(liveText("打开波形页", "Open waveform page"));
+        if (profileBox_->isVisible() && !refreshTimer_.isActive()) refreshTimer_.start();
+    }
+
+protected:
+    void showEvent(QShowEvent* event) override { QFrame::showEvent(event); refreshProfile(); }
+
+private:
+    void refreshProfile()
+    {
+        if (!isVisible() || !profileToggle_->isChecked() || !revisionProvider_ || !snapshotProvider_) return;
+        const auto revision = revisionProvider_();
+        if (revision_ == revision) return;
+        const int meters = resolution_->currentData().toInt();
+        profile_ = snapshotProvider_(meters, meters);
+        revision_ = revision;
+        plot_->display(profile_, channel_->currentIndex());
+    }
+
+    QLabel *session_, *heading_, *column_, *inSitu_, *position_, *temperature_, *humidity_, *pressure_, *lidar_, *thermal_, *caption_;
+    QToolButton* profileToggle_;
+    QPushButton* openWave_;
+    QWidget* profileBox_;
+    QComboBox *channel_, *resolution_;
+    WaterProfilePlot* plot_;
+    QTimer refreshTimer_;
+    std::optional<quint64> revision_;
+    Map3DProfileRevisionProvider revisionProvider_;
+    Map3DWaterProfileProvider snapshotProvider_;
+    Map3DWaterProfileSnapshot profile_;
+};
+
 Map3DWindow::Map3DWindow(QWidget* parent)
     : QMainWindow(parent)
     , status_label_(new QLabel(this))
@@ -1131,10 +1362,8 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     heatMetricCombo->setPopupFitContents(true);
     heat_metric_combo_ = heatMetricCombo;
     heat_metric_combo_->setObjectName(QStringLiteral("map3DHeatMetricCombo"));
-    heat_metric_combo_->addItems({VaporView::Geo::heatMetricName(VaporView::Geo::HeatMetric::Peak, false),
-                                  VaporView::Geo::heatMetricName(VaporView::Geo::HeatMetric::Humidity, false),
-                                  VaporView::Geo::heatMetricName(VaporView::Geo::HeatMetric::Temperature, false),
-                                  VaporView::Geo::heatMetricName(VaporView::Geo::HeatMetric::Pressure, false)});
+    for (int index = 0; index <= heatMetricComboIndex(VaporView::Geo::HeatMetric::LidarDistance); ++index)
+        heat_metric_combo_->addItem(VaporView::Geo::heatMetricName(heatMetricFromComboIndex(index), qApp->property("vaporViewEnglish").toBool()));
     heat_metric_combo_->setCurrentIndex(heatMetricComboIndex(heat_metric_));
     heat_metric_combo_->setToolTip(mapText(QStringLiteral("3D 轨迹热力指标")));
     displayLayout->addRow(mapText(QStringLiteral("热力指标")), heat_metric_combo_);
@@ -1435,7 +1664,6 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         button->setPopupMode(QToolButton::InstantPopup);
     }
 
-    // Keep the map canvas as the central widget: overlays use its coordinates.
     // The shared title bar belongs above the toolbar in this QMainWindow.
     QWidget* mapCanvas = centralWidget();
     VaporView::installCustomTitleBar(this);
@@ -1443,9 +1671,51 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     QWidget* titleBar = titleWrapper->findChild<QWidget*>(QStringLiteral("customTitleBar"));
     titleWrapper->layout()->removeWidget(mapCanvas);
     titleWrapper->layout()->removeWidget(titleBar);
-    setCentralWidget(mapCanvas);
+    auto* body = new QWidget(this);
+    auto* bodyLayout = new QVBoxLayout(body);
+    bodyLayout->setContentsMargins(0, 0, 0, 0);
+    bodyLayout->setSpacing(0);
+    auto* mapRow = new QHBoxLayout;
+    mapRow->setContentsMargins(0, 0, 0, 0);
+    mapRow->setSpacing(0);
+    map_canvas_ = mapCanvas;
+    mapRow->addWidget(mapCanvas, 1);
+    live_panel_ = new MapLiveDataPanel(this);
+    mapRow->addWidget(live_panel_);
+    bodyLayout->addLayout(mapRow, 1);
+
+    auto* legend = new QFrame(body);
+    legend->setObjectName(QStringLiteral("map3DMainHeatLegendBar"));
+    legend->setAutoFillBackground(true);
+    auto* legendLayout = new QHBoxLayout(legend);
+    legendLayout->setContentsMargins(12, 3, 12, 3);
+    auto* gradient = new HeatPalettePreview(legend);
+    gradient->setObjectName(QStringLiteral("map3DMainHeatGradient"));
+    gradient->setFixedWidth(96);
+    gradient->setHeatPalette(heat_palette_);
+    connect(heat_palette_combo_, &QComboBox::currentIndexChanged, gradient, [gradient](int index) {
+        gradient->setHeatPalette(heatPaletteFromComboIndex(index));
+    });
+    legendLayout->addWidget(gradient);
+    main_legend_label_ = new QLabel(legend);
+    main_legend_label_->setObjectName(QStringLiteral("map3DMainHeatLegendText"));
+    main_legend_label_->setTextFormat(Qt::PlainText);
+    legendLayout->addWidget(main_legend_label_, 1);
+    bodyLayout->addWidget(legend);
+    setCentralWidget(body);
     setMenuWidget(titleBar);
     titleWrapper->deleteLater();
+
+    side_panel_toggle_ = new QToolButton(toolbar);
+    side_panel_toggle_->setObjectName(QStringLiteral("map3DSidePanelToggleButton"));
+    side_panel_toggle_->setText(liveText("实时数据", "Live data"));
+    side_panel_toggle_->setCheckable(true);
+    side_panel_toggle_->setChecked(true);
+    toolbar->addWidget(side_panel_toggle_);
+    connect(side_panel_toggle_, &QToolButton::toggled, this, [this](bool visible) {
+        live_panel_->setVisible(visible);
+        if (visible) live_panel_->setReadings(live_snapshot_, track_data_mode_ != TrackDataMode::Live);
+    });
 
     map_mode_button_ = new QToolButton(this);
     map_mode_button_->setObjectName(QStringLiteral("map3DModeButton"));
@@ -1617,6 +1887,8 @@ void Map3DWindow::updateLoadingProgressBubble(bool force)
 void Map3DWindow::resizeEvent(QResizeEvent* event)
 {
     QMainWindow::resizeEvent(event);
+    if (side_panel_toggle_ && width() < 960 && event->oldSize().width() >= 960)
+        side_panel_toggle_->setChecked(false);
     positionMapOverlays();
 }
 
@@ -1761,16 +2033,16 @@ void Map3DWindow::startRendering()
         render_placeholder_label_->show();
         if (map_notice_label_)
         {
-            map_notice_label_->setParent(centralWidget());
+            map_notice_label_->setParent(map_canvas_);
         }
         if (map_loading_bubble_)
         {
-            map_loading_bubble_->setParent(centralWidget());
+            map_loading_bubble_->setParent(map_canvas_);
             map_loading_bubble_->hide();
         }
         if (auto* controls = findChild<QWidget*>(QStringLiteral("map3DCornerControls")))
         {
-            controls->setParent(centralWidget());
+            controls->setParent(map_canvas_);
             controls->show();
             controls->raise();
         }
@@ -1793,7 +2065,8 @@ void Map3DWindow::startRendering()
     applyCurrentControlsToView();
     if (track_data_mode_ == TrackDataMode::Live && !live_samples_.empty())
     {
-        view_->setSamples(std::vector<VaporView::Geo::NavSample>(live_samples_.begin(), live_samples_.end()));
+        view_->appendRenderSamples(std::vector<Geo::TrajectoryRenderSample>(live_samples_.begin(), live_samples_.end()));
+        updateHeatLegend();
     }
     refreshLayerMenuAvailability();
     updateStatus(nullptr);
@@ -2172,7 +2445,9 @@ void Map3DWindow::applyHeatControlsToView()
     {
         return;
     }
+    view_->setHeatCalibrationEpochFilter(currentHeatEpoch());
     view_->setHeatMetric(heat_metric_);
+    view_->setWaterUnitLabel(currentWaterUnit());
     view_->setHeatPalette(heat_palette_);
     if (track_line_visible_action_)
     {
@@ -2204,21 +2479,64 @@ void Map3DWindow::markDisplaySettingsApplied()
         setDisplayRefreshStatus(view_ ? QStringLiteral("已刷新") : QStringLiteral("已设置"));
 }
 
+void Map3DWindow::setLiveTelemetrySnapshot(const Map3DLiveTelemetrySnapshot& snapshot)
+{
+    const bool changedCalibration = live_snapshot_.calibrationEpoch != snapshot.calibrationEpoch
+        || live_snapshot_.waterUnit != snapshot.waterUnit;
+    live_snapshot_ = snapshot;
+    const bool live = track_data_mode_ == TrackDataMode::Live;
+    if (live_panel_->isVisible()) live_panel_->setReadings(snapshot, !live);
+    if (live && changedCalibration) {
+        if (view_) {
+            view_->setWaterUnitLabel(currentWaterUnit());
+            view_->setHeatCalibrationEpochFilter(currentHeatEpoch());
+        }
+        if (Geo::isWaterConcentrationMetric(heat_metric_)) updateHeatLegend();
+    }
+}
+
+void Map3DWindow::setWaterProfileProviders(Map3DProfileRevisionProvider revisionProvider, Map3DWaterProfileProvider snapshotProvider)
+{
+    live_panel_->setProviders(std::move(revisionProvider), std::move(snapshotProvider));
+}
+
+std::optional<std::uint32_t> Map3DWindow::currentHeatEpoch() const
+{
+    if (!VaporView::Geo::isWaterConcentrationMetric(heat_metric_)) return std::nullopt;
+    return track_data_mode_ == TrackDataMode::Live ? live_snapshot_.calibrationEpoch : 1u;
+}
+
+QString Map3DWindow::currentWaterUnit() const
+{
+    return track_data_mode_ == TrackDataMode::Live ? live_snapshot_.waterUnit : session_water_unit_;
+}
+
 void Map3DWindow::updateHeatLegend()
 {
-    if (!heat_legend_label_)
-    {
-        return;
+    if (!heat_legend_label_) return;
+    using namespace VaporView::Geo;
+    HeatRange range;
+    if (view_) range = view_->heatRange();
+    else if (headless_view_) range = calculateHeatRange(headless_render_samples_, heat_metric_, currentHeatEpoch());
+    else if (track_data_mode_ == TrackDataMode::Live && isVisible()) {
+        const auto epoch = currentHeatEpoch();
+        for (const auto& sample : live_samples_)
+            accumulateHeatRange(range, metricValueForEpoch(sample, heat_metric_, epoch));
     }
-    const VaporView::Geo::HeatRange range = view_
-        ? view_->heatRange()
-        : VaporView::Geo::calculateHeatRange(headless_render_samples_, heat_metric_);
-    heat_legend_label_->setText(heatLegendText(heat_metric_, range));
+    const bool english = qApp->property("vaporViewEnglish").toBool();
+    const QString name = heatMetricName(heat_metric_, english);
+    const QString text = range.valid
+        ? QStringLiteral("%1 · %2 – %3 %4 · n=%5").arg(name, formatHeatValue(range.minimum),
+            formatHeatValue(range.maximum), heatMetricUnit(heat_metric_, currentWaterUnit())).arg(range.validCount)
+        : name + (english ? QStringLiteral(" · No valid heat data (n=0)") : QStringLiteral(" · 暂无有效热力数据 (n=0)"));
+    heat_legend_label_->setText(range.valid || english ? text : name + QStringLiteral(" · 无有效数据 (n=0)"));
+    if (main_legend_label_) main_legend_label_->setText(text);
 }
 
 void Map3DWindow::updateMapModeUi()
 {
     const bool live = track_data_mode_ == TrackDataMode::Live;
+    live_panel_->setReadings(live_snapshot_, !live);
     const bool loading = session_load_watcher_ && !session_load_watcher_->isCanceled();
     map_mode_button_->setText(mapText(live
         ? (replay_render_storage_ || loading
@@ -2245,7 +2563,11 @@ void Map3DWindow::setSessionMapActive(bool active)
     clearSelectedTrajectorySample();
     has_latest_status_sample_ = false;
     latest_camera_note_.clear();
-    if (view_) view_->clearTrack();
+    if (view_) {
+        view_->clearTrack();
+        view_->setHeatCalibrationEpochFilter(currentHeatEpoch());
+        view_->setWaterUnitLabel(currentWaterUnit());
+    }
     headless_sample_count_ = 0;
     headless_samples_.clear();
     headless_render_samples_.clear();
@@ -2270,19 +2592,17 @@ void Map3DWindow::setSessionMapActive(bool active)
     }
     else
     {
-        const std::vector<VaporView::Geo::NavSample> samples = active
-            ? std::vector<VaporView::Geo::NavSample>()
-            : std::vector<VaporView::Geo::NavSample>(live_samples_.begin(), live_samples_.end());
-        if (view_ && !samples.empty()) view_->setSamples(samples);
-        if (headless_view_)
-        {
-            headless_samples_ = samples;
-            for (const auto& sample : samples)
-                headless_render_samples_.push_back(renderSampleFromNavSample(sample));
+        const std::vector<VaporView::Geo::TrajectoryRenderSample> samples = active
+            ? std::vector<VaporView::Geo::TrajectoryRenderSample>{}
+            : std::vector<VaporView::Geo::TrajectoryRenderSample>(live_samples_.begin(), live_samples_.end());
+        if (view_ && !samples.empty()) view_->appendRenderSamples(samples);
+        if (headless_view_) {
+            headless_render_samples_ = samples;
+            for (const auto& sample : samples) headless_samples_.push_back(sample.navigation);
         }
-        recordTrackSource(mapText(samples.empty() ? QStringLiteral("无") : QStringLiteral("实时")),
-                          samples.empty() ? nullptr : &samples.back());
-        if (!samples.empty()) updateStatus(&samples.back());
+        const auto* latest = samples.empty() ? nullptr : &samples.back().navigation;
+        recordTrackSource(mapText(samples.empty() ? QStringLiteral("无") : QStringLiteral("实时")), latest);
+        if (latest) updateStatus(latest);
         if (!active && view_ && !samples.empty()) view_->flyToAircraft();
     }
     if (headless_view_) headless_sample_count_ = static_cast<int>(headless_samples_.size());
@@ -2295,54 +2615,42 @@ void Map3DWindow::setSessionMapActive(bool active)
 
 void Map3DWindow::appendSample(const VaporView::Geo::NavSample& sample)
 {
-    live_samples_.push_back(sample);
-    while (static_cast<int>(live_samples_.size()) > max_visible_samples_)
-        live_samples_.pop_front();
-    if (track_data_mode_ != TrackDataMode::Live) return;
-    if (view_)
-    {
-        view_->appendNavigationSample(sample);
-    }
-    if (headless_view_)
-    {
-        ++headless_sample_count_;
-        headless_samples_.push_back(sample);
-        headless_render_samples_.push_back(renderSampleFromNavSample(sample));
-    }
-    recordTrackSource(mapText(QStringLiteral("实时")), &sample);
-    updateReplayUi();
-    updateHeatLegend();
-    updateStatus(&sample, false);
+    appendRenderSample(renderSampleFromNavSample(sample));
 }
 
 void Map3DWindow::appendSamples(const std::vector<VaporView::Geo::NavSample>& samples)
 {
-    for (const auto& sample : samples)
-    {
-        live_samples_.push_back(sample);
-        while (static_cast<int>(live_samples_.size()) > max_visible_samples_)
-            live_samples_.pop_front();
-    }
+    std::vector<VaporView::Geo::TrajectoryRenderSample> renderSamples;
+    renderSamples.reserve(samples.size());
+    for (const auto& sample : samples) renderSamples.push_back(renderSampleFromNavSample(sample));
+    appendRenderSamples(renderSamples);
+}
+
+void Map3DWindow::appendRenderSample(const VaporView::Geo::TrajectoryRenderSample& sample)
+{
+    appendRenderSamples({sample});
+}
+
+void Map3DWindow::appendRenderSamples(const std::vector<VaporView::Geo::TrajectoryRenderSample>& samples)
+{
+    live_samples_.insert(live_samples_.end(), samples.begin(), samples.end());
+    while (static_cast<int>(live_samples_.size()) > max_visible_samples_) live_samples_.pop_front();
     if (track_data_mode_ != TrackDataMode::Live) return;
-    if (view_)
-    {
-        view_->appendNavigationSamples(samples);
-    }
-    if (headless_view_)
-    {
+    if (view_) view_->appendRenderSamples(samples);
+    if (headless_view_) {
+        headless_render_samples_.insert(headless_render_samples_.end(), samples.begin(), samples.end());
+        for (const auto& sample : samples) headless_samples_.push_back(sample.navigation);
+        const auto excess = headless_samples_.size() - live_samples_.size();
+        headless_samples_.erase(headless_samples_.begin(), headless_samples_.begin() + excess);
+        headless_render_samples_.erase(headless_render_samples_.begin(), headless_render_samples_.begin() + excess);
         headless_sample_count_ += static_cast<int>(samples.size());
-        headless_samples_.insert(headless_samples_.end(), samples.cbegin(), samples.cend());
-        headless_render_samples_.reserve(headless_render_samples_.size() + samples.size());
-        for (const VaporView::Geo::NavSample& sample : samples)
-        {
-            headless_render_samples_.push_back(renderSampleFromNavSample(sample));
-        }
     }
-    recordTrackSource(mapText(QStringLiteral("实时")), samples.empty() ? nullptr : &samples.back(),
-                      samples.empty() ? mapText(QStringLiteral("实时数据批次为空")) : QString());
+    const auto* latest = samples.empty() ? nullptr : &samples.back().navigation;
+    recordTrackSource(mapText(QStringLiteral("实时")), latest,
+                      latest ? QString() : mapText(QStringLiteral("实时数据批次为空")));
     updateReplayUi();
     updateHeatLegend();
-    updateStatus(samples.empty() ? nullptr : &samples.back(), false);
+    updateStatus(latest, false);
 }
 
 void Map3DWindow::clearTrack()
@@ -2512,6 +2820,7 @@ void Map3DWindow::startSessionLoad(const QString& sessionDir, quint64 generation
         }
         replay_.setRenderSamples(renderSamples);
         replay_render_storage_ = renderSamples;
+        session_water_unit_ = result.waterConcentrationUnit;
         loaded_session_directory_ = sessionDir;
         session_track_note_ = trackNote;
         rendered_replay_index_ = -1;
@@ -2575,6 +2884,15 @@ void Map3DWindow::startSessionLoad(const QString& sessionDir, quint64 generation
             [&promise](int percent, const QString& stage) {
                 promise.setProgressValueAndText(percent, stage);
             });
+        if (result.success) {
+            QString warning;
+            VaporView::Ground::Calibration::attachRecordedConcentrationsToSamples(
+                sessionDir, result.sampleRecordTimestampsUs, result.samples, result.waterConcentrationUnit, warning);
+            if (!warning.isEmpty()) {
+                if (!result.warning.isEmpty()) result.warning += QStringLiteral(" · ");
+                result.warning += warning;
+            }
+        }
         promise.addResult(std::move(result));
     }));
 }
@@ -3681,7 +3999,7 @@ bool Map3DWindow::eventFilter(QObject* watched, QEvent* event)
     {
         syncCursorUnderPointer();
     }
-    if ((watched == view_ || watched == centralWidget()) && event->type() == QEvent::Resize)
+    if ((watched == view_ || watched == map_canvas_) && event->type() == QEvent::Resize)
     {
         positionMapOverlays();
     }
@@ -3736,6 +4054,9 @@ void Map3DWindow::refreshLanguage()
             }
         }
     }
+    side_panel_toggle_->setText(liveText("实时数据", "Live data"));
+    for (int index = 0; index < heat_metric_combo_->count(); ++index)
+        heat_metric_combo_->setItemText(index, Geo::heatMetricName(heatMetricFromComboIndex(index), english));
     if (auto* preview = findChild<QWidget*>(QStringLiteral("map3DHeatPalettePreview")))
         preview->setAccessibleName(mapText(QStringLiteral("配色预览")));
     if (auto* card = findChild<QWidget*>(QStringLiteral("map3DTrajectoryInfoCard"))) {
@@ -3761,6 +4082,7 @@ void Map3DWindow::changeEvent(QEvent* event)
                   || event->type() == QEvent::StyleChange))
     {
         refreshLayerMenuTheme();
+        if (live_panel_) live_panel_->setReadings(live_snapshot_, track_data_mode_ != TrackDataMode::Live);
     }
 }
 
@@ -3809,6 +4131,8 @@ void Map3DWindow::syncCursorUnderPointer()
 void Map3DWindow::showEvent(QShowEvent* event)
 {
     QMainWindow::showEvent(event);
+    updateHeatLegend();
+    live_panel_->setReadings(live_snapshot_, track_data_mode_ != TrackDataMode::Live);
     syncCursorUnderPointer();
     QTimer::singleShot(0, this, &Map3DWindow::syncCursorUnderPointer);
     if (auto* controls = findChild<QWidget*>(QStringLiteral("map3DCornerControls")))

@@ -45,6 +45,7 @@ class SingleLevelPopupMenuRow;
 namespace VaporView::Map3D {
 
 class OsgEarthViewWidget;
+class MapLiveDataPanel;
 class MapResourceDialog;
 class MapResourceManager;
 
@@ -131,6 +132,8 @@ private:
     void applyHeatControlsToView();
     void setDisplayRefreshStatus(const QString& status);
     void markDisplaySettingsApplied();
+    std::optional<std::uint32_t> currentHeatEpoch() const;
+    QString currentWaterUnit() const;
     void updateHeatLegend();
     void flyToAircraft();
     void flyToTrack();
@@ -170,6 +173,12 @@ private:
     void syncCursorUnderPointer();
 
     OsgEarthViewWidget* view_ = nullptr;
+    QWidget* map_canvas_ = nullptr;
+    MapLiveDataPanel* live_panel_ = nullptr;
+    QToolButton* side_panel_toggle_ = nullptr;
+    QLabel* main_legend_label_ = nullptr;
+    Map3DLiveTelemetrySnapshot live_snapshot_;
+    QString session_water_unit_;
     QWidget* render_host_ = nullptr;
     QWidget* headless_view_ = nullptr;
     QLabel* render_placeholder_label_ = nullptr;
@@ -190,7 +199,7 @@ private:
     VaporView::Geo::HeatPalette heat_palette_ = VaporView::Geo::HeatPalette::Candy;
     QAction* follow_action_ = nullptr;
     QToolButton* map_mode_button_ = nullptr;
-    std::deque<VaporView::Geo::NavSample> live_samples_;
+    std::deque<VaporView::Geo::TrajectoryRenderSample> live_samples_;
     QString session_track_note_;
     QLabel* status_label_ = nullptr;
     QLabel* cesium_attribution_ = nullptr;

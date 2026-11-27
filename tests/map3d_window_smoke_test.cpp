@@ -4,6 +4,7 @@
 #include <QHelpEvent>
 #include <QToolTip>
 #include "shared/theme/AppTheme.h"
+#include "shared/config/SettingsWriteBarrier.h"
 #include "geo/GeoTypes.h"
 #include "map3d/Map3DWindow.h"
 #include "map3d/Map3DLoadTracker.h"
@@ -602,6 +603,217 @@ void checkImageryFallback()
             "zooming beyond source maximum still displays upsampled imagery");
 }
 
+void checkLiveReadings(VaporView::Map3D::Map3DWindow& window)
+{
+    using namespace VaporView::Map3D;
+    using VaporView::Geo::TrajectoryRenderSample;
+    auto* panel = window.findChild<QFrame*>(QStringLiteral("map3DLiveDataSidePanel"));
+    auto* toggle = window.findChild<QToolButton*>(QStringLiteral("map3DSidePanelToggleButton"));
+    auto* section = window.findChild<QToolButton*>(QStringLiteral("map3DProfileSectionToggle"));
+    auto* plot = window.findChild<QWidget*>(QStringLiteral("map3DWaterProfilePlot"));
+    auto* open = window.findChild<QPushButton*>(QStringLiteral("map3DOpenWaveformPageButton"));
+    auto* resolution = window.findChild<QComboBox*>(QStringLiteral("map3DProfileResolution"));
+    auto* metric = window.findChild<QComboBox*>(QStringLiteral("map3DHeatMetricCombo"));
+    auto* bar = window.findChild<QFrame*>(QStringLiteral("map3DMainHeatLegendBar"));
+    auto* legend = window.findChild<QLabel*>(QStringLiteral("map3DMainHeatLegendText"));
+    auto* canvas = window.findChild<QWidget*>(QStringLiteral("map3DView"));
+    require(panel && toggle && section && plot && open && resolution && metric && canvas && legend && bar,
+            "live sidebar, profile and main legend controls exist");
+    require(panel->isVisible() && panel->autoFillBackground() && !panel->testAttribute(Qt::WA_TranslucentBackground)
+            && bar->isVisible() && legend->text().contains(QStringLiteral("n=0")), "opaque sidebar and empty legend are visible");
+    require(canvas->parentWidget() == panel->parentWidget() && !canvas->geometry().intersects(panel->geometry()),
+            "sidebar and map occupy separate layout rectangles");
+    require(!section->isChecked() && !plot->isVisible(), "profile starts collapsed");
+    const int previousMetric = metric->currentIndex();
+    for (int i = 0; i < 7; ++i)
+        require(metric->itemText(i) == VaporView::Geo::heatMetricName(static_cast<VaporView::Geo::HeatMetric>(i), false),
+                "heat metrics retain their persisted indices");
+
+    int revisionReads = 0, snapshots = 0, lastResolution = 0;
+    quint64 revision = 1;
+    window.setWaterProfileProviders([&] { ++revisionReads; return revision; }, [&](int r0, int r1) {
+        ++snapshots;
+        require(r0 == r1, "height control applies to both channels");
+        lastResolution = r0;
+        Map3DWaterProfileSnapshot profile;
+        profile.unit = QStringLiteral("mol/mol");
+        profile.channels[0].resolutionM = r0;
+        profile.channels[0].totalSamples = revision;
+        profile.channels[0].layers.push_back({0, 0, r0, r0 * 0.5, 0.000123, 0, revision});
+        return profile;
+    });
+    Map3DLiveTelemetrySnapshot live;
+    live.calibrationSelected = live.calibrationValid = true;
+    live.calibrationEpoch = 8;
+    live.waterUnit = QStringLiteral("mol/mol");
+    live.hasColumnWater = live.hasInSituWater = live.hasPosition = true;
+    live.columnWater = 0.000123;
+    live.inSituWater = 0.000456;
+    live.columnAgeMs = 1250;
+    live.latDeg = 39.9;
+    live.lonDeg = 116.3;
+    live.heightM = 87;
+    live.fixQualityText = QStringLiteral("RTK");
+    live.hasTemperature = live.hasHumidity = live.hasPressure = live.hasLidar = live.hasThermal = true;
+    live.temperatureC = 23.4;
+    live.humidityRh = 56.7;
+    live.pressureHpa = 1001.2;
+    live.lidarDistanceM = 18.9;
+    live.temperatureSource = QStringLiteral("SHT");
+    live.temperatureStale = true;
+    live.thermalSummary = QStringLiteral("TEC103 / AI-8288 fault");
+    live.thermalFault = true;
+    window.setLiveTelemetrySnapshot(live);
+    require(revisionReads == 0 && snapshots == 0, "collapsed profile never queries the accumulator");
+    const auto shows = [&](const char* name, const QString& text) {
+        const auto* label = panel->findChild<QLabel*>(QString::fromLatin1(name));
+        return label && label->text().contains(text);
+    };
+    require(shows("map3DLiveColumnWater", QStringLiteral("816 nm")) && shows("map3DLiveColumnWater", QStringLiteral("0.000123 mol/mol"))
+            && shows("map3DLiveInSituWater", QStringLiteral("1368 nm")) && shows("map3DLiveInSituWater", QStringLiteral("0.000456 mol/mol")),
+            "both live water concentrations show their wavelength and calibrated units");
+    require(shows("map3DLivePosition", QStringLiteral("RTK")) && shows("map3DLivePosition", QStringLiteral("39.900000"))
+            && shows("map3DLiveTemperature", QStringLiteral("23.4 °C")) && shows("map3DLiveTemperature", QStringLiteral("SHT"))
+            && shows("map3DLiveTemperature", QStringLiteral("已过期")) && shows("map3DLiveHumidity", QStringLiteral("56.7 %RH"))
+            && shows("map3DLivePressure", QStringLiteral("1001.2 hPa")) && shows("map3DLiveLidar", QStringLiteral("18.9 m"))
+            && shows("map3DLiveThermal", live.thermalSummary), "sidebar shows position, ambient sources, age, distance and thermal faults");
+    section->click();
+    require(snapshots == 1 && lastResolution == 5 && plot->isVisible() && plot->accessibleDescription().contains(QStringLiteral("n=1")),
+            "opening the profile fetches and displays the selected channel");
+    const QImage firstPlot = plot->grab().toImage();
+    auto* channel = window.findChild<QComboBox*>(QStringLiteral("map3DProfileChannel"));
+    require(channel && channel->count() == 2, "both accumulated profile channels are selectable");
+    channel->setCurrentIndex(1);
+    require(plot->accessibleDescription().startsWith(QStringLiteral("816 nm")) && snapshots == 1,
+            "switching to the empty second channel reuses the cached profile");
+    channel->setCurrentIndex(0);
+    window.setLiveTelemetrySnapshot(live);
+    require(QTest::qWaitFor([&] { return revisionReads >= 2; }, 1500) && snapshots == 1,
+            "unchanged revisions do not rebuild profile data");
+    ++revision;
+    window.setLiveTelemetrySnapshot(live);
+    require(QTest::qWaitFor([&] { return snapshots == 2; }, 1500), "new profile revision is fetched once");
+    resolution->setCurrentIndex(resolution->findData(20));
+    require(lastResolution == 20 && snapshots == 3 && plot->grab().toImage() != firstPlot,
+            "new height resolution changes the rendered profile without a revision bump");
+    toggle->click();
+    const int hiddenReads = revisionReads;
+    ++revision;
+    window.setLiveTelemetrySnapshot(live);
+    QTest::qWait(500);
+    require(!panel->isVisible() && revisionReads == hiddenReads && snapshots == 3 && bar->isVisible(),
+            "hidden sidebar performs no profile work and keeps the main legend visible");
+    toggle->click();
+    require(panel->isVisible() && snapshots == 4, "reopening the panel consumes the pending revision");
+    bool waveRequested = false;
+    const auto connection = QObject::connect(&window, &Map3DWindow::openWaveformPageRequested, [&] { waveRequested = true; });
+    open->click();
+    require(waveRequested, "waveform button requests the waveform page");
+    QObject::disconnect(connection);
+    section->click();
+    window.setWaterProfileProviders({}, {});
+
+    TrajectoryRenderSample point;
+    point.navigation.nedNM = point.navigation.nedEM = point.navigation.nedDM = 0;
+    point.navigation.fixQuality = VaporView::Geo::FixQuality::Fixed;
+    point.heat.calibrationEpoch = live.calibrationEpoch;
+    point.heat.columnWaterConcentration = live.columnWater;
+    point.heat.inSituWaterConcentration = live.inSituWater;
+    point.heat.temperatureC = live.temperatureC;
+    point.heat.humidityRh = live.humidityRh;
+    point.heat.pressureHpa = live.pressureHpa;
+    point.heat.lidarDistanceM = live.lidarDistanceM;
+    auto other = point;
+    other.heat.columnWaterConcentration = 0.000567;
+    auto previous = point;
+    previous.heat.columnWaterConcentration = 999;
+    --previous.heat.calibrationEpoch;
+    metric->setCurrentIndex(4);
+    window.appendRenderSamples({previous, point, other});
+    require(legend->text().contains(QStringLiteral("0.000123 – 0.000567 mol/mol")) && legend->text().contains(QStringLiteral("n=2")),
+            "main legend preserves small water concentrations and excludes other calibration epochs");
+    --live.calibrationEpoch;
+    window.setLiveTelemetrySnapshot(live);
+    require(legend->text().contains(QStringLiteral("999 – 999")) && legend->text().contains(QStringLiteral("n=1")),
+            "live epoch changes refresh the legend even without new track points");
+
+    // Exercise the pick-to-card signal with a real layer pick, without requiring a GL context.
+    Trajectory3DLayer layer;
+    layer.appendRenderSample(point);
+    const auto pick = layer.pickNearestSample(osg::Matrixd::identity(), 0, 0, 1);
+    require(pick.has_value(), "frozen sample can be picked");
+    OsgEarthViewWidget view(nullptr, true);
+    view.setWaterUnitLabel(live.waterUnit);
+    view.trajectoryRenderSampleSelected(pick->sampleIndex, pick->renderSample);
+    auto* title = view.findChild<QLabel*>(QStringLiteral("map3DTrajectoryInfoTitle"));
+    auto* details = view.findChild<QLabel*>(QStringLiteral("map3DTrajectoryInfoDetails"));
+    require(title && title->text().contains(QStringLiteral("冻结")) && details, "picked card identifies a frozen sample");
+    const QString frozen = details->text();
+    for (const auto* text : {"0.000123 mol/mol", "0.000456 mol/mol", "23.4 °C", "56.7 %RH", "1001.2 hPa", "18.9 m"})
+        require(frozen.contains(QString::fromUtf8(text)), "card shows each frozen auxiliary and concentration measurement");
+    live.columnWater = 0.123;
+    live.lidarDistanceM = 999;
+    window.setLiveTelemetrySnapshot(live);
+    require(shows("map3DLiveLidar", QStringLiteral("999 m")) && details->text() == frozen, "new live readings preserve the picked values");
+    metric->setCurrentIndex(previousMetric);
+    window.clearTrack();
+    window.setLiveTelemetrySnapshot({});
+}
+
+// Run explicitly on a desktop with an OpenGL context. Business settings and online layers stay isolated.
+void checkFrozenMapClick()
+{
+    using namespace VaporView::Map3D;
+    qunsetenv("VAPORVIEW_MAP3D_HEADLESS_TEST");
+    VaporView::setSettingsWritesSuspended(true);
+    Map3DWindow window;
+    Map3DLiveTelemetrySnapshot live;
+    live.calibrationEpoch = 4;
+    live.calibrationValid = live.calibrationSelected = live.hasColumnWater = true;
+    live.waterUnit = QStringLiteral("mol/mol");
+    live.columnWater = 0.000123;
+    window.setLiveTelemetrySnapshot(live);
+    VaporView::Geo::TrajectoryRenderSample point;
+    point.navigation.latDeg = 30.25;
+    point.navigation.lonDeg = 120.15;
+    point.navigation.heightM = 25;
+    point.navigation.fixQuality = VaporView::Geo::FixQuality::Fixed;
+    point.navigation.heightReference = VaporView::Geo::HeightReference::Wgs84Ellipsoid;
+    point.heat.columnWaterConcentration = live.columnWater;
+    point.heat.calibrationEpoch = live.calibrationEpoch;
+    window.appendRenderSample(point); // Before deferred GL initialization.
+    auto* metric = window.findChild<QComboBox*>(QStringLiteral("map3DHeatMetricCombo"));
+    metric->setCurrentIndex(4);
+    window.show();
+    OsgEarthViewWidget* view = nullptr;
+    require(QTest::qWaitFor([&] {
+        view = window.findChild<OsgEarthViewWidget*>();
+        return view && view->isValid() && view->sampleCount() == 1;
+    }, 10000), "deferred renderer restores the buffered measurement");
+    require(view->heatCalibrationEpochFilter() == live.calibrationEpoch && view->heatRange().validCount == 1,
+            "GL range matches the buffered live epoch");
+    require(view->flyToTrack(), "camera centers the buffered point");
+    QTest::qWait(250);
+    const QPointF center(view->rect().center());
+    const QPointF global(view->mapToGlobal(center.toPoint()));
+    QMouseEvent press(QEvent::MouseButtonPress, center, global, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QMouseEvent release(QEvent::MouseButtonRelease, center, global, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(view, &press);
+    QCoreApplication::sendEvent(view, &release);
+    auto* card = view->findChild<QFrame*>(QStringLiteral("map3DTrajectoryInfoCard"));
+    auto* details = view->findChild<QLabel*>(QStringLiteral("map3DTrajectoryInfoDetails"));
+    require(card && details && card->isVisible() && view->rect().contains(card->geometry())
+            && details->text().contains(QStringLiteral("0.000123 mol/mol")), "mouse click opens the frozen card within the map");
+    const QString frozen = details->text();
+    live.columnWater = 0.000456;
+    window.setLiveTelemetrySnapshot(live);
+    const auto* current = window.findChild<QLabel*>(QStringLiteral("map3DLiveColumnWater"));
+    require(current->text().contains(QStringLiteral("0.000456")) && details->text() == frozen,
+            "a new live snapshot only changes the live reading in the same window");
+    window.close();
+    VaporView::setSettingsWritesSuspended(false);
+}
+
 void checkGroundDetailEllipse()
 {
     using VaporView::Map3D::Detail::GroundDetailEllipse;
@@ -686,6 +898,10 @@ int main(int argc, char** argv)
     if (app.arguments().contains(QStringLiteral("--layer-lifetime-only"))) return 0;
     QCoreApplication::setOrganizationName(QStringLiteral("VaporViewTest"));
     QCoreApplication::setApplicationName(QStringLiteral("map3d_window_smoke_test"));
+    if (app.arguments().contains(QStringLiteral("--frozen-map-pick"))) {
+        checkFrozenMapClick();
+        return 0;
+    }
     testLanguageObjectLifetime();
     if (app.arguments().contains(QStringLiteral("--language-lifetime-only"))) return 0;
 
@@ -886,6 +1102,8 @@ int main(int argc, char** argv)
                 && !mapStatus->text().contains(QStringLiteral("→")),
             "bottom status bar excludes unrelated telemetry and fallback degradation chains");
 
+    checkLiveReadings(window);
+
     auto* loadingBubble = window.findChild<QWidget*>(QStringLiteral("map3DLoadingProgressBubble"));
     auto* loadingLabel = window.findChild<QLabel*>(QStringLiteral("map3DLoadingProgressLabel"));
     auto* loadingBar = window.findChild<QProgressBar*>(QStringLiteral("map3DLoadingProgressBar"));
@@ -906,7 +1124,7 @@ int main(int argc, char** argv)
                     && loadingLabel->text().contains(QStringLiteral("OSM"))
                     && loadingLabel->text().contains(QStringLiteral("50%"))
                     && loadingBar->value() == 50
-                    && loadingBubble->geometry().left() > window.centralWidget()->width() / 2
+                    && loadingBubble->geometry().left() > loadingBubble->parentWidget()->width() / 2
                     && loadingBubble->geometry().top() <= 24,
                 "loading bubble displays resource progress in the top-right corner");
         // Interruption / cancellation must hide the bubble immediately.
@@ -1205,7 +1423,7 @@ int main(int argc, char** argv)
     qApp->setPalette(originalPalette);
     auto* locateButton = window.findChild<QToolButton*>(QStringLiteral("map3DLocateButton"));
     require(locateButton && !locateButton->icon().isNull(), "corner locate button has an icon");
-    require(window.centralWidget()->rect().contains(layersButton->parentWidget()->geometry()),
+    require(mapView->rect().contains(layersButton->parentWidget()->geometry()),
             "corner controls stay inside the map viewport");
     const QRect expectedPopupBounds = windowClientRect.adjusted(8, 8, -8, -8);
     layersMenu->popup(QPoint(windowClientRect.right() - 2, windowClientRect.bottom() - 2));
@@ -1264,8 +1482,8 @@ int main(int argc, char** argv)
                 || local3DTilesAction->toolTip().contains(QStringLiteral("3D Tiles"))
                 || local3DTilesAction->toolTip().contains(QStringLiteral("建筑瓦片")),
             "local 3D Tiles action explains its available or unavailable state");
-    require(heatMetricCombo != nullptr && heatMetricCombo->count() == 4,
-            "heat metric combo exposes peak, humidity, temperature and pressure");
+    require(heatMetricCombo != nullptr && heatMetricCombo->count() == 7,
+            "heat metric combo exposes peak, humidity, temperature, pressure, both water channels and lidar");
     require(heatPaletteCombo != nullptr && heatPaletteCombo->count() == 3
                 && heatPaletteCombo->itemText(2) == QStringLiteral("反向光谱"),
             "heat palette combo exposes the three shared palette names");
@@ -1493,7 +1711,15 @@ int main(int argc, char** argv)
     QCoreApplication::processEvents();
     releasePool.release();
     loadingPool->setMaxThreadCount(previousPoolSize);
-    window.appendSamples({sample, sample});
+    VaporView::Map3D::Map3DLiveTelemetrySnapshot replayLive;
+    replayLive.calibrationEpoch = 9;
+    replayLive.waterUnit = QStringLiteral("mol/mol");
+    window.setLiveTelemetrySnapshot(replayLive);
+    VaporView::Geo::TrajectoryRenderSample liveSample{sample, {}};
+    liveSample.heat.calibrationEpoch = replayLive.calibrationEpoch;
+    liveSample.heat.columnWaterConcentration = 0.000321;
+    liveSample.heat.lidarDistanceM = 42.5;
+    window.appendRenderSamples({liveSample, liveSample});
     window.appendSample(sample);
     require(waitForText(label, QStringLiteral("来源 会话"), 3000),
             "asynchronous session load completes without blocking the window");
@@ -1676,14 +1902,27 @@ int main(int argc, char** argv)
     require(modeButton && modeButton->parentWidget()->objectName() == QStringLiteral("customTitleBar"),
             "map mode switch lives in the title bar");
     require(modeButton->text() == QStringLiteral("回到实时地图"), "Session shows a return-to-live button");
+    auto* sessionBanner = window.findChild<QLabel*>(QStringLiteral("map3DSessionBanner"));
+    require(sessionBanner && !sessionBanner->isHidden() && sessionBanner->text().contains(QStringLiteral("地图显示历史记录")),
+            "sidebar identifies live readings alongside the historical map");
     const QImage returnToLiveIcon = modeButton->icon().pixmap(QSize(22, 22), QIcon::Normal).toImage();
     require(label->text().contains(QStringLiteral("采样点：2")), "live input does not append to the Session track");
     modeButton->click();
     require(!navigationSource->isEnabled(), "live mode disables the Session source selector");
+    require(sessionBanner->isHidden(), "live mode clears the Session banner");
     require(modeButton->text() == QStringLiteral("返回 Session 回放"), "live mode offers the cached Session");
     require(modeButton->icon().pixmap(QSize(22, 22), QIcon::Normal).toImage() != returnToLiveIcon,
             "mode switch icons distinguish live navigation from Session playback");
     require(label->text().contains(QStringLiteral("采样点：4")), "returning live includes positions received during playback");
+    auto* restoredLegend = window.findChild<QLabel*>(QStringLiteral("map3DMainHeatLegendText"));
+    const int savedMetric = heatMetricCombo->currentIndex();
+    heatMetricCombo->setCurrentIndex(4);
+    require(restoredLegend->text().contains(QStringLiteral("0.000321 – 0.000321 mol/mol")) && restoredLegend->text().contains(QStringLiteral("n=2")),
+            "return to live restores frozen concentrations, units and live calibration epoch");
+    heatMetricCombo->setCurrentIndex(6);
+    require(restoredLegend->text().contains(QStringLiteral("42.5 – 42.5 m")) && restoredLegend->text().contains(QStringLiteral("n=2")),
+            "return to live preserves auxiliary lidar measurements");
+    heatMetricCombo->setCurrentIndex(savedMetric);
     window.appendSample(sample);
     modeButton->click();
     require(label->text().contains(QStringLiteral("采样点：2")), "returning to Session restores its original track");
