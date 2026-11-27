@@ -131,6 +131,50 @@ CalibrationService::~CalibrationService()
     {std::lock_guard lock(mutex_);stopping_=true;wake_.notify_all();}
     if(worker_.joinable())worker_.join();
 }
+qint64 CalibrationService::liveAgeMs(int wavelength, quint64 now) const
+{
+    const auto received = liveReceivedMs_.constFind(wavelength);
+    if (received == liveReceivedMs_.cend() || now < *received || now - *received > StreamGapMs) return -1;
+    return qint64(now - *received);
+}
+
+LiveWaterSnapshot CalibrationService::liveSnapshot() const
+{
+    std::lock_guard lock(mutex_);
+    LiveWaterSnapshot snapshot;
+    const auto& selected = state_.selected;
+    snapshot.connected = state_.connected;
+    snapshot.calibrationSelected = !selected.filename.isEmpty();
+    snapshot.calibrationValid = selected.valid;
+    snapshot.calibrationSha256 = selected.sha256;
+    snapshot.calibrationName = QFileInfo(selected.filename).fileName();
+    if (selected.valid) snapshot.unit = selected.project.unit;
+    snapshot.warning = state_.error ? state_.message : state_.identityWarning;
+    if (!snapshot.connected || !snapshot.calibrationValid) return snapshot;
+
+    const auto now = clock_();
+    const auto reading = [&](int wavelength) {
+        LiveWaterChannelReading result;
+        const auto live = state_.live.constFind(wavelength);
+        const qint64 age = liveAgeMs(wavelength, now);
+        if (live == state_.live.cend() || age < 0) return result;
+        result.hostTimeUs = live->input.feature.hostTimeUs;
+        result.id = live->input.feature.id;
+        result.status = live->status;
+        result.unit = snapshot.unit;
+        result.origin = live->origin;
+        if (live->valid) {
+            result.valid = true;
+            result.value = live->value;
+            result.ageMs = age;
+        }
+        return result;
+    };
+    snapshot.inSitu1368 = reading(1368);
+    snapshot.column816 = reading(816);
+    return snapshot;
+}
+
 CalibrationView CalibrationService::view() const
 {
     std::lock_guard lock(mutex_);
@@ -143,10 +187,10 @@ CalibrationView CalibrationService::view() const
     if (!view.connected) return view;
 
     const auto monotonicNow = clock_();
-    for (auto it = view.live.cbegin(); it != view.live.cend(); ++it) {
-        const auto received = latestValid_.constFind(it.key());
-        if (received != latestValid_.cend() && monotonicNow >= received.value())
-            view.liveAgeMs.insert(it.key(), qint64(monotonicNow - received.value()));
+    for (auto it = state_.live.cbegin(); it != state_.live.cend(); ++it) {
+        const auto age = liveAgeMs(it.key(), monotonicNow);
+        if (age < 0) view.live.remove(it.key());
+        else if (it->valid) view.liveAgeMs.insert(it.key(), age);
     }
 
     const auto now = VaporView::Session::harmonicReceptionTimeUs();
@@ -266,7 +310,7 @@ void CalibrationService::setDevice(bool connected,const QJsonObject& identity)
     submit([this,connected,identity]{
         if(state_.acquiring && (!connected || device_!=identity))pause(QStringLiteral("设备断开或身份变化，请核对后重新确认稳定并继续"));
         if(state_.connected!=connected || device_!=identity) {
-            latestValid_.clear();sensorReadings_={};state_.live.clear();state_.recentPeaks.clear();environment_={};alignment_="unavailable";
+            latestValid_.clear();liveReceivedMs_.clear();sensorReadings_={};state_.live.clear();state_.recentPeaks.clear();environment_={};alignment_="unavailable";
         }
         state_.connected=connected;device_=identity;
         state_.identityWarning=calibrationIdentityWarning(state_.selected,connected,identity);
@@ -290,8 +334,7 @@ void CalibrationService::ensureSimulationFile(const QJsonObject& identity)
                                 {{"filename",file.filename},{"sha256",file.sha256}},&error)) {
                     message(error,true);return;
                 }
-                state_.selected=file;
-                state_.identityWarning=calibrationIdentityWarning(file,state_.connected,device_);
+                setSelectedFile(file);
                 message(QStringLiteral("已选择 FPGA 模拟定标文件：%1").arg(QFileInfo(file.filename).fileName()));
                 return;
             }
@@ -305,8 +348,7 @@ void CalibrationService::ensureSimulationFile(const QJsonObject& identity)
                         {{"filename",file.filename},{"sha256",file.sha256}},&error)) {
             message(error,true);return;
         }
-        state_.selected=file;
-        state_.identityWarning=calibrationIdentityWarning(file,state_.connected,device_);
+        setSelectedFile(file);
         listFiles();
         message(QStringLiteral("已创建并选择 FPGA 模拟定标文件：%1").arg(QFileInfo(file.filename).fileName()));
     });
@@ -417,6 +459,7 @@ void CalibrationService::process(const PendingPeak& p)
         Sample sample;sample.feature=r.feature;sample.environment=r.environment;
         sample.origin=state_.selected.project.origin=="software_test"?"software_test":"unverified";
         auto f=state_.selected.project.calculationFit(w);state_.live[w]=calculate(sample,w,&f);
+        liveReceivedMs_[w] = p.time;
     }
     const bool sameStage=!p.stageId.isEmpty() && state_.activeStage>=0 &&
         state_.activeStage<state_.project.stages.size() &&
@@ -462,7 +505,12 @@ void CalibrationService::process(const PendingPeak& p)
 void CalibrationService::tick()
 {
     const auto now=clock_();
-    for(int w:{816,1368})if(!latestValid_.contains(w) || now-latestValid_.value(w)>StreamGapMs)state_.live.remove(w);
+    for (int wavelength : {1368, 816}) {
+        if (state_.live.contains(wavelength) && liveAgeMs(wavelength, now) < 0) {
+            state_.live.remove(wavelength);
+            liveReceivedMs_.remove(wavelength);
+        }
+    }
     if(!state_.acquiring && state_.activeStage>=0 && state_.project.stages[state_.activeStage].status=="paused") {
         state_.project.stages[state_.activeStage].wallMs+=now-wallCursor_;wallCursor_=now;
     }
@@ -595,6 +643,14 @@ void CalibrationService::selectFileForRecording(const QString& filename, const Q
     completion(QStringLiteral("定标服务当前不可用或操作队列繁忙，请稍后重试"));
 }
 
+void CalibrationService::setSelectedFile(const CalibrationFile& file)
+{
+    state_.selected = file;
+    state_.identityWarning = calibrationIdentityWarning(file, state_.connected, device_);
+    state_.live.clear();
+    liveReceivedMs_.clear();
+}
+
 QString CalibrationService::selectFileImpl(const QString& filename, const QString& expectedSha256,
                                            bool forRecording)
 {
@@ -618,9 +674,7 @@ QString CalibrationService::selectFileImpl(const QString& filename, const QStrin
                     {{"filename", file.filename}, {"sha256", file.sha256}}, &error))
         return error;
 
-    state_.selected = file;
-    state_.identityWarning = calibrationIdentityWarning(file, state_.connected, device_);
-    state_.live.clear();
+    setSelectedFile(file);
     message(QStringLiteral("已选择 %1；验证用线性模型，初始浓度未进行温压补偿").arg(QFileInfo(filename).fileName()));
     return {};
 }
@@ -629,7 +683,7 @@ void CalibrationService::copyFile(const QString& filename,const QString& name)
 void CalibrationService::removeFile(const QString& filename,bool archive)
 {submit([this,filename,archive]{QString e;const auto locked=(state_.locked || externalSessionOpen_)?state_.selected.sha256:QString();
     if(!(archive?store_.archive(filename,locked,&e):store_.remove(filename,locked,&e)))message(e,true);
-    else{if(state_.selected.filename==filename){state_.selected={};state_.identityWarning.clear();state_.live.clear();}listFiles();message(archive?QStringLiteral("文件已归档"):QStringLiteral("文件已删除"));}});}
+    else{if(state_.selected.filename==filename)setSelectedFile({});listFiles();message(archive?QStringLiteral("文件已归档"):QStringLiteral("文件已删除"));}});}
 void CalibrationService::importLegacy(const QString& filename,const QString& a,const QString& b)
 {submit([this,filename,a,b]{if(!editable())return;Library library;QString e;if(!Store(filename).load(library,&e)){message(e,true);return;}
     const Fit *fa=nullptr,*fb=nullptr;for(const auto& f:library.fits){if(f.id==a)fa=&f;if(f.id==b)fb=&f;}

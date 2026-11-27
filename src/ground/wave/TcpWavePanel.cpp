@@ -218,6 +218,15 @@ QString formatWaveValue(double value, int fixedDecimals)
     return QString::number(value, 'f', fixedDecimals);
 }
 
+QString formatWaterConcentration(double value)
+{
+    if (!std::isfinite(value)) return QStringLiteral("—");
+    const double magnitude = std::abs(value);
+    if (magnitude == 0) return QStringLiteral("0");
+    if (magnitude < 0.01 || magnitude >= 1e6) return QString::number(value, 'g', 6);
+    return QString::number(value, 'f', magnitude >= 100 ? 2 : magnitude >= 1 ? 3 : 4);
+}
+
 QFont numericFontFrom(const QFont& base)
 {
     QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
@@ -1825,15 +1834,15 @@ protected:
         if (unbinned()) {
             const auto &point = raw_points_.at(node_raw_indices_.at(hit));
             message = (english_ ? QStringLiteral("Height: %1 m\nConcentration: %2%3") : QStringLiteral("高度：%1 m\n浓度：%2%3"))
-                .arg(formatWaveValue(point.heightM, 3), formatWaveValue(point.concentration, 3), unit_);
+                .arg(formatWaveValue(point.heightM, 3), formatWaterConcentration(point.concentration), unit_);
             if (point.sampleCount > 1)
                 message += (english_ ? QStringLiteral("\nMerged samples: %1") : QStringLiteral("\n近重合样本数：%1")).arg(point.sampleCount);
         } else {
             const auto &layer = layers_[hit];
             message = (english_ ? QStringLiteral("Height: %1–%2 m\nCenter: %3 m\nMean: %4%5\nSample SD: %6\nSamples: %7")
                 : QStringLiteral("高度区间：%1–%2 m\n代表高度：%3 m\n平均浓度：%4%5\n样本标准差：%6\n样本数：%7"))
-                .arg(layer.minHeightM).arg(layer.maxHeightM).arg(layer.centerHeightM).arg(formatWaveValue(layer.meanConcentration, 3), unit_,
-                    layer.sampleCount >= 2 ? formatWaveValue(layer.stdDev, 3) + unit_ : QStringLiteral("—")).arg(layer.sampleCount);
+                .arg(layer.minHeightM).arg(layer.maxHeightM).arg(layer.centerHeightM).arg(formatWaterConcentration(layer.meanConcentration), unit_,
+                    layer.sampleCount >= 2 ? formatWaterConcentration(layer.stdDev) + unit_ : QStringLiteral("—")).arg(layer.sampleCount);
         }
         setToolTip(message);
         QToolTip::showText(event->globalPosition().toPoint(), message, this);
@@ -1988,7 +1997,7 @@ struct TcpWavePanel::WaveformPage {
     std::array<QWidget *, 7> rows{};
     std::array<VaporView::Ground::Wave::RowResizeHandle *, 7> handles{};
     std::array<std::array<QFrame *, 2>, 7> cards{};
-    std::array<std::array<QHBoxLayout *, 2>, 7> headerLayouts{};
+    std::array<std::array<QLayout *, 2>, 7> headerLayouts{};
     CalibrationControls calibration;
 };
 
@@ -2544,7 +2553,7 @@ void TcpWavePanel::setEnglish(bool english)
     for (int channel = 0; channel < 2; ++channel) {
         const QString text = channel == 0
             ? (english ? QStringLiteral("ADC 0 / DLIA 0 · 1368 nm (In-situ)") : QStringLiteral("ADC 0 / DLIA 0 · 1368 nm（原位）"))
-            : (english ? QStringLiteral("ADC 1 / DLIA 1 · 816 nm (Remote)") : QStringLiteral("ADC 1 / DLIA 1 · 816 nm（遥测）"));
+            : (english ? QStringLiteral("ADC 1 / DLIA 1 · 816 nm (Remote Column)") : QStringLiteral("ADC 1 / DLIA 1 · 816 nm（遥测柱浓度）"));
         home_channel_labels_[channel]->setText(text);
         if (waveform_page_) waveform_page_->lanes[channel].heading->setText(text);
     }
@@ -3359,18 +3368,39 @@ static QString profileResolutionText(int resolution, bool english)
 void TcpWavePanel::createWaterPlots(WaterCards &cards, QWidget *parent, int channel)
 {
     const bool listCell = cards.profile != nullptr;
+    QVBoxLayout *concentrationHeader;
     QHBoxLayout *profileHeader;
     if (listCell) {
+        const auto addHeader = [&](QWidget *cell, QLabel *&title, int row) {
+            auto *header = new QVBoxLayout;
+            header->setSpacing(0);
+            title = createChannelHeading(cell);
+            title->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+            header->addWidget(title);
+            static_cast<QVBoxLayout *>(cell->layout())->addLayout(header);
+            waveform_page_->headerLayouts[row][channel] = header;
+            return header;
+        };
+        concentrationHeader = addHeader(cards.concentration, cards.concentrationTitle, 5);
+        auto *profileHeading = addHeader(cards.profile, cards.profileTitle, 6);
         profileHeader = new QHBoxLayout;
-        waveform_page_->headerLayouts[6][channel] = profileHeader;
-        static_cast<QVBoxLayout *>(cards.profile->layout())->addLayout(profileHeader);
+        profileHeading->addLayout(profileHeader);
     } else {
         QGroupBox *group;
         createWaveCard(parent, group, cards.concentrationTitle);
         cards.concentration = group;
-        profileHeader = createWaveCard(parent, group, cards.profileTitle);
+        concentrationHeader = static_cast<QVBoxLayout *>(group->layout());
+        createWaveCard(parent, group, cards.profileTitle);
         cards.profile = group;
+        profileHeader = new QHBoxLayout;
+        profileHeader->setContentsMargins(0, 0, 6, 0);
+        static_cast<QVBoxLayout *>(group->layout())->addLayout(profileHeader);
     }
+    cards.concentrationReading = new QLabel(cards.concentration);
+    cards.concentrationReading->setObjectName(QStringLiteral("waterConcentrationReading%1").arg(channel));
+    cards.concentrationReading->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+    cards.concentrationReading->setIndent(listCell ? 0 : 6);
+    concentrationHeader->addWidget(cards.concentrationReading);
     cards.concentration->setProperty("waterPlotCard", "concentration");
     cards.series = new PeakTrendPlotWidget(cards.concentration);
     cards.series->setObjectName(channel ? QStringLiteral("waterConcentrationPlot1") : QStringLiteral("waterConcentrationPlot"));
@@ -3388,11 +3418,8 @@ void TcpWavePanel::createWaterPlots(WaterCards &cards, QWidget *parent, int chan
     if (listCell) {
         cards.layers->setMaxXAxisIntervals(12);
         cards.layers->setProperty("styleSheetManagedHeight", true);
-        profileHeader->addWidget(cards.summary, 1);
-    } else {
-        profileHeader->addStretch();
-        static_cast<QVBoxLayout *>(cards.profile->layout())->addWidget(cards.summary);
     }
+    profileHeader->addWidget(cards.summary, 1);
     cards.resolution = new VaporView::SingleLevelPopupComboBox(cards.profile);
     cards.resolution->setObjectName(QStringLiteral("waterProfileResolution%1").arg(channel));
     cards.resolution->setFixedHeight(kTcpButtonHeight);
@@ -3486,6 +3513,7 @@ void TcpWavePanel::setWaterCalibration(const QString &key, const QString &name, 
         excluded_profile_id_ = {};
         water_calibration_key_ = key;
         water_samples_.clear();
+        latest_valid_water_ = {};
     }
     water_calibration_name_ = name;
     water_unit_ = unit;
@@ -3497,6 +3525,7 @@ void TcpWavePanel::clearWaterSamples()
 {
     if (water_samples_.isEmpty()) return;
     water_samples_.clear();
+    latest_valid_water_ = {};
     refreshWaterPlots();
 }
 
@@ -3516,6 +3545,7 @@ void TcpWavePanel::appendWaterSample(int channel, const QString &id, qint64 time
     auto &series = water_samples_[channel];
     if (series.isEmpty() || (series.last().timeMs <= timeMs && series.last().id != id)) {
         series.append({id, timeMs, value});
+        if (std::isfinite(value)) latest_valid_water_[channel] = series.last();
         if (series.size() > kPeakTrendFrameWindow) series.removeFirst();
     } else if (!paired) return;
     refreshWaterPlots(channel);
@@ -3523,13 +3553,19 @@ void TcpWavePanel::appendWaterSample(int channel, const QString &id, qint64 time
 
 void TcpWavePanel::refreshWaterPlots(int changedChannel)
 {
-    const auto name = is_english_ ? QStringLiteral("Water Vapor Concentration") : QStringLiteral("水汽浓度");
-    const auto profile = is_english_ ? QStringLiteral("Water Vapor Profile") : QStringLiteral("水汽廓线");
     const QString unit = water_unit_.isEmpty() ? QString() : QStringLiteral(" (%1)").arg(water_unit_);
     const QString selectText = is_english_ ? QStringLiteral("Select a calibration file") : QStringLiteral("请选择定标文件");
+    const QString waiting = is_english_ ? QStringLiteral("Waiting for valid concentration") : QStringLiteral("等待有效浓度");
     if (changedChannel < 0) syncCalibrationControls();
     for (int channel = 0; channel < 2; ++channel) {
         if (changedChannel >= 0 && changedChannel != channel) continue;
+        const QString name = channel == 0
+            ? (is_english_ ? QStringLiteral("In-situ Water Vapor Concentration") : QStringLiteral("原位水汽浓度"))
+            : (is_english_ ? QStringLiteral("Column Water Vapor Concentration (Remote)") : QStringLiteral("水汽柱浓度（遥测）"));
+        const QString profile = channel == 0
+            ? (is_english_ ? QStringLiteral("In-situ Water Vapor Profile") : QStringLiteral("原位水汽廓线"))
+            : (is_english_ ? QStringLiteral("Column Water Vapor Profile (Remote)") : QStringLiteral("水汽柱浓度廓线（遥测）"));
+        const QString suffix = QStringLiteral(" · CH %1").arg(channel);
         const auto latest = water_profile_->latest(channel);
         const bool unbinned = profile_resolution_m_[channel] == WaterProfileAccumulator::unbinnedResolution;
         const auto points = unbinned ? water_profile_->rawPoints(channel) : QVector<WaterProfileAccumulator::RawPoint>{};
@@ -3542,16 +3578,32 @@ void TcpWavePanel::refreshWaterPlots(int changedChannel)
             : is_english_ ? QStringLiteral("Y Height: %1   X Concentration: %2   Layers: %3")
             : QStringLiteral("Y 高度：%1   X 浓度：%2   层数：%3"))
             .arg(latest ? formatWaveValue(latest->heightM, 2) + QStringLiteral(" m") : missing,
-                 latest ? formatWaveValue(latest->concentration, 2) + QStringLiteral(" ") + water_unit_ : missing,
+                 latest ? formatWaterConcentration(latest->concentration) + QStringLiteral(" ") + water_unit_ : missing,
                  count ? QString::number(count) : missing);
         const auto &series = water_samples_.value(channel);
+        const auto &valid = latest_valid_water_[channel];
+        QString reading = missing + ' ' + waiting;
+        if (water_calibration_key_.isEmpty()) {
+            reading = is_english_ ? selectText : QStringLiteral("未选择定标文件");
+        } else {
+            if (valid) {
+                reading = QStringLiteral("%1 %2 · %3").arg(formatWaterConcentration(valid->value), water_unit_,
+                    QDateTime::fromMSecsSinceEpoch(valid->timeMs).toString(QStringLiteral("HH:mm:ss")));
+            }
+            if (!series.isEmpty() && !std::isfinite(series.last().value)) {
+                if (valid) reading.prepend(is_english_ ? QStringLiteral("Last valid: ") : QStringLiteral("上次有效："));
+                reading.prepend(is_english_ ? QStringLiteral("Invalid sample · ") : QStringLiteral("样本无效 · "));
+            }
+        }
         QVector<float> values;
         QVector<qint64> times;
         for (const auto &sample : series) {
             values.append(float(sample.value));
             times.append(sample.timeMs);
         }
-        const auto update = [&](WaterCards &cards, const QString &suffix) {
+        const auto update = [&](WaterCards &cards) {
+            cards.concentrationReading->setText(reading);
+            cards.concentrationReading->setToolTip(reading);
             cards.summary->setText(summary);
             cards.summary->setToolTip(unbinned && totalSamples > quint64(count)
                 ? summary + (is_english_ ? QStringLiteral("\nTotal samples: %1") : QStringLiteral("\n总样本数：%1")).arg(totalSamples) : summary);
@@ -3560,19 +3612,19 @@ void TcpWavePanel::refreshWaterPlots(int changedChannel)
             cards.resolution->setCurrentIndex(cards.resolution->findData(profile_resolution_m_[channel]));
             cards.resolution->setToolTip(is_english_ ? QStringLiteral("Height resolution") : QStringLiteral("高度分辨率"));
             cards.clear->setText(is_english_ ? QStringLiteral("Clear") : QStringLiteral("清空"));
-            if (cards.concentrationTitle) cards.concentrationTitle->setText(name + unit + suffix);
-            if (cards.profileTitle) cards.profileTitle->setText(profile + suffix);
-            cards.series->setEmptyText(water_calibration_name_.isEmpty() ? selectText
-                : (is_english_ ? QStringLiteral("Waiting for concentration") : QStringLiteral("等待有效浓度")));
+            cards.concentrationTitle->setText(name + unit + suffix);
+            cards.concentrationTitle->setToolTip(cards.concentrationTitle->text());
+            cards.profileTitle->setText(profile + suffix);
+            cards.profileTitle->setToolTip(cards.profileTitle->text());
+            cards.series->setEmptyText(water_calibration_key_.isEmpty() ? selectText : waiting);
             cards.series->setPeakValues(values, times);
             const QString emptyText = water_calibration_name_.isEmpty() ? selectText
                 : (is_english_ ? QStringLiteral("Waiting for paired lidar and concentration") : QStringLiteral("等待配对的测距与浓度"));
             if (unbinned) cards.layers->setUnbinnedProfile(points, latest, totalSamples, unit, is_english_, emptyText);
             else cards.layers->setProfile(layers, latest, profile_resolution_m_[channel], unit, is_english_, emptyText);
         };
-        const QString suffix = QStringLiteral(" · CH %1").arg(channel);
-        update(home_water_[channel], suffix);
-        if (waveform_page_) update(waveform_page_->lanes[channel].water, {});
+        update(home_water_[channel]);
+        if (waveform_page_) update(waveform_page_->lanes[channel].water);
     }
 }
 

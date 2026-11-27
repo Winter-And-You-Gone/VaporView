@@ -5,12 +5,28 @@
 #include <condition_variable>
 #include <deque>
 #include <functional>
+#include <limits>
 #include <mutex>
 #include <thread>
 #include <QScopeGuard>
 
 namespace VaporView::Ground::Calibration
 {
+struct LiveWaterChannelReading
+{
+    bool valid = false;
+    double value = std::numeric_limits<double>::quiet_NaN();
+    quint64 hostTimeUs = 0; // Source host timestamp; may use a remote wall clock.
+    qint64 ageMs = -1;    // Local monotonic reception age of a valid reading.
+    QString id, status, unit, origin;
+};
+struct LiveWaterSnapshot
+{
+    bool connected = false, calibrationSelected = false, calibrationValid = false;
+    QString calibrationSha256, calibrationName, unit, warning;
+    LiveWaterChannelReading inSitu1368; // DLIA 0 (0x30)
+    LiveWaterChannelReading column816;  // DLIA 1 (0x31)
+};
 struct CalibrationView
 {
     CalibrationProject project;
@@ -36,6 +52,7 @@ public:
     explicit CalibrationService(QString installationDirectory = {}, Clock clock = {}, QObject *parent = nullptr);
     ~CalibrationService() override;
     CalibrationView view() const;
+    LiveWaterSnapshot liveSnapshot() const;
     QJsonObject diagnostics() const;
     void offer(const PeakRecord&);
     void setDevice(bool connected, const QJsonObject& identity);
@@ -94,7 +111,10 @@ private:
     CalibrationView state_;
     QJsonObject device_;
     QSet<QString> recordedIds_;
-    QMap<int, quint64> latestValid_;
+    QMap<int, quint64> latestValid_; // Peak freshness for stage acquisition, including its start baseline.
+    QMap<int, quint64> liveReceivedMs_; // Actual monotonic receipt of each selected file's latest result.
+    qint64 liveAgeMs(int wavelength, quint64 now) const;
+    void setSelectedFile(const CalibrationFile& file);
     quint64 cursor_ = 0, wallCursor_ = 0, lastSave_ = 0, lastNotify_ = 0;
     Environment environment_;
     QString alignment_ = QStringLiteral("unavailable");

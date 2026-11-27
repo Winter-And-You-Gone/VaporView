@@ -1,4 +1,6 @@
 #include "WaterCalibrationFixture.h"
+#include "IndependentCalibrationFixture.h"
+#include <QFileInfo>
 #include "ground/session/SessionLoader.h"
 #include "ground/session/SessionWaveformRepository.h"
 #include "shared/session/SessionPackageLayout.h"
@@ -13,6 +15,63 @@
 using namespace VaporView::Ground;
 using namespace VaporView::Ground::Calibration;
 using namespace WaterCalibrationTest;
+static void testLiveWaterSnapshot()
+{
+    IndependentCalibrationTest::Rig rig;
+    auto& service = *rig.service;
+    rig.pair(3, 8);
+    auto snapshot = service.liveSnapshot();
+    check(snapshot.connected && !snapshot.calibrationSelected && !snapshot.calibrationValid &&
+          snapshot.calibrationSha256.isEmpty() && snapshot.unit.isEmpty() &&
+          !snapshot.inSitu1368.valid && !snapshot.column816.valid, "no readings without calibration");
+
+    const auto file = rig.complete();
+    service.selectFile(file.filename);
+    service.synchronize();
+    rig.pair(5, 4); // 816: 50 * 5, 1368: 25 * 4
+    const auto host = 1700000000000000ULL + rig.now.load() * 1000;
+    rig.now += 170;
+    snapshot = service.liveSnapshot();
+    check(snapshot.calibrationSelected && snapshot.calibrationValid && snapshot.calibrationSha256 == file.sha256 &&
+          snapshot.calibrationName == QFileInfo(file.filename).fileName() && snapshot.unit == "ppmv" && snapshot.warning.isEmpty(),
+          "snapshot identifies the selected calibration and shared unit");
+    const auto& ground = snapshot.inSitu1368;
+    const auto& column = snapshot.column816;
+    check(ground.valid && column.valid && std::abs(ground.value - 100) < 1e-8 && std::abs(column.value - 250) < 1e-8 &&
+          ground.hostTimeUs == host && column.hostTimeUs == host && ground.ageMs == 170 && column.ageMs == 170 &&
+          !ground.id.isEmpty() && !column.id.isEmpty() && ground.id != column.id && ground.unit == "ppmv" && column.unit == "ppmv" &&
+          !ground.status.isEmpty() && column.origin == "software_test", "both readings carry mapped values, source and reception time");
+    rig.bus.publish(host + 170000, IndependentCalibrationTest::cycle(816, 5, rig.cycleId++));
+    service.synchronize();
+    rig.now += 1831;
+    snapshot = service.liveSnapshot();
+    check(!snapshot.inSitu1368.valid && snapshot.inSitu1368.id.isEmpty() && snapshot.inSitu1368.ageMs == -1 &&
+          snapshot.column816.valid && snapshot.column816.ageMs == 1831, "a stream gap expires only the silent channel at read time");
+    service.synchronize();
+    check(!service.view().live.contains(1368) && service.view().live.contains(816), "tick agrees with snapshot freshness");
+    rig.pair(5, 4, true);
+    snapshot = service.liveSnapshot();
+    check(snapshot.inSitu1368.valid && !snapshot.column816.valid && std::isnan(snapshot.column816.value) &&
+          !snapshot.column816.status.isEmpty() && snapshot.column816.ageMs == -1, "invalid quality exposes status instead of an old value");
+
+    CalibrationFile replacement;
+    QString error;
+    check(CalibrationFileStore(rig.root.path()).generate(file.project, "replacement", replacement, &error), qPrintable(error));
+    service.selectFile(replacement.filename);
+    service.synchronize();
+    snapshot = service.liveSnapshot();
+    check(snapshot.calibrationSha256 == replacement.sha256 && snapshot.calibrationSha256 != file.sha256 &&
+          !snapshot.inSitu1368.valid && snapshot.inSitu1368.id.isEmpty() && snapshot.column816.id.isEmpty(), "switching files clears both readings");
+    rig.pair(3, 8);
+    check(service.liveSnapshot().inSitu1368.valid, "readings resume with the replacement calibration");
+    rig.bus.setDevice(false, {});
+    service.synchronize();
+    snapshot = service.liveSnapshot();
+    check(!snapshot.connected && snapshot.calibrationSha256 == replacement.sha256 && snapshot.calibrationValid &&
+          !snapshot.inSitu1368.valid && !snapshot.column816.valid && snapshot.column816.ageMs == -1 && service.view().live.isEmpty(),
+          "disconnect clears both readings and retains calibration metadata");
+}
+
 int main(int argc,char **argv)
 {
     QCoreApplication app(argc,argv);
@@ -22,6 +81,7 @@ int main(int argc,char **argv)
         check(fit&&fit->id==app.arguments()[3]&&!library.activeFit(1368),"new process loads exact active version");
         check(calculate(fit->dataset.samples.first(),816,fit).value==5,"new process predicts from saved snapshot");return 0;
     }
+    testLiveWaterSnapshot();
     QTemporaryDir temp;check(temp.isValid(),"temporary test scope");
     const auto first=recordSession(temp.filePath("first"),2,true), second=recordSession(temp.filePath("second"),4);
     const auto rawBefore=read(first+"/raw/waveform.dat"), featuresBefore=read(first+"/sensors/waveform_features.csv");

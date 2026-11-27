@@ -82,6 +82,7 @@ bool WaterProfileAccumulator::append(int channel, const QString &id, qint64 time
         data.rawPoints.reserve(previous.size());
         for (const auto &point : previous) data.mergeRawPoint(point);
     }
+    ++revision_;
     return true;
 }
 
@@ -115,12 +116,21 @@ qsizetype WaterProfileAccumulator::recentIdCount(int channel) const
     return channel >= 0 && channel < int(channels_.size()) ? channels_[channel].seen.size() : 0;
 }
 
+quint64 WaterProfileAccumulator::revision() const
+{
+    return revision_;
+}
+
 void WaterProfileAccumulator::clearChannel(int channel)
 {
-    if (channel >= 0 && channel < int(channels_.size())) channels_[channel] = {};
+    if (rawSampleCount(channel) == 0) return;
+    channels_[channel] = {};
+    ++revision_;
 }
 
 void WaterProfileAccumulator::clearAll()
 {
-    for (auto &channel : channels_) channel = {};
+    if (!channels_[0].rawSampleCount && !channels_[1].rawSampleCount) return;
+    channels_ = {};
+    ++revision_;
 }

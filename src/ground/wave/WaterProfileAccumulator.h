@@ -37,6 +37,7 @@ public:
     QVector<Layer> layers(int channel, int resolutionM = 5) const;
     std::optional<Point> latest(int channel) const;
     qsizetype recentIdCount(int channel) const;
+    quint64 revision() const;
     void clearChannel(int channel);
     void clearAll();
 
@@ -60,4 +61,5 @@ private:
         std::optional<Point> latest;
     };
     std::array<Channel, 2> channels_;
+    quint64 revision_ = 0;
 };

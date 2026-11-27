@@ -691,6 +691,75 @@ void testFpgaPeakHeaderStaysStable()
 
 }  // namespace
 
+static void testLiveWaterCards()
+{
+    TcpWavePanel panel;
+    QWidget owner;
+    panel.setFpgaMode(true);
+    QWidget *page = panel.createWaveformPage(&owner);
+    const auto label = [](QWidget *view, int channel) {
+        auto *reading = view->findChild<QLabel *>(QStringLiteral("waterConcentrationReading%1").arg(channel));
+        require(reading, "each water concentration card has a reading");
+        return reading->text();
+    };
+    const auto hasTitle = [](QWidget *view, const QString &text) {
+        for (auto *title : view->findChildren<QLabel *>("sectionTitleLabel"))
+            if (title->text() == text) return true;
+        return false;
+    };
+    const QList<QWidget *> views{&panel, page};
+    panel.setEnglish(false);
+    for (auto *view : views) {
+        require(label(view, 0) == QStringLiteral("未选择定标文件") && label(view, 1) == label(view, 0), "no calibration status on both lanes");
+        require(hasTitle(view, QStringLiteral("ADC 1 / DLIA 1 · 816 nm（遥测柱浓度）")) &&
+                hasTitle(view, QStringLiteral("原位水汽浓度 · CH 0")) && hasTitle(view, QStringLiteral("水汽柱浓度（遥测） · CH 1")) &&
+                hasTitle(view, QStringLiteral("原位水汽廓线 · CH 0")) && hasTitle(view, QStringLiteral("水汽柱浓度廓线（遥测） · CH 1")),
+                "both views distinguish in-situ and column measurements in Chinese");
+    }
+    panel.setWaterCalibration("small", "small.vcal", "mol/mol", false, {});
+    require(label(&panel, 1).contains(QStringLiteral("等待有效浓度")), "selected file initially waits for a valid reading");
+    panel.setEnglish(true);
+    const qint64 time = 1700000000000LL;
+    const double missing = std::numeric_limits<double>::quiet_NaN();
+    panel.appendWaterSample(0, "in-situ", time, 0.00125, missing);
+    panel.appendWaterSample(1, "column", time + 1000, 0.000123, missing);
+    for (auto *view : views) {
+        require(hasTitle(view, "ADC 0 / DLIA 0 · 1368 nm (In-situ)") && hasTitle(view, "ADC 1 / DLIA 1 · 816 nm (Remote Column)") &&
+                hasTitle(view, "In-situ Water Vapor Concentration (mol/mol) · CH 0") &&
+                hasTitle(view, "Column Water Vapor Concentration (Remote) (mol/mol) · CH 1") &&
+                hasTitle(view, "In-situ Water Vapor Profile · CH 0") && hasTitle(view, "Column Water Vapor Profile (Remote) · CH 1"),
+                "both views identify channel assignments and the calibration unit in English");
+        for (int ch : {0, 1}) {
+            const auto reading = label(view, ch);
+            require(reading.contains(ch ? "0.000123 mol/mol" : "0.00125 mol/mol") &&
+                    reading.contains(QDateTime::fromMSecsSinceEpoch(time + ch * 1000).toString("HH:mm:ss")),
+                    "each latest valid value retains precision and its own update time");
+            auto *series = view->findChild<QWidget *>(ch ? "waterConcentrationPlot1" : "waterConcentrationPlot");
+            auto *profile = view->findChild<QWidget *>(ch ? "waterProfilePlot1" : "waterProfilePlot");
+            require(series && profile && series->property("sampleCount").toInt() == 1 && profile->property("sampleCount").toInt() == 0,
+                    "both concentration series update without a lidar height");
+        }
+    }
+    panel.appendWaterSample(1, "column", time + 1000, 0.000123, 25.0);
+    panel.appendWaterSample(1, "invalid", time + 2000, missing, 30.0);
+    for (auto *view : views) {
+        auto *profile = view->findChild<QWidget *>("waterProfilePlot1");
+        auto *summary = profile->parentWidget()->findChild<QLabel *>("waterProfileSummary");
+        require(summary && summary->text().contains("0.000123 mol/mol"), "profile summary retains sub-percent concentration precision");
+        const auto reading = label(view, 1);
+        require(reading.contains("Invalid sample") && reading.contains("0.000123 mol/mol") && !reading.contains("nan", Qt::CaseInsensitive),
+                "invalid samples identify the last valid value without printing NaN");
+    }
+    panel.clearWaterSamples();
+    require(label(page, 0).contains("Waiting") && label(page, 1).contains("Waiting"), "clear resets both latest readings");
+    panel.appendWaterSample(0, "next", time + 3000, 0.5, 40.0);
+    panel.setWaterCalibration("other", "other.vcal", "ppmv", false, {});
+    require(label(&panel, 0).contains("Waiting") && hasTitle(page, "In-situ Water Vapor Concentration (ppmv) · CH 0"),
+            "switching files drops the prior concentration and shows the selected file unit");
+    panel.setWaterCalibration({}, {}, {}, false, {});
+    require(label(page, 0) == "Select a calibration file" && label(&panel, 1) == label(page, 0), "removing calibration restores the prompt");
+}
+
 void testFpgaWaveDisplaySelection()
 {
     TcpWavePanel panel;
@@ -923,8 +992,9 @@ void testFpgaWaveDisplaySelection()
     // Two vertically aligned layers separated by three empty bins. Inspect the actual
     // plotted pixels and hover the lower node, without depending on private plot geometry.
     clearProfile->click();
-    panel.appendWaterSample(0, "lower", now + 2000, 10, 20);
-    panel.appendWaterSample(0, "upper", now + 2001, 10, 40);
+    panel.setWaterCalibration("small", "small.vcal", "mol/mol", false, {});
+    panel.appendWaterSample(0, "lower", now + 2000, 0.00125, 20);
+    panel.appendWaterSample(0, "upper", now + 2001, 0.00125, 40);
     panel.setEnglish(true);
     QApplication::processEvents();
     const auto image = profile->grab().toImage();
@@ -946,8 +1016,8 @@ void testFpgaWaveDisplaySelection()
     QMouseEvent move(QEvent::MouseMove, local, profile->mapToGlobal(local), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
     QApplication::sendEvent(profile, &move);
     require(profile->toolTip().contains(QStringLiteral("20–25 m")) && profile->toolTip().contains("22.5 m") &&
-            profile->toolTip().contains("Samples: 1") && profile->toolTip().contains(QStringLiteral("Sample SD: —")),
-            "hover explains the actual bin and singleton uncertainty");
+            profile->toolTip().contains("Mean: 0.00125 (mol/mol)") && profile->toolTip().contains("Samples: 1") &&
+            profile->toolTip().contains(QStringLiteral("Sample SD: —")), "hover preserves the small mean and explains the bin and uncertainty");
     QEvent leave(QEvent::Leave);
     QApplication::sendEvent(profile, &leave);
     require(profile->toolTip().startsWith("X:"), "leaving a node restores the axes tooltip");
@@ -1007,6 +1077,7 @@ int main(int argc, char **argv)
     app.setApplicationName(QStringLiteral("tcp_wave_panel_test"));
 
     if (app.arguments().contains(QStringLiteral("--fpga-display-only"))) {
+        testLiveWaterCards();
         testFpgaWaveDisplaySelection();
         return 0;
     }
@@ -1062,6 +1133,7 @@ int main(int argc, char **argv)
     testPeakPlotModeSwitch();
     testNormalizedWaveformGapsRender();
     testFpgaPeakHeaderStaysStable();
+    testLiveWaterCards();
     testFpgaWaveDisplaySelection();
     {
         TcpWavePanel panel;panel.setConnectionEndpoint("127.0.0.9",9901);panel.setFpgaMode(true);

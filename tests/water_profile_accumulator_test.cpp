@@ -63,17 +63,26 @@ int main()
         check(total == samples.size(), "resolution preserves every sample");
     }
     profile.clearAll();
+    const auto before = profile.revision();
     const double nan = std::numeric_limits<double>::quiet_NaN(), inf = std::numeric_limits<double>::infinity();
     for (double h : {nan, inf, -0.1, 20000.01}) check(!profile.append(0, "pair", 1, 3, h), "reject invalid height");
     for (double v : {nan, inf, -0.1}) check(!profile.append(0, "pair", 1, v, 0), "reject invalid concentration");
     check(profile.recentIdCount(0) == 0 && !profile.latest(0), "invalid samples reserve no IDs");
+    check(profile.revision() == before, "invalid samples leave the revision unchanged");
     check(profile.append(0, "pair", 10, 0, 20000) && profile.append(1, "pair", 2, 5, 0), "late match and separate channels");
     check(profile.append(0, "older", 9, 2, 3) && !profile.append(0, "pair", 10, 0, 20000), "nonconsecutive duplicate");
+    check(profile.revision() == before + 3, "only accepted points advance the revision, including older samples");
     check(profile.latest(0)->timeMs == 10 && profile.latest(0)->heightM == 20000 && profile.latest(0)->concentration == 0, "latest by time");
     profile.clearChannel(0);
     check(!profile.latest(0) && profile.layers(0).isEmpty() && profile.latest(1)->concentration == 5, "channel reset");
+    profile.clearChannel(0);
+    profile.clearChannel(-1);
+    check(profile.revision() == before + 4, "only clearing a populated channel advances the revision");
     for (int i = 0; i < 100000; ++i) add(i % 20001, i % 13);
     check(profile.layers(0, 1).size() == 20001 && profile.recentIdCount(0) == profile.recentIdCapacity, "bounded bins and IDs");
+    const auto populated = profile.revision();
     profile.clearAll();
+    profile.clearAll();
+    check(profile.revision() == populated + 1, "clearing both populated channels is one mutation; empty clear is a no-op");
     check(!profile.latest(1) && profile.recentIdCount(0) == 0 && profile.layers(0).isEmpty(), "full reset");
 }

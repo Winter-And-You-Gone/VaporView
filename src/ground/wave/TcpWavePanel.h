@@ -9,6 +9,7 @@
 #include <QMap>
 #include <array>
 #include <memory>
+#include <optional>
 
 class WaterProfileAccumulator;
 #include <QStringList>
@@ -269,7 +270,7 @@ private:
     QWidget *fpga_peak_controls_ = nullptr;
     struct WaterCards {
         QWidget *concentration, *profile;
-        QLabel *concentrationTitle, *profileTitle, *summary;
+        QLabel *concentrationTitle, *concentrationReading, *profileTitle, *summary;
         VaporView::SingleLevelPopupComboBox *resolution;
         QPushButton *clear;
         PeakTrendPlotWidget *series;
@@ -295,6 +296,7 @@ private:
         double value;
     };
     QMap<int, QVector<WaterSample>> water_samples_;
+    std::array<std::optional<WaterSample>, 2> latest_valid_water_;
     QTcpSocket *socket_;
     QTimer *live_display_timer_;
 
