@@ -517,7 +517,7 @@ inline const QHash<QString, QString>& mapLanguageCatalog() {
         {QStringLiteral("未配置天地图 Key，3D 地图保留本地离线影像。"), QStringLiteral("No Tianditu key configured; retaining local offline imagery.")},
         {QStringLiteral("天地图卫星影像加载失败，已保留当前本地影像。"), QStringLiteral("Tianditu imagery load failed; local imagery preserved.")},
         {QStringLiteral("已加载天地图卫星影像。"), QStringLiteral("Tianditu satellite imagery loaded.")},
-        {QStringLiteral("已启用 OpenAerialMap；影像覆盖因地区而异，远景显示本地底图。"), QStringLiteral("OpenAerialMap enabled; coverage varies by location, with the local basemap at distant zooms.")},
+        {QStringLiteral("已选择 OpenAerialMap（免 Key）。放大至 14 级后，有航片的位置显示影像，其余位置显示底图。"), QStringLiteral("OpenAerialMap selected (no key needed). From zoom 14, aerial imagery appears where available. Other areas show the basemap.")},
         {QStringLiteral("OpenAerialMap 加载失败，已保留当前影像。"), QStringLiteral("OpenAerialMap could not be loaded; the current imagery was preserved.")},
         {QStringLiteral("部分影像缺失：周边区域统一使用同源较低级别影像；仍无数据处显示灰色。"), QStringLiteral("Some imagery is missing. Nearby areas use lower detail from the same source; unavailable areas appear gray.")},
         {QStringLiteral("放大到近景，正在自动加载 Sentinel-2 本地影像..."), QStringLiteral("Close view: automatically loading local Sentinel-2 imagery...")},

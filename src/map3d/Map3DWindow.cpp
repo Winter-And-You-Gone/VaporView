@@ -2302,16 +2302,12 @@ void Map3DWindow::refreshLayerMenuTheme()
     }
     if (auto* menu = findChild<QMenu*>(QStringLiteral("map3DMoreMenu")))
     {
-        const QString arrow = QDir::fromNativeSeparators(firstExistingMap3DFile(
-            map3DRuntimeRootCandidates(), {dark ? QStringLiteral("resources/lucide/chevron-right-dark.svg")
-                                               : QStringLiteral("resources/lucide/chevron-right.svg")}));
         const QString style = applyAppThemeTokens(QStringLiteral(
             "QMenu { background: @vv-menu-panel; color: @vv-menu-text; border: 1px solid @vv-border; border-radius: 10px; padding: 12px 0px; }"
             "QMenu::item { margin: 0px; padding: 8px 32px 8px 16px; border-radius: 0px; min-width: 190px; }"
             "QMenu::item:selected { background: @vv-menu-hover; }"
             "QMenu::item:disabled { color: @vv-menu-disabled; }"
-            "QMenu::indicator { image: none; width: 18px; height: 18px; }"
-            "QMenu::right-arrow { image: url(\"%1\"); width: 16px; height: 16px; }").arg(arrow), dark);
+            "QMenu::indicator { image: none; width: 18px; height: 18px; }"), dark);
         menu->setStyleSheet(style);
         for (auto* child : menu->findChildren<QMenu*>())
             child->setStyleSheet(style);
@@ -2343,10 +2339,6 @@ void Map3DWindow::refreshLayerMenuTheme()
         map_loading_bubble_->update();
     }
     const QColor primary = appThemeColor(AppThemeColor::Primary, dark);
-    if (auto* reset = findChild<QAction*>(QStringLiteral("map3DResetViewAction")))
-        reset->setIcon(map3DIcon(QStringLiteral("rotate-ccw"), primary));
-    if (auto* locate = findChild<QAction*>(QStringLiteral("map3DFlyToAircraftAction")))
-        locate->setIcon(map3DIcon(QStringLiteral("locate-fixed"), primary));
     if (map_resource_dialog_)
     {
         for (auto* button : map_resource_dialog_->findChildren<QPushButton*>())
@@ -3426,7 +3418,7 @@ bool Map3DWindow::applySelectedSatelliteImagery(bool showStatusMessage)
         if (loaded) tianditu_satellite_imagery_loaded_ = false;
         if (showStatusMessage)
             statusBar()->showMessage(loaded
-                ? mapText(QStringLiteral("已启用 OpenAerialMap；影像覆盖因地区而异，远景显示本地底图。"))
+                ? mapText(QStringLiteral("已选择 OpenAerialMap（免 Key）。放大至 14 级后，有航片的位置显示影像，其余位置显示底图。"))
                 : mapText(QStringLiteral("OpenAerialMap 加载失败，已保留当前影像。")), 8000);
         updateStatus(nullptr, true);
         return loaded;

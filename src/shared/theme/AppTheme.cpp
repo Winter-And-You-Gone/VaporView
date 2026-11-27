@@ -125,16 +125,18 @@ public:
                   QStyleHintReturn *result) const override
     {
         const int value = QProxyStyle::styleHint(hint, option, widget, result);
-        if (hint != SH_Menu_SubMenuSloppyCloseTimeout && hint != SH_Menu_SubMenuSloppySelectOtherActions)
+        if (hint != SH_Menu_SubMenuSloppyCloseTimeout && hint != SH_Menu_SubMenuSloppySelectOtherActions
+            && hint != SH_Menu_SubMenuPopupDelay)
             return value;
         const QWidget *owner = widget;
         while (qobject_cast<const QMenu *>(owner))
             owner = owner->parentWidget();
         if (owner && owner != widget && owner->property(kCascadingMenuGraceProperty).toBool())
         {
-            // A zero system menu delay would close a branch as soon as the
-            // pointer crosses another row on its way into the child menu.
-            return hint == SH_Menu_SubMenuSloppyCloseTimeout ? std::max(value, 800) : 0;
+            // Highlight the row under the pointer immediately. Give the pointer a
+            // short crossing window before replacing the open child menu.
+            if (hint == SH_Menu_SubMenuPopupDelay) return 250;
+            return hint == SH_Menu_SubMenuSloppyCloseTimeout ? 350 : 1;
         }
         return value;
     }

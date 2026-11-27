@@ -339,6 +339,12 @@ void selectMapResourceWithMouse(QToolButton* moreButton, QMenu* resources, QActi
         sendMouse(QEvent::MouseMove, start);
         require(QTest::qWaitFor([&] { return resources->isVisible(); }, 2000),
                 "hovering the map resources row opens the submenu");
+        auto* adjacent = more->actions().at(1);
+        sendMouse(QEvent::MouseMove, more->mapToGlobal(more->actionGeometry(adjacent).center()));
+        require(more->activeAction() == adjacent, "an open submenu does not delay sibling hover feedback");
+        sendMouse(QEvent::MouseMove, start);
+        require(QTest::qWaitFor([&] { return resources->isVisible(); }, 2000),
+                "moving back to the source row reopens its submenu");
         const QPoint end = resources->mapToGlobal(resources->actionGeometry(target).center());
         for (int step = 1; step <= 40; ++step)
         {
@@ -1337,8 +1343,9 @@ int main(int argc, char** argv)
                 "embedded osgEarth view accepts keyboard focus for native camera navigation");
     }
     require(reloadBestMapAction->isEnabled(), "reload best local map action exists");
-    require(!flyToAircraftAction->icon().isNull() && !resetViewAction->icon().isNull(),
-            "view menu displays locate and reset action icons");
+    for (auto* menu : moreMenu->findChildren<QMenu*>())
+        for (auto* action : menu->actions())
+            require(action->icon().isNull(), "More menu rows reserve icons for selection checks");
     require(flyToAircraftAction->isEnabled(), "fly to aircraft action exists");
     require(flyToTrackAction->isEnabled(), "fly to track action exists");
     require(resetViewAction->isEnabled(), "reset view action exists");
