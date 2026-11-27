@@ -1887,7 +1887,8 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                                                      int firstLineItemCount,
                                                      int followingLineItemCount = -1,
                                                      bool useSideTitle = false,
-                                                     bool compactAvailabilityValues = false) {
+                                                     bool compactAvailabilityValues = false,
+                                                     bool tightValueSpacing = false) {
         if (!summaryParent || !sectionLayout)
         {
             return;
@@ -1898,7 +1899,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             section->setMinimumWidth(0);
         }
 
-        auto addItemLabel = [this, useSideTitle, compactAvailabilityValues](QHBoxLayout *lineLayout,
+        auto addItemLabel = [this, useSideTitle, compactAvailabilityValues, tightValueSpacing](QHBoxLayout *lineLayout,
                                                                             QWidget *lineWidget,
                                                                             const RemoteTelemetrySummarySections::Item& item) {
             auto *pill = new QFrame(lineWidget);
@@ -1936,7 +1937,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             valueLabel->setProperty("telemetryAvailable", item.hasData);
             valueLabel->setProperty("telemetryError", item.error);
             valueLabel->setFont(numericFontFrom(valueLabel->font()));
-            valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            valueLabel->setAlignment((useSideTitle && tightValueSpacing ? Qt::AlignLeft : Qt::AlignRight) | Qt::AlignVCenter);
             valueLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
             valueLabel->setTextFormat(Qt::PlainText);
             valueLabel->ensurePolished();
@@ -1958,9 +1959,10 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             if (useSideTitle) {
                 pillLayout->setSpacing(0);
                 pillLayout->addSpacing(nameLabel->fontMetrics().horizontalAdvance(QStringLiteral("汉")));
-                pillLayout->addStretch(1);
+                if (!tightValueSpacing) pillLayout->addStretch(1);
             }
             pillLayout->addWidget(valueLabel, 0, Qt::AlignVCenter);
+            if (useSideTitle && tightValueSpacing) pillLayout->addStretch(1);
             pill->setProperty("summaryNaturalWidth", pillLayout->sizeHint().width() + scalePixels(2));
             if (!useSideTitle)
             {
@@ -2197,7 +2199,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                              deviceConfigRateItems,
                              2,
                              2,
-                             true);
+                             true, false, true);
         renderSummarySection(state_->device_config_.data_telemetry_summary_card,
                              state_->device_config_.data_telemetry_link_summary_layout,
                              state_->is_english_ ? QStringLiteral("Link rate") : QStringLiteral("链路速率"),
@@ -3282,6 +3284,12 @@ void MainWindow::onRd105SessionOperationStarted(
 void MainWindow::onRd105SessionOperationFinished(
     const VaporView::Ground::Devices::Rd105SessionResult& result)
 {
+    if (isFpgaRelayPath()) {
+        QTimer::singleShot(0, this, [this] {
+            processFpgaActions();
+            connectNextHomeFpgaDevice();
+        });
+    }
     const quint8 channel = result.payload.channel == 0 ? 1 : result.payload.channel;
     QString detail = result.message;
     if (detail.isEmpty() && !result.success())

@@ -1828,7 +1828,7 @@ void MainWindow::updateTelemetryLinkAction()
     const QString iconKey = QStringLiteral("%1|%2").arg(active).arg(state_->dark_theme_enabled_);
     if (state_->telemetry_link_btn_->property("linkIconKey").toString() != iconKey) {
         state_->telemetry_link_btn_->setProperty("linkIconKey", iconKey);
-        state_->telemetry_link_btn_->setIcon(createLucideIcon(active ? QStringLiteral("unlink") : QStringLiteral("link"),
+        state_->telemetry_link_btn_->setIcon(createLucideIcon(active ? QStringLiteral("unplug") : QStringLiteral("plug"),
             toolbarColor(AppThemeColor::ToolbarBlue)));
     }
     if (remote && !isUiTestMode() && state_->connect_btn_) {
@@ -2517,6 +2517,12 @@ void MainWindow::onAi8SessionOperationStarted(
 void MainWindow::onAi8SessionOperationFinished(
     const VaporView::Ground::Devices::Ai8SessionResult& result)
 {
+    if (isFpgaRelayPath()) {
+        QTimer::singleShot(0, this, [this] {
+            processFpgaActions();
+            connectNextHomeFpgaDevice();
+        });
+    }
     if (!state_->ai8_temperature_controller_panel_ || !state_->ai8_device_session_)
     {
         return;

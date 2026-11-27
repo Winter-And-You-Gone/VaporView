@@ -206,6 +206,39 @@ int main(int argc, char **argv)
     require(overviewPlots[0]->property("xAxisTimeSpanSeconds") == overviewPlots[1]->property("xAxisTimeSpanSeconds") &&
                 overviewPlots[0]->height() == 144 && overviewPlots[1]->height() == 144,
             "The two plots retain the shared time range and original drawing height");
+    overview->setDualTec103(true);
+    const QStringList chineseEndpoints{QStringLiteral("原位"), QStringLiteral("遥测")};
+    const QStringList englishEndpoints{QStringLiteral("In situ"), QStringLiteral("Remote")};
+    for (auto *label : overview->findChildren<QLabel *>())
+        require(!chineseEndpoints.contains(label->text()), "endpoint titles occupy no separate label row");
+    for (bool english : {false, true})
+    {
+        overview->setEnglish(english);
+        const auto& endpoints = english ? englishEndpoints : chineseEndpoints;
+        for (int index = 0; index < 2; ++index)
+        {
+            auto *homePlot = overviewPlots[index];
+            homePlot->grab();
+            const QRectF area(QPointF(homePlot->property("plotAreaLeft").toDouble(),
+                                      homePlot->property("plotAreaTop").toDouble()),
+                              QPointF(homePlot->property("plotAreaRight").toDouble(),
+                                      homePlot->property("plotAreaBottom").toDouble()));
+            const QRectF badge = homePlot->property("cornerBadgeRect").toRectF();
+            require(homePlot->property("cornerBadgeText").toString() == endpoints[index] &&
+                        homePlot->height() == 144 && !badge.isEmpty() && area.contains(badge) &&
+                        badge.left() >= area.center().x() && badge.bottom() <= area.center().y(),
+                    "localized endpoint badge fits inside the full-height plot's upper-right quadrant");
+        }
+    }
+    overview->setEnglish(false);
+    overview->setDualTec103(false);
+    for (auto *homePlot : overviewPlots)
+    {
+        homePlot->grab();
+        require(homePlot->property("cornerBadgeText").toString().isEmpty() &&
+                    homePlot->property("cornerBadgeRect").toRectF().isEmpty() && homePlot->height() == 144,
+                "single-controller plots clear both endpoint badges and retain full height");
+    }
     require(outputs[0]->property("temperatureChannel").toInt() == 1 && outputs[0]->isChecked() &&
                 outputs[1]->property("temperatureChannel").toInt() == 2 && !outputs[1]->isChecked(),
             "Both home output switches show their own channel's confirmed state");

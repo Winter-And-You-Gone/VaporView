@@ -9,6 +9,7 @@
 #include "ground/main/GroundMainWindowState.h"
 #include "ground/widgets/FpgaControlPage.h"
 #include "ground/widgets/Ai8TemperatureControllerPanel.h"
+#include "ground/devices/Ai8DeviceSession.h"
 #include "ground/widgets/TelemetryPanels.h"
 #include "ground/navigation/CombinationNavigationPage.h"
 #include "ground/rtk/RtkConfigDialog.h"
@@ -89,6 +90,7 @@ struct MainWindowRtcmTestAccess
 {
     static auto summary(MainWindow& window) { return window.remoteTelemetrySummarySections(); }
     static void refreshSummary(MainWindow& window) { window.updateRemoteTelemetrySummaryLabel(); }
+    static void advanceRelayBatch(MainWindow& window) { window.connectNextHomeFpgaDevice(); }
     static void refreshCapsules(MainWindow& window) { window.updateHomeDeviceStatusCapsules(); }
     static VaporView::Ground::Main::MainWindowState& state(MainWindow& window) { return *window.state_; }
     static void temperatureResult(MainWindow& window,const VaporView::Ground::Devices::Rd105SessionResult& result)
@@ -598,7 +600,7 @@ static void configurationActionReadback()
     TelemetryCodec decoder,encoder;quint16 sequence=1;
     QList<DeviceOperationRequest> requests;
     QList<quint16> commandSequences;
-    int replies=0,acknowledgments=0;
+    int replies=0,acknowledgments=0,ai8Reads=0;
     QObject::connect(remote,&Ground::Devices::RemoteSkyController::deviceOperationResponseReceived,
         &window,[&](const DeviceOperationResponse&){++replies;});
     QObject::connect(remote,&Ground::Devices::RemoteSkyController::commandAckReceived,
@@ -617,8 +619,15 @@ static void configurationActionReadback()
                 send(MsgType::SkyConfig,QJsonDocument(sky.toJson()).toJson(QJsonDocument::Compact));
             } else if(command.command_id==CommandId::DeviceOperation) {
                 DeviceOperationRequest request;
-                require(TelemetryCodec::parseDeviceOperationRequest(command.payload,request)
-                    &&request.device_id==SkyDeviceId::Fpga&&request.operation==DeviceOperation::FpgaControl,
+                require(TelemetryCodec::parseDeviceOperationRequest(command.payload,request), "valid operation request");
+                if (request.device_id == SkyDeviceId::Ai8TemperatureController && request.operation == DeviceOperation::ReadParameters) {
+                    ++ai8Reads;
+                    CommandAck ack; ack.command_id=command.command_id; ack.command_seq=command.command_seq;
+                    ack.error_code=CommandErrorCode::DeviceOperationBusy;
+                    send(MsgType::CommandAck,TelemetryCodec::serializeCommandAck(ack));
+                    continue;
+                }
+                require(request.device_id==SkyDeviceId::Fpga&&request.operation==DeviceOperation::FpgaControl,
                     "configuration action uses the existing typed FPGA control path");
                 requests.append(request);commandSequences.append(command.command_seq);
             }
@@ -786,6 +795,25 @@ static void configurationActionReadback()
         &&!hc2aBaud->isEnabled()&&hc2aBaud->currentText()=="57600";})
         &&page->uiTestHardwareValues().value(0x6118)==0,
         "confirmed HC2A baud locks editing and preserves its 8N1 format");
+    auto& batchState = MainWindowRtcmTestAccess::state(window);
+    status["extensions"] = double(FpgaExtensions::Rd105 | FpgaExtensions::Ai8Parameters);
+    publish();
+    batchState.fpga_home_connect_queue_ = {SkyDeviceId::Ai8TemperatureController, SkyDeviceId::Bmp390};
+    MainWindowRtcmTestAccess::advanceRelayBatch(window);
+    for (int source : {0x46, 0x43}) {
+        require(waitUntil([&] {
+            QJsonObject op;
+            return FpgaRemote::parseControl(requests.last().payload, op) && op.value("source").toInt() == source;
+        }), "remote batch dispatches AI8 then BMP390");
+        if (source == 0x43) {
+            processFor(200);
+            require(!ai8Reads && !batchState.ai8_device_session_->operationsAvailable(), "AI8 waits for BMP390 readback");
+        }
+        registers[QString::number(0x6004 + (source - 0x40) * 0x100)] = 1;
+        complete();
+    }
+    require(waitUntil([&]{return action(SkyDeviceId::Bmp390)->property("connected").toBool()
+        && batchState.ai8_device_session_->operationsAvailable();}), "remote batch connects BMP390 and restores AI8");
     click(false);
     auto closingResponse=firstResponse;closingResponse.request_id=requests.last().request_id;
     auto closingStatus=status;auto closingRegisters=registers;
@@ -1564,6 +1592,13 @@ static void localSimulatorRouting()
     disconnect->click();
     check(waitUntil([&]{return connectButton->isEnabled();}),"filtered batch after AI8 rejection releases USB");
     for(const auto &name:relaySelectionNames) window.findChild<QCheckBox*>(name)->setChecked(true);
+    auto& batchState = MainWindowRtcmTestAccess::state(window);
+    const auto ai8Observer = QObject::connect(batchState.ai8_device_session_.get(),
+        &VaporView::Ground::Devices::Ai8DeviceSession::operationStarted, &window, [&] {
+            check(batchState.fpga_home_connect_queue_.isEmpty() && batchState.fpga_pending_home_actions_.isEmpty()
+                && batchState.fpga_home_action_device_ == VaporView::SkyDeviceId::All,
+                "local AI8 parameter read waits until the batch finishes");
+        });
     QMetaObject::invokeMethod(&window,"onConnectClicked");
     check(waitUntil([&]{auto *wave=homeAction(window,QStringLiteral("波形源"));
         return wave->isEnabled()&&wave->property("state")=="connected";},20000),
@@ -1571,6 +1606,8 @@ static void localSimulatorRouting()
     check(waitUntil([&]{return connectionSuccesses==QSet<quint16>{0,0x40,0x41,0x42,0x43,0x44,0x45,0x46,0x48,0x49};}),
         "all eight current sensors and shared acquisition report confirmed connections");
     verifyRelayIndicators(window,{"Epsilon","Pressure","Humidity","Lidar","Temperature","Ai8","Wave","Bmp390","Sht45"});
+    check(waitUntil([&]{return batchState.ai8_device_session_->operationsAvailable();},15000), "local batch restores AI8 availability");
+    QObject::disconnect(ai8Observer);
     check(connectionSuccesses.contains(0x41),"HC2A has its own confirmed connection log");
     {
         int rdReads=0,aiReads=0,asciiStarts=0;

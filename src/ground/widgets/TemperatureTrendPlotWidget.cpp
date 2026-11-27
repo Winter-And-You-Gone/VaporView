@@ -85,6 +85,13 @@ void TemperatureTrendPlotWidget::hideEvent(QHideEvent *event)
     QWidget::hideEvent(event);
 }
 
+void TemperatureTrendPlotWidget::setCornerBadgeText(const QString& text)
+{
+    corner_badge_text_ = text;
+    setProperty("cornerBadgeText", text);
+    update();
+}
+
 void TemperatureTrendPlotWidget::setCompactMode(bool compact)
 {
     if (compact_mode_ == compact)
@@ -173,7 +180,13 @@ QRectF TemperatureTrendPlotWidget::plotAreaRect() const
         ? std::max(4.0, std::ceil(axisFm.height() / 2.0)) : 4.0;
     const QRectF basePlotRect = rect().adjusted(leftAxisWidth, topAxisHeight, -4.0, -kBottomAxisHeight);
     QRectF plotRect = basePlotRect;
-    if (time_axis_enabled_)
+    const bool compactTimeTicks = property("compactTimeTicks").toBool();
+    if (time_axis_enabled_ && compactTimeTicks)
+    {
+        plotRect.setLeft(std::max(basePlotRect.left(), axisFm.horizontalAdvance(QStringLiteral("99.9")) + 5.0));
+        plotRect.setRight(std::min(basePlotRect.right(), width() - 6.0));
+    }
+    else if (time_axis_enabled_)
     {
         const qreal labelHalfWidth = timeAxisLabelWidth(axisFm, overview_time_axis_) / 2.0;
         const qreal firstLabelInset = overview_time_axis_
@@ -276,7 +289,7 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
             setProperty("xAxisTimeMaxSeconds", xMax);
             setProperty("xAxisTimeSpanSeconds", xMax - xMin);
             const QString rightLabel = timeAxisTickLabel(xMax);
-            setProperty("xAxisTimeRightLabel", overview_time_axis_ ? rightLabel.mid(3) : rightLabel);
+            setProperty("xAxisTimeRightLabel", abbreviateTimes ? rightLabel.mid(3) : rightLabel);
             setProperty("xAxisTimeFirstTickX", plotRect.left());
             setProperty("xAxisTimeLastTickX", plotRect.right());
         }
@@ -324,10 +337,10 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
                                       ? 0
                                       : qRound((sampleCount - 1) * i / static_cast<double>(xAxisIntervals)));
             const qreal textWidth = axisFm.horizontalAdvance(label);
-            const qreal labelWidth = time_axis_enabled_ && overview_time_axis_
+            const qreal labelWidth = time_axis_enabled_ && abbreviateTimes
                 ? textWidth : std::max<qreal>(36.0, textWidth + (time_axis_enabled_ ? 0.0 : 8.0));
             // Align the minute/second separator of the first time with its tick.
-            const qreal anchorOffset = time_axis_enabled_ && overview_time_axis_ && i == 0
+            const qreal anchorOffset = time_axis_enabled_ && abbreviateTimes && i == 0
                 ? textWidth - axisFm.horizontalAdvance(label.right(5)) / 2.0 : labelWidth / 2.0;
             const qreal labelLeft = time_axis_enabled_
                 ? std::clamp(x - anchorOffset,
@@ -388,6 +401,30 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
         painter.restore();
     };
 
+    auto drawCornerBadge = [&] {
+        QRectF badgeRect;
+        if (!corner_badge_text_.isEmpty() && plotRect.width() > 28.0 && plotRect.height() > 20.0)
+        {
+            QFont badgeFont = axisFont;
+            badgeFont.setWeight(QFont::DemiBold);
+            const QFontMetrics metrics(badgeFont);
+            const qreal badgeWidth = std::min(plotRect.width() - 10.0,
+                                              metrics.horizontalAdvance(corner_badge_text_) + 12.0);
+            const qreal badgeHeight = std::min(plotRect.height() - 8.0, metrics.height() + 4.0);
+            badgeRect = QRectF(plotRect.right() - badgeWidth - 5.0, plotRect.top() + 4.0,
+                               badgeWidth, badgeHeight);
+            QColor fill = background;
+            fill.setAlpha(215);
+            painter.setBrush(fill);
+            painter.setPen(QPen(border, 1.0));
+            painter.drawRoundedRect(badgeRect, 4.0, 4.0);
+            painter.setFont(badgeFont);
+            painter.setPen(text);
+            painter.drawText(badgeRect, Qt::AlignCenter, corner_badge_text_);
+        }
+        setProperty("cornerBadgeRect", badgeRect);
+    };
+
     QVector<double> finiteSamples;
     QVector<double> finiteSampleTimes;
     finiteSamples.reserve(samples_.size());
@@ -427,6 +464,7 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
         {
             painter.drawText(textRect, Qt::AlignCenter, emptyText);
         }
+        drawCornerBadge();
         return;
     }
 
@@ -458,13 +496,14 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
     painter.setClipRect(plotRect);
     painter.setPen(QPen(line, 1.6));
     painter.drawPolyline(polyline);
-    if (overview_time_axis_ && plotRect.contains(polyline.last()))
+    if (abbreviateTimes && plotRect.contains(polyline.last()))
         painter.setClipping(false);
     painter.setBrush(line);
     painter.setPen(Qt::NoPen);
     painter.drawEllipse(polyline.last(), 3.0, 3.0);
     setProperty("latestSampleX", polyline.last().x());
     painter.restore();
+    drawCornerBadge();
 }
 
 QString TemperatureTrendPlotWidget::axisTickLabel(double value)

@@ -1168,14 +1168,7 @@ public:
             plot->setTimeAxisEnabled(true);
             plot->setFixedHeight(144);
             plots_[index] = plot;
-            auto *column = new QVBoxLayout;
-            column->setSpacing(0);
-            plot_titles_[index] = new QLabel(this);
-            plot_titles_[index]->setAlignment(Qt::AlignCenter);
-            plot_titles_[index]->hide();
-            column->addWidget(plot_titles_[index]);
-            column->addWidget(plot);
-            plots->addLayout(column, 1);
+            plots->addWidget(plot, 1);
         }
         layout->addLayout(plots, 1);
 
@@ -1225,10 +1218,6 @@ public:
     {
         if (dual_tec103_ == dual) return;
         dual_tec103_ = dual;
-        for (int index = 0; index < 2; ++index) {
-            plot_titles_[index]->setVisible(dual);
-            plots_[index]->setFixedHeight(dual ? 144 - plot_titles_[index]->sizeHint().height() : 144);
-        }
         setEnglish(is_english_);
     }
 
@@ -1250,7 +1239,7 @@ public:
             output_numbers_[index]->setFixedWidth(output_numbers_[index]->fontMetrics().horizontalAdvance(prefix));
             output_switch_buttons_[index]->setFixedWidth(std::min(94, kOverviewControlWidth - 10 - output_numbers_[index]->width()));
             status_numbers_[index]->setText(prefix);
-            plot_titles_[index]->setText(endpoint);
+            plots_[index]->setCornerBadgeText(dual_tec103_ ? endpoint : QString());
             plots_[index]->setAccessibleName(endpoint);
             plots_[index]->setToolTip(endpoint);
             output_switch_buttons_[index]->setStateDescription(endpoint + QStringLiteral(" ") + output_label_->text(),
@@ -1396,7 +1385,6 @@ private:
         updateOverviewValueWidths();
     }
 
-    std::array<QLabel *, 2> plot_titles_{};
     std::array<QLabel *, 2> output_numbers_{};
     std::array<QLabel *, 2> status_numbers_{};
     QWidget *summary_widget_ = nullptr;

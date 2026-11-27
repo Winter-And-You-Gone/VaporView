@@ -712,7 +712,8 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
                  operation.operation == DeviceOperation::ReadEpsilonDgnss || operation.operation == DeviceOperation::ApplyEpsilonDgnss ||
                  operation.operation == DeviceOperation::CalibrateEpsilonMagnetic2D || operation.operation == DeviceOperation::CalibrateEpsilonMagnetic3D);
             const bool typedFailureExpected = settingsReplyRequired && ack.error_code != CommandErrorCode::Ok &&
-                ack.error_code != CommandErrorCode::UnknownCommand && ack.error_code != CommandErrorCode::InvalidPayload;
+                ack.error_code != CommandErrorCode::UnknownCommand && ack.error_code != CommandErrorCode::InvalidPayload &&
+                ack.error_code != CommandErrorCode::DeviceOperationBusy;
             CommandMessage evictedContext;
             quint32 evictedRequestId = 0;
             bool contextEvicted = false;
@@ -737,7 +738,7 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
                     }
                 });
             }
-            if (!typedFailureExpected && (!settingsReplyRequired || ack.error_code != CommandErrorCode::Ok) &&
+            if (ack.error_code != CommandErrorCode::DeviceOperationBusy && !typedFailureExpected && (!settingsReplyRequired || ack.error_code != CommandErrorCode::Ok) &&
                 pending != pending_commands_.cend() && pending->command.command_id == CommandId::DeviceOperation &&
                 TelemetryCodec::parseDeviceOperationRequest(pending->command.payload, operation)) {
                 if (recently_rejected_operations_.size() >= 256) {

@@ -24,6 +24,12 @@ bool tec103BridgesAvailable(const QMap<quint32,quint32>& values)
 {
     return values.value(0x6800)==0x00480100 && values.value(0x6900)==0x00490100;
 }
+bool instrumentBusy(const VaporView::Ground::Main::MainWindowState& state)
+{
+    return (state.ai8_device_session_ && state.ai8_device_session_->operationPending())
+        || (state.rd105_device_session_ && state.rd105_device_session_->operationPending())
+        || (state.epsilon_device_session_ && state.epsilon_device_session_->operationPending());
+}
 void dispatchLocalWhenIdle(QPointer<VaporView::Ground::Devices::FpgaDeviceController> controller,
     const std::shared_ptr<std::atomic<quint64>>& generation,quint64 expected,qint64 deadline,
     std::function<void()> action,std::function<void()> expired)
@@ -78,9 +84,12 @@ void MainWindow::syncFpgaDeviceConfigUi()
         : QStringLiteral("当前 VLP1 不支持 EPSILON 参数命令或 RTCM 转发。");
     if (state_->ai8_device_session_) {
         const bool remoteRelay = relay && isRemoteSkyMode() && !isUiTestMode();
-        const bool pageReady = (extensions & VaporView::FpgaExtensions::Ai8Parameters) && (values.value(0x6604) & 1);
+        const bool bulkConnecting = !state_->fpga_home_connect_queue_.isEmpty()
+            || !state_->fpga_pending_home_actions_.isEmpty() || state_->fpga_home_action_device_ != VaporView::SkyDeviceId::All;
+        const bool pageReady = !bulkConnecting && (extensions & VaporView::FpgaExtensions::Ai8Parameters) && (values.value(0x6604) & 1);
         state_->ai8_device_session_->setFpgaTransport(remoteRelay ? FpgaInstrumentCall{} : call, !remoteRelay && pageReady);
-        if (remoteRelay) state_->ai8_device_session_->setRemoteAvailable(pageReady);
+        if (remoteRelay && !(bulkConnecting && state_->ai8_device_session_->operationPending()))
+            state_->ai8_device_session_->setRemoteAvailable(pageReady);
         state_->ai8_device_session_->setTransportSupported(!relay || (extensions&VaporView::FpgaExtensions::Ai8Parameters),relay?ai8Unsupported:QString());
     }
     if (state_->epsilon_device_session_) {
@@ -469,7 +478,7 @@ void MainWindow::processFpgaActions()
             continue;
         }
         // A queued disconnect must let the older instrument command finish its remaining reads.
-        if (next.canRun && !next.canRun()) { ++index; continue; }
+        if (next.canRun ? !next.canRun() : instrumentBusy(*state_)) { ++index; continue; }
         const bool busy = state_->fpga_instrument_reply_ || state_->fpga_home_action_device_ != VaporView::SkyDeviceId::All
             || (isUiTestMode() ? state_->fpga_sim_busy_ : isRemoteSkyMode()
                 ? state_->fpga_session_.requestId || state_->fpga_session_.remoteStatus.value("busy").toBool()
@@ -495,7 +504,8 @@ void MainWindow::cancelFpgaActions()
 void MainWindow::submitFpgaInstrument(const QJsonObject& request,std::function<void(const QJsonObject&)> reply)
 {
     queueFpgaAction([this, request, reply] { executeFpgaInstrument(request, reply); },
-        [reply](const QString &error) { reply({{"ok", false}, {"detail", error}}); });
+        [reply](const QString &error) { reply({{"ok", false}, {"detail", error}}); },
+        [] { return true; }); // Instrument reads must be able to advance their own pending session.
 }
 
 void MainWindow::executeFpgaInstrument(const QJsonObject& request,std::function<void(const QJsonObject&)> reply)
@@ -649,7 +659,7 @@ bool MainWindow::homeFpgaNeedsConnect(VaporView::SkyDeviceId device)
 
 void MainWindow::connectNextHomeFpgaDevice()
 {
-    if (!isFpgaRelayPath() || state_->fpga_home_connect_queue_.isEmpty()
+    if (!isFpgaRelayPath() || instrumentBusy(*state_) || state_->fpga_home_connect_queue_.isEmpty()
         || !state_->fpga_action_queue_.isEmpty() || state_->fpga_instrument_reply_
         || state_->fpga_home_action_device_ != VaporView::SkyDeviceId::All
         || (isUiTestMode() ? state_->fpga_sim_busy_ : state_->fpga_busy_)) return;
@@ -663,6 +673,7 @@ void MainWindow::connectNextHomeFpgaDevice()
         setHomeFpgaDeviceEnabled(device,true);
         return;
     }
+    syncFpgaDeviceConfigUi();
 }
 
 void MainWindow::handleHomeFpgaFailure(bool transportReady)
@@ -692,15 +703,6 @@ void MainWindow::setHomeFpgaDeviceEnabled(VaporView::SkyDeviceId device, bool en
         if (device == VaporView::SkyDeviceId::WaveTcp) state_->fpga_home_raw_start_pending_ = false;
         state_->fpga_page_->appendDiagnostic(error);
         updateHomeDeviceStatusCapsules();
-    }, [this, device] {
-        using VaporView::SkyDeviceId;
-        if ((device == SkyDeviceId::TemperatureController || device == SkyDeviceId::Tec103InSitu || device == SkyDeviceId::Tec103Remote) && state_->rd105_device_session_)
-            return !state_->rd105_device_session_->operationPending();
-        if (device == SkyDeviceId::Ai8TemperatureController && state_->ai8_device_session_)
-            return !state_->ai8_device_session_->operationPending();
-        if (device == SkyDeviceId::Epsilon && state_->epsilon_device_session_)
-            return !state_->epsilon_device_session_->operationPending();
-        return true;
     });
     updateHomeDeviceStatusCapsules();
 }

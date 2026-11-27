@@ -1168,18 +1168,9 @@ int main(int argc, char** argv)
         for (bool checked : {false, true})
         {
             row->setChecked(checked);
-            require(row->property(checked ? "hasCheckIcon" : "hasUncheckedIcon").toBool(),
-                    "each independent layer state displays its icon");
-            const QImage image = row->checkLabel()->pixmap().toImage();
-            require(!image.isNull(), "layer row paints a state icon");
-            const auto hasStroke = [&](int left, int top, int right, int bottom) {
-                for (int y = image.height() * top / 100; y < image.height() * bottom / 100; ++y)
-                    for (int x = image.width() * left / 100; x < image.width() * right / 100; ++x)
-                        if (image.pixelColor(x, y).alpha() > 64) return true;
-                return false;
-            };
-            require(hasStroke(8, 35, 25, 65) && hasStroke(35, 75, 65, 93) && hasStroke(38, 38, 62, 62) == checked,
-                    "layer states have square outlines and only the checked state contains a tick");
+            require(row->property("hasCheckIcon").toBool() == checked &&
+                    !row->property("hasUncheckedIcon").toBool() && row->checkLabel()->pixmap().isNull() == !checked,
+                    "only selected layers display a check icon");
         }
         row->setChecked(expectedVisible);
     }

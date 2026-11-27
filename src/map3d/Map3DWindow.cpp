@@ -2095,14 +2095,11 @@ void Map3DWindow::refreshLayerMenuTheme()
         for (QMenu* child : moreMenu->findChildren<QMenu*>())
             if (auto* styledMenu = dynamic_cast<MapOptionsMenu*>(child)) styledMenu->setCheckIcon(checkIcon);
     }
-    const QIcon checkedLayer = map3DIcon(QStringLiteral("square-check-big"), primary);
-    const QIcon uncheckedLayer = map3DIcon(QStringLiteral("square"), primary);
     for (VaporView::SingleLevelPopupMenuRow* row : layer_rows_)
     {
         if (row)
         {
-            row->setCheckIcon(checkedLayer);
-            row->setUncheckedIcon(uncheckedLayer);
+            row->setCheckIcon(checkIcon);
             row->refreshTheme();
         }
     }

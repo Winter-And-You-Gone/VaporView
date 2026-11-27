@@ -276,7 +276,8 @@ RemoteSkyController::RemoteSkyController(QObject *parent)
                         const quint32 acknowledgedRequest = device_operation_requests_.value(ack.command_seq);
                         if (settingsOperation && acknowledgedRequest != 0 &&
                             ack.error_code != CommandErrorCode::UnknownCommand &&
-                            ack.error_code != CommandErrorCode::InvalidPayload)
+                            ack.error_code != CommandErrorCode::InvalidPayload &&
+                            ack.error_code != CommandErrorCode::DeviceOperationBusy)
                         {
                             QTimer::singleShot(30000, this, [this, generation, acknowledgedRequest, ack]() {
                                 if (!isCurrentOpenEvent(generation) ||

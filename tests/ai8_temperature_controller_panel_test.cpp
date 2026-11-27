@@ -362,6 +362,7 @@ int main(int argc, char **argv)
                 "view switch preserves plot area, parameter geometry and card size");
         auto *grid = qobject_cast<QGridLayout*>(multi->layout());
         require(grid && grid->count() == 8, "eight channel cells exist");
+        require(grid->horizontalSpacing() <= 2, "multi-view columns use a compact gap");
         for (int i = 0; i < 8; ++i) {
             int row, col, rows, cols;
             grid->getItemPosition(i, &row, &col, &rows, &cols);
@@ -370,7 +371,10 @@ int main(int argc, char **argv)
             require(plot && plot->property("sampleCount").toInt() == 1, "each channel retains its own samples");
         require(plot->property("channelBadge").toInt() == i + 1, "channel label is inside the plot");
             require(!plot->grab().isNull(), "each channel plot renders");
-            require(plot->property("xAxisTickCount").toInt() == 5,
+            require(plot->width() - plot->property("plotAreaRight").toDouble() <= 8.0,
+                    "each multi-view plot uses its right edge");
+            require(plot->property("xAxisTimeTickLabels").toStringList().size() == 5 &&
+                        plot->property("xAxisTickCount").toInt() == 5,
                     "eight-channel plots have five time ticks");
         }
         toggle->click();

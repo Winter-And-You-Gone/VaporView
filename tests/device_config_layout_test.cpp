@@ -351,7 +351,7 @@ void requireAlignedColumns(QFrame *subCard, int columnCount, const char *message
     }
 }
 
-void requirePillsUseWidestColumnWidth(QFrame *subCard, const char *message)
+void requirePillsUseWidestColumnWidth(QFrame *subCard, const char *message, bool tight = false)
 {
     const QList<QList<QFrame *>> rows = pillRows(subCard);
     require(!rows.isEmpty(), message);
@@ -368,12 +368,16 @@ void requirePillsUseWidestColumnWidth(QFrame *subCard, const char *message)
             auto *name = row[i]->findChild<QLabel *>("homeTelemetrySummaryNameLabel");
             auto *value = row[i]->findChild<QLabel *>("homeTelemetrySummaryValueLabel");
             require(name && value && (name->alignment() & Qt::AlignLeft) &&
-                (value->alignment() & Qt::AlignRight), "capsule name/value alignment");
+                (value->alignment() & (tight ? Qt::AlignLeft : Qt::AlignRight)), "capsule name/value alignment");
             auto *layout = row[i]->layout();
             auto *spacer = layout && layout->count() > 1 ? layout->itemAt(1)->spacerItem() : nullptr;
             require(spacer && spacer->sizeHint().width() == name->fontMetrics().horizontalAdvance(QStringLiteral("汉")) &&
                 value->x() - name->geometry().right() - 1 >= spacer->sizeHint().width(),
                 "capsule reserves at least one character between name and value");
+            if (tight) {
+                require(value->x() - name->geometry().right() - 1 == spacer->sizeHint().width(), "exact rate label gap");
+                continue;
+            }
             const int right = value->mapTo(subCard, QPoint(value->width(), 0)).x();
             if (rightEdges[i] < 0) rightEdges[i] = right;
             require(std::abs(rightEdges[i] - right) <= 2, "capsule values align to the right within each column");
@@ -626,7 +630,7 @@ int main(int argc, char **argv)
             const auto sections = summary->findChildren<QFrame *>(QStringLiteral("homeTelemetrySectionCard"));
             require(sections.size() == 3, "device summary has three sections");
             for (auto *section : sections) {
-                requirePillsUseWidestColumnWidth(section, "summary columns retain their aligned widths");
+                requirePillsUseWidestColumnWidth(section, "summary columns retain their aligned widths", section == sections.first());
                 requirePillLabelsFit(section, "summary labels fit after resizing");
             }
         }
@@ -817,7 +821,7 @@ int main(int argc, char **argv)
             require(pillNames(rows.at(row)) == expected.mid(2 * row, 2),
                     "data-rate rows pair telemetry on the left with waveform acquisition on the right");
         requireAlignedColumns(card, 2, "data-rate subcard keeps all rows aligned to two columns");
-        requirePillsUseWidestColumnWidth(card, "data-rate subcard uses each column's widest pill");
+        requirePillsUseWidestColumnWidth(card, "data-rate subcard uses each column's widest pill", true);
         requirePillLabelsFit(card, "data-rate subcard pill labels fit without clipping");
     };
     const auto checkRateLanguages = [&](const QStringList& chinese, const QStringList& english) {

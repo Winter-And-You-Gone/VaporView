@@ -153,6 +153,12 @@ void MainWindow::onEpsilonSessionOperationStarted(
 void MainWindow::onEpsilonSessionOperationFinished(
     const VaporView::Ground::Devices::EpsilonSessionResult& result)
 {
+    if (isFpgaRelayPath()) {
+        QTimer::singleShot(0, this, [this] {
+            processFpgaActions();
+            connectNextHomeFpgaDevice();
+        });
+    }
     if (result.operation == VaporView::Ground::Devices::EpsilonOperation::ConfigurePacketRates)
     {
         stopEpsilonReconfigureProgress();

@@ -668,19 +668,11 @@ public:
 
     void updateCheckIcons(bool dark)
     {
-        const auto primary = appThemeColor(AppThemeColor::Primary, dark);
-        const auto checked = createLucideIcon(QStringLiteral("square-check-big"), primary);
-        const auto unchecked = createLucideIcon(QStringLiteral("square"), primary);
         const auto preset = createMenuCheckIcon(appThemeColor(AppThemeColor::MenuCheckText, dark));
-        for (auto *row : {show_default_row_, show_all_row_})
+        for (auto *row : {show_default_row_, show_all_row_, show_raw_row_, show_h2_row_,
+                          show_harmonic_row_, show_peak_trend_row_})
         {
             row->setCheckIcon(preset);
-            row->refreshTheme();
-        }
-        for (SingleLevelPopupMenuRow *row : {show_raw_row_, show_h2_row_, show_harmonic_row_, show_peak_trend_row_})
-        {
-            row->setCheckIcon(checked);
-            row->setUncheckedIcon(unchecked);
             row->refreshTheme();
         }
     }

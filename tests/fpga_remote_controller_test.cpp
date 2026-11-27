@@ -249,6 +249,19 @@ int main(int argc,char **argv)
     ack.command_seq = commandSeq; ack.correlation_id.clear(); ack.error_code = CommandErrorCode::Ok;
     write(MsgType::CommandAck,TelemetryCodec::serializeCommandAck(ack));
     require(waitUntil([&]{return acknowledgments==6;}),"legacy ACK without correlation remains accepted");
+    quint32 busyRejection = 0;
+    QObject::connect(&controller, &RemoteSkyController::deviceOperationRejected, &controller,
+        [&](quint32 request, const CommandAck& rejection) {
+            if (rejection.error_code == CommandErrorCode::DeviceOperationBusy) busyRejection = request;
+        });
+    const int beforeBusy = commands;
+    const auto busyRequest = controller.sendFpgaControl({{"op", "refresh"}});
+    require(busyRequest && waitUntil([&]{ return commands == beforeBusy + 1; }), "busy test control submitted");
+    ack.command_seq = commandSeq; ack.correlation_id = correlation; ack.error_code = CommandErrorCode::DeviceOperationBusy;
+    QElapsedTimer rejectionTimer; rejectionTimer.start();
+    write(MsgType::CommandAck, TelemetryCodec::serializeCommandAck(ack));
+    require(waitUntil([&]{ return busyRejection == busyRequest; }, 1000) && rejectionTimer.elapsed() < 1000,
+        "busy ACK rejects FPGA control without a typed response");
     QJsonObject status{{"connected",true},{"ready",true},{"busy",false},{"detail","ready"},{"configuration",FpgaControlConfig{}.toJson()},
         {"registers",QJsonObject{}},{"archived_records","0"}};
     write(MsgType::FpgaStatus,FpgaRemote::encodeStatus(status));
@@ -589,7 +602,7 @@ int main(int argc,char **argv)
             replacement.operation = id == 1300 ? DeviceOperation::ReadParameters : DeviceOperation::FpgaControl;
             replacements.insert(id, service.sendDeviceOperation(replacement));
         }, Qt::DirectConnection);
-        for (quint32 id = 1300; id != 1302; ++id) {
+        for (quint32 id = 1300; id != 1303; ++id) {
             DeviceOperationRequest request;
             request.request_id = id;
             request.device_id = id == 1300 ? SkyDeviceId::Ai8TemperatureController : SkyDeviceId::Fpga;
@@ -603,10 +616,12 @@ int main(int argc,char **argv)
             reply.correlation_id = originalContexts.value(id);
             reply.session_id = QStringLiteral("expiry-session");
             if (id == 1301) reply.error_code = CommandErrorCode::InternalError;
+            if (id == 1302) reply.error_code = CommandErrorCode::DeviceOperationBusy;
             const QByteArray bytes = framing.encodeFrame(MsgType::CommandAck, TelemetryCodec::serializeCommandAck(reply), 1, 1);
             require(QMetaObject::invokeMethod(&service, "onBytesReceived", Qt::DirectConnection, Q_ARG(QByteArray, bytes)), "expiry ACK injected");
         }
         require(waitUntil([&] { return expirations.size() == 2; }, 35000), "both result context TTLs expire");
+        require(!expirations.contains(1302), "busy ACK has no pending typed failure context");
         QObject::disconnect(connection);
         for (quint32 id = 1300; id != 1302; ++id) {
             const LogRecord record = expirations.value(id);

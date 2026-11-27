@@ -453,12 +453,13 @@ void Ai8TemperatureControllerPanel::setupUi()
     multi_plot_view_->setObjectName("ai8MultiChannelPlots");
     auto *plots = new QGridLayout(multi_plot_view_);
     plots->setContentsMargins(0, 0, 0, 0);
-    plots->setSpacing(4);
+    plots->setHorizontalSpacing(2);
+    plots->setVerticalSpacing(4);
     for (int i = 0; i < 8; ++i) {
         auto *cell = new QWidget(multi_plot_view_);
         auto *cellLayout = new QVBoxLayout(cell);
         cellLayout->setContentsMargins(0, 0, 0, 0);
-        cellLayout->setSpacing(2);
+        cellLayout->setSpacing(0);
         auto *plot = new TemperatureTrendPlotWidget(cell);
         plot->setObjectName(QStringLiteral("ai8ChannelPlot%1").arg(i + 1));
         plot->setCompactMode(true);

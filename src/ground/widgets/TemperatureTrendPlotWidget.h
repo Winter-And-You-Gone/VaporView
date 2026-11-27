@@ -19,6 +19,7 @@ class TemperatureTrendPlotWidget : public QWidget
 public:
     explicit TemperatureTrendPlotWidget(QWidget *parent = nullptr);
 
+    void setCornerBadgeText(const QString& text);
     void setCompactMode(bool compact);
     void setEnglish(bool english);
     void setChannelIndex(int channelIndex);
@@ -47,6 +48,7 @@ private:
     void applyPlotSizing();
     int yAxisIntervals() const;
 
+    QString corner_badge_text_;
     QVector<double> samples_;
     QVector<double> sample_times_;
     double target_temperature_c_ = std::numeric_limits<double>::quiet_NaN();
