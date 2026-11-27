@@ -13,6 +13,7 @@
 #include "map3d/EarthProjectionProfile.h"
 #include "map3d/GroundDetailEllipse.h"
 #include "map3d/TiandituImageLayer.h"
+#include "map3d/CesiumTerrain.h"
 #include "map3d/OpenAerialMapImageLayer.h"
 #include "map3d/OnlineOsmLayer.h"
 #include "map3d/MapLayerRemoval.h"
@@ -37,10 +38,14 @@
 #include <QPushButton>
 #include <QPointer>
 #include <QTableWidget>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QLabel>
+#include <QLineEdit>
+#include <QPushButton>
 #include <QMouseEvent>
 #include <QPlainTextEdit>
 #include <QProgressBar>
@@ -862,6 +867,149 @@ void checkGroundDetailEllipse()
 
 } // namespace
 
+static void checkOnlineResourceEditor()
+{
+    using namespace VaporView::Map3D::Detail;
+    using Provider = OnlineMapProvider;
+    const QByteArray envToken = qgetenv("VAPORVIEW_CESIUM_ION_TOKEN");
+    qunsetenv("VAPORVIEW_CESIUM_ION_TOKEN");
+    auto settings = map3DTestSettings();
+    auto appSettings = tiandituKeySettings();
+    const auto tiandituKey = QStringLiteral("TrajectoryViewer/map/tianditu_key");
+    const auto esriKey = QStringLiteral("esriApiKey");
+    const auto legacyCesiumToken = QStringLiteral("cesium/ion_token");
+    const auto editorCesiumToken = QStringLiteral("cesium/editor_token");
+    appSettings.remove(tiandituKey);
+    for (const auto& key : {esriKey, legacyCesiumToken, editorCesiumToken,
+                            requestUrlSetting(Provider::Tianditu), requestUrlSetting(Provider::Esri),
+                            requestUrlSetting(Provider::Cesium)})
+        settings.remove(key);
+
+    const QString credential = QString::number(42) + QStringLiteral("&+/?");
+    settings.setValue(legacyCesiumToken, credential);
+    require(configuredOnlineMapResource(Provider::Cesium).credential == credential, "legacy Cesium setting is used");
+    qputenv("VAPORVIEW_CESIUM_ION_TOKEN", "fixture-env");
+    require(configuredOnlineMapResource(Provider::Cesium).credential == QStringLiteral("fixture-env"),
+            "Cesium environment token takes precedence over legacy settings");
+    const OnlineMapResource override{defaultRequestUrl(Provider::Cesium), credential};
+    saveOnlineMapResource(Provider::Cesium, override);
+    require(configuredOnlineMapResource(Provider::Cesium) == override, "explicit Cesium edit can replace the environment default");
+    qunsetenv("VAPORVIEW_CESIUM_ION_TOKEN");
+    settings.remove(legacyCesiumToken);
+    settings.remove(editorCesiumToken);
+    settings.remove(requestUrlSetting(Provider::Cesium));
+
+    const auto imagerySetting = QStringLiteral("satelliteImagerySource");
+    const auto demSetting = QStringLiteral("demSource");
+    const auto previousImagery = QStringLiteral("online:openaerialmap");
+    const auto previousDem = QStringLiteral("online:copernicus");
+    settings.setValue(imagerySetting, previousImagery);
+    settings.setValue(demSetting, previousDem);
+    VaporView::Map3D::Map3DWindow window;
+
+    struct Case
+    {
+        Provider provider;
+        QString actionName;
+        QString editName;
+        QString source;
+        QString selectionSetting;
+        QString customUrl;
+    };
+    const Case cases[] = {
+        {Provider::Tianditu, QStringLiteral("map3DOnlineImagery_tianditu"), QStringLiteral("map3DTiandituKeyAction"),
+         QStringLiteral("online:tianditu"), imagerySetting, QStringLiteral("https://maps.invalid/wmts?z={z}&x={x}&y={y}&tk={key}")},
+        {Provider::Esri, QStringLiteral("map3DOnlineImagery_esri"), QStringLiteral("map3DEsriKeyAction"),
+         QStringLiteral("online:esri"), imagerySetting, QStringLiteral("https://maps.invalid/tile/{z}/{y}/{x}")},
+        {Provider::Cesium, QStringLiteral("map3DDemSource_online_cesium"), QStringLiteral("map3DCesiumTokenAction"),
+         QStringLiteral("online:cesium"), demSetting, QStringLiteral("https://maps.invalid/v1/assets/2/endpoint")},
+    };
+    for (const auto& test : cases)
+    {
+        auto* select = actionByName(window, test.actionName);
+        auto* edit = actionByName(window, test.editName);
+        const QString oldSelection = settings.value(test.selectionSetting).toString();
+        auto runDialog = [&](QAction* entry, const auto& inspect) {
+            bool opened = false;
+            QTimer::singleShot(0, &window, [&]() {
+                auto* dialog = window.findChild<QDialog*>(QStringLiteral("map3DOnlineResourceDialog"));
+                if (!dialog) return;
+                opened = true;
+                auto* url = dialog->findChild<QLineEdit*>(QStringLiteral("map3DOnlineResourceUrl"));
+                auto* secret = dialog->findChild<QLineEdit*>(QStringLiteral("map3DOnlineResourceCredential"));
+                auto* error = dialog->findChild<QLabel*>(QStringLiteral("map3DOnlineResourceError"));
+                auto* buttons = dialog->findChild<QDialogButtonBox*>();
+                require(url && secret && error && buttons && !url->isReadOnly() && !secret->isReadOnly()
+                            && secret->echoMode() == QLineEdit::Password,
+                        "editor provides an editable URL and masked credential");
+                inspect(*url, *secret, *error, *buttons);
+            });
+            entry->trigger();
+            require(opened, "resource action opens the configuration dialog");
+        };
+        require(select->isEnabled() && edit->isEnabled(), "missing credentials do not disable the provider or its editor");
+        runDialog(select, [&](QLineEdit& url, QLineEdit& secret, QLabel&, QDialogButtonBox& buttons) {
+            require(url.text() == defaultRequestUrl(test.provider) && secret.text().isEmpty(), "default request URL is prefilled");
+            url.setText(test.customUrl);
+            secret.setText(credential);
+            buttons.button(QDialogButtonBox::Cancel)->click();
+        });
+        require(!select->isChecked() && settings.value(test.selectionSetting).toString() == oldSelection
+                    && configuredOnlineMapResource(test.provider).credential.isEmpty()
+                    && !settings.contains(requestUrlSetting(test.provider)),
+                "cancelling a new provider leaves the previous selection and settings intact");
+        runDialog(select, [&](QLineEdit& url, QLineEdit& secret, QLabel& error, QDialogButtonBox& buttons) {
+            url.setText(QStringLiteral("http://maps.invalid/invalid"));
+            secret.setText(credential);
+            buttons.button(QDialogButtonBox::Save)->click();
+            require(error.isVisible() && !settings.contains(requestUrlSetting(test.provider)), "invalid URL cannot be saved");
+            url.setText(test.customUrl);
+            secret.clear();
+            buttons.button(QDialogButtonBox::Save)->click();
+            require(error.isVisible() && !settings.contains(requestUrlSetting(test.provider)), "blank credential cannot be saved");
+            secret.setText(credential);
+            buttons.button(QDialogButtonBox::Save)->click();
+        });
+        require(select->isChecked() && settings.value(test.selectionSetting).toString() == test.source,
+                "saving first-time configuration selects the provider");
+        runDialog(edit, [&](QLineEdit& url, QLineEdit& secret, QLabel&, QDialogButtonBox& buttons) {
+            require(url.text() == test.customUrl && secret.text() == credential, "editing opens the saved URL and credential");
+            url.setText(defaultRequestUrl(test.provider));
+            secret.setText(QString::number(84));
+            buttons.button(QDialogButtonBox::Cancel)->click();
+        });
+        const OnlineMapResource persisted{test.customUrl, credential};
+        require(select->isChecked() && configuredOnlineMapResource(test.provider) == persisted
+                    && settings.value(test.selectionSetting).toString() == test.source,
+                "cancelling later edits preserves saved values and active selection");
+        if (test.provider == Provider::Tianditu)
+        {
+            const auto request = credentialedImageryRequest(test.provider, persisted, 4, 5, 6);
+            require(request.url().toEncoded() == "https://maps.invalid/wmts?z=4&x=5&y=6&tk=42%26%2B%2F%3F"
+                        && !request.attribute(QNetworkRequest::CacheSaveControlAttribute).toBool(),
+                    "Tianditu sends the edited URL and one URL-encoded credential");
+        }
+        else
+        {
+            const auto request = test.provider == Provider::Esri
+                ? credentialedImageryRequest(test.provider, persisted, 4, 5, 6) : cesiumEndpointRequest(persisted);
+            const auto expected = test.provider == Provider::Esri ? QStringLiteral("https://maps.invalid/tile/4/6/5") : test.customUrl;
+            require(request.url() == QUrl(expected) && request.rawHeader("Authorization") == "Bearer " + credential.toUtf8()
+                        && !request.attribute(QNetworkRequest::CacheSaveControlAttribute).toBool(),
+                    "Esri and Cesium send the edited URL with a bearer header");
+        }
+        runDialog(edit, [&](QLineEdit& url, QLineEdit& secret, QLabel&, QDialogButtonBox& buttons) {
+            url.setText(defaultRequestUrl(test.provider));
+            secret.setText(QString::number(84));
+            buttons.button(QDialogButtonBox::Save)->click();
+        });
+        const OnlineMapResource updated{defaultRequestUrl(test.provider), QString::number(84)};
+        require(select->isChecked() && configuredOnlineMapResource(test.provider) == updated,
+                "saving later edits updates the provider without switching sources");
+    }
+    if (!envToken.isNull()) qputenv("VAPORVIEW_CESIUM_ION_TOKEN", envToken);
+}
+
 int main(int argc, char** argv)
 {
     qputenv("VAPORVIEW_MAP3D_HEADLESS_TEST", "1");
@@ -894,6 +1042,11 @@ int main(int argc, char** argv)
 
     QApplication app(argc, argv);
     VaporView::installButtonFocusStyle();
+    if (app.arguments().contains(QStringLiteral("--online-resource-editor-only")))
+    {
+        checkOnlineResourceEditor();
+        return 0;
+    }
     if (app.arguments().contains(QStringLiteral("--osm-live")))
     {
         checkOsmOverlays(true);
@@ -996,17 +1149,17 @@ int main(int argc, char** argv)
     auto* onlineImagery = window.findChild<QAction*>(QStringLiteral("map3DOnlineImagery_tianditu"));
     auto* openAerialMap = window.findChild<QAction*>(QStringLiteral("map3DOnlineImagery_openaerialmap"));
     auto* esriImagery = window.findChild<QAction*>(QStringLiteral("map3DOnlineImagery_esri"));
-    require(onlineImagery && !onlineImagery->isEnabled()
+    require(onlineImagery && onlineImagery->isEnabled()
                 && onlineImagery->text().contains(QStringLiteral("在线"))
                 && onlineImagery->text().contains(QStringLiteral("未配置 Key")),
             "online imagery is listed with an explanation when no key is configured");
     require(openAerialMap && openAerialMap->isEnabled() && openAerialMap->isCheckable()
                 && openAerialMap->text() == QStringLiteral("在线 · OpenAerialMap"),
             "OpenAerialMap is available online without a key");
-    require(esriImagery && !esriImagery->isEnabled() && esriImagery->isCheckable()
+    require(esriImagery && esriImagery->isEnabled() && esriImagery->isCheckable()
                 && esriImagery->text().contains(QStringLiteral("Esri World Imagery"))
                 && esriImagery->text().contains(QStringLiteral("未配置 Key")),
-            "Esri World Imagery requires a configured key");
+            "Esri World Imagery can be configured from its source action");
     require(window.findChild<QAction*>(QStringLiteral("map3DEsriKeyAction")),
             "Esri API key configuration is available");
     {
@@ -1983,5 +2136,6 @@ int main(int argc, char** argv)
     require(pool->waitForDone(5000), "Session worker safely finishes after window destruction");
     QCoreApplication::processEvents();
 
+    checkOnlineResourceEditor();
     return 0;
 }

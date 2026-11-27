@@ -149,9 +149,9 @@ public:
     QString cesiumTerrainCredit(bool collapsible) const;
     void loadEarthFileAsync(const QString& earthPath, std::function<void(bool)> finished);
     void loadEarthFilePreservingViewAsync(const QString& earthPath, std::function<void(bool)> finished);
-    bool applyTiandituSatelliteImagery(const QString& key);
+    bool applyTiandituSatelliteImagery(const QString& requestUrl, const QString& key);
     bool applyOpenAerialMapImagery();
-    bool applyEsriWorldImagery(const QString& key);
+    bool applyEsriWorldImagery(const QString& requestUrl, const QString& key);
     bool applyLocalSatelliteImagery(const QString& vrtPath);
     void clearSelectedSatelliteImagery();
     QString activeSatelliteImagerySource() const;
@@ -339,6 +339,7 @@ private:
     TrackDataMode track_data_mode_ = TrackDataMode::LiveNavigation;
     QString height_reference_status_;
     QString esri_imagery_key_;
+    QString esri_imagery_request_url_;
     QString base_map_source_;
     QString dem_source_;
     QString osm_source_;

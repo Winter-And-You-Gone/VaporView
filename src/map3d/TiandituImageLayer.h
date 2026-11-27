@@ -1,6 +1,8 @@
 #pragma once
 
 #include "map3d/Map3DLoadTracker.h"
+#include "MapHttp.h"
+#include "OnlineMapResource.h"
 #include <osg/Image>
 #include <osgEarth/XYZ>
 #include <osgEarth/Progress>
@@ -13,6 +15,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <utility>
 #include <vector>
 
 namespace VaporView::Map3D::Detail {
@@ -52,7 +55,8 @@ inline bool isTiandituNoImageryTile(const osg::Image* image)
 class TiandituSourceLayer final : public osgEarth::XYZImageLayer
 {
 public:
-    explicit TiandituSourceLayer(const Options& options) : XYZImageLayer(options) {}
+    explicit TiandituSourceLayer(const Options& options, OnlineMapResource resource = {})
+        : XYZImageLayer(options), resource_(std::move(resource)) {}
     mutable std::atomic_uint requests{0};
     mutable std::atomic_uint failures{0};
 
@@ -62,7 +66,9 @@ public:
         if (progress && progress->isCanceled()) return osgEarth::GeoImage::INVALID;
         ScopedMapLoadTask loadTask(MapLoadCategory::Imagery);
         ++requests;
-        auto image = osgEarth::XYZImageLayer::createImageImplementation(key, progress);
+        auto image = resource_.requestUrl.isEmpty()
+            ? osgEarth::XYZImageLayer::createImageImplementation(key, progress)
+            : readCredentialedImageryTile(OnlineMapProvider::Tianditu, resource_, key, progress);
         if (progress && progress->isCanceled())
         {
             loadTask.cancel();
@@ -96,11 +102,17 @@ protected:
         setUpL2Cache(128u);
         return status;
     }
+
+private:
+    const OnlineMapResource resource_;
 };
 
 class TiandituImageLayer final : public osgEarth::XYZImageLayer
 {
 public:
+    explicit TiandituImageLayer(OnlineMapResource resource = {}) : resource_(std::move(resource)) {}
+    bool usesResource(const OnlineMapResource& resource) const { return resource_ == resource; }
+
     mutable std::atomic_bool fallbackPending{false};
 
     unsigned requestCount() const { return source_ ? source_->requests.load() : 0u; }
@@ -198,9 +210,12 @@ public:
 protected:
     osgEarth::Status openImplementation() override
     {
-        source_ = new TiandituSourceLayer(options());
-        // Separate native-source cache from older, potentially mixed mosaics.
-        source_->setCacheID(osgEarth::Cache::makeCacheKey(getURL().full(), "tianditu-native-v2"));
+        source_ = new TiandituSourceLayer(options(), resource_);
+        // Preserve the native tile cache ID without placing the key in any osgEarth URI.
+        QString cacheSource = resource_.requestUrl.isEmpty() ? QString::fromStdString(getURL().full()) : resource_.requestUrl;
+        if (!resource_.requestUrl.isEmpty())
+            cacheSource.replace(QStringLiteral("{key}"), QString::fromLatin1(QUrl::toPercentEncoding(resource_.credential)));
+        source_->setCacheID(osgEarth::Cache::makeCacheKey(cacheSource.toStdString(), "tianditu-native-v2"));
         auto status = source_->open(getReadOptions());
         if (status.isError()) return status;
         options().minLevel() = 0u;
@@ -238,6 +253,7 @@ private:
         return osgEarth::GeoImage(missing, key.getExtent());
     }
 
+    const OnlineMapResource resource_;
     osg::ref_ptr<TiandituSourceLayer> source_;
     mutable std::mutex regions_mutex_;
     mutable std::map<osgEarth::TileKey, osgEarth::GeoImage> regions_;

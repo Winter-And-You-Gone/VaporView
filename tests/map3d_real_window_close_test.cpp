@@ -370,9 +370,9 @@ int main(int argc, char** argv)
         auto* esriImagery = window->findChild<QAction*>(QStringLiteral("map3DOnlineImagery_esri"));
         auto* imageryMenu = window->findChild<QMenu*>(QStringLiteral("map3DLocalImageryMenu"));
         require(imagery && imagery->isEnabled(), QStringLiteral("local Sentinel-2 action is available"));
-        require(online && imageryMenu && !online->isEnabled(), QStringLiteral("online imagery initially needs a key"));
+        require(online && imageryMenu && online->isEnabled(), QStringLiteral("Tianditu can be configured from its source action"));
         require(openAerialMap && openAerialMap->isEnabled(), QStringLiteral("OpenAerialMap needs no key"));
-        require(esriImagery && !esriImagery->isEnabled(), QStringLiteral("Esri imagery needs a key"));
+        require(esriImagery && esriImagery->isEnabled(), QStringLiteral("Esri can be configured from its source action"));
         view->setSamples(std::vector<VaporView::Geo::NavSample>{pointProbe, pointProbe2});
         const QString previousEarth = view->earthLoadDiagnostics().requestedPath;
         const QString previousDem = view->earthLoadDiagnostics().openElevationLayerName;

@@ -1,6 +1,8 @@
 #include "CesiumTerrain.h"
 #include "Map3DRuntime.h"
 #include "MapHttp.h"
+#include "MapLayerRemoval.h"
+#include "OnlineMapResource.h"
 #include "OnlineTerrainLayer.h"
 #include "map3d/Map3DLoadTracker.h"
 
@@ -13,7 +15,6 @@
 #include <QJsonObject>
 #include <QMutex>
 #include <QRegularExpression>
-#include <QSettings>
 #include <QtEndian>
 #include <algorithm>
 #include <array>
@@ -124,8 +125,8 @@ QNetworkRequest ionRequest(QUrl url, const QByteArray& token)
 class CesiumTerrain final : public OnlineTerrainLayer
 {
 public:
-    explicit CesiumTerrain(QByteArray token)
-        : OnlineTerrainLayer(&options_, &originalOptions_), token_(std::move(token))
+    explicit CesiumTerrain(const OnlineMapResource& resource)
+        : OnlineTerrainLayer(&options_, &originalOptions_), resource_(resource)
     {
         ElevationLayer::init();
         setName(layerName);
@@ -135,6 +136,8 @@ public:
         setMaxDataLevel(19);
         setCachePolicy(osgEarth::CachePolicy::NO_CACHE);
     }
+
+    bool usesResource(const OnlineMapResource& resource) const { return resource_ == resource; }
 
     QString credit(bool collapsible) const
     {
@@ -159,10 +162,7 @@ private:
         // One metadata request per burst, including after a network failure.
         endpoint_ = {};
         refreshAfter_ = now + 15;
-        auto request = ionRequest(QUrl("https://api.cesium.com/v1/assets/1/endpoint"), token_);
-        request.setAttribute(QNetworkRequest::CacheSaveControlAttribute, false);
-        request.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::AlwaysNetwork);
-        const auto asset = QJsonDocument::fromJson(mapHttpGet(request, progress).body).object();
+        const auto asset = QJsonDocument::fromJson(mapHttpGet(cesiumEndpointRequest(resource_), progress).body).object();
         TerrainEndpoint next;
         next.base = QUrl(asset.value("url").toString());
         next.bearer = asset.value("accessToken").toString().toUtf8();
@@ -172,7 +172,9 @@ private:
         if (manifest.value("format") != "quantized-mesh-1.0" ||
             manifest.value("scheme").toString("tms") != "tms" ||
             manifest.value("projection").toString("EPSG:4326") != "EPSG:4326") return {};
-        next.tileTemplate = manifest.value("tiles").toArray().first().toString();
+        const auto tiles = manifest.value("tiles").toArray();
+        if (tiles.isEmpty()) return {};
+        next.tileTemplate = tiles.first().toString();
         if (next.tileTemplate.isEmpty()) return {};
         next.tileTemplate.replace("{version}", manifest.value("version").toString());
         next.availability = manifest.value("available").toArray();
@@ -264,7 +266,7 @@ private:
 
     Options options_;
     const Options originalOptions_;
-    QByteArray token_;
+    const OnlineMapResource resource_;
     mutable QMutex endpointMutex_, creditMutex_;
     mutable qint64 refreshAfter_ = 0;
     mutable TerrainEndpoint endpoint_;
@@ -272,21 +274,31 @@ private:
 };
 } // namespace
 
-QByteArray configuredCesiumToken()
+QNetworkRequest cesiumEndpointRequest(const OnlineMapResource& resource)
 {
-    QByteArray token = qgetenv("VAPORVIEW_CESIUM_ION_TOKEN").trimmed();
-    if (token.isEmpty())
-        token = QSettings(QSettings::defaultFormat(), QSettings::UserScope, "VaporView", "Map3D")
-            .value("cesium/ion_token").toByteArray().trimmed();
-    return token;
+    auto request = ionRequest(QUrl(resource.requestUrl), resource.credential.toUtf8());
+    request.setAttribute(QNetworkRequest::CacheSaveControlAttribute, false);
+    request.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::AlwaysNetwork);
+    return request;
 }
 
 bool addCesiumTerrainFallback(osgEarth::Map* map)
 {
-    const QByteArray token = configuredCesiumToken();
-    if (!map || token.isEmpty()) return false;
+    if (!map) return false;
+    const auto resource = configuredOnlineMapResource(OnlineMapProvider::Cesium);
+    auto* current = map->getLayerByName(layerName);
+    const auto* existing = dynamic_cast<const CesiumTerrain*>(current);
+    if (current && (!existing || existing->usesResource(resource))) return true;
+    if (!isOnlineMapResourceConfigured(OnlineMapProvider::Cesium, resource))
+    {
+        if (existing) removeLayerByName(map, layerName);
+        return false;
+    }
+    osg::ref_ptr<CesiumTerrain> layer = new CesiumTerrain(resource);
+    if (layer->open().isError()) return existing != nullptr;
+    if (existing) removeLayerByName(map, layerName);
     // osgEarth samples elevation layers in reverse order, stopping at the first valid height.
-    map->insertLayer(new CesiumTerrain(token), 0);
+    map->insertLayer(layer.get(), 0);
     return true;
 }
 

@@ -136,9 +136,6 @@ constexpr const char* kTiandituSatelliteLayerName = "Tianditu Satellite imagery"
 constexpr const char* kOpenAerialMapLayerName = "OpenAerialMap Satellite imagery";
 constexpr const char* kEsriLayerName = "Esri World Imagery Satellite imagery";
 constexpr const char* kSelectedLocalSatelliteLayerName = "VaporView selected local satellite imagery";
-constexpr const char* kTiandituBrowserUserAgent =
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36";
 // Match the native imagery tile width so each zoom step requests only the
 // detail the viewport can display.
 constexpr int kTerrainTilePixelSize = 256;
@@ -896,17 +893,6 @@ bool restoreEarthViewpoint(osgViewer::Viewer* viewer, const osgEarth::Viewpoint&
     return true;
 }
 
-QString tiandituSatelliteUrlTemplate(const QString& key)
-{
-    const QString encodedKey = QString::fromLatin1(QUrl::toPercentEncoding(key.trimmed()));
-    return QStringLiteral(
-        "https://t[01234567].tianditu.gov.cn/img_w/wmts"
-        "?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0"
-        "&LAYER=img&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles"
-        "&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=%1")
-        .arg(encodedKey);
-}
-
 using Detail::removeLayerByName;
 
 unsigned tiandituSatelliteInsertIndex(osgEarth::Map* map)
@@ -1500,7 +1486,7 @@ void OsgEarthViewWidget::prioritizeSatelliteImagery()
     online_terrain_timer_.start();
 }
 
-bool OsgEarthViewWidget::applyTiandituSatelliteImagery(const QString& key)
+bool OsgEarthViewWidget::applyTiandituSatelliteImagery(const QString& requestUrl, const QString& key)
 {
     assertGuiThread(this, Q_FUNC_INFO);
     if (shutdown_ || !map_node_ || !map_node_->getMap())
@@ -1509,19 +1495,18 @@ bool OsgEarthViewWidget::applyTiandituSatelliteImagery(const QString& key)
     }
 
     osgEarth::Map* map = map_node_->getMap();
-    const QString trimmedKey = key.trimmed();
-    auto* existing = dynamic_cast<osgEarth::XYZImageLayer*>(map->getLayerByName(kTiandituSatelliteLayerName));
-    if (existing && !trimmedKey.isEmpty() && existing->isOpen()
-        && existing->getURL().full() == tiandituSatelliteUrlTemplate(trimmedKey).toStdString())
+    const Detail::OnlineMapResource resource{requestUrl, key};
+    auto* existing = dynamic_cast<Detail::TiandituImageLayer*>(map->getLayerByName(kTiandituSatelliteLayerName));
+    if (existing && existing->isOpen() && existing->usesResource(resource))
     {
         removeLayerByName(map, kOpenAerialMapLayerName);
         removeLayerByName(map, kEsriLayerName);
         applyLayerVisibility(Map3DLayer::SatelliteImagery);
         return true;
     }
-    removeLayerByName(map, kTiandituSatelliteLayerName);
-    if (trimmedKey.isEmpty())
+    if (!Detail::isOnlineMapResourceConfigured(Detail::OnlineMapProvider::Tianditu, resource))
     {
+        removeLayerByName(map, kTiandituSatelliteLayerName);
         earth_load_diagnostics_.layerSummaries.push_back(
             mapText(QStringLiteral("未应用天地图卫星影像：未配置密钥。")));
         applyLayerVisibility(Map3DLayer::SatelliteImagery);
@@ -1529,13 +1514,10 @@ bool OsgEarthViewWidget::applyTiandituSatelliteImagery(const QString& key)
         return false;
     }
 
-    osg::ref_ptr<osgEarth::XYZImageLayer> layer = new Detail::TiandituImageLayer;
+    osg::ref_ptr<osgEarth::XYZImageLayer> layer = new Detail::TiandituImageLayer(resource);
     layer->setName(kTiandituSatelliteLayerName);
-    osgEarth::URIContext tiandituContext;
-    tiandituContext.addHeader("User-Agent", kTiandituBrowserUserAgent);
-    tiandituContext.addHeader("Referer", "https://map.tianditu.gov.cn/");
-    layer->setURL(osgEarth::URI(tiandituSatelliteUrlTemplate(trimmedKey).toStdString(),
-                                tiandituContext));
+    // The driver requires a template to open, but tile requests use the private resource configuration.
+    layer->setURL(osgEarth::URI(Detail::defaultRequestUrl(Detail::OnlineMapProvider::Tianditu).toStdString()));
     layer->setProfile(osgEarth::Profile::create(osgEarth::Profile::SPHERICAL_MERCATOR));
     layer->setFormat("jpg");
     // Level 0 returns a successful HTTP response containing a no-imagery placeholder.
@@ -1546,6 +1528,7 @@ bool OsgEarthViewWidget::applyTiandituSatelliteImagery(const QString& key)
     earth_load_diagnostics_.layerSummaries.push_back(
         mapText(QStringLiteral("天地图源级别：%1–%2；不使用第 0 级占位图。"))
             .arg(layer->options().minLevel().get()).arg(layer->options().maxDataLevel().get()));
+    removeLayerByName(map, kTiandituSatelliteLayerName);
     const unsigned insertIndex = tiandituSatelliteInsertIndex(map);
     Map3DLoadTracker::instance().interruptCategory(MapLoadCategory::Imagery);
     map->insertLayer(layer.get(), insertIndex);
@@ -1590,24 +1573,27 @@ bool OsgEarthViewWidget::applyOpenAerialMapImagery()
     return true;
 }
 
-bool OsgEarthViewWidget::applyEsriWorldImagery(const QString& key)
+bool OsgEarthViewWidget::applyEsriWorldImagery(const QString& requestUrl, const QString& key)
 {
     assertGuiThread(this, Q_FUNC_INFO);
-    if (shutdown_ || !map_node_ || !map_node_->getMap() || key.trimmed().isEmpty()) return false;
+    const Detail::OnlineMapResource resource{requestUrl, key};
+    if (shutdown_ || !map_node_ || !map_node_->getMap()
+        || !Detail::isOnlineMapResourceConfigured(Detail::OnlineMapProvider::Esri, resource)) return false;
     osgEarth::Map* map = map_node_->getMap();
-    const QString trimmedKey = key.trimmed();
     auto* existing = dynamic_cast<osgEarth::XYZImageLayer*>(map->getLayerByName(kEsriLayerName));
-    if (!existing || !existing->isOpen() || esri_imagery_key_ != trimmedKey)
+    if (!existing || !existing->isOpen() || esri_imagery_key_ != key || esri_imagery_request_url_ != requestUrl)
     {
         class TrackedEsriImageLayer final : public osgEarth::XYZImageLayer
         {
         public:
+            explicit TrackedEsriImageLayer(const Detail::OnlineMapResource& resource) : resource_(resource) {}
+
             osgEarth::GeoImage createImageImplementation(const osgEarth::TileKey& key,
                                                          osgEarth::ProgressCallback* progress) const override
             {
                 if (progress && progress->isCanceled()) return osgEarth::GeoImage::INVALID;
                 ScopedMapLoadTask loadTask(MapLoadCategory::Imagery);
-                auto image = osgEarth::XYZImageLayer::createImageImplementation(key, progress);
+                auto image = Detail::readCredentialedImageryTile(Detail::OnlineMapProvider::Esri, resource_, key, progress);
                 if (progress && progress->isCanceled())
                 {
                     loadTask.cancel();
@@ -1616,12 +1602,13 @@ bool OsgEarthViewWidget::applyEsriWorldImagery(const QString& key)
                 loadTask.finish();
                 return image;
             }
+
+        private:
+            const Detail::OnlineMapResource resource_;
         };
-        osg::ref_ptr<osgEarth::XYZImageLayer> layer = new TrackedEsriImageLayer;
+        osg::ref_ptr<osgEarth::XYZImageLayer> layer = new TrackedEsriImageLayer(resource);
         layer->setName(kEsriLayerName);
-        osgEarth::URIContext context;
-        context.addHeader("Authorization", std::string("Bearer ") + trimmedKey.toStdString());
-        layer->setURL(osgEarth::URI("https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", context));
+        layer->setURL(osgEarth::URI(Detail::defaultRequestUrl(Detail::OnlineMapProvider::Esri).toStdString()));
         layer->setProfile(osgEarth::Profile::create(osgEarth::Profile::SPHERICAL_MERCATOR));
         layer->setFormat("jpg");
         layer->options().maxLevel() = 23u;
@@ -1630,7 +1617,8 @@ bool OsgEarthViewWidget::applyEsriWorldImagery(const QString& key)
         if (layer->open().isError()) return false;
         removeLayerByName(map, kEsriLayerName);
         map->insertLayer(layer.get(), tiandituSatelliteInsertIndex(map));
-        esri_imagery_key_ = trimmedKey;
+        esri_imagery_key_ = key;
+        esri_imagery_request_url_ = requestUrl;
     }
     Map3DLoadTracker::instance().interruptCategory(MapLoadCategory::Imagery);
     removeLayerByName(map, kTiandituSatelliteLayerName);
@@ -1700,15 +1688,10 @@ void OsgEarthViewWidget::setDemSource(const QString& source)
     if (shutdown_ || !map_node_ || !map_node_->getMap())
         return;
     auto* map = map_node_->getMap();
-    if (dem_source_ == QStringLiteral("online:cesium")
-        && !map->getLayerByName("Cesium World Terrain"))
+    if (dem_source_.isEmpty() || dem_source_ == QStringLiteral("online:cesium")
+        || map->getLayerByName("Cesium World Terrain"))
     {
-        if (Detail::addCesiumTerrainFallback(map))
-        {
-            earth_load_diagnostics_.cesiumTerrainConfigured = true;
-            if (auto* layer = map->getLayerByName("Cesium World Terrain"))
-                layer->open();
-        }
+        earth_load_diagnostics_.cesiumTerrainConfigured = Detail::addCesiumTerrainFallback(map);
     }
     applyLayerVisibility(Map3DLayer::DigitalElevation);
     std::vector<const osgEarth::Layer*> refresh;

@@ -48,6 +48,7 @@ class OsgEarthViewWidget;
 class MapLiveDataPanel;
 class MapResourceDialog;
 class MapResourceManager;
+namespace Detail { enum class OnlineMapProvider; }
 
 } // namespace VaporView::Map3D
 
@@ -113,6 +114,9 @@ private:
     void selectBuildingsSource(const QString& source);
     void refreshBuildingsSourceMenu();
     void refreshAllResourceSourceMenus();
+    bool editOnlineMapResource(Detail::OnlineMapProvider provider);
+    void refreshOnlineMapResourceEditAction(QMenu* menu, const QString& objectName,
+                                            Detail::OnlineMapProvider provider);
     void loadLocal3DTilesPreview();
     bool loadConfiguredLocal3DTiles(bool showStatusMessage);
     void clearLocal3DTilesPreview();

@@ -17,7 +17,7 @@
 #include "shared/theme/SingleLevelPopupMenu.h"
 #include "geo/TrajectoryQuality.h"
 #include "Map3DRuntime.h"
-#include "CesiumTerrain.h"
+#include "OnlineMapResource.h"
 #include "map3d/Map3DLoadTracker.h"
 #include "map3d/OsgEarthViewWidget.h"
 #include "map3d/MapResourceDialog.h"
@@ -45,7 +45,6 @@
 #include <QPushButton>
 #include <QTableWidget>
 #include <QIcon>
-#include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
@@ -63,7 +62,6 @@
 #include <QPixmap>
 #include <QSettings>
 #include "shared/config/SettingsWriteBarrier.h"
-#include "shared/config/ApplicationConfig.h"
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QShowEvent>
@@ -639,25 +637,34 @@ void applyMapModeButtonIcon(QToolButton* button, bool sessionTarget, bool dark)
                               appThemeColor(AppThemeColor::Primary, dark)));
 }
 
-QString tiandituKeySettingKey()
+using Detail::OnlineMapProvider;
+using Detail::configuredOnlineMapResource;
+using Detail::isOnlineMapResourceConfigured;
+
+QString onlineMapProviderName(OnlineMapProvider provider)
 {
-    return QStringLiteral("map/tianditu_key");
+    switch (provider)
+    {
+    case OnlineMapProvider::Tianditu: return mapText(QStringLiteral("天地图卫星"));
+    case OnlineMapProvider::Esri: return QStringLiteral("Esri World Imagery");
+    case OnlineMapProvider::Cesium: return QStringLiteral("Cesium World Terrain");
+    }
+    return {};
 }
 
-QString configuredTiandituKey()
+QString onlineMapImagerySource(OnlineMapProvider provider)
 {
-    VaporView::migrateLegacyApplicationConfig();
-    QSettings settings = VaporView::applicationConfigSettings();
-    settings.beginGroup(QStringLiteral("TrajectoryViewer"));
-    return settings.value(tiandituKeySettingKey()).toString().trimmed();
+    return provider == OnlineMapProvider::Tianditu ? QStringLiteral("online:tianditu") : QStringLiteral("online:esri");
+}
+
+bool onlineMapResourceConfigured(OnlineMapProvider provider)
+{
+    return isOnlineMapResourceConfigured(provider, configuredOnlineMapResource(provider));
 }
 
 QSettings map3DSettings()
 {
-    return QSettings(QSettings::defaultFormat(),
-                     QSettings::UserScope,
-                     QStringLiteral("VaporView"),
-                     QStringLiteral("Map3D"));
+    return Detail::onlineMapSettings();
 }
 
 QString defaultSessionDataDirectory()
@@ -2388,7 +2395,7 @@ void Map3DWindow::refreshLayerMenuAvailability()
                 available = QFileInfo(map_selection_.earthFile).isFile();
                 break;
             case Map3DLayer::SatelliteImagery:
-                available = !configuredTiandituKey().isEmpty()
+                available = onlineMapResourceConfigured(OnlineMapProvider::Tianditu)
                     || std::any_of(map_selection_.diagnostics.localImageryOptions.cbegin(),
                                    map_selection_.diagnostics.localImageryOptions.cend(),
                                    [](const LocalImageryOption& option) { return option.available; });
@@ -3079,6 +3086,94 @@ void Map3DWindow::openEarthFile()
                                  5000);
     });
 }
+bool Map3DWindow::editOnlineMapResource(OnlineMapProvider provider)
+{
+    if (VaporView::settingsWritesSuspended()) return false;
+    const auto current = configuredOnlineMapResource(provider);
+    QDialog dialog(this);
+    dialog.setObjectName(QStringLiteral("map3DOnlineResourceDialog"));
+    dialog.setWindowTitle(mapText(QStringLiteral("配置 %1")).arg(onlineMapProviderName(provider)));
+    dialog.setWindowFlag(Qt::WindowContextHelpButtonHint, false);
+
+    auto* layout = new QFormLayout(&dialog);
+    auto* url = new QLineEdit(current.requestUrl, &dialog);
+    url->setObjectName(QStringLiteral("map3DOnlineResourceUrl"));
+    auto* credential = new QLineEdit(current.credential, &dialog);
+    credential->setObjectName(QStringLiteral("map3DOnlineResourceCredential"));
+    credential->setEchoMode(QLineEdit::Password);
+    layout->addRow(mapText(QStringLiteral("请求 URL")), url);
+    layout->addRow(mapText(provider == OnlineMapProvider::Cesium ? QStringLiteral("访问 Token")
+                                                                : QStringLiteral("API Key")), credential);
+    const QString hint = provider == OnlineMapProvider::Tianditu
+        ? QStringLiteral("使用包含 {z}、{x}、{y} 的 HTTPS 瓦片 URL，并在查询参数值中保留 {key}。")
+        : provider == OnlineMapProvider::Esri
+            ? QStringLiteral("使用包含 {z}、{x}、{y} 的 HTTPS 瓦片 URL。Key 随授权标头发送。")
+            : QStringLiteral("使用 HTTPS Cesium ion 资源端点 URL。Token 随授权标头发送。");
+    auto* instructions = new QLabel(mapText(hint), &dialog);
+    instructions->setWordWrap(true);
+    layout->addRow(instructions);
+    auto* error = new QLabel(&dialog);
+    error->setObjectName(QStringLiteral("map3DOnlineResourceError"));
+    error->setWordWrap(true);
+    error->hide();
+    layout->addRow(error);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel, &dialog);
+    buttons->button(QDialogButtonBox::Save)->setText(mapText(QStringLiteral("保存")));
+    buttons->button(QDialogButtonBox::Cancel)->setText(mapText(QStringLiteral("取消")));
+    layout->addRow(buttons);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, [&]() {
+        const Detail::OnlineMapResource updated{url->text().trimmed(), credential->text().trimmed()};
+        if (!Detail::validOnlineMapUrl(provider, updated.requestUrl))
+        {
+            error->setText(mapText(QStringLiteral("请输入符合上述格式的有效 HTTPS URL。")));
+            error->show();
+            url->setFocus();
+            return;
+        }
+        if (!Detail::validOnlineMapCredential(updated.credential))
+        {
+            error->setText(mapText(QStringLiteral("请输入有效的 Key 或 Token，不能包含空白字符。")));
+            error->show();
+            credential->setFocus();
+            return;
+        }
+        if (!(updated == current)) Detail::saveOnlineMapResource(provider, updated);
+        dialog.accept();
+    });
+    dialog.resize(600, dialog.sizeHint().height());
+    (current.credential.isEmpty() ? credential : url)->setFocus();
+    return dialog.exec() == QDialog::Accepted;
+}
+
+void Map3DWindow::refreshOnlineMapResourceEditAction(QMenu* menu, const QString& objectName,
+                                                     OnlineMapProvider provider)
+{
+    auto* action = menu->findChild<QAction*>(objectName);
+    if (!action)
+    {
+        action = menu->addAction(QString());
+        action->setObjectName(objectName);
+        connect(action, &QAction::triggered, this, [this, provider]() {
+            if (!editOnlineMapResource(provider)) return;
+            if (provider == OnlineMapProvider::Cesium)
+            {
+                if (view_ && (dem_source_.isEmpty() || dem_source_ == QStringLiteral("online:cesium")))
+                    view_->setDemSource(dem_source_);
+                refreshDemSourceMenu();
+            }
+            else
+            {
+                if (satellite_imagery_source_ == onlineMapImagerySource(provider)
+                    || (provider == OnlineMapProvider::Tianditu && satellite_imagery_source_.isEmpty()))
+                    applySelectedSatelliteImagery(true);
+                refreshSatelliteImageryMenu();
+            }
+        });
+    }
+    action->setText(mapText(QStringLiteral("配置 %1")).arg(onlineMapProviderName(provider)));
+}
+
 void Map3DWindow::selectSatelliteImagerySource(const QString& source)
 {
     if (VaporView::settingsWritesSuspended())
@@ -3086,6 +3181,13 @@ void Map3DWindow::selectSatelliteImagerySource(const QString& source)
         statusBar()->showMessage(mapText(QStringLiteral("[界面测试] 已模拟影像模板加载；未访问外部资源。")), 6000);
         refreshSatelliteImageryMenu();
         return;
+    }
+    for (const auto provider : {OnlineMapProvider::Tianditu, OnlineMapProvider::Esri})
+    {
+        if (source != onlineMapImagerySource(provider) || onlineMapResourceConfigured(provider)) continue;
+        refreshSatelliteImageryMenu(); // Undo QAction's toggle until the user saves and selection succeeds.
+        if (!editOnlineMapResource(provider)) return;
+        break;
     }
     const QString previous = satellite_imagery_source_;
     const bool wasVisible = layerVisible(Map3DLayer::SatelliteImagery);
@@ -3162,6 +3264,11 @@ void Map3DWindow::selectDemSource(const QString& source)
         statusBar()->showMessage(mapText(QStringLiteral("[界面测试] 已模拟影像模板加载；未访问外部资源。")), 6000);
         refreshDemSourceMenu();
         return;
+    }
+    if (source == QStringLiteral("online:cesium") && !onlineMapResourceConfigured(OnlineMapProvider::Cesium))
+    {
+        refreshDemSourceMenu();
+        if (!editOnlineMapResource(OnlineMapProvider::Cesium)) return;
     }
     dem_source_ = source;
     if (!source.isEmpty() && !layerVisible(Map3DLayer::DigitalElevation))
@@ -3370,12 +3477,12 @@ bool Map3DWindow::applyConfiguredTiandituSatelliteImagery(bool showStatusMessage
         return false;
     }
 
-    const QString key = configuredTiandituKey();
-    if (key.isEmpty())
+    const auto resource = configuredOnlineMapResource(OnlineMapProvider::Tianditu);
+    if (!isOnlineMapResourceConfigured(OnlineMapProvider::Tianditu, resource))
     {
         if (hadTiandituLayer)
         {
-            view_->applyTiandituSatelliteImagery(QString());
+            view_->applyTiandituSatelliteImagery({}, {});
             latest_earth_load_ = view_->earthLoadDiagnostics();
             updateStatus(nullptr, true);
         }
@@ -3386,7 +3493,7 @@ bool Map3DWindow::applyConfiguredTiandituSatelliteImagery(bool showStatusMessage
         return false;
     }
 
-    tianditu_satellite_imagery_loaded_ = view_->applyTiandituSatelliteImagery(key);
+    tianditu_satellite_imagery_loaded_ = view_->applyTiandituSatelliteImagery(resource.requestUrl, resource.credential);
     latest_earth_load_ = view_->earthLoadDiagnostics();
     if (tianditu_satellite_imagery_loaded_ && sentinel2_auto_load_timer_)
     {
@@ -3425,8 +3532,8 @@ bool Map3DWindow::applySelectedSatelliteImagery(bool showStatusMessage)
     }
     if (satellite_imagery_source_ == QStringLiteral("online:esri"))
     {
-        const QString esriKey = map3DSettings().value(QStringLiteral("esriApiKey")).toString().trimmed();
-        const bool loaded = view_->applyEsriWorldImagery(esriKey);
+        const auto resource = configuredOnlineMapResource(OnlineMapProvider::Esri);
+        const bool loaded = view_->applyEsriWorldImagery(resource.requestUrl, resource.credential);
         if (loaded) tianditu_satellite_imagery_loaded_ = false;
         if (showStatusMessage)
             statusBar()->showMessage(loaded
@@ -4436,10 +4543,9 @@ void Map3DWindow::refreshSatelliteImageryMenu()
             selectSatelliteImagerySource(QStringLiteral("online:tianditu"));
         });
     }
-    const bool onlineAvailable = !configuredTiandituKey().isEmpty();
+    const bool onlineAvailable = onlineMapResourceConfigured(OnlineMapProvider::Tianditu);
     online->setText(mapText(onlineAvailable ? QStringLiteral("在线 · 天地图卫星")
                                            : QStringLiteral("在线 · 天地图卫星（未配置 Key）")));
-    online->setEnabled(onlineAvailable);
     online->setChecked(satellite_imagery_source_ == QStringLiteral("online:tianditu"));
 
     auto* openAerialMap = local_imagery_menu_->findChild<QAction*>(QStringLiteral("map3DOnlineImagery_openaerialmap"));
@@ -4465,32 +4571,11 @@ void Map3DWindow::refreshSatelliteImageryMenu()
             selectSatelliteImagerySource(QStringLiteral("online:esri"));
         });
     }
-    const bool esriAvailable = !map3DSettings().value(QStringLiteral("esriApiKey")).toString().trimmed().isEmpty();
+    const bool esriAvailable = onlineMapResourceConfigured(OnlineMapProvider::Esri);
     esri->setText(mapText(esriAvailable ? QStringLiteral("在线 · Esri World Imagery")
                                        : QStringLiteral("在线 · Esri World Imagery（未配置 Key）")));
-    esri->setEnabled(esriAvailable);
     esri->setChecked(satellite_imagery_source_ == QStringLiteral("online:esri"));
-    auto* esriKeyAction = local_imagery_menu_->findChild<QAction*>(QStringLiteral("map3DEsriKeyAction"));
-    if (!esriKeyAction)
-    {
-        esriKeyAction = local_imagery_menu_->addAction(QString());
-        esriKeyAction->setObjectName(QStringLiteral("map3DEsriKeyAction"));
-        connect(esriKeyAction, &QAction::triggered, this, [this]() {
-            auto settings = map3DSettings();
-            bool accepted = false;
-            const QString key = QInputDialog::getText(this, mapText(QStringLiteral("设置 Esri Key")),
-                mapText(QStringLiteral("ArcGIS API Key")), QLineEdit::Password,
-                settings.value(QStringLiteral("esriApiKey")).toString(), &accepted).trimmed();
-            if (!accepted) return;
-            VaporView::setPersistentSetting(settings, QStringLiteral("esriApiKey"), key);
-            if (satellite_imagery_source_ == QStringLiteral("online:esri") && !key.isEmpty())
-                applySelectedSatelliteImagery(true);
-            else if (satellite_imagery_source_ == QStringLiteral("online:esri"))
-                selectSatelliteImagerySource(QStringLiteral("online:openaerialmap"));
-            refreshSatelliteImageryMenu();
-        });
-    }
-    esriKeyAction->setText(mapText(QStringLiteral("设置 Esri Key")));
+    refreshOnlineMapResourceEditAction(local_imagery_menu_, QStringLiteral("map3DEsriKeyAction"), OnlineMapProvider::Esri);
 
     for (const LocalImageryOption& option : map_selection_.diagnostics.localImageryOptions)
     {
@@ -4515,6 +4600,7 @@ void Map3DWindow::refreshSatelliteImageryMenu()
         action->setEnabled(available);
         action->setChecked(satellite_imagery_source_ == QStringLiteral("local:") + option.key);
     }
+    refreshOnlineMapResourceEditAction(local_imagery_menu_, QStringLiteral("map3DTiandituKeyAction"), OnlineMapProvider::Tianditu);
 }
 
 void Map3DWindow::refreshBaseMapSourceMenu()
@@ -4595,10 +4681,9 @@ void Map3DWindow::refreshDemSourceMenu()
 
     auto* onlineCesium = ensureAction(QStringLiteral("map3DDemSource_online_cesium"),
                                       QStringLiteral("online:cesium"));
-    const bool cesiumAvailable = !Detail::configuredCesiumToken().isEmpty();
+    const bool cesiumAvailable = onlineMapResourceConfigured(OnlineMapProvider::Cesium);
     onlineCesium->setText(mapText(cesiumAvailable ? QStringLiteral("在线 · Cesium World Terrain")
                                                   : QStringLiteral("在线 · Cesium World Terrain（未配置 Token）")));
-    onlineCesium->setEnabled(cesiumAvailable);
 
     auto* builtinEtopo = ensureAction(QStringLiteral("map3DDemSource_builtin_etopo2022"),
                                       QStringLiteral("builtin:etopo2022"));
@@ -4607,6 +4692,7 @@ void Map3DWindow::refreshDemSourceMenu()
     builtinEtopo->setText(mapText(etopoAvailable ? QStringLiteral("内置 · 全球粗 DEM (ETOPO 2022)")
                                                  : QStringLiteral("内置 · 全球粗 DEM (ETOPO 2022)（缺少数据）")));
     builtinEtopo->setEnabled(etopoAvailable);
+    refreshOnlineMapResourceEditAction(dem_source_menu_, QStringLiteral("map3DCesiumTokenAction"), OnlineMapProvider::Cesium);
 }
 
 void Map3DWindow::refreshOsmSourceMenu()
