@@ -22,6 +22,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <iostream>
+#include <optional>
 
 namespace
 {
@@ -440,6 +441,8 @@ void testSensorCsvLoadingAndTrackFiltering()
                 result.data.track_points.last().has_speed &&
                 result.data.track_points.last().cumulative_distance_m > 0.0,
             "accepted track points retain distance and speed state");
+    require(!result.data.track_points.first().has_lidar_distance,
+            "sensor CSV without lidar columns still loads a track without a distance");
 
     const QStringList quoted = VaporView::Ground::SessionCsv::parseCsvLine(
         QStringLiteral("plain,\"quoted, field\",\"escaped \"\"quote\"\"\""));
@@ -447,6 +450,46 @@ void testSensorCsvLoadingAndTrackFiltering()
                                   QStringLiteral("quoted, field"),
                                   QStringLiteral("escaped \"quote\"")},
             "CSV parser preserves commas and escaped quotes");
+}
+
+void testSensorCsvTrackLidarDistance()
+{
+    QTemporaryDir sessionDir;
+    require(sessionDir.isValid(), "temporary lidar session directory is available");
+    VaporView::Ground::SessionMetadata metadata;
+    metadata.sensorSummaryCsvFilename = sessionDir.filePath(QStringLiteral("devices.csv"));
+    const auto checkDistance = [&](const QByteArray& headers, const QByteArray& fields,
+                                   std::optional<double> expected, const char *message) {
+        writeBytes(metadata.sensorSummaryCsvFilename,
+                   "record_timestamp_us,nav_lat_deg,nav_lon_deg," + headers + "\n1000000,30,120," + fields + '\n');
+        const auto result = VaporView::Ground::SessionLoader::loadSensors(metadata);
+        require(result.success && result.fileAvailable && result.data.track_points.size() == 1,
+                "lidar fixture loads one navigation point regardless of distance validity");
+        const auto& point = result.data.track_points.first();
+        require(point.has_lidar_distance == expected.has_value() &&
+                    (!expected || point.lidar_distance_m == *expected), message);
+    };
+
+    const QByteArray sdfm300 = "sdfm300_distance_m,sdfm300_valid";
+    checkDistance(sdfm300, "4.25,1", 4.25, "SDFM300 valid reading is kept in metres");
+    checkDistance(sdfm300, "4.25,0", std::nullopt, "false validity rejects a positive distance");
+    checkDistance(sdfm300, "4.25,", std::nullopt, "empty validity rejects a positive distance");
+    checkDistance(sdfm300, "-1,1", std::nullopt, "negative distance is rejected");
+    checkDistance(sdfm300, ",1", std::nullopt, "empty distance is rejected");
+    checkDistance(sdfm300, "NaN,1", std::nullopt, "NaN distance is rejected");
+    checkDistance(sdfm300, "inf,1", std::nullopt, "infinite distance is rejected");
+    checkDistance("sdfm300_distance_m", "0", 0.0, "zero distance is valid without a flag column");
+
+    const QByteArray legacy = "lidar_distance_m,lidar_valid";
+    checkDistance(legacy, "8.5,true", 8.5, "legacy lidar reading is kept in metres");
+    checkDistance(legacy, "8.5,false", std::nullopt, "legacy validity flag is respected");
+    checkDistance("lidar_distance_m", "8.5", 8.5, "legacy distance is accepted without a flag column");
+    checkDistance(legacy + ',' + sdfm300, "8.5,true,4.25,1", 4.25,
+                  "SDFM300 takes precedence over legacy lidar");
+    checkDistance(legacy + ',' + sdfm300, "8.5,true,4.25,0", std::nullopt,
+                  "legacy lidar cannot override invalid SDFM300");
+    checkDistance(legacy + ",sdfm300_distance_m", "8.5,false,4.25", 4.25,
+                  "legacy validity applies only to the legacy distance");
 }
 
 void testSessionTrajectoryRenderLoaderUsesCsvRowAlignment()
@@ -812,6 +855,7 @@ int main(int argc, char *argv[])
     testManifestlessAndDualPathSessionCompatibility();
     testRecordingSessionLayout();
     testSensorCsvLoadingAndTrackFiltering();
+    testSensorCsvTrackLidarDistance();
     testSessionTrajectoryRenderLoaderUsesCsvRowAlignment();
     testLegacyWaveformCatalogAndPeakCache();
     testIndexedWaveformCatalog();

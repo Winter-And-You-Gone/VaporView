@@ -35,6 +35,8 @@ struct SessionTrackPoint
     bool has_humidity = false;
     bool has_pressure = false;
     bool has_waveform_match = false;
+    double lidar_distance_m = 0.0;
+    bool has_lidar_distance = false;
 };
 
 struct SessionTrackStats

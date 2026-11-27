@@ -236,6 +236,13 @@ SessionSensorLoadResult SessionLoader::loadSensors(
             ? QStringList{QStringLiteral("ptb_pressure_hpa"), QStringLiteral("baro_hpa"), QStringLiteral("baro_pa")}
             : QStringList{QStringLiteral("ptb_pressure_hpa")});
 
+    const int sdfm300DistanceIndex = findHeaderIndex(data.headers, {QStringLiteral("sdfm300_distance_m")});
+    const int lidarDistanceIndex = sdfm300DistanceIndex >= 0
+        ? sdfm300DistanceIndex : findHeaderIndex(data.headers, {QStringLiteral("lidar_distance_m")});
+    const int lidarValidIndex = findHeaderIndex(data.headers, {
+        sdfm300DistanceIndex >= 0 ? QStringLiteral("sdfm300_valid") : QStringLiteral("lidar_valid")
+    });
+
     data.rows.reserve(static_cast<int>(
         std::min<quint64>(metadata.sensorRows > 0 ? metadata.sensorRows : 256ULL, 50000ULL)));
     while (!stream.atEnd())
@@ -358,6 +365,16 @@ SessionSensorLoadResult SessionLoader::loadSensors(
                 {
                     point.pressure_hpa = pressureValue;
                     point.has_pressure = true;
+                }
+                if (lidarDistanceIndex >= 0 &&
+                    (lidarValidIndex < 0 || parseBooleanCsvField(csvValueAt(fields, lidarValidIndex))))
+                {
+                    const double distance = parseOptionalDouble(csvValueAt(fields, lidarDistanceIndex));
+                    if (std::isfinite(distance) && distance >= 0.0)
+                    {
+                        point.lidar_distance_m = distance;
+                        point.has_lidar_distance = true;
+                    }
                 }
                 const double height = parseOptionalDouble(csvValueAt(fields, navHeightIndex));
                 if (std::isfinite(height))
