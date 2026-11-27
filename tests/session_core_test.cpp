@@ -530,16 +530,16 @@ void testSessionTrajectoryRenderLoaderUsesCsvRowAlignment()
             "render-loader keeps explicit CSV row mapping after rejected rows");
     require(std::abs(result.samples[0].navigation.latDeg - 30.0000100) < 1.0e-9,
             "render-loader navigation sample is looked up by CSV row");
-    require(result.samples[0].heat.temperatureC.has_value()
-                && std::abs(result.samples[0].heat.temperatureC.value() - 21.5) < 1.0e-9,
+    require(std::isfinite(result.samples[0].heat.temperatureC)
+                && std::abs(result.samples[0].heat.temperatureC - 21.5) < 1.0e-9,
             "render-loader temperature is not shifted by rejected rows");
-    require(result.samples[0].heat.humidityRh.has_value()
-                && std::abs(result.samples[0].heat.humidityRh.value() - 48.0) < 1.0e-9,
+    require(std::isfinite(result.samples[0].heat.humidityRh)
+                && std::abs(result.samples[0].heat.humidityRh - 48.0) < 1.0e-9,
             "render-loader humidity is not shifted by rejected rows");
-    require(result.samples[0].heat.pressureHpa.has_value()
-                && std::abs(result.samples[0].heat.pressureHpa.value() - 1001.2) < 1.0e-9,
+    require(std::isfinite(result.samples[0].heat.pressureHpa)
+                && std::abs(result.samples[0].heat.pressureHpa - 1001.2) < 1.0e-9,
             "render-loader pressure is not shifted by rejected rows");
-    require(!result.samples[0].heat.peak.has_value(),
+    require(!std::isfinite(result.samples[0].heat.peak),
             "render-loader leaves missing legacy peak data empty");
 }
 

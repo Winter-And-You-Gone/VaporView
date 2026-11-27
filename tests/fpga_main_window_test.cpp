@@ -2352,8 +2352,8 @@ static void harmonicHomeGraphs()
                 previous = bounds;
             }
             const QStringList headings = english
-                ? QStringList{"ADC 0 / DLIA 0 · 1368 nm (In-situ)", "ADC 1 / DLIA 1 · 816 nm (Remote)"}
-                : QStringList{"ADC 0 / DLIA 0 · 1368 nm（原位）", "ADC 1 / DLIA 1 · 816 nm（遥测）"};
+                ? QStringList{"ADC 0 / DLIA 0 · 1368 nm (In-situ)", "ADC 1 / DLIA 1 · 816 nm (Remote Column)"}
+                : QStringList{"ADC 0 / DLIA 0 · 1368 nm（原位）", "ADC 1 / DLIA 1 · 816 nm（遥测柱浓度）"};
             for (QWidget *view : {static_cast<QWidget *>(monitor), static_cast<QWidget *>(wavePage)}) {
                 QStringList actual;
                 for (auto *label : view->findChildren<QLabel *>("sectionTitleLabel")) actual << label->text();

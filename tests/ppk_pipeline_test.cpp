@@ -365,8 +365,8 @@ int runTest(int argc, char **argv)
     require(rendered.samples.front().navigation.navigationSource == "PPK" &&
                 std::abs(rendered.samples.front().navigation.latDeg - point.latitude) < 1e-8,
             "3D track uses same corrected coordinates");
-    require(std::abs(rendered.samples.front().heat.temperatureC.value_or(0) - 23.4) < 1e-6 &&
-                std::abs(rendered.samples.front().heat.humidityRh.value_or(0) - 45.6) < 1e-6,
+    require(std::abs(VaporView::Geo::metricValue(rendered.samples.front().heat, VaporView::Geo::HeatMetric::Temperature).value_or(0) - 23.4) < 1e-6 &&
+                std::abs(VaporView::Geo::metricValue(rendered.samples.front().heat, VaporView::Geo::HeatMetric::Humidity).value_or(0) - 45.6) < 1e-6,
             "heat measurement remains unchanged");
     const QString exported = root.filePath("export.csv");
     require(VaporView::Ground::SessionExportService::exportTrajectoryCsv(exported, corrected.data.track_points).success,
