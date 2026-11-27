@@ -88,6 +88,7 @@ void runHeatSlidingWindowCase()
         history.push_back(value);
     }
     layer.appendRenderSamples(history);
+    const int rebuilds = layer.segmentGeometryRebuildCount();
     layer.resetHeatRangeInstrumentation();
     for (int index = 0; index < kTailAppends; ++index)
     {
@@ -101,14 +102,15 @@ void runHeatSlidingWindowCase()
               << " heat_tail_appends=" << kTailAppends
               << " full_heat_range_scans=" << layer.heatRangeFullScanCount()
               << " incremental_heat_appends=" << layer.heatRangeIncrementalAppendCount()
+              << " segment_rebuilds=" << layer.segmentGeometryRebuildCount() - rebuilds
               << " heat_evictions=" << layer.heatRangeEvictionCount()
               << " retained_samples=" << layer.sampleCount()
               << '\n';
-    if (layer.heatRangeFullScanCount() != 0
+    if (layer.segmentGeometryRebuildCount() - rebuilds > 1 || layer.heatRangeFullScanCount() != 0
         || layer.heatRangeIncrementalAppendCount() != kTailAppends
         || layer.heatRangeEvictionCount() != kTailAppends)
     {
-        std::cerr << "FAIL: heat sliding-window append performed a full range scan\n";
+        std::cerr << "FAIL: heat sliding-window append exceeded the geometry or range update budget\n";
         std::exit(1);
     }
 }

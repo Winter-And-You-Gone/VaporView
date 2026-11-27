@@ -51,7 +51,7 @@ VaporView::Geo::TrajectoryRenderSample heatSample(int index,
 {
     VaporView::Geo::TrajectoryRenderSample value;
     value.navigation = sample(index);
-    value.heat.peak = peak;
+    if (peak) value.heat.peak = *peak;
     return value;
 }
 
@@ -113,10 +113,148 @@ bool nearlyEqual(double lhs, double rhs, double tolerance = 1.0e-9)
     return std::abs(lhs - rhs) <= tolerance;
 }
 
+void checkSlidingHeatGeometry(const VaporView::Map3D::Trajectory3DLayer& layer, int first, int end)
+{
+    const auto* geode = dynamic_cast<const osg::Geode*>(layer.node());
+    require(geode != nullptr, "sliding window has a geode");
+    int edgeEnd = first + 1;
+    int point = first;
+    for (unsigned int i = 0; i < geode->getNumDrawables(); ++i)
+    {
+        const auto* geometry = geode->getDrawable(i)->asGeometry();
+        require(geometry && geometry->getNumPrimitiveSets() == 1, "one draw range per heat geometry");
+        const auto* draw = dynamic_cast<const osg::DrawArrays*>(geometry->getPrimitiveSet(0));
+        const auto* values = dynamic_cast<const osg::FloatArray*>(geometry->getVertexAttribArray(6));
+        const auto* valid = dynamic_cast<const osg::FloatArray*>(geometry->getVertexAttribArray(7));
+        const auto* vertices = dynamic_cast<const osg::Vec3dArray*>(geometry->getVertexArray());
+        require(draw && values && valid && vertices && values->size() == valid->size()
+                    && values->size() == vertices->size() && values->size() == geometry->getColorArray()->getNumElements()
+                    && draw->getFirst() >= 0 && draw->getCount() >= 0
+                    && static_cast<std::size_t>(draw->getFirst() + draw->getCount()) <= values->size(),
+                "live draw ranges stay within synchronized attribute arrays");
+        const bool lines = draw->getMode() == osg::PrimitiveSet::LINES;
+        require(lines ? draw->getCount() % 2 == 0 : draw->getMode() == osg::PrimitiveSet::POINTS,
+                "heat geometry draws paired edges or points");
+        for (int offset = 0; offset < draw->getCount(); ++offset)
+        {
+            const int index = draw->getFirst() + offset;
+            const int expected = lines ? edgeEnd - 1 + (offset % 2) : point;
+            require((*values)[index] == expected && (*valid)[index] == 1.0f && (*vertices)[index].y() == expected,
+                    "retained draw ranges have neither duplicate vertices nor links to expired samples");
+            if (!lines) ++point;
+            else if (offset % 2 == 1) ++edgeEnd;
+        }
+    }
+    require(point == end && edgeEnd == end, "all retained points and edges were drawn");
+}
+
+void testRollingHeatSegments()
+{
+    VaporView::Map3D::Trajectory3DLayer layer;
+    constexpr int window = 4096;
+    constexpr int total = window * 2 + 115;
+    layer.setMaxVisibleSamples(window);
+    for (int index = 0; index < total; ++index)
+    {
+        auto value = heatSample(index, index);
+        value.heat.lidarDistanceM = index + 0.25;
+        value.heat.calibrationEpoch = 7;
+        layer.appendRenderSample(value);
+        if (index == window - 1)
+        {
+            layer.setSelectedSampleIndex(window - 1);
+            layer.setSelectedMarkerHovered(true);
+        }
+        if (index == window * 2 - 2)
+            require(layer.selectedSampleIndex() == 0, "selection follows its sample to the front");
+        if (index == window * 2 - 1 || index == total - 1)
+        {
+            const int first = index + 1 - window;
+            const auto range = layer.heatRange();
+            require(layer.sampleCount() == window && layer.sphereMarkerCount() == window
+                        && range.valid && range.validCount == window && range.minimum == first && range.maximum == index,
+                    "retiring an entire heat segment preserves the visible window and its extrema");
+            require(layer.selectedSampleIndex() == -1 && !layer.selectedMarkerHovered(), "expired selection clears");
+            checkSlidingHeatGeometry(layer, first, index + 1);
+            const auto pick = layer.pickNearestSample(osg::Matrixd::scale(1.0, 1.0, 0.05), first * 0.5, first, 0.1);
+            require(pick && pick->sampleIndex == 0 && pick->screenDistancePx == 0.0
+                        && pick->sample.recordTimestampUs == sample(first).recordTimestampUs
+                        && pick->renderSample.navigation.recordTimestampUs == pick->sample.recordTimestampUs
+                        && pick->renderSample.heat.peak == first && pick->renderSample.heat.lidarDistanceM == first + 0.25
+                        && pick->renderSample.heat.calibrationEpoch == 7,
+                    "pick returns the full frozen heat and navigation sample at the retained index");
+            const auto* geom = layer.node()->asGeode()->getDrawable(0)->asGeometry();
+            float minimum = 0, maximum = 0;
+            require(geom->getStateSet()->getUniform("vaporviewHeatMinimum")->get(minimum)
+                        && geom->getStateSet()->getUniform("vaporviewHeatMaximum")->get(maximum)
+                        && minimum == first && maximum == index, "GPU range follows eviction and append");
+        }
+    }
+    require(layer.segmentGeometryRebuildCount() <= 4, "live rebuilds scale with segments, including during eviction");
+}
+
+void testHeatCalibration()
+{
+    using VaporView::Geo::HeatMetric;
+    VaporView::Map3D::Trajectory3DLayer layer;
+    layer.setMaxVisibleSamples(4);
+    layer.setHeatMetric(HeatMetric::ColumnWaterConcentration);
+    layer.setHeatCalibrationEpochFilter(1);
+    auto measurement = [](int index, std::uint32_t epoch, double column) {
+        auto result = heatSample(index, index);
+        result.heat.calibrationEpoch = epoch;
+        result.heat.columnWaterConcentration = column;
+        result.heat.inSituWaterConcentration = column * 2;
+        result.heat.lidarDistanceM = index + 1;
+        return result;
+    };
+    layer.appendRenderSamples({measurement(0, 0, 900), measurement(1, 0, 800)});
+    require(layer.heatCalibrationEpochFilter() == 1 && layer.heatRenderingEnabled() && !layer.heatRange().valid,
+            "an all-old-epoch window uses the neutral heat renderer");
+    layer.appendRenderSample(measurement(2, 1, 0.00125));
+    auto invalid = measurement(3, 1, 0.0025);
+    invalid.navigation.fixQuality = VaporView::Geo::FixQuality::Invalid;
+    layer.appendRenderSample(invalid);
+    layer.appendRenderSample(measurement(4, 0, 700));
+    const auto range = layer.heatRange();
+    require(range.validCount == 2 && range.minimum == 0.00125 && range.maximum == 0.0025,
+            "old epoch does not enter the rolling extrema queues");
+    const auto* geode = layer.node()->asGeode();
+    const auto* points = geode->getDrawable(1)->asGeometry();
+    const auto* lines = geode->getDrawable(0)->asGeometry();
+    const auto* pointValid = dynamic_cast<const osg::FloatArray*>(points->getVertexAttribArray(7));
+    const auto* lineValid = dynamic_cast<const osg::FloatArray*>(lines->getVertexAttribArray(7));
+    const auto* lineColors = dynamic_cast<const osg::Vec4Array*>(lines->getColorArray());
+    const auto* pointColors = dynamic_cast<const osg::Vec4Array*>(points->getColorArray());
+    const auto neutral = VaporView::Geo::neutralHeatColor();
+    require(pointValid && pointValid->size() == 5 && (*pointValid)[1] == 0 && (*pointValid)[2] == 1
+                && (*pointValid)[3] == 1 && (*pointValid)[4] == 0 && pointColors && (*pointColors)[4].r() == neutral.r,
+            "incremental point attributes reject old epochs and preserve off-line markers");
+    require(primitiveStats(*lines).lineSegmentVertices == 2 && lineValid && lineValid->size() == 4
+                && (*lineValid)[2] == 0 && (*lineValid)[3] == 1 && lineColors && (*lineColors)[2].r() == neutral.r,
+            "line endpoints honor epochs and do not bridge invalid navigation fixes");
+    layer.setHeatRange(range);
+    layer.setHeatCalibrationEpochFilter(0);
+    require(layer.heatRange().validCount == 2 && layer.heatRange().minimum == 700 && layer.heatRange().maximum == 800,
+            "switching epochs discards the old override and recomputes the range");
+    layer.setHeatMetric(HeatMetric::InSituWaterConcentration);
+    require(layer.heatRange().validCount == 2 && layer.heatRange().maximum == 1600, "in-situ values honor the filter");
+    layer.setHeatCalibrationEpochFilter(std::nullopt);
+    require(layer.heatRange().validCount == 4 && layer.heatRange().minimum == 0.0025, "clearing filter restores all epochs");
+    layer.setHeatMetric(HeatMetric::LidarDistance);
+    const auto rebuilds = layer.segmentGeometryRebuildCount();
+    layer.setHeatCalibrationEpochFilter(99);
+    require(layer.heatRange().validCount == 4 && layer.heatRange().maximum == 5 && rebuilds == layer.segmentGeometryRebuildCount(),
+            "distance values and geometry ignore calibration filters");
+}
+
 } // namespace
 
 int main()
 {
+    testRollingHeatSegments();
+    testHeatCalibration();
+
     for (bool includeHeat : {false, true})
     {
         std::vector<VaporView::Geo::TrajectoryRenderSample> mixed;
@@ -522,8 +660,8 @@ int main()
             "heat range extends from incremental statistics without a full scan");
     require(heatLayer.fullRebuildCount() == heatFullRebuildsBeforeAppend,
             "heat append updates only the tail geometry when the range changes");
-    require(heatLayer.segmentGeometryRebuildCount() == heatSegmentRebuildsBeforeAppend + 1,
-            "heat append rebuilds exactly the affected tail segment");
+    require(heatLayer.segmentGeometryRebuildCount() == heatSegmentRebuildsBeforeAppend,
+            "heat append extends the tail arrays in place");
     heatLayer.setHeatMetric(VaporView::Geo::HeatMetric::Temperature);
     require(heatLayer.heatRange().validCount == 3
                 && nearlyEqual(heatLayer.heatRange().minimum, 10.0)

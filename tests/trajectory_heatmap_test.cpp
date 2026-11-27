@@ -45,6 +45,9 @@ int main()
 {
     using namespace VaporView::Geo;
 
+    static_assert(static_cast<int>(HeatMetric::Peak) == 0 && static_cast<int>(HeatMetric::Humidity) == 1
+                  && static_cast<int>(HeatMetric::Temperature) == 2 && static_cast<int>(HeatMetric::Pressure) == 3);
+    static_assert(sizeof(TrajectoryHeatValues) <= 64);
     require(heatMetricName(HeatMetric::Peak, true) == QStringLiteral("Peak")
                 && heatMetricName(HeatMetric::Peak, false) == QStringLiteral("峰值"),
             "peak label");
@@ -67,6 +70,28 @@ int main()
     require(heatMetricUnit(HeatMetric::Humidity) == QStringLiteral("%RH"), "humidity unit");
     require(heatMetricUnit(HeatMetric::Temperature) == QStringLiteral("°C"), "temperature unit");
     require(heatMetricUnit(HeatMetric::Pressure) == QStringLiteral("hPa"), "pressure unit");
+
+    require(heatMetricName(HeatMetric::ColumnWaterConcentration, false) == QStringLiteral("水汽柱浓度（遥测）")
+                && heatMetricName(HeatMetric::ColumnWaterConcentration, true) == QStringLiteral("Column Water Vapor")
+                && heatMetricName(HeatMetric::InSituWaterConcentration, false) == QStringLiteral("原位水汽浓度")
+                && heatMetricName(HeatMetric::InSituWaterConcentration, true) == QStringLiteral("In-situ Water Vapor")
+                && heatMetricName(HeatMetric::LidarDistance, false) == QStringLiteral("测距距离")
+                && heatMetricName(HeatMetric::LidarDistance, true) == QStringLiteral("Lidar Distance"),
+            "new heat metric names");
+    for (const auto metric : {HeatMetric::ColumnWaterConcentration, HeatMetric::InSituWaterConcentration})
+    {
+        require(isWaterConcentrationMetric(metric) && heatMetricUnit(metric) == QStringLiteral("ppm")
+                    && heatMetricUnit(metric, QStringLiteral("mol/mol")) == QStringLiteral("mol/mol"),
+                "calibration overrides concentration units");
+    }
+    require(!isWaterConcentrationMetric(HeatMetric::LidarDistance)
+                && heatMetricUnit(HeatMetric::LidarDistance, QStringLiteral("ppm")) == QStringLiteral("m"),
+            "distance always uses metres");
+    for (const double value : {0.00125, 1.2e-5})
+        require(formatHeatValue(value).toDouble() == value, "small concentrations retain precision");
+    require(formatHeatValue(std::numeric_limits<double>::infinity()) == QStringLiteral("—")
+                && formatHeatValue(std::numeric_limits<double>::quiet_NaN()) == QStringLiteral("—"),
+            "nonfinite values have a missing-data label");
 
     TrajectoryHeatValues values;
     values.peak = 4.5;
@@ -97,6 +122,39 @@ int main()
                 && !metricValue(nonFinite, HeatMetric::Humidity).has_value()
                 && !metricValue(nonFinite, HeatMetric::Temperature).has_value(),
             "non-finite values are ignored");
+
+    require(!metricValue(missing, HeatMetric::ColumnWaterConcentration)
+                && !metricValue(missing, HeatMetric::InSituWaterConcentration)
+                && !metricValue(missing, HeatMetric::LidarDistance) && missing.calibrationEpoch == 0,
+            "new fields default to missing at epoch zero");
+    std::vector<TrajectoryRenderSample> measurements(3);
+    measurements[0].heat.columnWaterConcentration = 1000.0;
+    measurements[0].heat.inSituWaterConcentration = 950.0;
+    measurements[0].heat.lidarDistanceM = 3.0;
+    measurements[1].heat.calibrationEpoch = 1;
+    measurements[1].heat.columnWaterConcentration = 0.00125;
+    measurements[1].heat.inSituWaterConcentration = 1.2e-5;
+    measurements[2].heat.calibrationEpoch = 1;
+    measurements[2].heat.columnWaterConcentration = 0.0025;
+    measurements[2].heat.inSituWaterConcentration = -std::numeric_limits<double>::infinity();
+    measurements[2].heat.lidarDistanceM = std::numeric_limits<double>::infinity();
+    const std::optional<std::uint32_t> epoch = 1;
+    require(!metricValueForEpoch(measurements[0], HeatMetric::ColumnWaterConcentration, epoch)
+                && !metricValueForEpoch(measurements[0], HeatMetric::InSituWaterConcentration, epoch)
+                && metricValueForEpoch(measurements[0], HeatMetric::LidarDistance, epoch) == 3.0
+                && metricValueForEpoch(measurements[1], HeatMetric::InSituWaterConcentration, epoch) == 1.2e-5
+                && !metricValue(measurements[2], HeatMetric::LidarDistance)
+                && !metricValue(measurements[2], HeatMetric::InSituWaterConcentration),
+            "only finite concentrations from the selected calibration are valid");
+    const auto filtered = calculateHeatRange(measurements, HeatMetric::ColumnWaterConcentration, epoch);
+    const auto filteredPrefix = calculateHeatRange(measurements, HeatMetric::ColumnWaterConcentration, 2, epoch);
+    const auto filteredValues = calculateHeatRange(std::vector<TrajectoryHeatValues>{measurements[0].heat, measurements[1].heat},
+                                                   HeatMetric::ColumnWaterConcentration, epoch);
+    require(filteredValues.validCount == 1 && filteredValues.maximum == 0.00125, "standalone heat values honor the epoch");
+    require(filtered.valid && filtered.validCount == 2 && filtered.minimum == 0.00125 && filtered.maximum == 0.0025
+                && filteredPrefix.validCount == 1 && filteredPrefix.maximum == 0.00125
+                && calculateHeatRange(measurements, HeatMetric::ColumnWaterConcentration, std::nullopt).maximum == 1000.0,
+            "prefix and whole-track ranges honor the epoch independently of the unit scale");
 
     TrajectoryHeatValues first;
     first.temperatureC = 10.0;

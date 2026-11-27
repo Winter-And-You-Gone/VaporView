@@ -111,7 +111,19 @@ HeatColor colorAtStops(double normalized,
     return toHeatColor(stops.back().color);
 }
 
+bool matchesCalibration(const TrajectoryHeatValues& values, HeatMetric metric,
+                        std::optional<std::uint32_t> epoch)
+{
+    return !epoch || !isWaterConcentrationMetric(metric) || values.calibrationEpoch == *epoch;
+}
+
 } // namespace
+
+bool isWaterConcentrationMetric(HeatMetric metric)
+{
+    return metric == HeatMetric::ColumnWaterConcentration
+        || metric == HeatMetric::InSituWaterConcentration;
+}
 
 QString heatMetricName(HeatMetric metric, bool english)
 {
@@ -123,6 +135,12 @@ QString heatMetricName(HeatMetric metric, bool english)
         return english ? QStringLiteral("Temperature") : QStringLiteral("温度");
     case HeatMetric::Pressure:
         return english ? QStringLiteral("Pressure") : QStringLiteral("气压");
+    case HeatMetric::ColumnWaterConcentration:
+        return english ? QStringLiteral("Column Water Vapor") : QStringLiteral("水汽柱浓度（遥测）");
+    case HeatMetric::InSituWaterConcentration:
+        return english ? QStringLiteral("In-situ Water Vapor") : QStringLiteral("原位水汽浓度");
+    case HeatMetric::LidarDistance:
+        return english ? QStringLiteral("Lidar Distance") : QStringLiteral("测距距离");
     case HeatMetric::Peak:
     default:
         return english ? QStringLiteral("Peak") : QStringLiteral("峰值");
@@ -145,6 +163,11 @@ QString heatPaletteName(HeatPalette palette, bool english)
 
 QString heatMetricUnit(HeatMetric metric)
 {
+    return heatMetricUnit(metric, {});
+}
+
+QString heatMetricUnit(HeatMetric metric, const QString& waterUnitOverride)
+{
     switch (metric)
     {
     case HeatMetric::Humidity:
@@ -153,44 +176,73 @@ QString heatMetricUnit(HeatMetric metric)
         return QStringLiteral("°C");
     case HeatMetric::Pressure:
         return QStringLiteral("hPa");
+    case HeatMetric::ColumnWaterConcentration:
+    case HeatMetric::InSituWaterConcentration:
+        return waterUnitOverride.isEmpty() ? QStringLiteral("ppm") : waterUnitOverride;
+    case HeatMetric::LidarDistance:
+        return QStringLiteral("m");
     case HeatMetric::Peak:
     default:
         return {};
     }
 }
 
+QString formatHeatValue(double value)
+{
+    return std::isfinite(value) ? QString::number(value, 'g', 6) : QStringLiteral("—");
+}
+
 std::optional<double> metricValue(const TrajectoryHeatValues& values,
                                   HeatMetric metric)
 {
-    const std::optional<double>* selected = nullptr;
+    double selected;
     switch (metric)
     {
     case HeatMetric::Humidity:
-        selected = &values.humidityRh;
+        selected = values.humidityRh;
         break;
     case HeatMetric::Temperature:
-        selected = &values.temperatureC;
+        selected = values.temperatureC;
         break;
     case HeatMetric::Pressure:
-        selected = &values.pressureHpa;
+        selected = values.pressureHpa;
+        break;
+    case HeatMetric::ColumnWaterConcentration:
+        selected = values.columnWaterConcentration;
+        break;
+    case HeatMetric::InSituWaterConcentration:
+        selected = values.inSituWaterConcentration;
+        break;
+    case HeatMetric::LidarDistance:
+        selected = values.lidarDistanceM;
         break;
     case HeatMetric::Peak:
     default:
-        selected = &values.peak;
+        selected = values.peak;
         break;
     }
 
-    if (!selected->has_value() || !std::isfinite(selected->value()))
+    if (!std::isfinite(selected))
     {
         return std::nullopt;
     }
-    return selected->value();
+    return selected;
 }
 
 std::optional<double> metricValue(const TrajectoryRenderSample& sample,
                                   HeatMetric metric)
 {
     return metricValue(sample.heat, metric);
+}
+
+std::optional<double> metricValueForEpoch(const TrajectoryRenderSample& sample, HeatMetric metric,
+                                          std::optional<std::uint32_t> requiredCalibrationEpoch)
+{
+    if (!matchesCalibration(sample.heat, metric, requiredCalibrationEpoch))
+    {
+        return std::nullopt;
+    }
+    return metricValue(sample, metric);
 }
 
 void accumulateHeatRange(HeatRange& range, std::optional<double> value)
@@ -224,10 +276,17 @@ void accumulateHeatRange(HeatRange& range,
 HeatRange calculateHeatRange(const std::vector<TrajectoryHeatValues>& values,
                              HeatMetric metric)
 {
+    return calculateHeatRange(values, metric, std::nullopt);
+}
+
+HeatRange calculateHeatRange(const std::vector<TrajectoryHeatValues>& values, HeatMetric metric,
+                             std::optional<std::uint32_t> requiredCalibrationEpoch)
+{
     HeatRange range;
     for (const TrajectoryHeatValues& sampleValues : values)
     {
-        accumulateHeatRange(range, sampleValues, metric);
+        if (matchesCalibration(sampleValues, metric, requiredCalibrationEpoch))
+            accumulateHeatRange(range, sampleValues, metric);
     }
     return range;
 }
@@ -240,13 +299,28 @@ HeatRange calculateHeatRange(const std::vector<TrajectoryRenderSample>& samples,
 
 HeatRange calculateHeatRange(const std::vector<TrajectoryRenderSample>& samples,
                              HeatMetric metric,
+                             std::optional<std::uint32_t> requiredCalibrationEpoch)
+{
+    return calculateHeatRange(samples, metric, samples.size(), requiredCalibrationEpoch);
+}
+
+HeatRange calculateHeatRange(const std::vector<TrajectoryRenderSample>& samples,
+                             HeatMetric metric,
                              std::size_t count)
+{
+    return calculateHeatRange(samples, metric, count, std::nullopt);
+}
+
+HeatRange calculateHeatRange(const std::vector<TrajectoryRenderSample>& samples,
+                             HeatMetric metric,
+                             std::size_t count,
+                             std::optional<std::uint32_t> requiredCalibrationEpoch)
 {
     HeatRange range;
     const std::size_t sampleCount = std::min(count, samples.size());
     for (std::size_t index = 0; index < sampleCount; ++index)
     {
-        accumulateHeatRange(range, samples[index].heat, metric);
+        accumulateHeatRange(range, metricValueForEpoch(samples[index], metric, requiredCalibrationEpoch));
     }
     return range;
 }

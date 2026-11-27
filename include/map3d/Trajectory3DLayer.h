@@ -38,6 +38,7 @@ struct TrajectoryQualityStats {
 struct TrajectoryPickResult {
     int sampleIndex = -1;
     VaporView::Geo::NavSample sample;
+    VaporView::Geo::TrajectoryRenderSample renderSample;
     double screenDistancePx = 0.0;
 };
 
@@ -56,6 +57,8 @@ public:
     void setMaxVisibleSamples(int maxVisibleSamples);
     void setHeatMetric(VaporView::Geo::HeatMetric metric);
     VaporView::Geo::HeatMetric heatMetric() const;
+    void setHeatCalibrationEpochFilter(std::optional<std::uint32_t> epoch);
+    std::optional<std::uint32_t> heatCalibrationEpochFilter() const;
     void setHeatPalette(VaporView::Geo::HeatPalette palette);
     VaporView::Geo::HeatPalette heatPalette() const;
     void setHeatRange(const VaporView::Geo::HeatRange& range);
@@ -103,6 +106,7 @@ private:
         int firstSampleIndex = 0;
         int sampleCount = 0;
         int sphereMarkerCount = 0;
+        int retiredHeatSamples = 0; // Bound the backing arrays even when one segment spans the window.
         bool hasLineDiscontinuity = false;
         osg::ref_ptr<osg::Geometry> geometry;
         osg::ref_ptr<osg::Geometry> sphereGeometry;
@@ -118,12 +122,14 @@ private:
                                 const VaporView::Geo::HeatRange& heatRange);
     bool appendLineSampleGeometry(TrajectorySegment& segment, int sampleIndex);
     bool appendSphereMarkerGeometry(TrajectorySegment& segment, int sampleIndex);
+    bool appendHeatGeometry(osg::Geometry& geometry, GLenum mode, int first, int end,
+                            const VaporView::Geo::HeatRange& heatRange) const;
     void configureGeometryState(osg::Geometry& geometry);
     void configureSphereMarkerState(osg::Geometry& geometry);
     void updateSelectedMarkerGeometry();
     void updateSelectedHaloUniforms();
     void appendSegment();
-    void trimToVisibleLimit();
+    void evictOldestSampleData();
     void removeOldestSample();
     void adjustQualityStats(int index, int delta);
     void appendHeatStatistics(const VaporView::Geo::TrajectoryRenderSample& sample,
@@ -141,6 +147,8 @@ private:
     bool segmentIsVisible(const TrajectorySegment& segment) const;
     void applySegmentVisibility();
     VaporView::Geo::HeatRange resolvedHeatRange() const;
+    bool filteringWaterMetric() const;
+    void rebuildHeatMetric();
     void invalidateHeatRange();
     void recomputeHeatRange();
     void updateHeatRenderingState();
@@ -163,6 +171,7 @@ private:
     bool heat_rendering_enabled_ = false;
     VaporView::Geo::HeatMetric heat_metric_ = VaporView::Geo::HeatMetric::Peak;
     VaporView::Geo::HeatPalette heat_palette_ = VaporView::Geo::HeatPalette::Candy;
+    std::optional<std::uint32_t> heat_calibration_epoch_filter_;
     std::optional<VaporView::Geo::HeatRange> heat_range_override_;
     VaporView::Geo::HeatRange heat_range_cache_;
     bool heat_range_cache_valid_ = false;
