@@ -118,6 +118,12 @@ osgEarth::GeoImage readCredentialedImageryTile(OnlineMapProvider provider, const
                                               const osgEarth::TileKey& key, osgEarth::ProgressCallback* progress)
 {
     const auto request = credentialedImageryRequest(provider, resource, key.getLOD(), key.getTileX(), key.getTileY());
+    return readMapImageryTile(request, key, progress);
+}
+
+osgEarth::GeoImage readMapImageryTile(const QNetworkRequest& request, const osgEarth::TileKey& key,
+                                     osgEarth::ProgressCallback* progress)
+{
     const auto tile = mapHttpGet(request, progress);
     const QImage image = QImage::fromData(tile.body).convertToFormat(QImage::Format_RGBA8888);
     if (image.isNull()) return osgEarth::GeoImage::INVALID;

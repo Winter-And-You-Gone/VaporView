@@ -204,6 +204,7 @@ private:
     QString session_track_note_;
     QLabel* status_label_ = nullptr;
     QLabel* esri_attribution_ = nullptr;
+    QLabel* eox_attribution_ = nullptr;
     QLabel* cesium_attribution_ = nullptr;
     QLabel* osm_attribution_ = nullptr;
     QLabel* heat_legend_label_ = nullptr;

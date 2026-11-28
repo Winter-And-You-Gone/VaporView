@@ -15,6 +15,7 @@
 #include "map3d/TiandituImageLayer.h"
 #include "map3d/CesiumTerrain.h"
 #include "map3d/OpenAerialMapImageLayer.h"
+#include "map3d/EoxSentinel2ImageLayer.h"
 #include "map3d/OnlineOsmLayer.h"
 #include "map3d/MapLayerRemoval.h"
 #include <osgEarth/Map>
@@ -371,6 +372,23 @@ QSettings map3DTestSettings()
                      QSettings::UserScope,
                      QStringLiteral("VaporView"),
                      QStringLiteral("Map3D"));
+}
+
+void checkEoxSelectionPersistence()
+{
+    qputenv("VAPORVIEW_MAP3D_HEADLESS_TEST", "1");
+    auto settings = map3DTestSettings();
+    settings.remove(QStringLiteral("satelliteImagerySource"));
+    VaporView::Map3D::Map3DWindow window;
+    auto* action = window.findChild<QAction*>(QStringLiteral("map3DOnlineImagery_eoxSentinel2_2024"));
+    require(action && action->isEnabled() && action->isCheckable(),
+            "EOX imagery selection action is available in the real menu path");
+    action->trigger();
+    require(action->isChecked()
+                && settings.value(QStringLiteral("satelliteImagerySource")).toString()
+                       == QStringLiteral("online:eox_sentinel2_2024"),
+            "EOX imagery selection persists through the map source path");
+    settings.remove(QStringLiteral("satelliteImagerySource"));
 }
 
 bool waitForSessionDirectory(const QString& path, int timeoutMs)
@@ -1045,6 +1063,10 @@ int main(int argc, char** argv)
         checkOnlineResourceEditor();
         return 0;
     }
+    if (app.arguments().contains(QStringLiteral("--eox-selection-only"))) {
+        checkEoxSelectionPersistence();
+        return 0;
+    }
     if (app.arguments().contains(QStringLiteral("--osm-live")))
     {
         checkOsmOverlays(true);
@@ -1071,6 +1093,22 @@ int main(int argc, char** argv)
             "session chooser does not default to the release data directory");
 
     checkImageryFallback();
+    {
+        const auto eoxUrl = VaporView::Map3D::Detail::eoxSentinel2TileRequest(
+            osgEarth::TileKey(12, 3414, 1686, osgEarth::Profile::create(osgEarth::Profile::SPHERICAL_MERCATOR)));
+        require(eoxUrl.url().toString() == QStringLiteral(
+                    "https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2024_3857/default/g/12/1686/3414.jpg"),
+                "EOX Sentinel-2 uses the WMTS row/column y/x ordering");
+        require(VaporView::Map3D::Detail::eoxSentinel2TileRequest(
+                    osgEarth::TileKey(19, 0, 0, osgEarth::Profile::create(osgEarth::Profile::SPHERICAL_MERCATOR)))
+                    .url().isEmpty(),
+                "EOX Sentinel-2 rejects levels above the 2024 service coverage");
+        require(QString::fromLatin1(VaporView::Map3D::Detail::kEoxSentinel2Attribution)
+                    .contains(QStringLiteral("Contains modified Copernicus Sentinel data 2024"))
+                    && QString::fromLatin1(VaporView::Map3D::Detail::kEoxSentinel2UsageUrl)
+                           == QStringLiteral("https://cloudless.eox.at/documentation/usage"),
+                "EOX Sentinel-2 attribution and usage source are fixed in the layer contract");
+    }
     {
         osg::ref_ptr<VaporView::Map3D::Detail::OpenAerialMapImageLayer> layer =
             new VaporView::Map3D::Detail::OpenAerialMapImageLayer;
@@ -1147,6 +1185,7 @@ int main(int argc, char** argv)
     auto* onlineImagery = window.findChild<QAction*>(QStringLiteral("map3DOnlineImagery_tianditu"));
     auto* openAerialMap = window.findChild<QAction*>(QStringLiteral("map3DOnlineImagery_openaerialmap"));
     auto* esriImagery = window.findChild<QAction*>(QStringLiteral("map3DOnlineImagery_esri"));
+    auto* eoxImagery = window.findChild<QAction*>(QStringLiteral("map3DOnlineImagery_eoxSentinel2_2024"));
     require(onlineImagery && onlineImagery->isEnabled()
                 && onlineImagery->text().contains(QStringLiteral("在线"))
                 && onlineImagery->text().contains(QStringLiteral("未配置 Key")),
@@ -1158,6 +1197,9 @@ int main(int argc, char** argv)
                 && esriImagery->text().contains(QStringLiteral("Esri World Imagery"))
                 && esriImagery->text().contains(QStringLiteral("未配置 Key")),
             "Esri World Imagery can be configured from its source action");
+    require(eoxImagery && eoxImagery->isEnabled() && eoxImagery->isCheckable()
+                && eoxImagery->text().contains(QStringLiteral("EOX Sentinel-2 cloudless 2024")),
+            "EOX Sentinel-2 cloudless 2024 is available as a no-key imagery source");
     require(window.findChild<QAction*>(QStringLiteral("map3DEsriKeyAction")),
             "Esri API key configuration is available");
     {

@@ -17,6 +17,8 @@ struct MapHttpResult {
 };
 
 MapHttpResult mapHttpGet(QNetworkRequest request, osgEarth::ProgressCallback* progress);
+osgEarth::GeoImage readMapImageryTile(const QNetworkRequest& request, const osgEarth::TileKey& key,
+                                     osgEarth::ProgressCallback* progress);
 QNetworkRequest credentialedImageryRequest(OnlineMapProvider provider, const OnlineMapResource& resource,
                                           unsigned z, unsigned x, unsigned y);
 osgEarth::GeoImage readCredentialedImageryTile(OnlineMapProvider provider, const OnlineMapResource& resource,

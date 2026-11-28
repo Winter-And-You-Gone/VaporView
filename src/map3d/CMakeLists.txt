@@ -43,6 +43,7 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
         ${CMAKE_SOURCE_DIR}/src/map3d/Map3DAssetLoader.h
         ${CMAKE_SOURCE_DIR}/src/map3d/Map3DDiagnosticsFormatter.h
         ${CMAKE_SOURCE_DIR}/src/map3d/Map3DRuntime.h
+        ${CMAKE_SOURCE_DIR}/src/map3d/EoxSentinel2ImageLayer.h
     )
 
     add_library(vaporview_map3d_osgearth STATIC

@@ -17,6 +17,7 @@
 #include "shared/theme/SingleLevelPopupMenu.h"
 #include "geo/TrajectoryQuality.h"
 #include "Map3DRuntime.h"
+#include "EoxSentinel2ImageLayer.h"
 #include "OnlineMapResource.h"
 #include "map3d/Map3DLoadTracker.h"
 #include "map3d/OsgEarthViewWidget.h"
@@ -1775,6 +1776,12 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     esri_attribution_->setObjectName(QStringLiteral("map3DEsriAttribution"));
     statusBar()->addPermanentWidget(esri_attribution_);
     esri_attribution_->hide();
+    eox_attribution_ = new QLabel(this);
+    eox_attribution_->setObjectName(QStringLiteral("map3DEoxAttribution"));
+    eox_attribution_->setOpenExternalLinks(true);
+    eox_attribution_->setWordWrap(true);
+    statusBar()->addPermanentWidget(eox_attribution_);
+    eox_attribution_->hide();
     osm_attribution_ = new QLabel(QStringLiteral("<a href=\"https://www.openstreetmap.org/copyright\">© OpenStreetMap contributors</a>"), this);
     osm_attribution_->setObjectName(QStringLiteral("map3DOsmAttribution"));
     osm_attribution_->setOpenExternalLinks(true);
@@ -3567,6 +3574,17 @@ bool Map3DWindow::applySelectedSatelliteImagery(bool showStatusMessage)
         updateStatus(nullptr, true);
         return loaded;
     }
+    if (satellite_imagery_source_ == Detail::kEoxSentinel2Source)
+    {
+        const bool loaded = view_->applyEoxSentinel2Imagery();
+        if (loaded) tianditu_satellite_imagery_loaded_ = false;
+        if (showStatusMessage)
+            statusBar()->showMessage(loaded
+                ? mapText(QStringLiteral("已切换至 EOX Sentinel-2 cloudless 2024。"))
+                : mapText(QStringLiteral("无法创建 EOX Sentinel-2 cloudless 2024 图层。")), 8000);
+        updateStatus(nullptr, true);
+        return loaded;
+    }
     if (satellite_imagery_source_ == QStringLiteral("online:esri"))
     {
         const auto resource = configuredOnlineMapResource(OnlineMapProvider::Esri);
@@ -4570,6 +4588,22 @@ void Map3DWindow::refreshSatelliteImageryMenu()
     autoImagery->setText(mapText(QStringLiteral("自动（默认）")));
     autoImagery->setChecked(satellite_imagery_source_.isEmpty());
 
+    auto* eox = local_imagery_menu_->findChild<QAction*>(QStringLiteral("map3DOnlineImagery_eoxSentinel2_2024"));
+    if (!eox)
+    {
+        eox = local_imagery_menu_->addAction(QString());
+        eox->setObjectName(QStringLiteral("map3DOnlineImagery_eoxSentinel2_2024"));
+        eox->setCheckable(true);
+        connect(eox, &QAction::triggered, this, [this]() {
+            selectSatelliteImagerySource(Detail::kEoxSentinel2Source);
+        });
+    }
+    eox->setText(mapText(QStringLiteral("在线 · EOX Sentinel-2 cloudless 2024（免 Key）")));
+    eox->setChecked(satellite_imagery_source_ == Detail::kEoxSentinel2Source);
+    eox_attribution_->setText(QStringLiteral("%1 · <a href=\"%2\">%3</a>")
+        .arg(QLatin1String(Detail::kEoxSentinel2Attribution), QLatin1String(Detail::kEoxSentinel2UsageUrl),
+             mapText(QStringLiteral("2024 版非商业许可（CC BY-NC-SA 4.0）"))));
+
     auto* online = local_imagery_menu_->findChild<QAction*>(QStringLiteral("map3DOnlineImagery_tianditu"));
     if (!online)
     {
@@ -4976,8 +5010,11 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool for
     if (has_selected_track_sample_)
         text += mapText(QStringLiteral(" | 选中 #%1")).arg(selected_track_sample_index_ + 1);
     status_label_->setText(text);
+    const QString activeImagery = view_ ? view_->activeSatelliteImagerySource() : QString();
     if (esri_attribution_)
-        esri_attribution_->setVisible(view_ && view_->activeSatelliteImagerySource() == QStringLiteral("online:esri"));
+        esri_attribution_->setVisible(activeImagery == QStringLiteral("online:esri"));
+    if (eox_attribution_)
+        eox_attribution_->setVisible(activeImagery == Detail::kEoxSentinel2Source);
     if (cesium_attribution_)
     {
         const QString credit = view_ && view_->isCesiumTerrainActive()

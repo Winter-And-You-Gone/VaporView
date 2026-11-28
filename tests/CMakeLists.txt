@@ -1271,6 +1271,16 @@ set_tests_properties(session_viewer_plot_mode_test PROPERTIES
     LABELS "integration;session-viewer;ui" TIMEOUT 120)
 
 if(VAPORVIEW_ENABLE_OSGEARTH)
+    add_executable(eox_sentinel2_layer_test
+        ${CMAKE_CURRENT_SOURCE_DIR}/eox_sentinel2_layer_test.cpp
+    )
+    target_include_directories(eox_sentinel2_layer_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/map3d
+        ${CMAKE_SOURCE_DIR}/include
+    )
+    target_link_libraries(eox_sentinel2_layer_test PRIVATE vaporview_map3d_osgearth)
+    vaporview_add_test(NAME eox_sentinel2_layer_test COMMAND eox_sentinel2_layer_test)
+
     add_executable(map_data_manager_test
         ${CMAKE_CURRENT_SOURCE_DIR}/map_data_manager_test.cpp
     )

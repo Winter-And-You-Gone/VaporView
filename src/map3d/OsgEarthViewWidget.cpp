@@ -14,6 +14,7 @@
 #include "OpenFreeMapBuildings.h"
 #include "CesiumTerrain.h"
 #include "TiandituImageLayer.h"
+#include "EoxSentinel2ImageLayer.h"
 #include <osgEarth/TerrainEngineNode>
 #include "Map3DRuntime.h"
 #include "map3d/Map3DLoadTracker.h"
@@ -133,6 +134,7 @@ osg::ref_ptr<osg::Node> createStarfieldNode()
 }
 
 constexpr const char* kTiandituSatelliteLayerName = "Tianditu Satellite imagery";
+using Detail::kEoxSentinel2LayerName;
 constexpr const char* kOpenAerialMapLayerName = "OpenAerialMap Satellite imagery";
 constexpr const char* kEsriLayerName = "Esri World Imagery Satellite imagery";
 constexpr const char* kSelectedLocalSatelliteLayerName = "VaporView selected local satellite imagery";
@@ -1499,6 +1501,7 @@ bool OsgEarthViewWidget::applyTiandituSatelliteImagery(const QString& requestUrl
     auto* existing = dynamic_cast<Detail::TiandituImageLayer*>(map->getLayerByName(kTiandituSatelliteLayerName));
     if (existing && existing->isOpen() && existing->usesResource(resource))
     {
+        removeLayerByName(map, kEoxSentinel2LayerName);
         removeLayerByName(map, kOpenAerialMapLayerName);
         removeLayerByName(map, kEsriLayerName);
         applyLayerVisibility(Map3DLayer::SatelliteImagery);
@@ -1532,6 +1535,7 @@ bool OsgEarthViewWidget::applyTiandituSatelliteImagery(const QString& requestUrl
     const unsigned insertIndex = tiandituSatelliteInsertIndex(map);
     Map3DLoadTracker::instance().interruptCategory(MapLoadCategory::Imagery);
     map->insertLayer(layer.get(), insertIndex);
+    removeLayerByName(map, kEoxSentinel2LayerName);
     removeLayerByName(map, kOpenAerialMapLayerName);
     removeLayerByName(map, kEsriLayerName);
     earth_load_diagnostics_.layerSummaries.push_back(
@@ -1552,6 +1556,28 @@ bool OsgEarthViewWidget::applyTiandituSatelliteImagery(const QString& requestUrl
     return true;
 }
 
+bool OsgEarthViewWidget::applyEoxSentinel2Imagery()
+{
+    assertGuiThread(this, Q_FUNC_INFO);
+    if (shutdown_ || !map_node_ || !map_node_->getMap()) return false;
+    osgEarth::Map* map = map_node_->getMap();
+    auto* existing = map->getLayerByName(kEoxSentinel2LayerName);
+    if (!existing || !existing->isOpen())
+    {
+        osg::ref_ptr<Detail::EoxSentinel2ImageLayer> layer = new Detail::EoxSentinel2ImageLayer;
+        if (layer->open().isError()) return false;
+        removeLayerByName(map, kEoxSentinel2LayerName);
+        map->insertLayer(layer.get(), tiandituSatelliteInsertIndex(map));
+    }
+    Map3DLoadTracker::instance().interruptCategory(MapLoadCategory::Imagery);
+    removeLayerByName(map, kTiandituSatelliteLayerName);
+    removeLayerByName(map, kOpenAerialMapLayerName);
+    removeLayerByName(map, kEsriLayerName);
+    applyLayerVisibility(Map3DLayer::SatelliteImagery);
+    update();
+    return true;
+}
+
 bool OsgEarthViewWidget::applyOpenAerialMapImagery()
 {
     assertGuiThread(this, Q_FUNC_INFO);
@@ -1567,6 +1593,7 @@ bool OsgEarthViewWidget::applyOpenAerialMapImagery()
     }
     Map3DLoadTracker::instance().interruptCategory(MapLoadCategory::Imagery);
     removeLayerByName(map, kTiandituSatelliteLayerName);
+    removeLayerByName(map, kEoxSentinel2LayerName);
     removeLayerByName(map, kEsriLayerName);
     applyLayerVisibility(Map3DLayer::SatelliteImagery);
     update();
@@ -1622,6 +1649,7 @@ bool OsgEarthViewWidget::applyEsriWorldImagery(const QString& requestUrl, const 
     }
     Map3DLoadTracker::instance().interruptCategory(MapLoadCategory::Imagery);
     removeLayerByName(map, kTiandituSatelliteLayerName);
+    removeLayerByName(map, kEoxSentinel2LayerName);
     removeLayerByName(map, kOpenAerialMapLayerName);
     applyLayerVisibility(Map3DLayer::SatelliteImagery);
     update();
@@ -1649,6 +1677,7 @@ bool OsgEarthViewWidget::applyLocalSatelliteImagery(const QString& vrtPath)
     }
     Map3DLoadTracker::instance().interruptCategory(MapLoadCategory::Imagery);
     removeLayerByName(map, kTiandituSatelliteLayerName);
+    removeLayerByName(map, kEoxSentinel2LayerName);
     removeLayerByName(map, kOpenAerialMapLayerName);
     removeLayerByName(map, kEsriLayerName);
     applyLayerVisibility(Map3DLayer::SatelliteImagery);
@@ -1664,6 +1693,7 @@ void OsgEarthViewWidget::clearSelectedSatelliteImagery()
         return;
     osgEarth::Map* map = map_node_->getMap();
     removeLayerByName(map, kTiandituSatelliteLayerName);
+    removeLayerByName(map, kEoxSentinel2LayerName);
     removeLayerByName(map, kOpenAerialMapLayerName);
     removeLayerByName(map, kEsriLayerName);
     removeLayerByName(map, kSelectedLocalSatelliteLayerName);
@@ -1786,6 +1816,9 @@ QString OsgEarthViewWidget::activeSatelliteImagerySource() const
     const auto* online = dynamic_cast<const osgEarth::VisibleLayer*>(
         map_node_->getMap()->getLayerByName(kTiandituSatelliteLayerName));
     if (online && online->isOpen() && online->getVisible()) return QStringLiteral("online:tianditu");
+    const auto* eox = dynamic_cast<const osgEarth::VisibleLayer*>(
+        map_node_->getMap()->getLayerByName(kEoxSentinel2LayerName));
+    if (eox && eox->isOpen() && eox->getVisible()) return Detail::kEoxSentinel2Source;
     const auto* openAerialMap = dynamic_cast<const osgEarth::VisibleLayer*>(
         map_node_->getMap()->getLayerByName(kOpenAerialMapLayerName));
     if (openAerialMap && openAerialMap->isOpen() && openAerialMap->getVisible())
@@ -2154,11 +2187,14 @@ void OsgEarthViewWidget::applyLayerVisibility(Map3DLayer layer)
 {
     const auto* tianditu = map_node_ && map_node_->getMap()
         ? map_node_->getMap()->getLayerByName(kTiandituSatelliteLayerName) : nullptr;
+    const auto* eox = map_node_ && map_node_->getMap()
+        ? map_node_->getMap()->getLayerByName(kEoxSentinel2LayerName) : nullptr;
     const auto* openAerialMap = map_node_ && map_node_->getMap()
         ? map_node_->getMap()->getLayerByName(kOpenAerialMapLayerName) : nullptr;
     const auto* esri = map_node_ && map_node_->getMap()
         ? map_node_->getMap()->getLayerByName(kEsriLayerName) : nullptr;
     const auto* online = tianditu && tianditu->isOpen() ? tianditu
+        : eox && eox->isOpen() ? eox
         : openAerialMap && openAerialMap->isOpen() ? openAerialMap : esri;
     const bool onlineSatellite = online && online->isOpen() && layerVisible(Map3DLayer::SatelliteImagery);
     const bool showBaseForOpenAerialMap = onlineSatellite && online == openAerialMap;

@@ -150,6 +150,7 @@ public:
     void loadEarthFileAsync(const QString& earthPath, std::function<void(bool)> finished);
     void loadEarthFilePreservingViewAsync(const QString& earthPath, std::function<void(bool)> finished);
     bool applyTiandituSatelliteImagery(const QString& requestUrl, const QString& key);
+    bool applyEoxSentinel2Imagery();
     bool applyOpenAerialMapImagery();
     bool applyEsriWorldImagery(const QString& requestUrl, const QString& key);
     bool applyLocalSatelliteImagery(const QString& vrtPath);
