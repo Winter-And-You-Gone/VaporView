@@ -7,7 +7,10 @@
 #include "ground/devices/Rd105DeviceSession.h"
 #include "ground/widgets/SegmentedSwitchButton.h"
 #include "ground/calibration/CalibrationService.h"
+#include "ground/wave/TcpWavePanel.h"
 #include "TcpTelemetryLink.h"
+#include <QPushButton>
+#include <mutex>
 #include "FpgaTelemetry.h"
 #include "FpgaExtensions.h"
 #include "BaudRateComboSupport.h"
@@ -301,8 +304,88 @@ static void checkGatewayRecording(MainWindow& window, const QTemporaryDir& direc
     require(finished && client.exitStatus() == QProcess::NormalExit && client.exitCode() == 0, "external recording workflow");
     require(sawRecording && state.remote_status_.recording_state == 0, "ground UI observed start and stop");
 }
+// Sample the actual H1 buffers at paint delivery. Status/trend repaints can reuse
+// the same samples many times between two new DLIA cycles.
+class WavePaintProbe final : public QObject {
+public:
+    TcpWavePanel *panel = nullptr;
+    std::array<QWidget *, 2> plots{};
+    std::array<QVector<float>, 2> previous;
+    std::array<QVector<qint64>, 2> paints;
+    QElapsedTimer clock;
+    bool eventFilter(QObject *object, QEvent *event) override {
+        if (event->type() == QEvent::Paint) {
+            const int channel = object == plots[1] ? 1 : 0;
+            const auto samples = panel->testWavePageFirstHarmonicSamples(channel);
+            if (!samples.isEmpty() && samples != previous[channel]) {
+                paints[channel].append(clock.elapsed());
+                previous[channel] = samples;
+            }
+        }
+        return false;
+    }
+};
+
+static void measureWavePage(MainWindow& window)
+{
+    using namespace VaporView;
+    auto *page = window.findChild<QWidget *>("waveformMonitorPage");
+    for (auto *button : window.findChildren<QPushButton *>("appSidebarButton"))
+        if (button->accessibleName() == QStringLiteral("波形") || button->accessibleName() == "Waveforms") button->click();
+    require(page && page->isVisible(), "normal waveform navigation opens page");
+    WavePaintProbe probe;
+    probe.panel = window.findChild<TcpWavePanel *>();
+    for (int i = 0; i < 2; ++i) {
+        probe.plots[i] = page->findChild<QWidget *>(QString("wavePageH1Channel%1").arg(i));
+        require(probe.plots[i] && probe.plots[i]->isVisible(), "both H1 plots visible");
+        probe.plots[i]->installEventFilter(&probe);
+    }
+    probe.clock.start();
+    struct Arrivals {
+        std::mutex mutex;
+        std::array<QVector<qint64>, 2> times;
+    };
+    auto arrivals = std::make_shared<Arrivals>();
+    auto *service = window.testRemoteSkyController()->telemetryService();
+    const auto observer = QObject::connect(service, &GroundTelemetryService::fpgaWaveformUpdated, service,
+        [arrivals, clock = probe.clock](const FpgaWave::CompletedStream& stream) {
+            if (stream.source != 0x30 && stream.source != 0x31) return;
+            std::lock_guard lock(arrivals->mutex);
+            arrivals->times[stream.source - 0x30].append(clock.elapsed());
+        }, Qt::DirectConnection);
+    QEventLoop loop;
+    QTimer pulse;
+    QVector<qint64> pulses;
+    pulse.setTimerType(Qt::PreciseTimer);
+    QObject::connect(&pulse, &QTimer::timeout, &loop, [&] { pulses.append(probe.clock.elapsed()); });
+    pulse.start(10);
+    QTimer::singleShot(12000, &loop, &QEventLoop::quit);
+    loop.exec();
+    QObject::disconnect(observer);
+    auto summarize = [](const char *label, int channel, const QVector<qint64>& times) {
+        require(times.size() >= 2, "enough distinct samples to measure");
+        QVector<qint64> gaps;
+        for (qsizetype i = 1; i < times.size(); ++i) gaps.append(times[i] - times[i-1]);
+        std::sort(gaps.begin(), gaps.end());
+        const auto p95 = gaps[(gaps.size()-1)*95/100];
+        std::cout << label << " " << channel << " n=" << gaps.size() << " p50=" << gaps[(gaps.size()-1)/2]
+            << " p95=" << p95 << " max=" << gaps.last() << " >250ms="
+            << std::count_if(gaps.begin(), gaps.end(), [](auto ms) { return ms > 250; }) << std::endl;
+        return std::pair{p95, gaps.last()};
+    };
+    bool smooth = true;
+    for (int i = 0; i < 2; ++i) {
+        std::lock_guard lock(arrivals->mutex);
+        summarize("receiver", i, arrivals->times[i]);
+        const auto [p95, longest] = summarize("paint", i, probe.paints[i]);
+        smooth &= p95 < 250 && longest < 500 && probe.paints[i].size() > 48;
+    }
+    summarize("GUI heartbeat", 0, pulses);
+    require(smooth, "both visible channels sustain new waveforms through realistic remote TCP");
+}
+
 static void simulatedSkyWorkflow(const QString& gatewayInterpreter = {}, const QString& gatewayScript = {},
-                                 bool switchTransportOnly = false)
+                                 bool switchTransportOnly = false, bool measureWave = false)
 {
     using namespace VaporView;
     QTemporaryDir directory;
@@ -325,7 +408,19 @@ static void simulatedSkyWorkflow(const QString& gatewayInterpreter = {}, const Q
 #endif
         ;
     child.process.setProcessChannelMode(QProcess::MergedChannels);
-    child.process.start(executable, {"--simulate", "--sky-config", directory.filePath("sky.json"),
+    auto childExecutable = executable;
+    if (measureWave) {
+        // SkyCore writes its primary log next to its executable. Isolate that too.
+        childExecutable = directory.filePath(QFileInfo(executable).fileName());
+        require(QFile::copy(executable, childExecutable), "stage simulator in the temporary directory");
+        auto environment = QProcessEnvironment::systemEnvironment();
+        environment.insert("LOCALAPPDATA", directory.path());
+        environment.insert("VAPORVIEW_SETTINGS_DIR", directory.path());
+        environment.insert("PATH", QCoreApplication::applicationDirPath() + QDir::listSeparator() + environment.value("PATH"));
+        child.process.setProcessEnvironment(environment);
+        child.process.setWorkingDirectory(directory.path());
+    }
+    child.process.start(childExecutable, {"--simulate", "--sky-config", directory.filePath("sky.json"),
         "--telemetry-transport", "tcp", "--telemetry-host", "127.0.0.1",
         "--telemetry-tcp-port", QString::number(port), "--ipc-port", "0"});
     require(child.process.waitForStarted(5000), "real SkyCore simulator starts");
@@ -338,6 +433,7 @@ static void simulatedSkyWorkflow(const QString& gatewayInterpreter = {}, const Q
         require(!settings.contains(QStringLiteral("Gateway/listener_enabled")), "test starts with default listener setting");
         reservation.close();
     }
+    if (measureWave) applicationConfigSettings().setValue("Gateway/listener_enabled", false);
     MainWindow window(nullptr, std::make_shared<VaporView::Ground::Calibration::CalibrationService>(directory.path()));
     QMetaObject::invokeMethod(&window, "onDataSourceModeChanged", Q_ARG(int, 1));
     auto &state = MainWindowRtcmTestAccess::state(window);
@@ -451,6 +547,11 @@ static void simulatedSkyWorkflow(const QString& gatewayInterpreter = {}, const Q
     }
     require(connected, "one title click connects real SkyCore simulated sensors, summaries and waveform rate");
     require(state.fpga_session_.remoteStatus.value("simulation").toBool(), "Sky identifies simulation");
+    if (measureWave) {
+        connectPulse.stop();
+        measureWavePage(window);
+        return;
+    }
     if (!gatewayInterpreter.isEmpty()) {
         checkGatewayRecording(window, directory, gatewayInterpreter, gatewayScript);
         window.testRemoteSkyController()->close();
@@ -534,6 +635,10 @@ int main(int argc, char **argv)
     QApplication app(argc, argv);
     try {
     const auto args = app.arguments();
+    if (args.contains("--wave-page-cadence")) {
+        simulatedSkyWorkflow({}, {}, false, true);
+        return 0;
+    }
     if (args.contains("--simulation-switch-only")) {
         simulatedSkyWorkflow({}, {}, true);
         return 0;

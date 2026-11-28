@@ -70,7 +70,8 @@ bool SkyFpgaBackend::validateOperation(const QJsonObject& o, QString *error)
     return FpgaRemote::validateControl(o, error);
 }
 
-SkyFpgaBackend::SkyFpgaBackend(std::unique_ptr<Ground::Devices::FpgaUsbTransport> transport, QObject *parent)
+SkyFpgaBackend::SkyFpgaBackend(std::unique_ptr<Ground::Devices::FpgaUsbTransport> transport,
+                               TelemetryTransportType telemetryTransport, QObject *parent)
     : QObject(parent), controller_(new Ground::Devices::FpgaDeviceController(std::move(transport)))
 {
     qRegisterMetaType<FpgaWave::CompletedStream>();
@@ -165,10 +166,14 @@ SkyFpgaBackend::SkyFpgaBackend(std::unique_ptr<Ground::Devices::FpgaUsbTransport
     auto previewClock = std::make_shared<QElapsedTimer>(); previewClock->start();
     auto lastPreview = std::make_shared<QHash<quint16,qint64>>();
     connect(controller_, &Ground::Devices::FpgaDeviceController::waveformUpdated, controller_,
-        [this, previewClock, lastPreview](const FpgaWave::CompletedStream& source) {
-            const qint64 now=previewClock->elapsed();
-            if (lastPreview->contains(source.source) && now-lastPreview->value(source.source)<500) return;
-            lastPreview->insert(source.source,now);
+        [this, telemetryTransport, previewClock, lastPreview](const FpgaWave::CompletedStream& source) {
+            // The controller already publishes only the latest cycle per source every 50 ms.
+            // Retain the slower admission cadence upstream of the physical serial byte budget.
+            if (telemetryTransport == TelemetryTransportType::Serial) {
+                const qint64 now = previewClock->elapsed();
+                if (lastPreview->contains(source.source) && now - lastPreview->value(source.source) < 500) return;
+                lastPreview->insert(source.source, now);
+            }
             FpgaWave::CompletedStream preview;
             preview.source=source.source;preview.message=source.message;preview.flags=source.flags;preview.cycleId=source.cycleId;
             preview.timestamp=source.timestamp;preview.schema=source.schema;preview.format=source.format;preview.rate=source.rate;

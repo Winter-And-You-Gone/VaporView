@@ -51,7 +51,7 @@ class SkyDeviceManager : public QObject
     Q_OBJECT
 
 public:
-    explicit SkyDeviceManager(QObject *parent = nullptr);
+    explicit SkyDeviceManager(QObject *parent = nullptr, TelemetryTransportType telemetryTransport = TelemetryTransportType::Serial);
     ~SkyDeviceManager() override;
 
     void setSimulateData(bool simulate, SimulatorDataMode mode = SimulatorDataMode::Realistic);
@@ -193,6 +193,7 @@ private:
     void ensureFpgaBackend();
     void acceptFpgaMeasurement(const FpgaSensor::AdaptedMeasurements& measurement);
     void invalidateFpgaMeasurements();
+    const TelemetryTransportType telemetry_transport_;
     std::unique_ptr<SkyFpgaBackend> fpga_backend_;
     std::unique_ptr<QThread> ai8_page_worker_;
     std::unique_ptr<Ground::Devices::FpgaUsbTransport> fpga_test_transport_;

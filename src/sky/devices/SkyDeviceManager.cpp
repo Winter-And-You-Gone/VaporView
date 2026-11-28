@@ -485,8 +485,8 @@ TemperatureControllerChannelData *simulatedTemperatureChannel(TemperatureControl
 
 }  // namespace
 
-SkyDeviceManager::SkyDeviceManager(QObject *parent)
-    : QObject(parent)
+SkyDeviceManager::SkyDeviceManager(QObject *parent, TelemetryTransportType telemetryTransport)
+    : QObject(parent), telemetry_transport_(telemetryTransport)
 {
     initializeStatuses();
     internal_serial_=std::make_unique<InternalEnvironmentSerialController>();
@@ -717,7 +717,7 @@ void SkyDeviceManager::ensureFpgaBackend()
         transport = Ground::Devices::makeFpgaUsbSimulator(nullptr, Ground::Devices::FpgaSimulatorStartup::Idle,
             Ground::Devices::FpgaSimulatorFirmware::SkySimulation, simulate_mode_);
     }
-    fpga_backend_ = std::make_unique<SkyFpgaBackend>(std::move(transport));
+    fpga_backend_ = std::make_unique<SkyFpgaBackend>(std::move(transport), telemetry_transport_);
     fpga_backend_->setConfiguration(config_.fpga.configuration);
     connect(fpga_backend_.get(), &SkyFpgaBackend::statusChanged, this, [this](QJsonObject document) {
         const bool ready = document.value("ready").toBool();

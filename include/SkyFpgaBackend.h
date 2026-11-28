@@ -2,6 +2,7 @@
 
 #include "FpgaDeviceController.h"
 #include "TelemetryTypes.h"
+#include "TelemetryLink.h"
 #include <QThread>
 #include <atomic>
 #include <functional>
@@ -12,7 +13,8 @@ class SkyFpgaBackend final : public QObject {
     Q_OBJECT
 public:
     using Completion = std::function<void(CommandErrorCode, QString, QJsonObject)>;
-    explicit SkyFpgaBackend(std::unique_ptr<Ground::Devices::FpgaUsbTransport> transport = {}, QObject *parent = nullptr);
+    explicit SkyFpgaBackend(std::unique_ptr<Ground::Devices::FpgaUsbTransport> transport = {},
+        TelemetryTransportType telemetryTransport = TelemetryTransportType::Serial, QObject *parent = nullptr);
     ~SkyFpgaBackend() override;
     void submit(const QJsonObject& operation, Completion completion, const QString& correlationId = {}, const QString& sessionId = {});
     void shutdown();

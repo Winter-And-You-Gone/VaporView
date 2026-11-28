@@ -4264,6 +4264,11 @@ void TcpWavePanel::testFlushLiveDisplay()
     updateLiveDisplay();
 }
 
+QVector<float> TcpWavePanel::testWavePageFirstHarmonicSamples(int channel) const
+{
+    return waveform_page_->lanes[channel].waves[1]->samples();
+}
+
 QVector<float> TcpWavePanel::testHarmonicSamples(int channel) const
 {
     return channel ? home_harmonics_[1].plots[2]->samples() : wave4_history_;

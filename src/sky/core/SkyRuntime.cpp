@@ -219,7 +219,7 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
     : QObject(parent)
     , options_(options)
     , codec_(1024u * 1024u)
-    , device_manager_(this)
+    , device_manager_(this, options.telemetry_transport)
 {
     session_recorder_.restoreCalibrationLock(options_.simulate_fpga
         ? QDir(QFileInfo(options_.config_path).absolutePath()).filePath(QStringLiteral("simulated_sessions")) : defaultRecordingDirectory());

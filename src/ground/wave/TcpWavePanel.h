@@ -84,6 +84,7 @@ public:
     void testSetConnectionEndpoint(const QString& host, const QString& portText);
     qsizetype testBufferedByteCount() const;
     void testFlushLiveDisplay();
+    QVector<float> testWavePageFirstHarmonicSamples(int channel) const;
     QVector<float> testHarmonicSamples(int channel = 0) const;
     QVector<float> testFirstHarmonicSamples(int channel = 0) const;
     QVector<float> testSecondHarmonicSamples(int channel = 0) const;

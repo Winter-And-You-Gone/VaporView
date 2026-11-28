@@ -310,7 +310,7 @@ void motorSafetyDoesNotCompleteAnotherOperation()
 
 void acquisitionCycleStatistics()
 {
-    SkyFpgaBackend backend(makeFpgaUsbSimulator());
+    SkyFpgaBackend backend(makeFpgaUsbSimulator(), TelemetryTransportType::Serial);
     const auto operation = [&](const QJsonObject& request) {
         bool done = false;
         backend.submit(request, [&](CommandErrorCode code, QString error, QJsonObject) {
@@ -320,6 +320,12 @@ void acquisitionCycleStatistics()
         waitUntil([&] { return done; }, "simulated acquisition operation completes");
     };
     operation({{"op","connect"},{"backend","auto"},{"locator",""}});
+    std::array<int, 2> previews{};
+    QElapsedTimer previewWindow;
+    previewWindow.start();
+    QObject::connect(&backend, &SkyFpgaBackend::waveformUpdated, &backend, [&](const auto& stream) {
+        if (stream.source == 0x30 || stream.source == 0x31) ++previews[stream.source - 0x30];
+    });
     operation({{"op","acquisition"},{"enabled",true}});
     operation({{"op","raw"},{"enabled",true}});
     waitUntil([&] { return backend.statusDocument().value("acquisition_cycles").toObject()
@@ -328,6 +334,9 @@ void acquisitionCycleStatistics()
     const double expected = stats.value("count").toString().toULongLong() * 1000.0 / stats.value("window_ms").toDouble();
     require(stats.value("scope") == "dlia0+dlia1" && std::abs(expected - stats.value("rate_hz").toDouble()) < 0.0001,
         "cycle frequency uses reported count and actual time window");
+    waitUntil([&] { return previews[0] >= 3 && previews[1] >= 3; }, "serial previews reach both DLIA channels");
+    for (const int count : previews)
+        require(count <= 1 + previewWindow.elapsed() / 500, "serial admission preserves the two-Hz per-source limit");
     operation({{"op","acquisition"},{"enabled",false}});
     waitUntil([&] { const auto stats = backend.statusDocument().value("acquisition_cycles").toObject();
         return stats.contains("count") && stats.value("count").toString() == "0" && stats.value("rate_hz").toDouble() == 0;
