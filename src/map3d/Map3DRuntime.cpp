@@ -1,4 +1,5 @@
 #include "Map3DRuntime.h"
+#include "MapTileRetention.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -178,8 +179,18 @@ void initializeMap3DRuntime()
                 // Native image serialization avoids introducing lossy JPEG recompression.
                 options.format() = "osgb";
                 osg::ref_ptr<osgEarth::Cache> cache = osgEarth::CacheFactory::create(options);
-                if (cache && cache->getStatus().isOK()) registry->setDefaultCache(cache.get());
+                if (cache && cache->getStatus().isOK())
+                {
+                    registry->setDefaultCache(cache.get());
+                    if (!qEnvironmentVariableIsSet("OSGEARTH_CACHE_ONLY")) Detail::startTileRetention(cachePath);
+                }
             }
+        }
+        else if (auto* cache = registry->getDefaultCache(); cache && cache->getCacheOptions().getDriver() == "filesystem"
+                 && !qEnvironmentVariableIsSet("OSGEARTH_CACHE_ONLY"))
+        {
+            const QString path = qEnvironmentVariable("OSGEARTH_CACHE_PATH");
+            if (!path.isEmpty()) Detail::startTileRetention(QDir(path).absolutePath());
         }
     });
 }

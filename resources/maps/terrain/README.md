@@ -22,7 +22,7 @@ To regenerate the bundled global coarse DEM from NOAA ETOPO 2022 60s surface dat
 python scripts/prepare-global-coarse-dem.py
 ```
 
-The osgEarth disk cache stores successfully assembled GLO-30 tiles for offline reuse at the same zoom. A cached tile stays in use until the cache is cleared. Install regional DEM files in the directories above for offline terrain from level 8 onward.
+The osgEarth disk cache stores successfully assembled GLO-30 tiles for offline reuse at the same zoom. VaporView retains cold online Copernicus terrain and OSM road/water tiles for 30 days. Visits on different UTC days extend retention up to 90 days from the most recent visit. Background maintenance runs on startup and every six hours during use, removing the coldest tiles first above their shared 2 GiB budget. The policy applies to the two generated filesystem cache bins. Installed regional DEMs and offline map files are separate. Install regional DEM files in the directories above for offline terrain from level 8 onward.
 
 Cesium World Terrain fills any remaining gaps when a token is configured. Set `VAPORVIEW_CESIUM_ION_TOKEN` to an ion token with read access to asset 1 before starting VaporView, or set the current user's `VaporView/Map3D` setting `cesium/ion_token` on Windows. The first tile that needs Cesium triggers ion authentication. Its shared map HTTP cache keeps up to 256 MiB and follows the server's expiration dates and validators.
 

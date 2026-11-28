@@ -1,5 +1,7 @@
 #pragma once
 
+#include "MapTileRetention.h"
+
 #include "Map3DRuntime.h"
 #include "OnlineTerrainLayer.h"
 #include "map3d/Map3DLoadTracker.h"
@@ -43,7 +45,7 @@ public:
         setMaxDataLevel(14);
         setCachePolicy(osgEarth::CachePolicy::NO_CACHE);
         if (auto* cache = osgEarth::Registry::instance()->getDefaultCache())
-            cache_ = cache->addBin("vaporview-copernicus-glo30-v1");
+            cache_ = cache->addBin(terrainCacheBin);
     }
 
 private:
@@ -119,7 +121,10 @@ private:
         {
             const auto cached = cache_->readObject(cacheKey, getReadOptions());
             if (auto* field = cached.get<osg::HeightField>())
+            {
+                recordTileVisit(terrainCacheBin, cacheKey);
                 return GeoHeightField(field, extent);
+            }
         }
 
         if (shouldDeferDownload(extent)) return {};
@@ -141,7 +146,10 @@ private:
         {
             const auto cached = cache_->readObject(cacheKey, getReadOptions());
             if (auto* field = cached.get<osg::HeightField>())
+            {
+                recordTileVisit(terrainCacheBin, cacheKey);
                 return GeoHeightField(field, extent);
+            }
         }
 
         ScopedMapLoadTask loadTask(MapLoadCategory::Dem);
@@ -243,7 +251,8 @@ private:
             loadTask.finish();
             return {};
         }
-        if (complete && cache_) cache_->write(cacheKey, field.get(), getReadOptions());
+        if (complete && cache_ && cache_->write(cacheKey, field.get(), getReadOptions()))
+            recordTileVisit(terrainCacheBin, cacheKey);
         loadTask.finish();
         return GeoHeightField(field.get(), extent);
     }

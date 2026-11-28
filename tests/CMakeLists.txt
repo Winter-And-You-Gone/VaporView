@@ -1271,6 +1271,12 @@ set_tests_properties(session_viewer_plot_mode_test PROPERTIES
     LABELS "integration;session-viewer;ui" TIMEOUT 120)
 
 if(VAPORVIEW_ENABLE_OSGEARTH)
+    add_executable(map_tile_retention_test ${CMAKE_CURRENT_SOURCE_DIR}/map_tile_retention_test.cpp
+        ${CMAKE_SOURCE_DIR}/src/map3d/MapTileRetention.cpp)
+    target_include_directories(map_tile_retention_test PRIVATE ${CMAKE_SOURCE_DIR}/src/map3d)
+    target_link_libraries(map_tile_retention_test PRIVATE Qt6::Core)
+    vaporview_add_test(NAME map_tile_retention_test COMMAND map_tile_retention_test)
+
     add_executable(eox_sentinel2_layer_test
         ${CMAKE_CURRENT_SOURCE_DIR}/eox_sentinel2_layer_test.cpp
     )

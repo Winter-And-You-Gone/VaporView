@@ -1,5 +1,7 @@
 #pragma once
 
+#include "MapTileRetention.h"
+
 #include <osgEarth/Cache>
 #include <osgEarth/FeatureRasterizer>
 #include <osgEarth/ImageLayer>
@@ -42,7 +44,7 @@ public:
         // Only cache source vectors. A missing tile may temporarily use local data.
         setCachePolicy(CachePolicy::NO_CACHE);
         if (auto* cache = Registry::instance()->getDefaultCache())
-            tiles_ = cache->addBin("vaporview-osm-shortbread-v1");
+            tiles_ = cache->addBin(osmCacheBin);
         auto* line = lineStyle_.getOrCreate<LineSymbol>();
         line->stroke()->color() = Color(roads ? "#f6df8f" : "#76b9df");
         line->stroke()->width() = Distance(1.5, Units::PIXELS);
@@ -130,17 +132,22 @@ private:
             return result.succeeded() && !result.getString().empty()
                 && MVT::readTile(result.getString(), source, features, roads_ ? roads : water);
         };
+        const auto useCached = [&] {
+            if (!decode(cached)) return false;
+            recordTileVisit(osmCacheBin, key);
+            return true;
+        };
         constexpr qint64 week = 7 * 24 * 60 * 60;
-        if (cached.lastModifiedTime() >= QDateTime::currentSecsSinceEpoch() - week && decode(cached))
+        if (cached.lastModifiedTime() >= QDateTime::currentSecsSinceEpoch() - week && useCached())
             return true;
         const auto result = fetchTile(url, options, progress);
         if (progress && progress->isCanceled()) return false;
         if (decode(result))
         {
-            if (tiles_) tiles_->write(key, result.getObject(), options);
+            if (tiles_ && tiles_->write(key, result.getObject(), options)) recordTileVisit(osmCacheBin, key);
             return true;
         }
-        return decode(cached);
+        return useCached();
     }
 
     Options options_;

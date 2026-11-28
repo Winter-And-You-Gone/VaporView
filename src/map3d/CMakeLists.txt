@@ -21,6 +21,7 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
         ${CMAKE_SOURCE_DIR}/src/map3d/MapHttp.cpp
         ${CMAKE_SOURCE_DIR}/src/map3d/CesiumTerrain.cpp
         ${CMAKE_SOURCE_DIR}/src/map3d/Map3DDiagnosticsFormatter.cpp
+        ${CMAKE_SOURCE_DIR}/src/map3d/MapTileRetention.cpp
         ${CMAKE_SOURCE_DIR}/src/map3d/Map3DRuntime.cpp
         ${CMAKE_SOURCE_DIR}/src/map3d/MapResourceDialog.cpp
         ${CMAKE_SOURCE_DIR}/src/map3d/MapResourceManager.cpp
