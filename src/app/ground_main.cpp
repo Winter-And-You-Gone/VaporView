@@ -40,6 +40,7 @@
 #include "FpgaVirtualTcpTransport.h"
 #ifdef VAPORVIEW_HAS_OSGEARTH
 #include "ground/map/Map3DController.h"
+#include "map3d/MapTileRetention.h"
 #endif
 #ifdef VAPORVIEW_HAS_SKY_CORE
 #include "SkyRuntime.h"
@@ -949,9 +950,11 @@ int runApplication(int argc, char *argv[])
     }
 
 #ifdef VAPORVIEW_HAS_OSGEARTH
+    VaporView::Map3D::Detail::startTileRetention();
     QObject::connect(&app, &QCoreApplication::aboutToQuit, &app, []() {
         // Join map workers before GDAL unload waits on their raster blocks.
         VaporView::Ground::Map3DController::shutdownBackgroundJobs();
+        VaporView::Map3D::Detail::finishTileRetention();
     });
 #endif
 

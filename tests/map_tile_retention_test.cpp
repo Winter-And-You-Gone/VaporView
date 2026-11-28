@@ -3,7 +3,13 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QElapsedTimer>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLockFile>
+#include <QProcess>
+#include <QThread>
 #include <QTemporaryDir>
 #include <cstdio>
 #include <cstdlib>
@@ -27,6 +33,28 @@ QString makeTile(const QTemporaryDir& dir, const char* bin, char id, int day) {
 }
 int main(int argc, char** argv) {
     QCoreApplication app(argc, argv);
+    if (app.arguments().size() == 4) {
+        const auto args = app.arguments();
+        qputenv("OSGEARTH_CACHE_PATH", args[1].toUtf8());
+        qunsetenv("OSGEARTH_CACHE_ONLY");
+        qunsetenv("OSGEARTH_NO_CACHE");
+        startTileRetention();
+        QElapsedTimer deadline;
+        deadline.start();
+        while (QFile::exists(args[2]) && deadline.elapsed() < 5000) QThread::msleep(5);
+        require(!QFile::exists(args[2]), "launch cleans the cache without opening a map");
+        // This expired tile arrives after the sweep. Opening the map must not sweep it again.
+        require(QFile::copy(args[3], args[2]), "restore expired fixture for next launch");
+        QFile restored(args[2]);
+        require(restored.open(QIODevice::ReadWrite) && restored.setFileTime(QDateTime::fromSecsSinceEpoch(86400),
+            QFileDevice::FileModificationTime), "age restored fixture");
+        restored.close();
+        startTileRetention();
+        recordTileVisit(terrainCacheBin, "01/" + std::string(38, 'a'));
+        finishTileRetention();
+        require(QFile::exists(args[2]), "opening and closing the map does not rescan");
+        return 0;
+    }
     QTemporaryDir dir;
     require(dir.isValid(), "isolated cache");
     const auto hot = makeTile(dir, terrainCacheBin, 'a', 100);
@@ -55,5 +83,18 @@ int main(int argc, char** argv) {
         require(maintainTileCache(dir.path(), {{frequent, day}}, day, false), "record frequent visits");
     require(maintainTileCache(dir.path(), {}, 339, true) && exists(frequent), "frequent tile survives 89 idle days");
     require(maintainTileCache(dir.path(), {}, 340, true) && !exists(frequent), "retention is capped at 90 idle days");
+    QTemporaryDir startupCache;
+    require(startupCache.isValid(), "isolated startup cache");
+    const int today = int(QDateTime::currentSecsSinceEpoch() / 86400);
+    const auto oldPath = startupCache.filePath(makeTile(startupCache, osmCacheBin, 'c', today - 40) + ".osgb");
+    const auto recent = makeTile(startupCache, terrainCacheBin, 'a', today);
+    for (int launch = 0; launch < 2; ++launch) {
+        require(QProcess::execute(app.applicationFilePath(), {startupCache.path(), oldPath,
+                    startupCache.filePath(recent + ".osgb")}) == 0, "short session exits cleanly");
+    }
+    QFile index(startupCache.filePath(".vaporview-retention-v1.json"));
+    require(index.open(QIODevice::ReadOnly), "short session flushes visits on exit");
+    const auto visit = QJsonDocument::fromJson(index.readAll()).object().value(recent).toArray();
+    require(visit.size() == 2 && visit.first().toInteger() >= today, "visit day persisted");
     return 0;
 }

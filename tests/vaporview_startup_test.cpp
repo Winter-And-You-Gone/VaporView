@@ -194,6 +194,7 @@ int main(int argc, char **argv)
     process.setWorkingDirectory(QDir::toNativeSeparators(QFileInfo(exePath).absolutePath()));
     QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
     environment.insert(QStringLiteral("VAPORVIEW_SETTINGS_DIR"), settingsDirectory.path());
+    environment.insert(QStringLiteral("OSGEARTH_CACHE_PATH"), settingsDirectory.filePath(QStringLiteral("map-cache")));
     environment.insert(QStringLiteral("VAPORVIEW_CONFIG_FILE"),
                        QDir(settingsDirectory.path()).filePath(QStringLiteral("vaporview.ini")));
     process.setProcessEnvironment(environment);

@@ -170,9 +170,8 @@ void initializeMap3DRuntime()
         auto* registry = osgEarth::Registry::instance();
         if (!registry->getDefaultCache() && !qEnvironmentVariableIsSet("OSGEARTH_CACHE_PATH"))
         {
-            const QString cachePath = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation)
-                + QStringLiteral("/VaporView/osgearth");
-            if (QDir().mkpath(cachePath))
+            const QString cachePath = Detail::mapTileCacheRoot();
+            if (!cachePath.isEmpty() && QDir().mkpath(cachePath))
             {
                 osgEarth::Drivers::FileSystemCacheOptions options;
                 options.rootPath() = cachePath.toStdString();
@@ -182,15 +181,14 @@ void initializeMap3DRuntime()
                 if (cache && cache->getStatus().isOK())
                 {
                     registry->setDefaultCache(cache.get());
-                    if (!qEnvironmentVariableIsSet("OSGEARTH_CACHE_ONLY")) Detail::startTileRetention(cachePath);
+                    Detail::startTileRetention();
                 }
             }
         }
         else if (auto* cache = registry->getDefaultCache(); cache && cache->getCacheOptions().getDriver() == "filesystem"
-                 && !qEnvironmentVariableIsSet("OSGEARTH_CACHE_ONLY"))
+                 && qEnvironmentVariableIsSet("OSGEARTH_CACHE_PATH"))
         {
-            const QString path = qEnvironmentVariable("OSGEARTH_CACHE_PATH");
-            if (!path.isEmpty()) Detail::startTileRetention(QDir(path).absolutePath());
+            Detail::startTileRetention();
         }
     });
 }

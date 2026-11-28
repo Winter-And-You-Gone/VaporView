@@ -9,7 +9,9 @@ inline constexpr auto terrainCacheBin = "vaporview-copernicus-glo30-v1";
 inline constexpr auto osmCacheBin = "vaporview-osm-shortbread-v1";
 inline constexpr qint64 tileBudgetBytes = 2LL * 1024 * 1024 * 1024;
 
-void startTileRetention(const QString& filesystemRoot);
+QString mapTileCacheRoot();
+void startTileRetention();
+void finishTileRetention();
 void recordTileVisit(const char* bin, const std::string& key);
 
 // Paths are relative to the filesystem cache. Days are UTC days since the Unix epoch.

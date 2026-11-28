@@ -9,11 +9,12 @@
 #include <QLockFile>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <QStandardPaths>
+#include <QThread>
 #include <algorithm>
 #include <chrono>
-#include <condition_variable>
+#include <memory>
 #include <mutex>
-#include <thread>
 #include <tuple>
 #include <vector>
 
@@ -34,56 +35,69 @@ class RetentionWorker {
 public:
     void start(const QString& root) {
         std::lock_guard guard(mutex_);
-        if (!thread_.joinable() && !root.isEmpty())
-            thread_ = std::thread([this, root] { run(root); });
+        if (started_ || root.isEmpty()) return;
+        started_ = true;
+        root_ = root;
+        launch(true);
     }
     void visit(const QString& path) {
         std::lock_guard guard(mutex_);
-        if (thread_.joinable()) visits_.insert(path, QDateTime::currentSecsSinceEpoch() / daySeconds);
+        if (root_.isEmpty()) return;
+        visits_.insert(path, QDateTime::currentSecsSinceEpoch() / daySeconds);
+        if (Clock::now() >= nextFlush_ && !job_->isRunning()) launch(false);
     }
-    ~RetentionWorker() {
-        {
-            std::lock_guard guard(mutex_);
-            stopping_ = true;
-        }
-        wake_.notify_one();
-        if (thread_.joinable()) thread_.join();
-    }
-private:
-    void run(const QString& root) {
-        using namespace std::chrono;
-        auto nextSweep = steady_clock::now();
+    void finish() {
         std::unique_lock lock(mutex_);
-        for (;;) {
-            QHash<QString, qint64> batch;
-            batch.swap(visits_);
-            const auto now = steady_clock::now();
-            const bool sweep = now >= nextSweep;
-            const bool finish = stopping_;
-            lock.unlock();
-            // All directory scans and index writes stay off the map render and tile threads.
-            const bool saved = (!sweep && batch.isEmpty()) || maintainTileCache(root, batch,
-                QDateTime::currentSecsSinceEpoch() / daySeconds, sweep);
-            lock.lock();
-            if (saved && sweep) nextSweep = now + hours(6);
-            if (!saved) {
+        if (root_.isEmpty()) return;
+        QString root;
+        root.swap(root_); // Stop admitting visits before joining the last writer.
+        auto job = std::move(job_);
+        lock.unlock();
+        job->requestInterruption();
+        job->wait();
+        if (!visits_.isEmpty()) maintainTileCache(root, visits_, QDateTime::currentSecsSinceEpoch() / daySeconds, false);
+        visits_.clear();
+    }
+    ~RetentionWorker() { finish(); }
+private:
+    using Clock = std::chrono::steady_clock;
+    void launch(bool sweep) { // Called under mutex_, after the preceding job has finished.
+        QHash<QString, qint64> batch;
+        batch.swap(visits_);
+        nextFlush_ = Clock::now() + std::chrono::minutes(2);
+        job_.reset(QThread::create([this, root = root_, batch = std::move(batch), sweep] {
+            if (!maintainTileCache(root, batch, QDateTime::currentSecsSinceEpoch() / daySeconds, sweep) && !batch.isEmpty()) {
+                std::lock_guard guard(mutex_);
                 for (auto it = batch.cbegin(); it != batch.cend(); ++it)
                     visits_[it.key()] = std::max(visits_.value(it.key()), it.value());
             }
-            if (finish) return;
-            wake_.wait_for(lock, minutes(2), [this] { return stopping_; });
-        }
+        }));
+        job_->start(QThread::LowPriority);
     }
     std::mutex mutex_;
-    std::condition_variable wake_;
-    bool stopping_ = false;
+    bool started_ = false;
+    QString root_;
     QHash<QString, qint64> visits_;
-    std::thread thread_;
+    Clock::time_point nextFlush_;
+    std::unique_ptr<QThread> job_;
 };
 RetentionWorker& worker() { static RetentionWorker instance; return instance; }
 }
 
-void startTileRetention(const QString& root) { worker().start(root); }
+QString mapTileCacheRoot() {
+    if (qEnvironmentVariableIsSet("OSGEARTH_CACHE_PATH")) {
+        const auto path = qEnvironmentVariable("OSGEARTH_CACHE_PATH");
+        return path.isEmpty() ? QString{} : QDir(path).absolutePath();
+    }
+    const auto base = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation);
+    return base.isEmpty() ? QString{} : QDir(base).filePath(QStringLiteral("VaporView/osgearth"));
+}
+
+void startTileRetention() {
+    if (!qEnvironmentVariableIsSet("OSGEARTH_CACHE_ONLY") && !qEnvironmentVariableIsSet("OSGEARTH_NO_CACHE"))
+        worker().start(mapTileCacheRoot());
+}
+void finishTileRetention() { worker().finish(); }
 void recordTileVisit(const char* bin, const std::string& key) {
     worker().visit(QLatin1String(bin) + '/' + QString::fromStdString(key));
 }
@@ -125,6 +139,7 @@ bool maintainTileCache(const QString& root, const QHash<QString, qint64>& visits
             const QDir binDir(directory.filePath(QLatin1String(bin)));
             if (linked(QFileInfo(binDir.path()))) continue;
             for (const auto& shard : binDir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks)) {
+                if (QThread::currentThread()->isInterruptionRequested()) return false;
                 if (linked(shard) || !shardName.match(shard.fileName()).hasMatch()) continue;
                 for (const auto& file : QDir(shard.filePath()).entryInfoList({"*.osgb"}, QDir::Files | QDir::NoSymLinks)) {
                     if (linked(file) || !tileName.match(file.fileName()).hasMatch()) continue;
@@ -147,6 +162,7 @@ bool maintainTileCache(const QString& root, const QHash<QString, qint64>& visits
             return std::tie(a.expiry, a.lastVisit, a.key) < std::tie(b.expiry, b.lastVisit, b.key);
         });
         for (const auto& tile : tiles) {
+            if (QThread::currentThread()->isInterruptionRequested()) return false;
             if (tile.expiry > today && total <= budget) break;
             const QFileInfo file(directory.filePath(tile.key + QStringLiteral(".osgb")));
             // Re-check confinement and the write timestamp after the directory scan.
