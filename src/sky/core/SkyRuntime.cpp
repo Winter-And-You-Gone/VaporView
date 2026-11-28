@@ -395,9 +395,6 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
         sendFrame(MsgType::InternalEnvironment,FpgaRemote::encodeSensor(r,currentTimestampUs()));
     });
     connect(&device_manager_, &SkyDeviceManager::fpgaWaveformUpdated, this, [this](const FpgaWave::CompletedStream& stream) {
-        const qint64 now=command_clock_.elapsed();
-        if (fpga_preview_sent_ms_.contains(stream.source) && now-fpga_preview_sent_ms_.value(stream.source)<500) return;
-        fpga_preview_sent_ms_[stream.source]=now;
         sendFrame(MsgType::FpgaWaveformPreview, FpgaRemote::encodeWaveformPreview(stream));
     });
 }

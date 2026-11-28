@@ -60,6 +60,38 @@ public:
 };
 }
 
+static void bunchedWaveformPreviewsTest()
+{
+    QTemporaryDir directory;
+    SkyRuntimeOptions options;
+    options.config_path = directory.filePath("sky_config.json");
+    SkyRuntime runtime(options);
+    auto* manager = runtime.findChild<SkyDeviceManager*>();
+    require(manager, "find runtime FPGA preview producer");
+    QList<QByteArray> forwarded;
+    QObject::connect(&runtime, &SkyRuntime::telemetryFrameReady, [&](MsgType type, const QByteArray& payload) {
+        if (type == MsgType::FpgaWaveformPreview) forwarded.append(payload);
+    });
+
+    // Admitted previews can arrive together when the runtime event loop resumes.
+    FpgaWave::CompletedStream preview;
+    preview.source = 0x20;
+    preview.preview = true;
+    preview.complete = true;
+    preview.totalPoints = 1;
+    preview.unsigned32Samples = {42};
+    QList<QByteArray> expected;
+    for (quint32 cycle : {1u, 2u}) {
+        preview.cycleId = cycle;
+        expected.append(FpgaRemote::encodeWaveformPreview(preview));
+        QMetaObject::invokeMethod(manager, [manager, preview] {
+            emit manager->fpgaWaveformUpdated(preview);
+        }, Qt::QueuedConnection);
+    }
+    QCoreApplication::sendPostedEvents(manager, QEvent::MetaCall);
+    require(forwarded == expected, "forward both admitted same-source waveform previews in order");
+}
+
 static void firstStartFpgaTest()
 {
     QTemporaryDir directory;
@@ -584,6 +616,7 @@ int main(int argc,char **argv)
         return 0;
     }
     if (!app.arguments().contains("--discovery-only")) {
+        bunchedWaveformPreviewsTest();
         fpgaAi8PageTest(FpgaSimulatorFirmware::HistoricalExtensions);
         fpgaAi8PageTest(FpgaSimulatorFirmware::Rd105Integrated);
         fpgaAi8PageTest(FpgaSimulatorFirmware::SkySimulation);
