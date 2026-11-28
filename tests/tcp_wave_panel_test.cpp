@@ -11,6 +11,7 @@
 
 #include <QApplication>
 #include <QAction>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QByteArray>
 #include <QDateTime>
@@ -761,12 +762,36 @@ static void testLiveWaterCards()
         require(reading.contains("Invalid sample") && reading.contains("0.000123 mol/mol") && !reading.contains("nan", Qt::CaseInsensitive),
                 "invalid samples identify the last valid value without printing NaN");
     }
+    auto *homeIntegral = panel.findChild<QCheckBox *>("integratedColumn100m");
+    auto *pageIntegral = page->findChild<QCheckBox *>("integratedColumn100m");
+    require(homeIntegral && pageIntegral && homeIntegral != pageIntegral && !homeIntegral->isChecked(),
+            "the 100 m cell conversion is opt-in for this calibration");
+    pageIntegral->click();
+    for (auto *view : views) {
+        const auto reading = label(view, 1);
+        auto *profile = view->findChild<QWidget *>("waterProfilePlot1");
+        auto *summary = profile->parentWidget()->findChild<QLabel *>("waterProfileSummary");
+        require(reading.contains("Invalid sample") && reading.contains("12300.00 ppmv·m") &&
+                summary->text().contains("12300.00 ppmv·m") && profile->toolTip().contains("ppmv·m") &&
+                label(view, 0).contains("0.00125 mol/mol"), "convert the 816 nm reading and profile together");
+    }
+    require(homeIntegral->isChecked(), "home follows the waveform page unit");
+    homeIntegral->click();
+    require(!pageIntegral->isChecked() && label(page, 1).contains("0.000123 mol/mol"),
+            "switching units back preserves native readings");
+    pageIntegral->click();
     panel.clearWaterSamples();
     require(label(page, 0).contains("Waiting") && label(page, 1).contains("Waiting"), "clear resets both latest readings");
     panel.appendWaterSample(0, "next", time + 3000, 0.5, 40.0);
     panel.setWaterCalibration("other", "other.vcal", "ppmv", false, {});
     require(label(&panel, 0).contains("Waiting") && hasTitle(page, "In-situ Water Vapor Concentration (ppmv) · CH 0"),
             "switching files drops the prior concentration and shows the selected file unit");
+    require(!homeIntegral->isChecked() && homeIntegral->isEnabled(), "new calibration resets the path assumption");
+    homeIntegral->click();
+    panel.appendWaterSample(1, "ppmv", time + 4000, 1000, missing);
+    require(label(page, 1).contains("100000.00 ppmv·m"), "1000 ppmv in a 100 m cell gives 100000 ppmv·m without lidar");
+    panel.setWaterCalibration("mass", "mass.vcal", "mg/m3", false, {});
+    require(!pageIntegral->isChecked() && !pageIntegral->isEnabled(), "mass concentration cannot use the mole fraction scale");
     panel.setWaterCalibration({}, {}, {}, false, {});
     require(label(page, 0) == "Select a calibration file" && label(&panel, 1) == label(page, 0), "removing calibration restores the prompt");
 }

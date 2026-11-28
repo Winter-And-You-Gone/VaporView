@@ -17,6 +17,7 @@
 #include <QAbstractSocket>
 #include <QApplication>
 #include <QByteArray>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -3369,6 +3370,14 @@ void TcpWavePanel::addCalibrationControls(CalibrationControls &controls, QHBoxLa
     });
     row->addWidget(controls.label, 0, Qt::AlignVCenter);
     row->addWidget(combo, 0, Qt::AlignVCenter);
+    controls.integratedColumn = new QCheckBox(row->parentWidget());
+    controls.integratedColumn->setObjectName(QStringLiteral("integratedColumn100m"));
+    row->addWidget(controls.integratedColumn, 0, Qt::AlignVCenter);
+    connect(controls.integratedColumn, &QCheckBox::toggled, this, [this](bool checked) {
+        show_integrated_column_ = checked;
+        syncCalibrationControls();
+        refreshWaterPlots(1);
+    });
     if (waveformPage) {
         auto *button = controls.detailedSettings = new QPushButton(row->parentWidget());
         button->setObjectName(QStringLiteral("wavePageDetailedSettingsButton"));
@@ -3502,6 +3511,14 @@ void TcpWavePanel::syncCalibrationControls()
     const auto update = [&](const CalibrationControls &controls) {
         auto *combo = controls.combo;
         if (!combo) return;
+        auto *integral = controls.integratedColumn;
+        const QSignalBlocker integralBlocker(integral);
+        integral->setText(is_english_ ? QStringLiteral("816 nm · 100 m cell → ppmv·m") : QStringLiteral("816 nm · 100 m 气室 → ppmv·m"));
+        integral->setToolTip(is_english_
+            ? QStringLiteral("Convert gas concentration from a 100 m effective calibration path to path-integrated concentration. Requires ppmv or mol/mol.")
+            : QStringLiteral("适用于以标气浓度（ppmv 或 mol/mol）和 100 m 有效光程定标的文件。将标气等效浓度换算为光程积分浓度。"));
+        integral->setEnabled(!water_calibration_key_.isEmpty() && (water_unit_ == "ppmv" || water_unit_ == "mol/mol"));
+        integral->setChecked(show_integrated_column_);
         controls.label->setText(fileText);
         controls.label->setToolTip(tooltip);
         combo->setAccessibleName(fileText);
@@ -3540,6 +3557,7 @@ void TcpWavePanel::setWaterCalibration(const QString &key, const QString &name, 
         return;
     }
     const bool changed = water_calibration_key_ != key || water_calibration_name_ != name;
+    if (changed || water_unit_ != unit) show_integrated_column_ = false;
     if (changed) {
         if (!water_calibration_key_.isEmpty()) water_profile_->clearAll();
         last_water_id_ = {};
@@ -3586,12 +3604,16 @@ void TcpWavePanel::appendWaterSample(int channel, const QString &id, qint64 time
 
 void TcpWavePanel::refreshWaterPlots(int changedChannel)
 {
-    const QString unit = water_unit_.isEmpty() ? QString() : QStringLiteral(" (%1)").arg(water_unit_);
     const QString selectText = is_english_ ? QStringLiteral("Select a calibration file") : QStringLiteral("请选择定标文件");
     const QString waiting = is_english_ ? QStringLiteral("Waiting for valid concentration") : QStringLiteral("等待有效浓度");
     if (changedChannel < 0) syncCalibrationControls();
     for (int channel = 0; channel < 2; ++channel) {
         if (changedChannel >= 0 && changedChannel != channel) continue;
+        const bool integrated = channel == 1 && show_integrated_column_;
+        constexpr double calibrationPathM = 100.0;
+        const double scale = integrated ? calibrationPathM * (water_unit_ == "mol/mol" ? 1e6 : 1.0) : 1.0;
+        const QString displayUnit = integrated ? QStringLiteral("ppmv·m") : water_unit_;
+        const QString unit = displayUnit.isEmpty() ? QString() : QStringLiteral(" (%1)").arg(displayUnit);
         const QString name = channel == 0
             ? (is_english_ ? QStringLiteral("In-situ Water Vapor Concentration") : QStringLiteral("原位水汽浓度"))
             : (is_english_ ? QStringLiteral("Column Water Vapor Concentration (Remote)") : QStringLiteral("水汽柱浓度（遥测）"));
@@ -3599,11 +3621,19 @@ void TcpWavePanel::refreshWaterPlots(int changedChannel)
             ? (is_english_ ? QStringLiteral("In-situ Water Vapor Profile") : QStringLiteral("原位水汽廓线"))
             : (is_english_ ? QStringLiteral("Column Water Vapor Profile (Remote)") : QStringLiteral("水汽柱浓度廓线（遥测）"));
         const QString suffix = QStringLiteral(" · CH %1").arg(channel);
-        const auto latest = water_profile_->latest(channel);
+        auto latest = water_profile_->latest(channel);
         const bool unbinned = profile_resolution_m_[channel] == WaterProfileAccumulator::unbinnedResolution;
-        const auto points = unbinned ? water_profile_->rawPoints(channel) : QVector<WaterProfileAccumulator::RawPoint>{};
+        auto points = unbinned ? water_profile_->rawPoints(channel) : QVector<WaterProfileAccumulator::RawPoint>{};
         const auto totalSamples = water_profile_->rawSampleCount(channel);
-        const auto layers = water_profile_->layers(channel, profile_resolution_m_[channel]);
+        auto layers = water_profile_->layers(channel, profile_resolution_m_[channel]);
+        if (integrated) {
+            if (latest) latest->concentration *= scale;
+            for (auto &point : points) point.concentration *= scale;
+            for (auto &layer : layers) {
+                layer.meanConcentration *= scale;
+                layer.stdDev *= scale;
+            }
+        }
         const auto missing = QStringLiteral("—");
         const auto count = unbinned ? points.size() : layers.size();
         const QString summary = (unbinned
@@ -3611,7 +3641,7 @@ void TcpWavePanel::refreshWaterPlots(int changedChannel)
             : is_english_ ? QStringLiteral("Y Height: %1   X Concentration: %2   Layers: %3")
             : QStringLiteral("Y 高度：%1   X 浓度：%2   层数：%3"))
             .arg(latest ? formatWaveValue(latest->heightM, 2) + QStringLiteral(" m") : missing,
-                 latest ? formatWaterConcentration(latest->concentration) + QStringLiteral(" ") + water_unit_ : missing,
+                 latest ? formatWaterConcentration(latest->concentration) + QStringLiteral(" ") + displayUnit : missing,
                  count ? QString::number(count) : missing);
         const auto &series = water_samples_.value(channel);
         const auto &valid = latest_valid_water_[channel];
@@ -3620,7 +3650,7 @@ void TcpWavePanel::refreshWaterPlots(int changedChannel)
             reading = is_english_ ? selectText : QStringLiteral("未选择定标文件");
         } else {
             if (valid) {
-                reading = QStringLiteral("%1 %2 · %3").arg(formatWaterConcentration(valid->value), water_unit_,
+                reading = QStringLiteral("%1 %2 · %3").arg(formatWaterConcentration(valid->value * scale), displayUnit,
                     QDateTime::fromMSecsSinceEpoch(valid->timeMs).toString(QStringLiteral("HH:mm:ss")));
             }
             if (!series.isEmpty() && !std::isfinite(series.last().value)) {
@@ -3631,7 +3661,7 @@ void TcpWavePanel::refreshWaterPlots(int changedChannel)
         QVector<float> values;
         QVector<qint64> times;
         for (const auto &sample : series) {
-            values.append(float(sample.value));
+            values.append(float(sample.value * scale));
             times.append(sample.timeMs);
         }
         const auto update = [&](WaterCards &cards) {

@@ -24,6 +24,7 @@ class QEvent;
 class QPushButton;
 class QGroupBox;
 class QSpinBox;
+class QCheckBox;
 class QTcpSocket;
 class QTimer;
 class QToolButton;
@@ -278,7 +279,12 @@ private:
         PeakTrendPlotWidget *series;
         WaterProfilePlotWidget *layers;
     };
-    struct CalibrationControls { QLabel *label = nullptr; VaporView::SingleLevelPopupComboBox *combo = nullptr; QPushButton *detailedSettings = nullptr; };
+    struct CalibrationControls {
+        QLabel *label = nullptr;
+        VaporView::SingleLevelPopupComboBox *combo = nullptr;
+        QCheckBox *integratedColumn = nullptr;
+        QPushButton *detailedSettings = nullptr;
+    };
     struct WaveformPage;
     std::unique_ptr<WaveformPage> waveform_page_;
     std::array<WaterCards, 2> home_water_{};
@@ -291,6 +297,7 @@ private:
     QStringList water_calibration_files_;
     QString water_calibration_selected_path_;
     bool water_calibration_locked_ = false;
+    bool show_integrated_column_ = false;
     QString water_calibration_key_, water_calibration_name_, water_unit_, water_calibration_detail_;
     struct WaterSample {
         QString id;
