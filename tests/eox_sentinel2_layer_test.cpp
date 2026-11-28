@@ -28,10 +28,10 @@ int main(int argc, char** argv)
     require(VaporView::Map3D::Detail::eoxSentinel2TileRequest(unsupported).url().isEmpty(),
             "EOX 2024 imagery rejects levels beyond its available data");
     require(QString::fromLatin1(VaporView::Map3D::Detail::kEoxSentinel2Attribution)
-                == QStringLiteral("Contains modified Copernicus Sentinel data 2024, EOXcloudless by EOX IT Services GmbH"),
+                == QStringLiteral("EOxCloudless https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2024)"),
             "EOX attribution names the modified 2024 Copernicus data and provider");
     require(QString::fromLatin1(VaporView::Map3D::Detail::kEoxSentinel2UsageUrl)
-                == QStringLiteral("https://cloudless.eox.at/documentation/usage"),
+                == QStringLiteral("https://cloudless.eox.at/license-non-commercial"),
             "EOX attribution points to the usage and license source");
     return 0;
 }

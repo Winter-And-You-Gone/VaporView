@@ -117,7 +117,8 @@ private:
     void loadLocal3DTilesPreview();
     bool loadConfiguredLocal3DTiles(bool showStatusMessage);
     void clearLocal3DTilesPreview();
-    bool applyConfiguredTiandituSatelliteImagery(bool showStatusMessage);
+    bool applyConfiguredTiandituSatelliteImagery(bool showStatusMessage,
+                                                  bool allowEoxFallback = true);
     bool applySelectedSatelliteImagery(bool showStatusMessage);
     void openAircraftModel();
     void resetAircraftModel();
@@ -277,6 +278,7 @@ private:
     bool has_selected_track_sample_ = false;
     bool automatic_sentinel2_imagery_loaded_ = false;
     bool automatic_sentinel2_imagery_loading_ = false;
+    bool automatic_eox_imagery_loaded_ = false;
     bool tianditu_satellite_imagery_loaded_ = false;
     qint64 latest_drop_record_timestamp_us_ = 0;
     qint64 latest_track_record_timestamp_us_ = 0;

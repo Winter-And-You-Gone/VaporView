@@ -49,6 +49,7 @@
 #include <QPushButton>
 #include <QMouseEvent>
 #include <QPlainTextEdit>
+#include <QScrollArea>
 #include <QStatusBar>
 #include <QProgressBar>
 #include <QProgressDialog>
@@ -376,10 +377,29 @@ QSettings map3DTestSettings()
 
 void checkEoxSelectionPersistence()
 {
-    qputenv("VAPORVIEW_MAP3D_HEADLESS_TEST", "1");
+    using namespace VaporView::Map3D;
+    qunsetenv("VAPORVIEW_MAP3D_HEADLESS_TEST");
     auto settings = map3DTestSettings();
     settings.remove(QStringLiteral("satelliteImagerySource"));
-    VaporView::Map3D::Map3DWindow window;
+    Detail::tiandituKeySettings().remove(QStringLiteral("TrajectoryViewer/map/tianditu_key"));
+    QTemporaryDir directory;
+    QFile earth(directory.filePath(QStringLiteral("eox-selection.earth")));
+    require(directory.isValid() && earth.open(QIODevice::WriteOnly), "create map without local imagery");
+    earth.write("<map name='EOX selection' type='geocentric' version='2'/>\n");
+    earth.close();
+    settings.setValue(QStringLiteral("lastEarthFile"), earth.fileName());
+    Map3DWindow window;
+    window.resize(1060, 720);
+    window.show();
+    const auto eoxActive = [&] {
+        auto* view = window.findChild<OsgEarthViewWidget*>();
+        return view && view->activeSatelliteImagerySource() == Detail::kEoxSentinel2Source;
+    };
+    require(QTest::qWaitFor(eoxActive, 15000), "automatic imagery uses EOX on a map without a Tianditu key or local imagery");
+    auto* credit = window.findChild<QLabel*>(QStringLiteral("map3DEoxAttribution"));
+    require(credit && credit->isVisible() && !credit->wordWrap() && credit->toolTip().contains(QStringLiteral("CC BY-NC-SA")),
+            "automatic EOX imagery shows a compact credit with the full license on hover");
+    const int automaticHeight = window.statusBar()->height();
     auto* action = window.findChild<QAction*>(QStringLiteral("map3DOnlineImagery_eoxSentinel2_2024"));
     require(action && action->isEnabled() && action->isCheckable(),
             "EOX imagery selection action is available in the real menu path");
@@ -388,6 +408,8 @@ void checkEoxSelectionPersistence()
                 && settings.value(QStringLiteral("satelliteImagerySource")).toString()
                        == QStringLiteral("online:eox_sentinel2_2024"),
             "EOX imagery selection persists through the map source path");
+    require(eoxActive() && automaticHeight == window.statusBar()->height() && automaticHeight <= 2 * credit->fontMetrics().lineSpacing(),
+            "automatic and manual EOX keep a compact status bar");
     settings.remove(QStringLiteral("satelliteImagerySource"));
 }
 
@@ -638,6 +660,8 @@ void checkLiveReadings(VaporView::Map3D::Map3DWindow& window)
     using namespace VaporView::Map3D;
     using VaporView::Geo::TrajectoryRenderSample;
     auto* panel = window.findChild<QFrame*>(QStringLiteral("map3DLiveDataSidePanel"));
+    auto* scroll = window.findChild<QScrollArea*>(QStringLiteral("map3DLiveDataScroll"));
+    auto* scrollContent = window.findChild<QWidget*>(QStringLiteral("map3DLiveDataScrollContent"));
     auto* toggle = window.findChild<QToolButton*>(QStringLiteral("map3DSidePanelToggleButton"));
     auto* section = window.findChild<QToolButton*>(QStringLiteral("map3DProfileSectionToggle"));
     auto* plot = window.findChild<QWidget*>(QStringLiteral("map3DWaterProfilePlot"));
@@ -647,10 +671,16 @@ void checkLiveReadings(VaporView::Map3D::Map3DWindow& window)
     auto* bar = window.findChild<QFrame*>(QStringLiteral("map3DMainHeatLegendBar"));
     auto* legend = window.findChild<QLabel*>(QStringLiteral("map3DMainHeatLegendText"));
     auto* canvas = window.findChild<QWidget*>(QStringLiteral("map3DView"));
-    require(panel && toggle && plot && resolution && metric && canvas && legend && bar,
+    require(panel && scroll && scrollContent && toggle && plot && resolution && metric && canvas && legend && bar,
             "live sidebar, profile and main legend controls exist");
-    require(panel->isVisible() && panel->autoFillBackground() && !panel->testAttribute(Qt::WA_TranslucentBackground)
-            && bar->isVisible() && legend->text().contains(QStringLiteral("n=0")), "opaque sidebar and empty legend are visible");
+    require(panel->isVisible() && !panel->testAttribute(Qt::WA_TranslucentBackground), "sidebar is visible and opaque");
+    const auto surface = VaporView::appThemeColor(VaporView::AppThemeColor::Surface, VaporView::isDarkThemeEnabled());
+    for (auto* widget : {static_cast<QWidget*>(panel), scrollContent, static_cast<QWidget*>(bar)})
+    {
+        const auto patch = widget->grab(QRect(0, 0, 1, 1)).toImage();
+        require(!patch.isNull() && patch.pixelColor(0, 0) == surface, "sidebar, scroll content and legend paint the theme surface");
+    }
+    require(bar->isVisible() && legend->text().contains(QStringLiteral("n=0")), "empty heat legend is visible");
     require(canvas->parentWidget() == panel->parentWidget() && !canvas->geometry().intersects(panel->geometry()),
             "sidebar and map occupy separate layout rectangles");
     require(plot->isVisible() && !section && !open,
@@ -1106,7 +1136,7 @@ int main(int argc, char** argv)
         require(QString::fromLatin1(VaporView::Map3D::Detail::kEoxSentinel2Attribution)
                     .contains(QStringLiteral("Contains modified Copernicus Sentinel data 2024"))
                     && QString::fromLatin1(VaporView::Map3D::Detail::kEoxSentinel2UsageUrl)
-                           == QStringLiteral("https://cloudless.eox.at/documentation/usage"),
+                           == QStringLiteral("https://cloudless.eox.at/license-non-commercial"),
                 "EOX Sentinel-2 attribution and usage source are fixed in the layer contract");
     }
     {

@@ -1025,11 +1025,15 @@ public:
         auto* layout = new QVBoxLayout(this);
         layout->setContentsMargins(12, 8, 10, 8);
         auto* scroll = new QScrollArea(this);
+        scroll->setObjectName(QStringLiteral("map3DLiveDataScroll"));
         scroll->setFrameShape(QFrame::NoFrame);
         scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         scroll->setWidgetResizable(true);
+        scroll->viewport()->setObjectName(QStringLiteral("map3DLiveDataScrollViewport"));
         layout->addWidget(scroll);
         auto* content = new QWidget(scroll);
+        content->setObjectName(QStringLiteral("map3DLiveDataScrollContent"));
+        content->setAutoFillBackground(true);
         auto* rows = new QVBoxLayout(content);
         rows->setContentsMargins(1, 2, 5, 4);
         rows->setSpacing(8);
@@ -1779,7 +1783,12 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     eox_attribution_ = new QLabel(this);
     eox_attribution_->setObjectName(QStringLiteral("map3DEoxAttribution"));
     eox_attribution_->setOpenExternalLinks(true);
-    eox_attribution_->setWordWrap(true);
+    eox_attribution_->setTextFormat(Qt::RichText);
+    eox_attribution_->setTextInteractionFlags(Qt::TextBrowserInteraction);
+    eox_attribution_->setText(QStringLiteral("<a href=\"%1\">EOX 2024</a>").arg(QLatin1String(Detail::kEoxSentinel2UsageUrl)));
+    eox_attribution_->setToolTip(QStringLiteral("%1 · %2").arg(
+        QLatin1String(Detail::kEoxSentinel2Attribution),
+        mapText(QStringLiteral("2024 版非商业许可（CC BY-NC-SA 4.0）"))));
     statusBar()->addPermanentWidget(eox_attribution_);
     eox_attribution_->hide();
     osm_attribution_ = new QLabel(QStringLiteral("<a href=\"https://www.openstreetmap.org/copyright\">© OpenStreetMap contributors</a>"), this);
@@ -2278,7 +2287,8 @@ void Map3DWindow::setLayerVisible(Map3DLayer layer, bool visible, bool announce)
                  && !view_->layerAvailable(Map3DLayer::SatelliteImagery))
         {
             applySelectedSatelliteImagery(false);
-            if (sentinel2_auto_load_timer_ && !tianditu_satellite_imagery_loaded_)
+            if (sentinel2_auto_load_timer_ && !tianditu_satellite_imagery_loaded_
+                && !automatic_eox_imagery_loaded_)
             {
                 sentinel2_auto_load_timer_->start();
             }
@@ -2335,6 +2345,33 @@ void Map3DWindow::refreshLayerMenuTheme()
             "QToolBar#map3DToolbar QToolButton#map3DMoreButton { padding-right: 36px; padding-left: 12px; }"
             "QToolButton#map3DMoreButton::menu-indicator { image: url(\"%1\"); width: 16px; height: 16px; subcontrol-origin: padding; subcontrol-position: right center; right: 8px; }").arg(arrow), dark);
         if (toolbar->styleSheet() != style) toolbar->setStyleSheet(style);
+    }
+    if (auto* panel = findChild<QWidget*>(QStringLiteral("map3DLiveDataSidePanel")))
+    {
+        panel->setPalette(appThemePalette(dark));
+        panel->setAutoFillBackground(true);
+        panel->setStyleSheet(applyAppThemeTokens(QStringLiteral(
+            "QFrame#map3DLiveDataSidePanel { background: @vv-surface; color: @vv-text; border: none; }"
+            "QScrollArea#map3DLiveDataScroll { background: @vv-surface; border: none; }"
+            "QWidget#map3DLiveDataScrollViewport, QWidget#map3DLiveDataScrollContent { background: @vv-surface; }"
+            "QFrame#map3DLiveDataSidePanel QLabel { background: transparent; color: @vv-text; }"), dark));
+        const QPalette palette = appThemePalette(dark);
+        if (auto* scroll = panel->findChild<QScrollArea*>(QStringLiteral("map3DLiveDataScroll")))
+        {
+            scroll->setPalette(palette);
+            scroll->viewport()->setPalette(palette);
+            scroll->viewport()->setAutoFillBackground(true);
+            if (auto* content = scroll->widget()) content->setPalette(palette);
+        }
+    }
+    if (main_legend_label_ && main_legend_label_->parentWidget())
+    {
+        auto* legend = main_legend_label_->parentWidget();
+        legend->setPalette(appThemePalette(dark));
+        legend->setAutoFillBackground(true);
+        legend->setStyleSheet(applyAppThemeTokens(QStringLiteral(
+            "QFrame#map3DMainHeatLegendBar { background: @vv-surface; color: @vv-text; border: none; }"
+            "QLabel#map3DMainHeatLegendText { background: transparent; color: @vv-text; }"), dark));
     }
     if (auto* panel = findChild<QDialog*>(QStringLiteral("map3DDisplayPanel")))
     {
@@ -2889,6 +2926,7 @@ void Map3DWindow::startSessionLoad(const QString& sessionDir, quint64 generation
         updateStatus(replay_.currentSample());
         if (sentinel2_auto_load_timer_
             && !tianditu_satellite_imagery_loaded_
+            && !automatic_eox_imagery_loaded_
             && !isSentinel2ImageryActive())
         {
             sentinel2_auto_load_timer_->start();
@@ -3014,6 +3052,7 @@ void Map3DWindow::loadInitialEarthFile()
                     applySelectedSatelliteImagery(false);
                     if (sentinel2_auto_load_timer_
                         && !tianditu_satellite_imagery_loaded_
+                        && !automatic_eox_imagery_loaded_
                         && !isSentinel2ImageryActive())
                     {
                         sentinel2_auto_load_timer_->start();
@@ -3047,6 +3086,7 @@ void Map3DWindow::loadInitialEarthFile()
         applySelectedSatelliteImagery(false);
         if (sentinel2_auto_load_timer_
             && !tianditu_satellite_imagery_loaded_
+            && !automatic_eox_imagery_loaded_
             && !isSentinel2ImageryActive())
         {
             sentinel2_auto_load_timer_->start();
@@ -3119,6 +3159,7 @@ void Map3DWindow::openEarthFile()
         applySelectedSatelliteImagery(false);
         if (sentinel2_auto_load_timer_
             && !tianditu_satellite_imagery_loaded_
+            && !automatic_eox_imagery_loaded_
             && !isSentinel2ImageryActive())
         {
             sentinel2_auto_load_timer_->start();
@@ -3247,7 +3288,8 @@ void Map3DWindow::selectSatelliteImagerySource(const QString& source)
         if (view_ && view_->hasEarthMap() && layerVisible(Map3DLayer::SatelliteImagery))
         {
             applyConfiguredTiandituSatelliteImagery(false);
-            if (sentinel2_auto_load_timer_ && !tianditu_satellite_imagery_loaded_ && !isSentinel2ImageryActive())
+            if (sentinel2_auto_load_timer_ && !tianditu_satellite_imagery_loaded_
+                && !automatic_eox_imagery_loaded_ && !isSentinel2ImageryActive())
             {
                 sentinel2_auto_load_timer_->start();
             }
@@ -3419,6 +3461,7 @@ void Map3DWindow::maybeLoadSentinel2ImageryForRange(double rangeM)
     if (!view_
         || automatic_sentinel2_imagery_loaded_
         || automatic_sentinel2_imagery_loading_
+        || automatic_eox_imagery_loaded_
         || tianditu_satellite_imagery_loaded_
         || !std::isfinite(rangeM)
         || rangeM > kAutomaticSentinel2ImageryRangeM
@@ -3481,6 +3524,7 @@ void Map3DWindow::resetAutomaticSentinel2Imagery()
 {
     automatic_sentinel2_imagery_loaded_ = false;
     automatic_sentinel2_imagery_loading_ = false;
+    automatic_eox_imagery_loaded_ = false;
 }
 
 bool Map3DWindow::isSentinel2ImageryActive() const
@@ -3500,7 +3544,8 @@ void Map3DWindow::loadLocal3DTilesPreview()
     loadConfiguredLocal3DTiles(true);
 }
 
-bool Map3DWindow::applyConfiguredTiandituSatelliteImagery(bool showStatusMessage)
+bool Map3DWindow::applyConfiguredTiandituSatelliteImagery(bool showStatusMessage,
+                                                           bool allowEoxFallback)
 {
     if (VaporView::settingsWritesSuspended())
     {
@@ -3512,6 +3557,7 @@ bool Map3DWindow::applyConfiguredTiandituSatelliteImagery(bool showStatusMessage
     }
     const bool hadTiandituLayer = tianditu_satellite_imagery_loaded_;
     tianditu_satellite_imagery_loaded_ = false;
+    automatic_eox_imagery_loaded_ = false;
     if (!view_ || !view_->hasEarthMap())
     {
         return false;
@@ -3530,11 +3576,31 @@ bool Map3DWindow::applyConfiguredTiandituSatelliteImagery(bool showStatusMessage
             latest_earth_load_ = view_->earthLoadDiagnostics();
             updateStatus(nullptr, true);
         }
+        if (!allowEoxFallback)
+        {
+            if (showStatusMessage)
+                statusBar()->showMessage(mapText(QStringLiteral("请配置天地图 Key 以加载所选影像。")), 6000);
+            return false;
+        }
+        const QString activeImagery = view_->activeSatelliteImagerySource();
+        if (activeImagery.startsWith(QStringLiteral("local:")) || isSentinel2ImageryActive())
+        {
+            if (showStatusMessage)
+                statusBar()->showMessage(mapText(QStringLiteral("未配置天地图 Key，保留当前离线影像。")), 6000);
+            return false;
+        }
+        automatic_eox_imagery_loaded_ = view_->applyEoxSentinel2Imagery();
+        if (automatic_eox_imagery_loaded_ && sentinel2_auto_load_timer_)
+            sentinel2_auto_load_timer_->stop();
         if (showStatusMessage)
         {
-            statusBar()->showMessage(mapText(QStringLiteral("未配置天地图 Key，3D 地图保留本地离线影像。")), 6000);
+            statusBar()->showMessage(
+                automatic_eox_imagery_loaded_
+                    ? mapText(QStringLiteral("未配置天地图 Key，已自动使用 EOX Sentinel-2 cloudless 2024。"))
+                    : mapText(QStringLiteral("未配置天地图 Key，3D 地图保留当前影像。")), 6000);
         }
-        return false;
+        updateStatus(nullptr, true);
+        return automatic_eox_imagery_loaded_;
     }
 
     tianditu_satellite_imagery_loaded_ = view_->applyTiandituSatelliteImagery(resource.requestUrl, resource.credential);
@@ -3557,8 +3623,10 @@ bool Map3DWindow::applyConfiguredTiandituSatelliteImagery(bool showStatusMessage
 
 bool Map3DWindow::applySelectedSatelliteImagery(bool showStatusMessage)
 {
-    if (satellite_imagery_source_.isEmpty() || satellite_imagery_source_ == QStringLiteral("online:tianditu"))
-        return applyConfiguredTiandituSatelliteImagery(showStatusMessage);
+    if (satellite_imagery_source_.isEmpty())
+        return applyConfiguredTiandituSatelliteImagery(showStatusMessage, true);
+    if (satellite_imagery_source_ == QStringLiteral("online:tianditu"))
+        return applyConfiguredTiandituSatelliteImagery(showStatusMessage, false);
     if (VaporView::settingsWritesSuspended() || !view_ || !view_->hasEarthMap()
         || !layerVisible(Map3DLayer::SatelliteImagery))
         return false;
@@ -3566,6 +3634,7 @@ bool Map3DWindow::applySelectedSatelliteImagery(bool showStatusMessage)
     if (satellite_imagery_source_ == QStringLiteral("online:openaerialmap"))
     {
         const bool loaded = view_->applyOpenAerialMapImagery();
+        automatic_eox_imagery_loaded_ = false;
         if (loaded) tianditu_satellite_imagery_loaded_ = false;
         if (showStatusMessage)
             statusBar()->showMessage(loaded
@@ -3577,6 +3646,7 @@ bool Map3DWindow::applySelectedSatelliteImagery(bool showStatusMessage)
     if (satellite_imagery_source_ == Detail::kEoxSentinel2Source)
     {
         const bool loaded = view_->applyEoxSentinel2Imagery();
+        automatic_eox_imagery_loaded_ = false;
         if (loaded) tianditu_satellite_imagery_loaded_ = false;
         if (showStatusMessage)
             statusBar()->showMessage(loaded
@@ -3589,6 +3659,7 @@ bool Map3DWindow::applySelectedSatelliteImagery(bool showStatusMessage)
     {
         const auto resource = configuredOnlineMapResource(OnlineMapProvider::Esri);
         const bool loaded = view_->applyEsriWorldImagery(resource.requestUrl, resource.credential);
+        automatic_eox_imagery_loaded_ = false;
         if (loaded) tianditu_satellite_imagery_loaded_ = false;
         if (showStatusMessage)
             statusBar()->showMessage(loaded
@@ -3609,6 +3680,7 @@ bool Map3DWindow::applySelectedSatelliteImagery(bool showStatusMessage)
     if (loaded)
     {
         tianditu_satellite_imagery_loaded_ = false;
+        automatic_eox_imagery_loaded_ = false;
         latest_earth_load_ = view_->earthLoadDiagnostics();
     }
     if (showStatusMessage)
@@ -3812,6 +3884,7 @@ void Map3DWindow::reloadBestLocalMap()
         applySelectedSatelliteImagery(false);
         if (sentinel2_auto_load_timer_
             && !tianditu_satellite_imagery_loaded_
+            && !automatic_eox_imagery_loaded_
             && !isSentinel2ImageryActive())
         {
             sentinel2_auto_load_timer_->start();
@@ -4308,6 +4381,7 @@ void Map3DWindow::showEvent(QShowEvent* event)
         && view_->hasEarthMap()
         && layerVisible(Map3DLayer::SatelliteImagery)
         && !tianditu_satellite_imagery_loaded_
+        && !automatic_eox_imagery_loaded_
         && !isSentinel2ImageryActive()
         && !sentinel2_auto_load_timer_->isActive())
     {
@@ -4600,8 +4674,8 @@ void Map3DWindow::refreshSatelliteImageryMenu()
     }
     eox->setText(mapText(QStringLiteral("在线 · EOX Sentinel-2 cloudless 2024（免 Key）")));
     eox->setChecked(satellite_imagery_source_ == Detail::kEoxSentinel2Source);
-    eox_attribution_->setText(QStringLiteral("%1 · <a href=\"%2\">%3</a>")
-        .arg(QLatin1String(Detail::kEoxSentinel2Attribution), QLatin1String(Detail::kEoxSentinel2UsageUrl),
+    eox_attribution_->setToolTip(QStringLiteral("%1 · %2")
+        .arg(QLatin1String(Detail::kEoxSentinel2Attribution),
              mapText(QStringLiteral("2024 版非商业许可（CC BY-NC-SA 4.0）"))));
 
     auto* online = local_imagery_menu_->findChild<QAction*>(QStringLiteral("map3DOnlineImagery_tianditu"));

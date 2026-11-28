@@ -16,8 +16,8 @@ inline const auto kEoxSentinel2Source = QStringLiteral("online:eox_sentinel2_202
 inline const auto kEoxSentinel2Template = QStringLiteral(
     "https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2024_3857/default/g/{z}/{y}/{x}.jpg");
 inline constexpr auto kEoxSentinel2Attribution =
-    "Contains modified Copernicus Sentinel data 2024, EOXcloudless by EOX IT Services GmbH";
-inline constexpr auto kEoxSentinel2UsageUrl = "https://cloudless.eox.at/documentation/usage";
+    "EOxCloudless https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2024)";
+inline constexpr auto kEoxSentinel2UsageUrl = "https://cloudless.eox.at/license-non-commercial";
 // The shared "g" matrix advertises levels through 21, but the 2024 layer serves 0–18.
 inline constexpr unsigned kEoxSentinel2MaxLevel = 18u;
 
